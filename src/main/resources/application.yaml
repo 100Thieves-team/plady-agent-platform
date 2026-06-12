@@ -1,0 +1,3 @@
+spring:
+  application:
+    name: 100Thieves-wiki-mcp
