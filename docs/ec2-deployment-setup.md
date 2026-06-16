@@ -70,9 +70,19 @@ aws ssm put-parameter \
   --type SecureString \
   --value "$(cat .deploy-keys/llm_wiki_data_repo)" \
   --overwrite
+
+MCP_BEARER_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+aws ssm put-parameter \
+  --region ap-northeast-2 \
+  --name /100thieves/wiki/mcp-bearer-token \
+  --type SecureString \
+  --value "$MCP_BEARER_TOKEN" \
+  --overwrite
+unset MCP_BEARER_TOKEN
 ```
 
 기본 AWS managed KMS key를 쓰면 추가 설정이 필요 없습니다. customer-managed KMS key를 쓴 경우에는 Terraform 변수에 해당 KMS key ARN도 설정합니다.
+MCP bearer token 값은 채팅/문서에 남기지 말고, 필요할 때 SSM에서 조회하세요.
 
 SSM 저장이 끝난 뒤 로컬 private key 파일은 필요 없으면 삭제해도 됩니다.
 
@@ -96,8 +106,10 @@ root_volume_size = 30
 # UI는 필요하면 팀/VPN IP로 제한하세요.
 allowed_ui_cidr_blocks = ["0.0.0.0/0"]
 
-# MCP는 코딩 에이전트/사내망 IP만 열 것을 권장합니다.
+# MCP는 Bearer token proxy로 보호됩니다. 가능하면 코딩 에이전트/사내망 IP만 열고,
+# 외부 client가 직접 붙어야 할 때만 ["0.0.0.0/0"]로 엽니다.
 allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
+# allowed_mcp_cidr_blocks = ["0.0.0.0/0"]
 
 app_dir = "/opt/100thieves-wiki-mcp"
 
@@ -108,9 +120,12 @@ app_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/app-repo-deploy-key"
 wiki_data_repository_url                  = "git@github.com-llm-wiki-data:100Thieves-team/team-wiki-v2.git"
 wiki_data_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/data-repo-deploy-key"
 
+mcp_bearer_token_ssm_parameter_name = "/100thieves/wiki/mcp-bearer-token"
+
 # customer-managed KMS key를 쓴 경우에만 필요합니다.
 # app_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 # wiki_data_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+# mcp_bearer_token_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 
 # 계정에 GitHub Actions OIDC provider가 이미 있으면 아래 ARN을 넣으세요.
 # github_actions_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
@@ -184,9 +199,10 @@ Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수�
 4. [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) clone
 5. SSM Parameter Store에서 wiki data repo deploy private key 읽기
 6. [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)를 `wiki-workspace/`로 clone
-7. ECR에 로그인하고 `compose.ec2.yaml`로 prebuilt image pull
-8. `docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d`
-9. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
+7. SSM SecureString에서 MCP bearer token을 읽어 `.env.ec2`에 기록
+8. ECR에 로그인하고 `compose.ec2.yaml`로 prebuilt image pull
+9. `docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d`
+10. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
 
 ECR 이미지가 아직 없으면 경량 로컬 build로 fallback합니다. `llm-wiki` Dockerfile은 Rust 컴파일 대신 upstream release binary를 내려받기 때문에 `t3.micro`에서도 첫 실행 가능성이 높습니다.
 
@@ -231,12 +247,29 @@ docker compose ps
 curl -I $(terraform output -raw wiki_ui_url)
 ```
 
-MCP endpoint는 SSE 세션이 필요하므로 단순 GET에서는 `Bad Request: Session ID is required`가 나올 수 있습니다. 서버가 떠 있는지 최소 확인하려면:
+MCP endpoint는 bearer token이 있어야 proxy를 통과합니다. token 없이 호출하면 `401 Unauthorized`가 나와야 정상입니다.
 
 ```bash
 curl -i -N --max-time 3 \
   -H 'Accept: text/event-stream' \
   "$(terraform output -raw mcp_http_url)"
+```
+
+발급된 token으로 호출하면 proxy를 통과하고, SSE session 없이 직접 GET했을 때는 `Bad Request: Session ID is required`가 나올 수 있습니다.
+
+```bash
+MCP_BEARER_TOKEN="$(aws ssm get-parameter \
+  --region ap-northeast-2 \
+  --name /100thieves/wiki/mcp-bearer-token \
+  --with-decryption \
+  --query Parameter.Value \
+  --output text)"
+
+curl -i -N --max-time 3 \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  -H 'Accept: text/event-stream' \
+  "$(terraform output -raw mcp_http_url)"
+unset MCP_BEARER_TOKEN
 ```
 
 EC2 내부 상태:
@@ -307,5 +340,6 @@ EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는
 - **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.
 - **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
 - **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.
-- **MCP 접속 불가**: `allowed_mcp_cidr_blocks`는 기본 차단입니다. 필요한 client IP만 `/32`로 열어주세요.
+- **MCP가 `401 Unauthorized` 반환**: `Authorization: Bearer <token>` 헤더가 없거나 SSM의 `/100thieves/wiki/mcp-bearer-token` 값과 다릅니다.
+- **MCP 접속 불가**: `allowed_mcp_cidr_blocks`는 기본 차단입니다. 필요한 client IP만 `/32`로 열거나, public 노출이 필요할 때만 `0.0.0.0/0`로 열어주세요. HTTP bearer token은 TLS 없이는 탈취될 수 있으므로 운영에서는 HTTPS를 붙이는 것을 권장합니다.
 - **기존 EC2에 user_data 변경이 반영되지 않음**: user-data는 기본적으로 최초 부팅 때 실행됩니다. 새 인스턴스로 재생성하거나 EC2 안에서 수동 절차를 실행하세요.

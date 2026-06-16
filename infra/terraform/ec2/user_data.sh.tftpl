@@ -11,6 +11,7 @@ AWS_REGION="${aws_region}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
 ECR_REGISTRY="${ecr_registry}"
 LLM_WIKI_IMAGE="${llm_wiki_image}"
+MCP_BEARER_TOKEN_SSM_PARAMETER_NAME="${mcp_bearer_token_ssm_parameter_name}"
 WIKI_DATA_REPOSITORY_URL="${wiki_data_repository_url}"
 WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME="${wiki_data_repo_ssh_key_ssm_parameter_name}"
 WIKI_UI_IMAGE="${wiki_ui_image}"
@@ -125,6 +126,18 @@ write_ssm_secure_file() {
 
   chown ec2-user:ec2-user "$${output_path}"
   chmod 600 "$${output_path}"
+}
+
+read_ssm_secure_value() {
+  parameter_name="$1"
+
+  install_aws_cli
+  aws ssm get-parameter \
+    --region "$${AWS_REGION}" \
+    --name "$${parameter_name}" \
+    --with-decryption \
+    --query 'Parameter.Value' \
+    --output text
 }
 
 append_ssh_host() {
@@ -245,10 +258,18 @@ bootstrap_with_deploy_keys() {
   fi
 
   cd "$${APP_DIR}"
+  if [ -z "$${MCP_BEARER_TOKEN_SSM_PARAMETER_NAME}" ]; then
+    echo "mcp_bearer_token_ssm_parameter_name is required for compose.ec2.yaml."
+    exit 1
+  fi
+  MCP_BEARER_TOKEN="$(read_ssm_secure_value "$${MCP_BEARER_TOKEN_SSM_PARAMETER_NAME}")"
+
   cat >.env.ec2 <<ENV
 LLM_WIKI_IMAGE=$${LLM_WIKI_IMAGE}
 WIKI_UI_IMAGE=$${WIKI_UI_IMAGE}
+MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
 ENV
+  chmod 600 .env.ec2
 
   if login_to_ecr && docker compose --env-file .env.ec2 -f compose.ec2.yaml pull; then
     docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d

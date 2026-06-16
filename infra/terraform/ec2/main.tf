@@ -11,6 +11,7 @@ locals {
     for name in [
       var.app_repo_ssh_key_ssm_parameter_name,
       var.wiki_data_repo_ssh_key_ssm_parameter_name,
+      var.mcp_bearer_token_ssm_parameter_name,
     ] : name
     if name != null
   ]
@@ -29,6 +30,7 @@ locals {
     for arn in [
       var.app_repo_ssh_key_kms_key_arn,
       var.wiki_data_repo_ssh_key_kms_key_arn,
+      var.mcp_bearer_token_kms_key_arn,
     ] : arn
     if arn != null
   ]
@@ -397,6 +399,7 @@ resource "aws_instance" "app" {
     docker_compose_version                    = var.docker_compose_version
     ecr_registry                              = local.ecr_registry
     llm_wiki_image                            = local.llm_wiki_image_uri
+    mcp_bearer_token_ssm_parameter_name       = coalesce(var.mcp_bearer_token_ssm_parameter_name, "")
     wiki_data_repo_ssh_key_ssm_parameter_name = coalesce(var.wiki_data_repo_ssh_key_ssm_parameter_name, "")
     wiki_data_repository_url                  = coalesce(var.wiki_data_repository_url, "")
     wiki_ui_image                             = local.wiki_ui_image_uri

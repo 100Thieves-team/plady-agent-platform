@@ -12,8 +12,10 @@ root_volume_size = 30
 # The UI can be public, but restrict it if this wiki contains private content.
 allowed_ui_cidr_blocks = ["0.0.0.0/0"]
 
-# Keep MCP and SSH restricted to your IP/CIDR.
+# MCP is protected by a bearer token proxy. Keep this restricted if possible;
+# use ["0.0.0.0/0"] only when external MCP clients must reach it directly.
 # allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
+# allowed_mcp_cidr_blocks = ["0.0.0.0/0"]
 # allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
 
 app_dir = "/opt/100thieves-wiki-mcp"
@@ -28,9 +30,13 @@ app_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/app-repo-deploy-key"
 wiki_data_repository_url                  = "git@github.com-llm-wiki-data:100Thieves-team/team-wiki-v2.git"
 wiki_data_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/data-repo-deploy-key"
 
+# MCP reverse proxy bearer token. Store the actual token as SecureString.
+mcp_bearer_token_ssm_parameter_name = "/100thieves/wiki/mcp-bearer-token"
+
 # Only needed if the SecureString parameters use customer-managed KMS keys.
 # app_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 # wiki_data_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+# mcp_bearer_token_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 
 # Only needed if the AWS account already has a GitHub Actions OIDC provider.
 # github_actions_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"

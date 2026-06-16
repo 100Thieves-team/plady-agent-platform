@@ -14,6 +14,7 @@ GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Paramete
 - ECR repositories for prebuilt Docker images
 - GitHub Actions OIDC role for ECR push
 - SSM/ECR 접속용 IAM role/profile
+- Bearer token으로 MCP HTTP를 보호하는 `mcp-proxy` container
 
 ## 사용법
 
@@ -49,7 +50,7 @@ docker compose ps
 
 ## GitHub Deploy Key 기반 자동 clone
 
-PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를 SSM SecureString에 저장합니다.
+PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를 SSM SecureString에 저장합니다. MCP bearer token도 SSM SecureString에 저장하고 EC2가 부팅 시 `.env.ec2`로만 읽습니다.
 
 - App repo: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp), read-only deploy key
 - Wiki data repo: [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2), write deploy key
@@ -62,7 +63,8 @@ GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_reposit
 
 - Terraform은 Deploy Key 값을 직접 읽지 않습니다. SSM parameter 이름만 state에 저장하고, 실제 private key는 EC2 user-data가 SSM에서 읽습니다.
 - wiki 산출물은 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 쌓이도록 `wiki-workspace/` remote와 sync timer를 구성합니다.
-- `allowed_mcp_cidr_blocks`는 기본값이 빈 배열이라 외부에서 MCP HTTP에 접근할 수 없습니다. 필요한 IP만 `/32` 등으로 열어주세요.
+- MCP HTTP는 `mcp-proxy`가 `Authorization: Bearer <token>`을 검사한 뒤에만 llm-wiki로 전달합니다.
+- `allowed_mcp_cidr_blocks`는 기본값이 빈 배열이라 외부에서 MCP HTTP에 접근할 수 없습니다. 필요한 IP만 `/32` 등으로 열거나, public 노출이 필요할 때만 `0.0.0.0/0`로 열어주세요. HTTP bearer token은 TLS 없이는 탈취될 수 있으므로 운영에서는 HTTPS를 붙이는 것을 권장합니다.
 - llm-wiki 데이터는 EC2의 `/opt/100thieves-wiki-mcp/wiki-workspace`에 clone되는 별도 git repo이며, 기본 remote는 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.
 
 ## 확인 명령

@@ -144,6 +144,29 @@ variable "wiki_data_repo_ssh_key_kms_key_arn" {
   }
 }
 
+
+variable "mcp_bearer_token_ssm_parameter_name" {
+  description = "Optional SSM Parameter Store SecureString name containing the bearer token required by the MCP reverse proxy. Set this before exposing MCP publicly."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.mcp_bearer_token_ssm_parameter_name == null ? true : length(trimspace(var.mcp_bearer_token_ssm_parameter_name)) > 0
+    error_message = "mcp_bearer_token_ssm_parameter_name must be null or a non-empty SSM parameter name."
+  }
+}
+
+variable "mcp_bearer_token_kms_key_arn" {
+  description = "Optional KMS key ARN if the MCP bearer token SecureString uses a customer-managed KMS key."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.mcp_bearer_token_kms_key_arn == null ? true : length(trimspace(var.mcp_bearer_token_kms_key_arn)) > 0
+    error_message = "mcp_bearer_token_kms_key_arn must be null or a non-empty KMS key ARN."
+  }
+}
+
 variable "github_actions_repository" {
   description = "GitHub repository allowed to assume the ECR push role, in owner/name form."
   type        = string
