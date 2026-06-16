@@ -47,4 +47,4 @@ terraform plan
 terraform apply
 ```
 
-자세한 설정값과 주의사항은 [`infra/terraform/ec2/README.md`](infra/terraform/ec2/README.md)를 참고하세요.
+실제 배포자가 따라갈 단계별 절차는 [`docs/ec2-deployment-setup.md`](docs/ec2-deployment-setup.md)를 참고하세요. 자세한 Terraform 설정값과 주의사항은 [`infra/terraform/ec2/README.md`](infra/terraform/ec2/README.md)에 있습니다.

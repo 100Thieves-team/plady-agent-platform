@@ -15,6 +15,8 @@ GitHub 인증과 저장소 clone은 기본적으로 EC2에 접속해서 직접 �
 
 ## 사용법
 
+실제 배포자가 처음부터 따라갈 단계별 절차는 [`../../../docs/ec2-deployment-setup.md`](../../../docs/ec2-deployment-setup.md)를 참고하세요.
+
 ```bash
 cd infra/terraform/ec2
 cp terraform.tfvars.example terraform.tfvars
