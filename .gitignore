@@ -290,3 +290,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,macos,windows,terraform,java,kotlin
+
+# Keep the Gradle wrapper executable in source control even though generic jars are ignored.
+!gradle/wrapper/gradle-wrapper.jar

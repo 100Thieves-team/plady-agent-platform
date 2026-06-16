@@ -1,3 +1,50 @@
 spring:
   application:
     name: 100Thieves-wiki-mcp
+  ai:
+    mcp:
+      server:
+        name: 100Thieves LLM Wiki MCP
+        version: 0.1.0
+        type: sync
+        protocol: streamable
+        instructions: >
+          Provides read-only LLM Wiki resources and high-level pending-approval
+          workflow tools. Git/file primitives are intentionally not exposed.
+        capabilities:
+          tool: true
+          resource: true
+          prompt: true
+          completion: false
+        annotation-scanner:
+          enabled: true
+        streamable-http:
+          mcp-endpoint: /mcp
+          keep-alive-interval: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+plady:
+  wiki:
+    repo-root: ${PLADY_WIKI_REPO_ROOT:/srv/plady-llm-wiki/repo}
+    git-remote-url: ${PLADY_WIKI_GIT_REMOTE_URL:}
+    github-base-url: ${PLADY_WIKI_GITHUB_BASE_URL:https://github.com/100Thieves-team/team-wiki/blob/main}
+    pending-store-root: ${PLADY_WIKI_PENDING_STORE_ROOT:/srv/plady-llm-wiki/pending}
+    target-branch: ${PLADY_WIKI_TARGET_BRANCH:main}
+    startup:
+      enabled: ${PLADY_WIKI_STARTUP_ENABLED:true}
+      reset-orphan-dirty-repo: ${PLADY_WIKI_RESET_ORPHAN_DIRTY_REPO:true}
+      require-instruction-files: ${PLADY_WIKI_REQUIRE_INSTRUCTION_FILES:false}
+    workflow:
+      agent-runtime-enabled: ${PLADY_WIKI_AGENT_RUNTIME_ENABLED:false}
+      capture-existing-dirty: ${PLADY_WIKI_CAPTURE_EXISTING_DIRTY:true}
+      local-commit-enabled: ${PLADY_WIKI_LOCAL_COMMIT_ENABLED:true}
+      push-enabled: ${PLADY_WIKI_PUSH_ENABLED:false}
+      default-lock-ttl-seconds: ${PLADY_WIKI_DEFAULT_LOCK_TTL_SECONDS:3600}
+      max-lock-extension-seconds: ${PLADY_WIKI_MAX_LOCK_EXTENSION_SECONDS:86400}
+      lock-owner: ${PLADY_WIKI_LOCK_OWNER:100Thieves-wiki-mcp}
+      timeout-sweep-interval-millis: ${PLADY_WIKI_TIMEOUT_SWEEP_INTERVAL_MILLIS:60000}
