@@ -9,8 +9,11 @@ APP_REPOSITORY_URL="${app_repository_url}"
 APP_REPO_SSH_KEY_SSM_PARAMETER_NAME="${app_repo_ssh_key_ssm_parameter_name}"
 AWS_REGION="${aws_region}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
+ECR_REGISTRY="${ecr_registry}"
+LLM_WIKI_IMAGE="${llm_wiki_image}"
 WIKI_DATA_REPOSITORY_URL="${wiki_data_repository_url}"
 WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME="${wiki_data_repo_ssh_key_ssm_parameter_name}"
+WIKI_UI_IMAGE="${wiki_ui_image}"
 
 APP_REPO_SSH_KEY_PATH="/home/ec2-user/.ssh/llm_wiki_app_repo"
 WIKI_DATA_REPO_SSH_KEY_PATH="/home/ec2-user/.ssh/llm_wiki_data_repo"
@@ -75,7 +78,7 @@ Check progress:
 \`\`\`bash
 sudo tail -f /var/log/llm-wiki-bootstrap.log
 cd $${APP_DIR}
-docker compose ps
+docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 \`\`\`
 
 ## Manual fallback
@@ -100,6 +103,12 @@ install_aws_cli() {
   rm -rf /tmp/aws
   unzip -q /tmp/awscliv2.zip -d /tmp
   /tmp/aws/install
+}
+
+login_to_ecr() {
+  install_aws_cli
+  aws ecr get-login-password --region "$${AWS_REGION}" \
+    | docker login --username AWS --password-stdin "$${ECR_REGISTRY}"
 }
 
 write_ssm_secure_file() {
@@ -230,7 +239,17 @@ bootstrap_with_deploy_keys() {
   fi
 
   cd "$${APP_DIR}"
-  docker compose up -d --build
+  cat >.env.ec2 <<ENV
+LLM_WIKI_IMAGE=$${LLM_WIKI_IMAGE}
+WIKI_UI_IMAGE=$${WIKI_UI_IMAGE}
+ENV
+
+  if login_to_ecr && docker compose --env-file .env.ec2 -f compose.ec2.yaml pull; then
+    docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
+  else
+    echo "ECR image pull failed; falling back to local Docker build."
+    docker compose up -d --build
+  fi
 
   if systemctl is-enabled llm-wiki-data-sync.timer >/dev/null 2>&1; then
     systemctl start llm-wiki-data-sync.service || true

@@ -40,8 +40,8 @@ MCP ingest로 쌓이는 실제 회의록/ADR/멘토링 데이터는 이 wrapper 
 
 ## EC2 배포
 
-EC2 한 대에 Docker/Compose/Git을 설치하는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
-저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화합니다.
+EC2 한 대와 ECR repositories/GitHub Actions OIDC role을 만드는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
+저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화하고, EC2는 GitHub Actions가 ECR에 올린 prebuilt image를 pull합니다.
 
 ```bash
 cd infra/terraform/ec2

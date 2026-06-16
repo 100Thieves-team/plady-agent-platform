@@ -2,12 +2,13 @@
 
 이 문서는 `100Thieves-wiki-mcp`를 AWS EC2에 배포하기 위해 작업자가 순서대로 수행할 절차입니다.
 
-**선택한 안전한 방식:** GitHub PAT를 쓰지 않고, GitHub **Deploy Key + AWS SSM Parameter Store SecureString**을 사용합니다.
+**선택한 안전한 방식:** GitHub PAT를 쓰지 않고, GitHub **Deploy Key + AWS SSM Parameter Store SecureString**을 사용합니다. 컨테이너 이미지는 GitHub Actions가 **ECR**에 미리 빌드/푸시하고, EC2는 `docker compose pull && up`만 수행합니다.
 
 - App repo deploy key: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) clone용, **read-only**
 - Wiki data repo deploy key: [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2) wiki 산출물 저장용, **write 허용**
 - private key 값은 Terraform state에 넣지 않고 SSM SecureString에만 저장합니다.
 - EC2는 instance role로 SSM에서 private key를 읽고, repo별 SSH host alias를 사용합니다.
+- EC2는 ECR read 권한으로 prebuilt image를 pull합니다.
 
 ## 0. 준비물
 
@@ -110,6 +111,9 @@ wiki_data_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/data-repo-deploy-k
 # customer-managed KMS key를 쓴 경우에만 필요합니다.
 # app_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 # wiki_data_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+
+# 계정에 GitHub Actions OIDC provider가 이미 있으면 아래 ARN을 넣으세요.
+# github_actions_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
 ```
 
 현재 내 공인 IP를 `/32`로 확인하려면:
@@ -134,9 +138,39 @@ terraform output instance_id
 terraform output wiki_ui_url
 terraform output mcp_http_url
 terraform output ssm_start_session_command
+terraform output github_actions_ecr_role_arn
+terraform output ecr_llm_wiki_repository
+terraform output ecr_wiki_ui_repository
 ```
 
-## 5. EC2 부팅/자동 배포 확인
+## 5. GitHub Actions ECR push 설정
+
+Terraform output을 GitHub Actions repository variables로 등록합니다. role ARN은 secret이 아니므로 variable로 두면 됩니다.
+
+```bash
+# GitHub CLI를 쓰는 경우
+/opt/homebrew/bin/gh variable set AWS_ROLE_TO_ASSUME --body "$(terraform output -raw github_actions_ecr_role_arn)"
+/opt/homebrew/bin/gh variable set AWS_REGION --body "ap-northeast-2"
+/opt/homebrew/bin/gh variable set ECR_LLM_WIKI_REPOSITORY --body "$(terraform output -raw ecr_llm_wiki_repository)"
+/opt/homebrew/bin/gh variable set ECR_WIKI_UI_REPOSITORY --body "$(terraform output -raw ecr_wiki_ui_repository)"
+```
+
+그 다음 GitHub Actions에서 `Build Docker images` workflow를 수동 실행하거나, `main`에 push해서 이미지를 ECR에 올립니다.
+
+```bash
+# GitHub CLI를 쓰는 경우
+/opt/homebrew/bin/gh workflow run docker-images.yml
+```
+
+이미 EC2가 먼저 떠서 local build fallback 상태라면, workflow 성공 후 EC2에서 아래를 한 번 실행하면 prebuilt image로 전환됩니다.
+
+```bash
+cd /opt/100thieves-wiki-mcp
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml pull
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
+```
+
+## 6. EC2 부팅/자동 배포 확인
 
 Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수행합니다.
 
@@ -146,8 +180,11 @@ Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수�
 4. [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) clone
 5. SSM Parameter Store에서 wiki data repo deploy private key 읽기
 6. [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)를 `wiki-workspace/`로 clone
-7. `docker compose up -d --build`
-8. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
+7. ECR에 로그인하고 `compose.ec2.yaml`로 prebuilt image pull
+8. `docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d`
+9. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
+
+ECR 이미지가 아직 없으면 경량 로컬 build로 fallback합니다. `llm-wiki` Dockerfile은 Rust 컴파일 대신 upstream release binary를 내려받기 때문에 `t3.micro`에서도 첫 실행 가능성이 높습니다.
 
 SSM으로 접속해서 로그를 확인합니다.
 
@@ -160,11 +197,11 @@ sudo tail -f /var/log/llm-wiki-bootstrap.log
 
 ```bash
 cd /opt/100thieves-wiki-mcp
-sudo docker compose ps
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo systemctl status llm-wiki-data-sync.timer
 ```
 
-## 6. 수동 fallback
+## 7. 수동 fallback
 
 Deploy Key 자동화가 실패했거나 임시로 직접 확인해야 한다면 EC2에 접속해서 수동 clone도 가능합니다.
 
@@ -182,7 +219,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-## 7. 배포 확인
+## 8. 배포 확인
 
 로컬에서 Terraform output URL로 확인합니다.
 
@@ -202,9 +239,9 @@ EC2 내부 상태:
 
 ```bash
 cd /opt/100thieves-wiki-mcp
-sudo docker compose ps
-sudo docker compose logs --tail=100 llm-wiki
-sudo docker compose logs --tail=100 wiki-ui
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml logs --tail=100 llm-wiki
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml logs --tail=100 wiki-ui
 sudo systemctl status llm-wiki-data-sync.timer
 sudo journalctl -u llm-wiki-data-sync.service -n 100 --no-pager
 ```
@@ -218,7 +255,7 @@ sudo git log --oneline -5
 sudo /usr/local/bin/llm-wiki-data-sync
 ```
 
-## 8. 운영 작업
+## 9. 운영 작업
 
 ### 새 코드 반영
 
@@ -227,8 +264,9 @@ aws ssm start-session --region ap-northeast-2 --target <instance-id>
 sudo -iu ec2-user
 cd /opt/100thieves-wiki-mcp
 git pull --ff-only origin main
-docker compose up -d --build
-docker compose ps
+docker compose --env-file .env.ec2 -f compose.ec2.yaml pull
+docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
+docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 ```
 
 ### wiki 데이터 저장소
@@ -257,11 +295,13 @@ terraform destroy
 
 EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는지 확인하세요.
 
-## 9. 자주 보는 문제
+## 10. 자주 보는 문제
 
 - **EC2가 app repo clone 실패**: app repo deploy key가 [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp)에 등록되어 있는지, `app_repo_ssh_key_ssm_parameter_name`이 맞는지 확인합니다.
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
 - **`AccessDeniedException` on SSM**: SSM parameter 이름이 Terraform 변수와 일치하는지 확인하고, customer-managed KMS를 썼다면 KMS key ARN 변수도 설정합니다.
-- **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose ps`를 확인합니다.
+- **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.
+- **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
+- **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.
 - **MCP 접속 불가**: `allowed_mcp_cidr_blocks`는 기본 차단입니다. 필요한 client IP만 `/32`로 열어주세요.
 - **기존 EC2에 user_data 변경이 반영되지 않음**: user-data는 기본적으로 최초 부팅 때 실행됩니다. 새 인스턴스로 재생성하거나 EC2 안에서 수동 절차를 실행하세요.

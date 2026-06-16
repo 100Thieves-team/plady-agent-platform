@@ -27,3 +27,33 @@ output "ssm_start_session_command" {
   description = "AWS CLI command to open an SSM shell when enable_ssm is true."
   value       = "aws ssm start-session --region ${var.aws_region} --target ${aws_instance.app.id}"
 }
+
+output "ecr_registry" {
+  description = "ECR registry hostname."
+  value       = local.ecr_registry
+}
+
+output "ecr_llm_wiki_repository" {
+  description = "ECR repository name for the llm-wiki image."
+  value       = aws_ecr_repository.llm_wiki.name
+}
+
+output "ecr_wiki_ui_repository" {
+  description = "ECR repository name for the wiki UI image."
+  value       = aws_ecr_repository.wiki_ui.name
+}
+
+output "github_actions_ecr_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC ECR push."
+  value       = aws_iam_role.github_actions_ecr.arn
+}
+
+output "llm_wiki_image" {
+  description = "Full llm-wiki image URI that EC2 pulls."
+  value       = local.llm_wiki_image_uri
+}
+
+output "wiki_ui_image" {
+  description = "Full wiki UI image URI that EC2 pulls."
+  value       = local.wiki_ui_image_uri
+}

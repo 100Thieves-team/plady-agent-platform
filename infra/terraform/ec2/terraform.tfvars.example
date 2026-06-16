@@ -2,7 +2,7 @@
 aws_region   = "ap-northeast-2"
 project_name = "100thieves-wiki"
 
-# Free-tier constrained accounts usually allow t3.micro; use t3.small if available for a faster Docker build.
+# Free-tier constrained accounts usually allow t3.micro.
 instance_type = "t3.micro"
 root_volume_size = 30
 
@@ -31,3 +31,6 @@ wiki_data_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/data-repo-deploy-k
 # Only needed if the SecureString parameters use customer-managed KMS keys.
 # app_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
 # wiki_data_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+
+# Only needed if the AWS account already has a GitHub Actions OIDC provider.
+# github_actions_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"

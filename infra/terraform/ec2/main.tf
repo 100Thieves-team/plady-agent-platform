@@ -32,6 +32,12 @@ locals {
     ] : arn
     if arn != null
   ]
+
+  ecr_registry       = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.${data.aws_partition.current.dns_suffix}"
+  llm_wiki_image_uri = "${aws_ecr_repository.llm_wiki.repository_url}:${var.container_image_tag}"
+  wiki_ui_image_uri  = "${aws_ecr_repository.wiki_ui.repository_url}:${var.container_image_tag}"
+
+  github_oidc_provider_arn = var.github_actions_oidc_provider_arn != null ? var.github_actions_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
 }
 
 data "aws_availability_zones" "available" {
@@ -65,6 +71,68 @@ data "aws_ami" "amazon_linux_2023" {
     name   = "root-device-type"
     values = ["ebs"]
   }
+}
+
+resource "aws_ecr_repository" "llm_wiki" {
+  name                 = "${var.project_name}/llm-wiki"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_repository" "wiki_ui" {
+  name                 = "${var.project_name}/wiki-ui"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "llm_wiki" {
+  repository = aws_ecr_repository.llm_wiki.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "wiki_ui" {
+  repository = aws_ecr_repository.wiki_ui.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }
 
 resource "aws_vpc" "main" {
@@ -214,6 +282,98 @@ resource "aws_iam_role_policy" "ssh_keys_ssm" {
   policy = data.aws_iam_policy_document.ssh_keys_ssm[0].json
 }
 
+data "aws_iam_policy_document" "ecr_pull" {
+  statement {
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+    ]
+    resources = [
+      aws_ecr_repository.llm_wiki.arn,
+      aws_ecr_repository.wiki_ui.arn,
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "ecr_pull" {
+  name   = "${var.project_name}-ecr-pull"
+  role   = aws_iam_role.app.id
+  policy = data.aws_iam_policy_document.ecr_pull.json
+}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  count = var.github_actions_oidc_provider_arn == null ? 1 : 0
+
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+data "aws_iam_policy_document" "github_actions_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_actions_repository}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions_ecr" {
+  name               = "${var.project_name}-github-actions-ecr"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+}
+
+data "aws_iam_policy_document" "github_actions_ecr_push" {
+  statement {
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart",
+    ]
+    resources = [
+      aws_ecr_repository.llm_wiki.arn,
+      aws_ecr_repository.wiki_ui.arn,
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_ecr_push" {
+  name   = "${var.project_name}-ecr-push"
+  role   = aws_iam_role.github_actions_ecr.id
+  policy = data.aws_iam_policy_document.github_actions_ecr_push.json
+}
+
 resource "aws_iam_instance_profile" "app" {
   name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.app.name
@@ -235,8 +395,11 @@ resource "aws_instance" "app" {
     app_repository_url                        = var.app_repository_url
     aws_region                                = var.aws_region
     docker_compose_version                    = var.docker_compose_version
+    ecr_registry                              = local.ecr_registry
+    llm_wiki_image                            = local.llm_wiki_image_uri
     wiki_data_repo_ssh_key_ssm_parameter_name = coalesce(var.wiki_data_repo_ssh_key_ssm_parameter_name, "")
     wiki_data_repository_url                  = coalesce(var.wiki_data_repository_url, "")
+    wiki_ui_image                             = local.wiki_ui_image_uri
   })
 
   metadata_options {

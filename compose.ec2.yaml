@@ -1,0 +1,31 @@
+services:
+  llm-wiki:
+    image: ${LLM_WIKI_IMAGE:?Set LLM_WIKI_IMAGE}
+    environment:
+      LLM_WIKI_NAME: 100thieves
+      LLM_WIKI_DESCRIPTION: 100 Thieves team LLM Wiki
+      LLM_WIKI_CONFIG: /config/config.toml
+      LLM_WIKI_WORKSPACE: /workspace
+    volumes:
+      - ./wiki-workspace:/workspace
+      - llm-wiki-config:/config
+    ports:
+      - "18765:18765"
+    restart: unless-stopped
+
+  wiki-ui:
+    image: ${WIKI_UI_IMAGE:?Set WIKI_UI_IMAGE}
+    depends_on:
+      - llm-wiki
+    working_dir: /workspace/site
+    command: >-
+      sh -c 'until [ -d /workspace/wiki ]; do echo "waiting for llm-wiki workspace..."; sleep 1; done; hugo server --bind 0.0.0.0 --port 1313 --baseURL http://localhost:1313/ --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+    volumes:
+      - ./wiki-workspace:/workspace
+      - ./llm-wiki-hugo-cms/site:/workspace/site:ro
+    ports:
+      - "1313:1313"
+    restart: unless-stopped
+
+volumes:
+  llm-wiki-config:

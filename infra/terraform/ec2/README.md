@@ -1,7 +1,7 @@
 # EC2 Terraform deployment
 
-이 Terraform 모듈은 EC2 한 대를 만들고 Docker/Compose/Git을 설치합니다.
-GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화합니다.
+이 Terraform 모듈은 EC2 한 대, ECR repositories, GitHub Actions OIDC push role을 만듭니다.
+GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화하고, EC2는 ECR prebuilt image를 pull합니다.
 
 ## 생성 리소스
 
@@ -11,7 +11,9 @@ GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Paramete
   - MCP HTTP: 기본 `18765/tcp`, 기본 차단
   - SSH: 기본 차단
 - Amazon Linux 2023 EC2 instance
-- SSM 접속용 IAM role/profile
+- ECR repositories for prebuilt Docker images
+- GitHub Actions OIDC role for ECR push
+- SSM/ECR 접속용 IAM role/profile
 
 ## 사용법
 
@@ -26,8 +28,8 @@ terraform plan
 terraform apply
 ```
 
-Terraform apply가 끝나면 cloud-init이 app repo와 wiki data repo를 SSH deploy key로 clone하고 `docker compose up -d --build`까지 시도합니다.
-Free-tier 제한 계정은 `instance_type = "t3.micro"`를 기본으로 쓰고, 계정에서 허용되면 `t3.small`로 올리면 첫 Docker build가 조금 덜 느립니다.
+Terraform apply가 끝나면 cloud-init이 app repo와 wiki data repo를 SSH deploy key로 clone하고, ECR prebuilt image를 `docker compose pull && up`으로 실행합니다.
+Free-tier 제한 계정은 `instance_type = "t3.micro"`를 기본으로 씁니다. ECR image가 아직 없을 때만 경량 local build fallback을 수행합니다.
 
 ## EC2 접속 후 수동 배포
 
@@ -54,7 +56,7 @@ PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를
 
 자세한 단계는 [`../../../docs/ec2-deployment-setup.md`](../../../docs/ec2-deployment-setup.md)를 참고하세요.
 
-배포 후 출력되는 `wiki_ui_url`로 접속합니다. MCP HTTP endpoint는 `mcp_http_url`입니다.
+GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_repository`, `ecr_wiki_ui_repository` output 값을 등록한 뒤 `Build Docker images` workflow를 실행합니다. 배포 후 출력되는 `wiki_ui_url`로 접속합니다. MCP HTTP endpoint는 `mcp_http_url`입니다.
 
 ## 주의
 
@@ -75,7 +77,7 @@ SSM 접속 후 상태 확인:
 
 ```bash
 sudo systemctl status docker
-cd /opt/100thieves-wiki-mcp && sudo docker compose ps
+cd /opt/100thieves-wiki-mcp && sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo tail -f /var/log/llm-wiki-bootstrap.log
 sudo systemctl status llm-wiki-data-sync.timer
 ```

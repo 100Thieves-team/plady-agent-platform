@@ -88,6 +88,12 @@ variable "app_repository_ref" {
   default     = "main"
 }
 
+variable "container_image_tag" {
+  description = "Container image tag that EC2 pulls from ECR."
+  type        = string
+  default     = "latest"
+}
+
 variable "app_repo_ssh_key_ssm_parameter_name" {
   description = "Optional SSM Parameter Store SecureString name containing the read-only SSH deploy private key for this app repo. When set, EC2 auto-clones app_repository_url."
   type        = string
@@ -136,6 +142,18 @@ variable "wiki_data_repo_ssh_key_kms_key_arn" {
     condition     = var.wiki_data_repo_ssh_key_kms_key_arn == null ? true : length(trimspace(var.wiki_data_repo_ssh_key_kms_key_arn)) > 0
     error_message = "wiki_data_repo_ssh_key_kms_key_arn must be null or a non-empty KMS key ARN."
   }
+}
+
+variable "github_actions_repository" {
+  description = "GitHub repository allowed to assume the ECR push role, in owner/name form."
+  type        = string
+  default     = "100Thieves-team/100Thieves-wiki-mcp"
+}
+
+variable "github_actions_oidc_provider_arn" {
+  description = "Optional existing GitHub Actions OIDC provider ARN. If null, this module creates one."
+  type        = string
+  default     = null
 }
 
 variable "docker_compose_version" {

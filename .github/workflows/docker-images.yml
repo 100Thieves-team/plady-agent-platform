@@ -1,0 +1,66 @@
+name: Build Docker images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/docker-images.yml
+      - docker/**
+      - llm-wiki/**
+      - llm-wiki-hugo-cms/**
+      - compose.ec2.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  ECR_LLM_WIKI_REPOSITORY: ${{ vars.ECR_LLM_WIKI_REPOSITORY || '100thieves-wiki/llm-wiki' }}
+  ECR_WIKI_UI_REPOSITORY: ${{ vars.ECR_WIKI_UI_REPOSITORY || '100thieves-wiki/wiki-ui' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push llm-wiki
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/llm-wiki.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_LLM_WIKI_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_LLM_WIKI_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push wiki-ui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/hugo.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_WIKI_UI_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_WIKI_UI_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
