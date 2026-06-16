@@ -20,13 +20,14 @@ GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Paramete
 ```bash
 cd infra/terraform/ec2
 cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars를 열어 CIDR, key_name 등을 조정
+# terraform.tfvars를 열어 CIDR, key_name, instance_type 등을 조정
 terraform init
 terraform plan
 terraform apply
 ```
 
 Terraform apply가 끝나면 cloud-init이 app repo와 wiki data repo를 SSH deploy key로 clone하고 `docker compose up -d --build`까지 시도합니다.
+Free-tier 제한 계정은 `instance_type = "t3.micro"`를 기본으로 쓰고, 계정에서 허용되면 `t3.small`로 올리면 첫 Docker build가 조금 덜 느립니다.
 
 ## EC2 접속 후 수동 배포
 

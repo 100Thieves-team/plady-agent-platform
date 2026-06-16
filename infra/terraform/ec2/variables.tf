@@ -29,9 +29,9 @@ variable "public_subnet_cidr" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. t3.large is the default because the first Docker build compiles Rust."
+  description = "EC2 instance type. Default is t3.micro for free-tier constrained accounts; use t3.small if your account allows it."
   type        = string
-  default     = "t3.large"
+  default     = "t3.micro"
 }
 
 variable "key_name" {
@@ -147,7 +147,7 @@ variable "docker_compose_version" {
 variable "root_volume_size" {
   description = "Root EBS volume size in GiB."
   type        = number
-  default     = 80
+  default     = 30
 }
 
 variable "enable_ssm" {

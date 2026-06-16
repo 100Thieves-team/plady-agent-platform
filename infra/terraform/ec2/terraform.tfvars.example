@@ -2,8 +2,9 @@
 aws_region   = "ap-northeast-2"
 project_name = "100thieves-wiki"
 
-# t3.large is recommended for the initial Rust Docker build.
-instance_type = "t3.large"
+# Free-tier constrained accounts usually allow t3.micro; use t3.small if available for a faster Docker build.
+instance_type = "t3.micro"
+root_volume_size = 30
 
 # Optional existing EC2 key pair. Prefer SSM if possible.
 # key_name = "your-key-pair-name"

@@ -87,7 +87,10 @@ cp terraform.tfvars.example terraform.tfvars
 ```hcl
 aws_region    = "ap-northeast-2"
 project_name  = "100thieves-wiki"
-instance_type = "t3.large"
+instance_type = "t3.micro"
+root_volume_size = 30
+
+# t3.micro가 너무 느리고 계정에서 허용된다면 t3.small로 올리세요.
 
 # UI는 필요하면 팀/VPN IP로 제한하세요.
 allowed_ui_cidr_blocks = ["0.0.0.0/0"]

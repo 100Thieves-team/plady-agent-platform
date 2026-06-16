@@ -21,6 +21,16 @@ dnf install -y docker git curl ca-certificates openssh-clients
 systemctl enable --now docker
 usermod -aG docker ec2-user || true
 
+# Free-tier-sized instances are memory constrained. Add swap so the first
+# Docker build has a better chance of completing on t3.micro/t3.small.
+if [ ! -f /swapfile ]; then
+  fallocate -l 4G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=4096
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile swap swap defaults 0 0" >>/etc/fstab
+fi
+
 # GitHub CLI is still useful for manual fallback, but deploy-key bootstrap does
 # not depend on it.
 if dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo; then
