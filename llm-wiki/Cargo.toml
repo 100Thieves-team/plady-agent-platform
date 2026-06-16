@@ -1,0 +1,92 @@
+[package]
+name = "llm-wiki-engine"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.95"
+description = "Git-backed wiki engine with MCP/ACP server — bring your own LLM"
+authors = ["Jerome Guibert <jguibert@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/geronimo-iia/llm-wiki"
+homepage = "https://github.com/geronimo-iia/llm-wiki"
+documentation = "https://docs.rs/llm-wiki-engine"
+readme = "README.md"
+keywords = ["wiki", "knowledge-base", "mcp", "git", "acp"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", "tests/", "tests-integration/", "docs/"]
+
+[lib]
+name = "llm_wiki"
+path = "src/lib.rs"
+
+[[bin]]
+name = "llm-wiki"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap       = { version = "4", features = ["derive"] }
+anyhow     = "1"
+tracing    = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Async
+tokio      = { version = "1", features = ["full"] }
+
+# Serialization
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml       = "1.1"
+
+# JSON Schema validation
+jsonschema = "0.46"
+
+# Hashing
+sha2       = "0.11"
+hex        = "0.4"
+
+# Regex
+regex      = "1"
+
+# Markdown
+# (frontmatter crate removed — unused, pulled in unmaintained yaml-rust)
+
+# Full-text search
+tantivy    = "0.26"
+
+# Graph
+petgraph   = "0.8"
+petgraph-live = { version = "0.3.1", features = ["snapshot-lz4", "snapshot-zstd"] }
+
+# Filesystem traversal
+walkdir    = "2"
+
+# Date/time
+chrono     = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# Git
+git2       = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+
+# MCP server
+rmcp       = { version = "1.7", features = ["server", "transport-io", "transport-streamable-http-server"] }
+axum       = "0.8"
+
+# ACP server
+agent-client-protocol = "0.14"
+tokio-util = { version = "0.7", features = ["compat"] }
+notify = "8"
+
+[dev-dependencies]
+tempfile   = "3"
+
+[profile.release]
+opt-level      = 3
+lto            = true
+codegen-units  = 1
+strip          = true
+panic          = "abort"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ target }.tar.gz"
+bin-dir = "llm-wiki"

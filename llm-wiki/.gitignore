@@ -1,0 +1,33 @@
+/target
+docs/brainstorm/
+docs/superpowers
+
+# tantivy search index — gitignored, rebuilt on demand via `wiki search --rebuild-index`
+.wiki/search-index/
+
+
+.claude
+# Added by code-review-graph
+.code-review-graph/
+.mcp.json
+CLAUDE.md
+
+# Python / uv (tests-integration/)
+tests-integration/.venv/
+tests-integration/uv.lock
+tests-integration/__pycache__/
+tests-integration/.pytest_cache/
+tests-integration/**/__pycache__/
+tests-integration/**/*.pyc
+tests-integration/**/*.pyo
+pytest-of-*/
+uv-*.lock
+
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+uv.lock
+
