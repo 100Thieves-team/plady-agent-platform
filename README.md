@@ -37,7 +37,7 @@ wiki 데이터까지 지우려면 컨테이너를 내린 뒤 로컬 `wiki-worksp
 ## EC2 배포
 
 EC2 한 대에 Docker/Compose/Git을 설치하는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
-저장소 clone은 EC2에 접속해서 GitHub 로그인 후 직접 진행합니다.
+저장소 clone은 EC2에 접속해서 GitHub 로그인 후 직접 진행하거나, SSM Parameter Store에 저장한 GitHub token으로 자동화할 수 있습니다.
 
 ```bash
 cd infra/terraform/ec2

@@ -71,9 +71,43 @@ variable "mcp_port" {
 }
 
 variable "app_dir" {
-  description = "Directory on the EC2 instance where you can manually clone the repository."
+  description = "Directory on the EC2 instance where the repository is cloned or where you can manually clone it."
   type        = string
   default     = "/opt/100thieves-wiki-mcp"
+}
+
+variable "repository_url" {
+  description = "HTTPS Git repository URL used when github_token_ssm_parameter_name is set."
+  type        = string
+  default     = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
+}
+
+variable "repository_ref" {
+  description = "Branch or tag to clone when github_token_ssm_parameter_name is set."
+  type        = string
+  default     = "main"
+}
+
+variable "github_token_ssm_parameter_name" {
+  description = "Optional SSM Parameter Store SecureString name containing a GitHub token. When set, EC2 auto-clones repository_url."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_token_ssm_parameter_name == null || length(trimspace(var.github_token_ssm_parameter_name)) > 0
+    error_message = "github_token_ssm_parameter_name must be null or a non-empty SSM parameter name."
+  }
+}
+
+variable "github_token_kms_key_arn" {
+  description = "Optional KMS key ARN if the GitHub token SecureString uses a customer-managed KMS key."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_token_kms_key_arn == null || length(trimspace(var.github_token_kms_key_arn)) > 0
+    error_message = "github_token_kms_key_arn must be null or a non-empty KMS key ARN."
+  }
 }
 
 variable "docker_compose_version" {

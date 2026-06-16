@@ -15,5 +15,12 @@ allowed_ui_cidr_blocks = ["0.0.0.0/0"]
 # allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
 # allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
 
-# Where you will manually clone the repo after logging in to GitHub on EC2.
+# Where the repo is cloned, either manually or by token-based bootstrap.
 app_dir = "/opt/100thieves-wiki-mcp"
+
+# Optional: token-based auto clone.
+# Store the token in SSM Parameter Store first; do not put the token itself here.
+# repository_url = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
+# repository_ref = "main"
+# github_token_ssm_parameter_name = "/100thieves/wiki/github-token"
+# github_token_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."

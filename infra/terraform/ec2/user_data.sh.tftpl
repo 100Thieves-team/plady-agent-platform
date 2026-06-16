@@ -1,10 +1,14 @@
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
 
 exec > >(tee -a /var/log/llm-wiki-bootstrap.log | logger -t llm-wiki-bootstrap -s 2>/dev/console) 2>&1
 
 APP_DIR="${app_dir}"
+AWS_REGION="${aws_region}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
+GITHUB_TOKEN_SSM_PARAMETER_NAME="${github_token_ssm_parameter_name}"
+REPOSITORY_REF="${repository_ref}"
+REPOSITORY_URL="${repository_url}"
 
 # Base packages and Docker daemon.
 dnf update -y
@@ -20,40 +24,108 @@ else
   echo "GitHub CLI repo setup failed; continuing without gh."
 fi
 
-# Docker Compose v2 plugin.
 ARCH="$(uname -m)"
 case "$ARCH" in
-  x86_64) COMPOSE_ARCH="x86_64" ;;
-  aarch64|arm64) COMPOSE_ARCH="aarch64" ;;
+  x86_64) TOOL_ARCH="x86_64" ;;
+  aarch64|arm64) TOOL_ARCH="aarch64" ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
+
+# Docker Compose v2 plugin.
 mkdir -p /usr/local/lib/docker/cli-plugins
-curl -fsSL "https://github.com/docker/compose/releases/download/v$${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$${COMPOSE_ARCH}" \
+curl -fsSL "https://github.com/docker/compose/releases/download/v$${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$${TOOL_ARCH}" \
   -o /usr/local/lib/docker/cli-plugins/docker-compose
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
-# Prepare an empty directory owned by ec2-user. Log in to GitHub and clone here
-# manually after the instance is ready.
+# Prepare a directory owned by ec2-user. If a token parameter is configured,
+# user-data will clone into this directory; otherwise you can clone manually.
 mkdir -p "$${APP_DIR}"
 chown ec2-user:ec2-user "$${APP_DIR}"
 
 cat >/home/ec2-user/LLM_WIKI_DEPLOY.md <<DOC
-# Manual LLM Wiki deploy
+# LLM Wiki deploy
 
-This instance already has Docker, Docker Compose, Git, and optionally gh installed.
+This instance has Docker, Docker Compose, Git, and optionally gh installed.
 
-Example:
+## Manual clone
 
 \`\`\`bash
 gh auth login
-git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git $${APP_DIR}
+git clone $${REPOSITORY_URL} $${APP_DIR}
 cd $${APP_DIR}
 docker compose up -d --build
 docker compose ps
 \`\`\`
 
-If you do not use gh, clone with your preferred HTTPS token or SSH key setup.
-DOC
+## Token-based auto clone
 
+If Terraform was applied with \`github_token_ssm_parameter_name\`, cloud-init tries to clone automatically.
+Check progress with:
+
+\`\`\`bash
+sudo tail -f /var/log/llm-wiki-bootstrap.log
+cd $${APP_DIR}
+docker compose ps
+\`\`\`
+DOC
 chown ec2-user:ec2-user /home/ec2-user/LLM_WIKI_DEPLOY.md
+
+install_aws_cli() {
+  if command -v aws >/dev/null 2>&1; then
+    return 0
+  fi
+
+  dnf install -y unzip
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$${TOOL_ARCH}.zip" -o /tmp/awscliv2.zip
+  rm -rf /tmp/aws
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+}
+
+clone_with_github_token() {
+  install_aws_cli
+
+  GITHUB_TOKEN="$(aws ssm get-parameter \
+    --region "$${AWS_REGION}" \
+    --name "$${GITHUB_TOKEN_SSM_PARAMETER_NAME}" \
+    --with-decryption \
+    --query 'Parameter.Value' \
+    --output text)"
+
+  TOKEN_FILE="$(mktemp)"
+  ASKPASS="$(mktemp)"
+  cleanup() {
+    rm -f "$${TOKEN_FILE}" "$${ASKPASS}"
+  }
+  trap cleanup EXIT
+
+  printf '%s' "$${GITHUB_TOKEN}" >"$${TOKEN_FILE}"
+  chmod 600 "$${TOKEN_FILE}"
+
+  cat >"$${ASKPASS}" <<'ASKPASS_SCRIPT'
+#!/bin/sh
+case "$1" in
+  *Username*) echo "x-access-token" ;;
+  *Password*) cat "$GITHUB_TOKEN_FILE" ;;
+  *) echo "" ;;
+esac
+ASKPASS_SCRIPT
+  chmod 700 "$${ASKPASS}"
+
+  if [ ! -d "$${APP_DIR}/.git" ]; then
+    rm -rf "$${APP_DIR}"
+    GIT_ASKPASS="$${ASKPASS}" \
+      GITHUB_TOKEN_FILE="$${TOKEN_FILE}" \
+      GIT_TERMINAL_PROMPT=0 \
+      git clone --branch "$${REPOSITORY_REF}" --depth 1 "$${REPOSITORY_URL}" "$${APP_DIR}"
+  fi
+
+  chown -R ec2-user:ec2-user "$${APP_DIR}"
+  cd "$${APP_DIR}"
+  docker compose up -d --build
+}
+
+if [ -n "$${GITHUB_TOKEN_SSM_PARAMETER_NAME}" ]; then
+  clone_with_github_token
+fi
