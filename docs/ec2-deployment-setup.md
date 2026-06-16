@@ -195,7 +195,7 @@ docker compose ps
 
 ### wiki 데이터 백업
 
-`wiki-workspace/`는 llm-wiki가 만드는 별도 git-backed wiki repo입니다. EC2를 destroy하면 같이 사라질 수 있으므로 운영 전 remote push 정책을 정하세요.
+`wiki-workspace/`는 llm-wiki가 만드는 별도 git-backed wiki repo입니다. EC2를 destroy하면 같이 사라질 수 있으므로 운영 전 remote push 정책을 정하세요. 저장소 분리 구조는 [`wiki-data-repo.md`](wiki-data-repo.md)를 참고하세요.
 
 예시:
 

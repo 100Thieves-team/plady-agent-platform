@@ -34,6 +34,10 @@ docker compose down -v
 
 wiki 데이터까지 지우려면 컨테이너를 내린 뒤 로컬 `wiki-workspace/` 디렉터리를 삭제하세요.
 
+## Wiki 데이터 저장소
+
+MCP ingest로 쌓이는 실제 회의록/ADR/멘토링 데이터는 이 wrapper repo가 아니라 `wiki-workspace/`라는 별도 git repo에 저장됩니다. 운영에서는 이 디렉터리에 별도 GitHub remote를 붙여 SSOT 데이터 repo로 관리하세요. 자세한 내용은 [`docs/wiki-data-repo.md`](docs/wiki-data-repo.md)를 참고하세요.
+
 ## EC2 배포
 
 EC2 한 대에 Docker/Compose/Git을 설치하는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
