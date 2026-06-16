@@ -38,6 +38,10 @@ if [ ! -d "$LLM_WIKI_WORKSPACE/.git" ]; then
   git -C "$LLM_WIKI_WORKSPACE" init
 fi
 
+# The bind-mounted wiki repository may be owned by the host user (for example
+# ec2-user) while the container runs as root.
+git config --global --add safe.directory "$LLM_WIKI_WORKSPACE" || true
+
 git -C "$LLM_WIKI_WORKSPACE" config user.name "llm-wiki"
 git -C "$LLM_WIKI_WORKSPACE" config user.email "llm-wiki@localhost"
 
