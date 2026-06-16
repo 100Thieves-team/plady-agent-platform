@@ -220,7 +220,7 @@ resource "aws_vpc_security_group_ingress_rule" "http" {
   for_each = toset(var.allowed_http_cidr_blocks)
 
   security_group_id = aws_security_group.app.id
-  description       = "Caddy HTTP and Let's Encrypt HTTP-01"
+  description       = "Caddy HTTP and Lets Encrypt HTTP-01"
   cidr_ipv4         = each.value
   from_port         = 80
   ip_protocol       = "tcp"
