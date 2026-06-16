@@ -41,9 +41,11 @@ ssh-keygen -t ed25519 -C "llm-wiki-data-repo" -f .deploy-keys/llm_wiki_data_repo
 GitHub에 public key를 등록합니다.
 
 1. [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) → Settings → Deploy keys
+   - title: `llm-wiki-ec2-prod-app-readonly`
    - key: `.deploy-keys/llm_wiki_app_repo.pub`
    - **Allow write access: OFF**
 2. [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2) → Settings → Deploy keys
+   - title: `llm-wiki-ec2-prod-data-write`
    - key: `.deploy-keys/llm_wiki_data_repo.pub`
    - **Allow write access: ON**
 
