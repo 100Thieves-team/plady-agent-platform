@@ -52,6 +52,18 @@ variable "allowed_mcp_cidr_blocks" {
   default     = []
 }
 
+variable "allowed_http_cidr_blocks" {
+  description = "CIDR blocks allowed to access Caddy HTTP for Let's Encrypt HTTP-01 and HTTP to HTTPS redirects."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "allowed_https_cidr_blocks" {
+  description = "CIDR blocks allowed to access Caddy HTTPS."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "allowed_ssh_cidr_blocks" {
   description = "CIDR blocks allowed to SSH to the instance. Empty disables inbound SSH."
   type        = list(string)
@@ -68,6 +80,17 @@ variable "mcp_port" {
   description = "Host port exposed by docker compose for llm-wiki MCP HTTP."
   type        = number
   default     = 18765
+}
+
+variable "domain_name" {
+  description = "Public DNS name served by Caddy with automatic HTTPS."
+  type        = string
+  default     = "plady.kro.kr"
+
+  validation {
+    condition     = length(trimspace(var.domain_name)) > 0
+    error_message = "domain_name must be a non-empty DNS name."
+  }
 }
 
 variable "app_dir" {

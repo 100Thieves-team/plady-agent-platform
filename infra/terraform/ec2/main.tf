@@ -216,6 +216,28 @@ resource "aws_vpc_security_group_ingress_rule" "mcp" {
   to_port           = var.mcp_port
 }
 
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  for_each = toset(var.allowed_http_cidr_blocks)
+
+  security_group_id = aws_security_group.app.id
+  description       = "Caddy HTTP and Let's Encrypt HTTP-01"
+  cidr_ipv4         = each.value
+  from_port         = 80
+  ip_protocol       = "tcp"
+  to_port           = 80
+}
+
+resource "aws_vpc_security_group_ingress_rule" "https" {
+  for_each = toset(var.allowed_https_cidr_blocks)
+
+  security_group_id = aws_security_group.app.id
+  description       = "Caddy HTTPS"
+  cidr_ipv4         = each.value
+  from_port         = 443
+  ip_protocol       = "tcp"
+  to_port           = 443
+}
+
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
   for_each = toset(var.allowed_ssh_cidr_blocks)
 
@@ -400,6 +422,7 @@ resource "aws_instance" "app" {
     ecr_registry                              = local.ecr_registry
     llm_wiki_image                            = local.llm_wiki_image_uri
     mcp_bearer_token_ssm_parameter_name       = coalesce(var.mcp_bearer_token_ssm_parameter_name, "")
+    wiki_domain_name                          = var.domain_name
     wiki_data_repo_ssh_key_ssm_parameter_name = coalesce(var.wiki_data_repo_ssh_key_ssm_parameter_name, "")
     wiki_data_repository_url                  = coalesce(var.wiki_data_repository_url, "")
     wiki_ui_image                             = local.wiki_ui_image_uri
@@ -418,5 +441,16 @@ resource "aws_instance" "app" {
 
   tags = {
     Name = "${var.project_name}-ec2"
+  }
+}
+
+resource "aws_eip" "app" {
+  domain   = "vpc"
+  instance = aws_instance.app.id
+
+  depends_on = [aws_internet_gateway.main]
+
+  tags = {
+    Name = "${var.project_name}-eip"
   }
 }

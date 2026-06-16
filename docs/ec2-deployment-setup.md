@@ -18,6 +18,7 @@
 - Terraform
 - 이 저장소 clone본
 - GitHub repository admin 권한 또는 Deploy Key를 등록할 수 있는 권한
+- `plady.kro.kr` DNS A record를 설정할 수 있는 권한
 
 확인:
 
@@ -101,15 +102,17 @@ project_name  = "100thieves-wiki"
 instance_type = "t3.micro"
 root_volume_size = 30
 
+domain_name = "plady.kro.kr"
+
 # t3.micro가 너무 느리고 계정에서 허용된다면 t3.small로 올리세요.
 
-# UI는 필요하면 팀/VPN IP로 제한하세요.
-allowed_ui_cidr_blocks = ["0.0.0.0/0"]
+# Caddy가 HTTP/HTTPS를 받습니다. HTTP는 Let's Encrypt HTTP-01과 HTTPS redirect에 필요합니다.
+allowed_http_cidr_blocks  = ["0.0.0.0/0"]
+allowed_https_cidr_blocks = ["0.0.0.0/0"]
 
-# MCP는 Bearer token proxy로 보호됩니다. 가능하면 코딩 에이전트/사내망 IP만 열고,
-# 외부 client가 직접 붙어야 할 때만 ["0.0.0.0/0"]로 엽니다.
-allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
-# allowed_mcp_cidr_blocks = ["0.0.0.0/0"]
+# direct container ports는 HTTPS reverse proxy 뒤로 숨깁니다.
+allowed_ui_cidr_blocks  = []
+allowed_mcp_cidr_blocks = []
 
 app_dir = "/opt/100thieves-wiki-mcp"
 
@@ -152,13 +155,31 @@ terraform apply
 terraform output instance_id
 terraform output wiki_ui_url
 terraform output mcp_http_url
+terraform output dns_a_record
 terraform output ssm_start_session_command
 terraform output github_actions_ecr_role_arn
 terraform output ecr_llm_wiki_repository
 terraform output ecr_wiki_ui_repository
 ```
 
-## 5. GitHub Actions ECR push 설정
+## 5. DNS A record 설정
+
+Terraform이 Elastic IP를 만들고 `dns_a_record` output에 필요한 값을 출력합니다. DNS 관리 화면에서 아래와 같이 설정하세요.
+
+```bash
+terraform output -raw dns_a_record
+# 예: plady.kro.kr A 203.0.113.10
+```
+
+DNS 설정 후 로컬에서 확인합니다.
+
+```bash
+dig +short plady.kro.kr A
+```
+
+출력 IP가 Terraform의 `public_ip`와 같아야 Caddy가 Let's Encrypt 인증서를 발급받을 수 있습니다. DNS 전파 전에도 EC2는 떠 있지만 HTTPS 검증은 실패할 수 있고, Caddy가 자동으로 재시도합니다.
+
+## 6. GitHub Actions ECR push 설정
 
 Terraform output을 GitHub Actions repository variables로 등록합니다. role ARN은 secret이 아니므로 variable로 두면 됩니다.
 `AWS_ROLE_TO_ASSUME`가 설정되기 전에는 workflow가 의도적으로 skip됩니다.
@@ -189,7 +210,7 @@ sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml pull
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
 ```
 
-## 6. EC2 부팅/자동 배포 확인
+## 7. EC2 부팅/자동 배포 확인
 
 Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수행합니다.
 
@@ -201,8 +222,9 @@ Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수�
 6. [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)를 `wiki-workspace/`로 clone
 7. SSM SecureString에서 MCP bearer token을 읽어 `.env.ec2`에 기록
 8. ECR에 로그인하고 `compose.ec2.yaml`로 prebuilt image pull
-9. `docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d`
-10. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
+9. Caddy를 80/443에 띄우고 `plady.kro.kr`에 Let's Encrypt HTTPS를 자동 적용
+10. `docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d`
+11. `llm-wiki-data-sync.timer`를 켜서 `wiki-workspace` commit을 `team-wiki-v2`로 주기적 push
 
 ECR 이미지가 아직 없으면 경량 로컬 build로 fallback합니다. `llm-wiki` Dockerfile은 Rust 컴파일 대신 upstream release binary를 내려받기 때문에 `t3.micro`에서도 첫 실행 가능성이 높습니다.
 
@@ -221,7 +243,7 @@ sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo systemctl status llm-wiki-data-sync.timer
 ```
 
-## 7. 수동 fallback
+## 8. 수동 fallback
 
 Deploy Key 자동화가 실패했거나 임시로 직접 확인해야 한다면 EC2에 접속해서 수동 clone도 가능합니다.
 
@@ -239,15 +261,16 @@ docker compose up -d --build
 docker compose ps
 ```
 
-## 8. 배포 확인
+## 9. 배포 확인
 
 로컬에서 Terraform output URL로 확인합니다.
 
 ```bash
 curl -I $(terraform output -raw wiki_ui_url)
+# https://plady.kro.kr
 ```
 
-MCP endpoint는 bearer token이 있어야 proxy를 통과합니다. token 없이 호출하면 `401 Unauthorized`가 나와야 정상입니다.
+MCP endpoint는 HTTPS와 bearer token이 모두 있어야 proxy를 통과합니다. token 없이 호출하면 `401 Unauthorized`가 나와야 정상입니다.
 
 ```bash
 curl -i -N --max-time 3 \
@@ -292,7 +315,7 @@ sudo git log --oneline -5
 sudo /usr/local/bin/llm-wiki-data-sync
 ```
 
-## 9. 운영 작업
+## 10. 운영 작업
 
 ### 새 코드 반영
 
@@ -332,12 +355,14 @@ terraform destroy
 
 EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는지 확인하세요.
 
-## 10. 자주 보는 문제
+## 11. 자주 보는 문제
 
 - **EC2가 app repo clone 실패**: app repo deploy key가 [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp)에 등록되어 있는지, `app_repo_ssh_key_ssm_parameter_name`이 맞는지 확인합니다.
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
 - **`AccessDeniedException` on SSM**: SSM parameter 이름이 Terraform 변수와 일치하는지 확인하고, customer-managed KMS를 썼다면 KMS key ARN 변수도 설정합니다.
 - **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.
+- **HTTPS 인증서 발급 실패**: `dig +short plady.kro.kr A`가 `terraform output -raw public_ip`와 같은지 확인합니다. 80/tcp가 열려 있어야 Let's Encrypt HTTP-01 검증이 통과합니다.
+- **직접 `:1313`, `:18765` 접근 실패**: HTTPS 구성에서는 direct container ports를 public으로 닫고 Caddy만 `80/443`으로 공개합니다. UI는 `https://plady.kro.kr`, MCP는 `https://plady.kro.kr/mcp`를 사용하세요.
 - **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
 - **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.
 - **MCP가 `401 Unauthorized` 반환**: `Authorization: Bearer <token>` 헤더가 없거나 SSM의 `/100thieves/wiki/mcp-bearer-token` 값과 다릅니다.

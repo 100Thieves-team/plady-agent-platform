@@ -12,6 +12,7 @@ DOCKER_COMPOSE_VERSION="${docker_compose_version}"
 ECR_REGISTRY="${ecr_registry}"
 LLM_WIKI_IMAGE="${llm_wiki_image}"
 MCP_BEARER_TOKEN_SSM_PARAMETER_NAME="${mcp_bearer_token_ssm_parameter_name}"
+WIKI_DOMAIN_NAME="${wiki_domain_name}"
 WIKI_DATA_REPOSITORY_URL="${wiki_data_repository_url}"
 WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME="${wiki_data_repo_ssh_key_ssm_parameter_name}"
 WIKI_UI_IMAGE="${wiki_ui_image}"
@@ -267,6 +268,7 @@ bootstrap_with_deploy_keys() {
   cat >.env.ec2 <<ENV
 LLM_WIKI_IMAGE=$${LLM_WIKI_IMAGE}
 WIKI_UI_IMAGE=$${WIKI_UI_IMAGE}
+WIKI_DOMAIN_NAME=$${WIKI_DOMAIN_NAME}
 MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
 ENV
   chmod 600 .env.ec2

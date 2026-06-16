@@ -5,22 +5,27 @@ output "instance_id" {
 
 output "public_ip" {
   description = "Public IPv4 address of the EC2 instance."
-  value       = aws_instance.app.public_ip
+  value       = aws_eip.app.public_ip
 }
 
 output "public_dns" {
   description = "Public DNS name of the EC2 instance."
-  value       = aws_instance.app.public_dns
+  value       = aws_eip.app.public_dns
 }
 
 output "wiki_ui_url" {
   description = "Hugo wiki UI URL."
-  value       = "http://${aws_instance.app.public_ip}:${var.wiki_ui_port}"
+  value       = "https://${var.domain_name}"
 }
 
 output "mcp_http_url" {
   description = "llm-wiki MCP HTTP URL."
-  value       = "http://${aws_instance.app.public_ip}:${var.mcp_port}/mcp"
+  value       = "https://${var.domain_name}/mcp"
+}
+
+output "dns_a_record" {
+  description = "Create an A record for domain_name pointing to this Elastic IP."
+  value       = "${var.domain_name} A ${aws_eip.app.public_ip}"
 }
 
 output "ssm_start_session_command" {

@@ -7,13 +7,16 @@ GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Paramete
 
 - Dedicated VPC, public subnet, route table, internet gateway
 - EC2 security group
-  - Hugo UI: 기본 `1313/tcp`
-  - MCP HTTP: 기본 `18765/tcp`, 기본 차단
+  - Caddy HTTP/HTTPS: 기본 `80/tcp`, `443/tcp` 공개
+  - Hugo UI direct port: 기본 `1313/tcp`, HTTPS 구성에서는 차단
+  - MCP direct port: 기본 `18765/tcp`, HTTPS 구성에서는 차단
   - SSH: 기본 차단
+- Elastic IP
 - Amazon Linux 2023 EC2 instance
 - ECR repositories for prebuilt Docker images
 - GitHub Actions OIDC role for ECR push
 - SSM/ECR 접속용 IAM role/profile
+- Let's Encrypt HTTPS를 자동 발급/갱신하는 `caddy` container
 - Bearer token으로 MCP HTTP를 보호하는 `mcp-proxy` container
 
 ## 사용법
@@ -23,7 +26,7 @@ GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Paramete
 ```bash
 cd infra/terraform/ec2
 cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars를 열어 CIDR, key_name, instance_type 등을 조정
+# terraform.tfvars를 열어 domain_name, CIDR, key_name, instance_type 등을 조정
 terraform init
 terraform plan
 terraform apply
@@ -57,14 +60,15 @@ PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를
 
 자세한 단계는 [`../../../docs/ec2-deployment-setup.md`](../../../docs/ec2-deployment-setup.md)를 참고하세요.
 
-GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_repository`, `ecr_wiki_ui_repository` output 값을 등록한 뒤 `Build Docker images` workflow를 실행합니다. repo root에서 `scripts/configure-github-actions-ecr.sh --run-workflow`를 실행하면 이 과정을 한 번에 처리할 수 있습니다. 배포 후 출력되는 `wiki_ui_url`로 접속합니다. MCP HTTP endpoint는 `mcp_http_url`입니다.
+GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_repository`, `ecr_wiki_ui_repository` output 값을 등록한 뒤 `Build Docker images` workflow를 실행합니다. repo root에서 `scripts/configure-github-actions-ecr.sh --run-workflow`를 실행하면 이 과정을 한 번에 처리할 수 있습니다. 배포 후 `dns_a_record` output대로 DNS A record를 설정한 뒤 `wiki_ui_url`로 접속합니다. MCP endpoint는 `mcp_http_url`이며 HTTPS와 Bearer token을 같이 사용합니다.
 
 ## 주의
 
 - Terraform은 Deploy Key 값을 직접 읽지 않습니다. SSM parameter 이름만 state에 저장하고, 실제 private key는 EC2 user-data가 SSM에서 읽습니다.
 - wiki 산출물은 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 쌓이도록 `wiki-workspace/` remote와 sync timer를 구성합니다.
-- MCP HTTP는 `mcp-proxy`가 `Authorization: Bearer <token>`을 검사한 뒤에만 llm-wiki로 전달합니다.
-- `allowed_mcp_cidr_blocks`는 기본값이 빈 배열이라 외부에서 MCP HTTP에 접근할 수 없습니다. 필요한 IP만 `/32` 등으로 열거나, public 노출이 필요할 때만 `0.0.0.0/0`로 열어주세요. HTTP bearer token은 TLS 없이는 탈취될 수 있으므로 운영에서는 HTTPS를 붙이는 것을 권장합니다.
+- Caddy가 `domain_name`에 대해 Let's Encrypt 인증서를 자동 발급하고 UI는 `https://<domain_name>`, MCP는 `https://<domain_name>/mcp`로 노출합니다.
+- MCP HTTP는 Caddy 뒤의 `mcp-proxy`가 `Authorization: Bearer <token>`을 검사한 뒤에만 llm-wiki로 전달합니다.
+- `allowed_ui_cidr_blocks`, `allowed_mcp_cidr_blocks`는 direct container port용입니다. HTTPS 운영에서는 빈 배열로 두고 `80/443`만 공개하세요.
 - llm-wiki 데이터는 EC2의 `/opt/100thieves-wiki-mcp/wiki-workspace`에 clone되는 별도 git repo이며, 기본 remote는 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.
 
 ## 확인 명령
@@ -72,6 +76,7 @@ GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_reposit
 ```bash
 terraform output wiki_ui_url
 terraform output mcp_http_url
+terraform output dns_a_record
 terraform output ssm_start_session_command
 ```
 

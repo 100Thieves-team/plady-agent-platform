@@ -1,4 +1,37 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - wiki-ui
+      - mcp-proxy
+    environment:
+      WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:?Set WIKI_DOMAIN_NAME}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/etc/caddy/Caddyfile <<'CADDY'
+        {$$WIKI_DOMAIN_NAME} {
+          encode gzip
+
+          handle /mcp* {
+            reverse_proxy mcp-proxy:18765
+          }
+
+          handle {
+            reverse_proxy wiki-ui:1313
+          }
+        }
+        CADDY
+        caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
   llm-wiki:
     image: ${LLM_WIKI_IMAGE:?Set LLM_WIKI_IMAGE}
     environment:
@@ -47,8 +80,8 @@ services:
         NGINX
         envsubst '$${MCP_BEARER_TOKEN}' </tmp/mcp.conf.template >/etc/nginx/conf.d/default.conf
         nginx -g 'daemon off;'
-    ports:
-      - "18765:18765"
+    expose:
+      - "18765"
     restart: unless-stopped
 
   wiki-ui:
@@ -56,14 +89,18 @@ services:
     depends_on:
       - llm-wiki
     working_dir: /workspace/site
+    environment:
+      WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:?Set WIKI_DOMAIN_NAME}
     command: >-
-      sh -c 'until [ -d /workspace/wiki ]; do echo "waiting for llm-wiki workspace..."; sleep 1; done; hugo server --bind 0.0.0.0 --port 1313 --baseURL http://localhost:1313/ --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+      sh -c 'until [ -d /workspace/wiki ]; do echo "waiting for llm-wiki workspace..."; sleep 1; done; hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
     volumes:
       - ./wiki-workspace:/workspace
       - ./llm-wiki-hugo-cms/site:/workspace/site:ro
-    ports:
-      - "1313:1313"
+    expose:
+      - "1313"
     restart: unless-stopped
 
 volumes:
+  caddy-data:
+  caddy-config:
   llm-wiki-config:
