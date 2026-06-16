@@ -146,6 +146,7 @@ terraform output ecr_wiki_ui_repository
 ## 5. GitHub Actions ECR push 설정
 
 Terraform output을 GitHub Actions repository variables로 등록합니다. role ARN은 secret이 아니므로 variable로 두면 됩니다.
+`AWS_ROLE_TO_ASSUME`가 설정되기 전에는 workflow가 의도적으로 skip됩니다.
 
 ```bash
 # GitHub CLI를 쓰는 경우

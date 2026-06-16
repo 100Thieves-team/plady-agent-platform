@@ -22,6 +22,7 @@ env:
 
 jobs:
   build-and-push:
+    if: ${{ vars.AWS_ROLE_TO_ASSUME != '' }}
     runs-on: ubuntu-latest
 
     steps:
