@@ -70,20 +70,8 @@ variable "mcp_port" {
   default     = 18765
 }
 
-variable "repository_url" {
-  description = "Git repository URL cloned on the EC2 instance. Must be accessible from the instance."
-  type        = string
-  default     = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
-}
-
-variable "repository_ref" {
-  description = "Branch or tag to checkout after clone/fetch."
-  type        = string
-  default     = "main"
-}
-
 variable "app_dir" {
-  description = "Directory on the EC2 instance where the repository is cloned."
+  description = "Directory on the EC2 instance where you can manually clone the repository."
   type        = string
   default     = "/opt/100thieves-wiki-mcp"
 }

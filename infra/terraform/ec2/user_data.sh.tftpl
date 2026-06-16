@@ -4,8 +4,6 @@ set -euxo pipefail
 exec > >(tee -a /var/log/llm-wiki-bootstrap.log | logger -t llm-wiki-bootstrap -s 2>/dev/console) 2>&1
 
 APP_DIR="${app_dir}"
-REPOSITORY_URL="${repository_url}"
-REPOSITORY_REF="${repository_ref}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
 
 # Base packages and Docker daemon.
@@ -13,6 +11,14 @@ dnf update -y
 dnf install -y docker git curl ca-certificates
 systemctl enable --now docker
 usermod -aG docker ec2-user || true
+
+# GitHub CLI is convenient for manual private-repo login, but deployment should
+# not fail if this optional install has a transient issue.
+if dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo; then
+  dnf install -y gh || echo "GitHub CLI install failed; continuing without gh."
+else
+  echo "GitHub CLI repo setup failed; continuing without gh."
+fi
 
 # Docker Compose v2 plugin.
 ARCH="$(uname -m)"
@@ -27,37 +33,27 @@ curl -fsSL "https://github.com/docker/compose/releases/download/v$${DOCKER_COMPO
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
-# Fetch or update the deployment repository.
-if [ -d "$${APP_DIR}/.git" ]; then
-  git -C "$${APP_DIR}" fetch --all --prune
-  git -C "$${APP_DIR}" checkout "$${REPOSITORY_REF}"
-  git -C "$${APP_DIR}" pull --ff-only origin "$${REPOSITORY_REF}" || true
-else
-  rm -rf "$${APP_DIR}"
-  git clone --branch "$${REPOSITORY_REF}" --depth 1 "$${REPOSITORY_URL}" "$${APP_DIR}"
-fi
+# Prepare an empty directory owned by ec2-user. Log in to GitHub and clone here
+# manually after the instance is ready.
+mkdir -p "$${APP_DIR}"
+chown ec2-user:ec2-user "$${APP_DIR}"
 
-cd "$${APP_DIR}"
+cat >/home/ec2-user/LLM_WIKI_DEPLOY.md <<DOC
+# Manual LLM Wiki deploy
+
+This instance already has Docker, Docker Compose, Git, and optionally gh installed.
+
+Example:
+
+\`\`\`bash
+gh auth login
+git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git $${APP_DIR}
+cd $${APP_DIR}
 docker compose up -d --build
+docker compose ps
+\`\`\`
 
-cat >/etc/systemd/system/llm-wiki-compose.service <<SERVICE
-[Unit]
-Description=100 Thieves llm-wiki docker compose stack
-Requires=docker.service
-After=docker.service network-online.target
-Wants=network-online.target
+If you do not use gh, clone with your preferred HTTPS token or SSH key setup.
+DOC
 
-[Service]
-Type=oneshot
-WorkingDirectory=$${APP_DIR}
-ExecStart=/usr/bin/docker compose up -d --build
-ExecStop=/usr/bin/docker compose down
-RemainAfterExit=yes
-TimeoutStartSec=0
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
-systemctl daemon-reload
-systemctl enable llm-wiki-compose.service
+chown ec2-user:ec2-user /home/ec2-user/LLM_WIKI_DEPLOY.md

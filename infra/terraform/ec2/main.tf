@@ -172,8 +172,6 @@ resource "aws_instance" "app" {
   key_name                    = var.key_name
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    repository_url         = var.repository_url
-    repository_ref         = var.repository_ref
     app_dir                = var.app_dir
     docker_compose_version = var.docker_compose_version
   })

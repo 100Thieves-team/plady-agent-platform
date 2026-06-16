@@ -15,5 +15,5 @@ allowed_ui_cidr_blocks = ["0.0.0.0/0"]
 # allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
 # allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
 
-repository_url = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
-repository_ref = "main"
+# Where you will manually clone the repo after logging in to GitHub on EC2.
+app_dir = "/opt/100thieves-wiki-mcp"
