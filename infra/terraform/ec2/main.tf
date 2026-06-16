@@ -7,13 +7,31 @@ locals {
     var.tags,
   )
 
-  github_token_ssm_parameter_path = var.github_token_ssm_parameter_name == null ? null : (
-    startswith(var.github_token_ssm_parameter_name, "/")
-    ? var.github_token_ssm_parameter_name
-    : "/${var.github_token_ssm_parameter_name}"
-  )
+  ssh_key_ssm_parameter_names = [
+    for name in [
+      var.app_repo_ssh_key_ssm_parameter_name,
+      var.wiki_data_repo_ssh_key_ssm_parameter_name,
+    ] : name
+    if name != null
+  ]
 
-  github_token_ssm_parameter_arn = var.github_token_ssm_parameter_name == null ? null : "arn:${data.aws_partition.current.partition}:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.github_token_ssm_parameter_path}"
+  ssh_key_ssm_parameter_paths = [
+    for name in local.ssh_key_ssm_parameter_names :
+    startswith(name, "/") ? name : "/${name}"
+  ]
+
+  ssh_key_ssm_parameter_arns = [
+    for path in local.ssh_key_ssm_parameter_paths :
+    "arn:${data.aws_partition.current.partition}:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${path}"
+  ]
+
+  ssh_key_kms_key_arns = [
+    for arn in [
+      var.app_repo_ssh_key_kms_key_arn,
+      var.wiki_data_repo_ssh_key_kms_key_arn,
+    ] : arn
+    if arn != null
+  ]
 }
 
 data "aws_availability_zones" "available" {
@@ -169,31 +187,31 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-data "aws_iam_policy_document" "github_token_ssm" {
-  count = var.github_token_ssm_parameter_name == null ? 0 : 1
+data "aws_iam_policy_document" "ssh_keys_ssm" {
+  count = length(local.ssh_key_ssm_parameter_names) > 0 ? 1 : 0
 
   statement {
     actions   = ["ssm:GetParameter"]
-    resources = [local.github_token_ssm_parameter_arn]
+    resources = local.ssh_key_ssm_parameter_arns
   }
 
   dynamic "statement" {
-    for_each = var.github_token_kms_key_arn == null ? [] : [var.github_token_kms_key_arn]
-    iterator = kms_key_arn
+    for_each = length(local.ssh_key_kms_key_arns) > 0 ? [local.ssh_key_kms_key_arns] : []
+    iterator = kms_key_arns
 
     content {
       actions   = ["kms:Decrypt"]
-      resources = [kms_key_arn.value]
+      resources = kms_key_arns.value
     }
   }
 }
 
-resource "aws_iam_role_policy" "github_token_ssm" {
-  count = var.github_token_ssm_parameter_name == null ? 0 : 1
+resource "aws_iam_role_policy" "ssh_keys_ssm" {
+  count = length(local.ssh_key_ssm_parameter_names) > 0 ? 1 : 0
 
-  name   = "${var.project_name}-github-token-ssm"
+  name   = "${var.project_name}-ssh-keys-ssm"
   role   = aws_iam_role.app.id
-  policy = data.aws_iam_policy_document.github_token_ssm[0].json
+  policy = data.aws_iam_policy_document.ssh_keys_ssm[0].json
 }
 
 resource "aws_iam_instance_profile" "app" {
@@ -211,12 +229,14 @@ resource "aws_instance" "app" {
   key_name                    = var.key_name
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    app_dir                         = var.app_dir
-    aws_region                      = var.aws_region
-    docker_compose_version          = var.docker_compose_version
-    github_token_ssm_parameter_name = coalesce(var.github_token_ssm_parameter_name, "")
-    repository_ref                  = var.repository_ref
-    repository_url                  = var.repository_url
+    app_dir                                   = var.app_dir
+    app_repo_ssh_key_ssm_parameter_name       = coalesce(var.app_repo_ssh_key_ssm_parameter_name, "")
+    app_repository_ref                        = var.app_repository_ref
+    app_repository_url                        = var.app_repository_url
+    aws_region                                = var.aws_region
+    docker_compose_version                    = var.docker_compose_version
+    wiki_data_repo_ssh_key_ssm_parameter_name = coalesce(var.wiki_data_repo_ssh_key_ssm_parameter_name, "")
+    wiki_data_repository_url                  = coalesce(var.wiki_data_repository_url, "")
   })
 
   metadata_options {

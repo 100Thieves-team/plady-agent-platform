@@ -15,12 +15,18 @@ allowed_ui_cidr_blocks = ["0.0.0.0/0"]
 # allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
 # allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
 
-# Where the repo is cloned, either manually or by token-based bootstrap.
 app_dir = "/opt/100thieves-wiki-mcp"
 
-# Optional: token-based auto clone.
-# Store the token in SSM Parameter Store first; do not put the token itself here.
-# repository_url = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
-# repository_ref = "main"
-# github_token_ssm_parameter_name = "/100thieves/wiki/github-token"
-# github_token_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+# Recommended: SSH Deploy Keys stored as SSM SecureString values.
+# App repo key: GitHub Deploy Key on 100Thieves-team/100Thieves-wiki-mcp, read-only.
+# Wiki data key: GitHub Deploy Key on 100Thieves-team/team-wiki-v2, allow write access.
+app_repository_url                  = "git@github.com-llm-wiki-app:100Thieves-team/100Thieves-wiki-mcp.git"
+app_repository_ref                  = "main"
+app_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/app-repo-deploy-key"
+
+wiki_data_repository_url                  = "git@github.com-llm-wiki-data:100Thieves-team/team-wiki-v2.git"
+wiki_data_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/data-repo-deploy-key"
+
+# Only needed if the SecureString parameters use customer-managed KMS keys.
+# app_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+# wiki_data_repo_ssh_key_kms_key_arn = "arn:aws:kms:ap-northeast-2:123456789012:key/..."

@@ -36,12 +36,12 @@ wiki 데이터까지 지우려면 컨테이너를 내린 뒤 로컬 `wiki-worksp
 
 ## Wiki 데이터 저장소
 
-MCP ingest로 쌓이는 실제 회의록/ADR/멘토링 데이터는 이 wrapper repo가 아니라 `wiki-workspace/`라는 별도 git repo에 저장됩니다. 운영에서는 이 디렉터리에 별도 GitHub remote를 붙여 SSOT 데이터 repo로 관리하세요. 자세한 내용은 [`docs/wiki-data-repo.md`](docs/wiki-data-repo.md)를 참고하세요.
+MCP ingest로 쌓이는 실제 회의록/ADR/멘토링 데이터는 이 wrapper repo가 아니라 `wiki-workspace/`에 clone된 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 저장됩니다. 자세한 내용은 [`docs/wiki-data-repo.md`](docs/wiki-data-repo.md)를 참고하세요.
 
 ## EC2 배포
 
 EC2 한 대에 Docker/Compose/Git을 설치하는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
-저장소 clone은 EC2에 접속해서 GitHub 로그인 후 직접 진행하거나, SSM Parameter Store에 저장한 GitHub token으로 자동화할 수 있습니다.
+저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화합니다.
 
 ```bash
 cd infra/terraform/ec2

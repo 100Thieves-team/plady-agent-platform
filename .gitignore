@@ -4,6 +4,9 @@
 # It is its own git-backed wiki space, separate from this wrapper repo.
 wiki-workspace/
 
+# Local deploy keys generated while following the EC2 setup guide.
+.deploy-keys/
+
 # Terraform local state and provider cache
 **/.terraform/
 *.tfstate

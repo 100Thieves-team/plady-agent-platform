@@ -4,20 +4,25 @@ set -euo pipefail
 exec > >(tee -a /var/log/llm-wiki-bootstrap.log | logger -t llm-wiki-bootstrap -s 2>/dev/console) 2>&1
 
 APP_DIR="${app_dir}"
+APP_REPOSITORY_REF="${app_repository_ref}"
+APP_REPOSITORY_URL="${app_repository_url}"
+APP_REPO_SSH_KEY_SSM_PARAMETER_NAME="${app_repo_ssh_key_ssm_parameter_name}"
 AWS_REGION="${aws_region}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
-GITHUB_TOKEN_SSM_PARAMETER_NAME="${github_token_ssm_parameter_name}"
-REPOSITORY_REF="${repository_ref}"
-REPOSITORY_URL="${repository_url}"
+WIKI_DATA_REPOSITORY_URL="${wiki_data_repository_url}"
+WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME="${wiki_data_repo_ssh_key_ssm_parameter_name}"
+
+APP_REPO_SSH_KEY_PATH="/home/ec2-user/.ssh/llm_wiki_app_repo"
+WIKI_DATA_REPO_SSH_KEY_PATH="/home/ec2-user/.ssh/llm_wiki_data_repo"
 
 # Base packages and Docker daemon.
 dnf update -y
-dnf install -y docker git curl ca-certificates
+dnf install -y docker git curl ca-certificates openssh-clients
 systemctl enable --now docker
 usermod -aG docker ec2-user || true
 
-# GitHub CLI is convenient for manual private-repo login, but deployment should
-# not fail if this optional install has a transient issue.
+# GitHub CLI is still useful for manual fallback, but deploy-key bootstrap does
+# not depend on it.
 if dnf install -y dnf-plugins-core && dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo; then
   dnf install -y gh || echo "GitHub CLI install failed; continuing without gh."
 else
@@ -38,34 +43,38 @@ curl -fsSL "https://github.com/docker/compose/releases/download/v$${DOCKER_COMPO
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
-# Prepare a directory owned by ec2-user. If a token parameter is configured,
-# user-data will clone into this directory; otherwise you can clone manually.
-mkdir -p "$${APP_DIR}"
-chown ec2-user:ec2-user "$${APP_DIR}"
+mkdir -p "$${APP_DIR}" /home/ec2-user/.ssh
+chown ec2-user:ec2-user "$${APP_DIR}" /home/ec2-user/.ssh
+chmod 700 /home/ec2-user/.ssh
+ssh-keyscan github.com >>/home/ec2-user/.ssh/known_hosts 2>/dev/null || true
+chown ec2-user:ec2-user /home/ec2-user/.ssh/known_hosts 2>/dev/null || true
+chmod 600 /home/ec2-user/.ssh/known_hosts 2>/dev/null || true
 
 cat >/home/ec2-user/LLM_WIKI_DEPLOY.md <<DOC
 # LLM Wiki deploy
 
 This instance has Docker, Docker Compose, Git, and optionally gh installed.
 
-## Manual clone
+## Recommended: SSH deploy-key bootstrap
 
-\`\`\`bash
-gh auth login
-git clone $${REPOSITORY_URL} $${APP_DIR}
-cd $${APP_DIR}
-docker compose up -d --build
-docker compose ps
-\`\`\`
+If Terraform was applied with \`app_repo_ssh_key_ssm_parameter_name\`, cloud-init tries to clone the app repo automatically.
+If \`wiki_data_repository_url\` and \`wiki_data_repo_ssh_key_ssm_parameter_name\` were also set, cloud-init clones the separate wiki data repo into \`$${APP_DIR}/wiki-workspace\` before starting Compose.
 
-## Token-based auto clone
-
-If Terraform was applied with \`github_token_ssm_parameter_name\`, cloud-init tries to clone automatically.
-Check progress with:
+Check progress:
 
 \`\`\`bash
 sudo tail -f /var/log/llm-wiki-bootstrap.log
 cd $${APP_DIR}
+docker compose ps
+\`\`\`
+
+## Manual fallback
+
+\`\`\`bash
+gh auth login
+git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git $${APP_DIR}
+cd $${APP_DIR}
+docker compose up -d --build
 docker compose ps
 \`\`\`
 DOC
@@ -83,49 +92,141 @@ install_aws_cli() {
   /tmp/aws/install
 }
 
-clone_with_github_token() {
-  install_aws_cli
+write_ssm_secure_file() {
+  parameter_name="$1"
+  output_path="$2"
 
-  GITHUB_TOKEN="$(aws ssm get-parameter \
+  install_aws_cli
+  aws ssm get-parameter \
     --region "$${AWS_REGION}" \
-    --name "$${GITHUB_TOKEN_SSM_PARAMETER_NAME}" \
+    --name "$${parameter_name}" \
     --with-decryption \
     --query 'Parameter.Value' \
-    --output text)"
+    --output text >"$${output_path}"
 
-  TOKEN_FILE="$(mktemp)"
-  ASKPASS="$(mktemp)"
-  cleanup() {
-    rm -f "$${TOKEN_FILE}" "$${ASKPASS}"
-  }
-  trap cleanup EXIT
-
-  printf '%s' "$${GITHUB_TOKEN}" >"$${TOKEN_FILE}"
-  chmod 600 "$${TOKEN_FILE}"
-
-  cat >"$${ASKPASS}" <<'ASKPASS_SCRIPT'
-#!/bin/sh
-case "$1" in
-  *Username*) echo "x-access-token" ;;
-  *Password*) cat "$GITHUB_TOKEN_FILE" ;;
-  *) echo "" ;;
-esac
-ASKPASS_SCRIPT
-  chmod 700 "$${ASKPASS}"
-
-  if [ ! -d "$${APP_DIR}/.git" ]; then
-    rm -rf "$${APP_DIR}"
-    GIT_ASKPASS="$${ASKPASS}" \
-      GITHUB_TOKEN_FILE="$${TOKEN_FILE}" \
-      GIT_TERMINAL_PROMPT=0 \
-      git clone --branch "$${REPOSITORY_REF}" --depth 1 "$${REPOSITORY_URL}" "$${APP_DIR}"
-  fi
-
-  chown -R ec2-user:ec2-user "$${APP_DIR}"
-  cd "$${APP_DIR}"
-  docker compose up -d --build
+  chown ec2-user:ec2-user "$${output_path}"
+  chmod 600 "$${output_path}"
 }
 
-if [ -n "$${GITHUB_TOKEN_SSM_PARAMETER_NAME}" ]; then
-  clone_with_github_token
+append_ssh_host() {
+  host_alias="$1"
+  identity_file="$2"
+
+  cat >>/home/ec2-user/.ssh/config <<CONFIG
+Host $${host_alias}
+  HostName github.com
+  User git
+  IdentityFile $${identity_file}
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+
+CONFIG
+  chown ec2-user:ec2-user /home/ec2-user/.ssh/config
+  chmod 600 /home/ec2-user/.ssh/config
+}
+
+clone_or_update_repo() {
+  repository_url="$1"
+  repository_ref="$2"
+  target_dir="$3"
+
+  if [ -d "$${target_dir}/.git" ]; then
+    git -C "$${target_dir}" fetch --all --prune
+    git -C "$${target_dir}" checkout "$${repository_ref}"
+    git -C "$${target_dir}" pull --ff-only origin "$${repository_ref}" || true
+  else
+    rm -rf "$${target_dir}"
+    git clone --branch "$${repository_ref}" --depth 1 "$${repository_url}" "$${target_dir}"
+  fi
+
+  chown -R ec2-user:ec2-user "$${target_dir}"
+}
+
+install_wiki_data_sync() {
+  cat >/usr/local/bin/llm-wiki-data-sync <<'SYNC'
+#!/bin/bash
+set -euo pipefail
+
+REPO="${app_dir}/wiki-workspace"
+KEY="/home/ec2-user/.ssh/llm_wiki_data_repo"
+KNOWN_HOSTS="/home/ec2-user/.ssh/known_hosts"
+
+if [ ! -d "$${REPO}/.git" ]; then
+  exit 0
+fi
+
+git config --global --add safe.directory "$${REPO}" || true
+git -C "$${REPO}" config user.name "llm-wiki"
+git -C "$${REPO}" config user.email "llm-wiki@localhost"
+
+export GIT_SSH_COMMAND="ssh -i $${KEY} -o IdentitiesOnly=yes -o UserKnownHostsFile=$${KNOWN_HOSTS} -o StrictHostKeyChecking=accept-new"
+
+git -C "$${REPO}" pull --rebase --autostash origin main || true
+
+if [ -n "$(git -C "$${REPO}" status --porcelain)" ]; then
+  git -C "$${REPO}" add -A
+  git -C "$${REPO}" commit -m "sync: wiki data $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+fi
+
+git -C "$${REPO}" push origin HEAD:main
+SYNC
+  chmod +x /usr/local/bin/llm-wiki-data-sync
+
+  cat >/etc/systemd/system/llm-wiki-data-sync.service <<'SERVICE'
+[Unit]
+Description=Push llm-wiki data repository
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/llm-wiki-data-sync
+SERVICE
+
+  cat >/etc/systemd/system/llm-wiki-data-sync.timer <<'TIMER'
+[Unit]
+Description=Periodically push llm-wiki data repository
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+  systemctl daemon-reload
+  systemctl enable --now llm-wiki-data-sync.timer
+}
+
+bootstrap_with_deploy_keys() {
+  write_ssm_secure_file "$${APP_REPO_SSH_KEY_SSM_PARAMETER_NAME}" "$${APP_REPO_SSH_KEY_PATH}"
+  append_ssh_host "github.com-llm-wiki-app" "$${APP_REPO_SSH_KEY_PATH}"
+
+  clone_or_update_repo "$${APP_REPOSITORY_URL}" "$${APP_REPOSITORY_REF}" "$${APP_DIR}"
+
+  if [ -n "$${WIKI_DATA_REPOSITORY_URL}" ] && [ -n "$${WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME}" ]; then
+    write_ssm_secure_file "$${WIKI_DATA_REPO_SSH_KEY_SSM_PARAMETER_NAME}" "$${WIKI_DATA_REPO_SSH_KEY_PATH}"
+    append_ssh_host "github.com-llm-wiki-data" "$${WIKI_DATA_REPO_SSH_KEY_PATH}"
+
+    if [ ! -d "$${APP_DIR}/wiki-workspace/.git" ]; then
+      rm -rf "$${APP_DIR}/wiki-workspace"
+      git clone "$${WIKI_DATA_REPOSITORY_URL}" "$${APP_DIR}/wiki-workspace"
+      chown -R ec2-user:ec2-user "$${APP_DIR}/wiki-workspace"
+    fi
+
+    install_wiki_data_sync
+  fi
+
+  cd "$${APP_DIR}"
+  docker compose up -d --build
+
+  if systemctl is-enabled llm-wiki-data-sync.timer >/dev/null 2>&1; then
+    systemctl start llm-wiki-data-sync.service || true
+  fi
+}
+
+if [ -n "$${APP_REPO_SSH_KEY_SSM_PARAMETER_NAME}" ]; then
+  bootstrap_with_deploy_keys
 fi

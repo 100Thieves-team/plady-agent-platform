@@ -76,37 +76,65 @@ variable "app_dir" {
   default     = "/opt/100thieves-wiki-mcp"
 }
 
-variable "repository_url" {
-  description = "HTTPS Git repository URL used when github_token_ssm_parameter_name is set."
+variable "app_repository_url" {
+  description = "SSH Git repository URL for this app repo. Use the github.com-llm-wiki-app host alias when using the deploy-key bootstrap."
   type        = string
-  default     = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
+  default     = "git@github.com-llm-wiki-app:100Thieves-team/100Thieves-wiki-mcp.git"
 }
 
-variable "repository_ref" {
-  description = "Branch or tag to clone when github_token_ssm_parameter_name is set."
+variable "app_repository_ref" {
+  description = "Branch or tag to clone when app_repo_ssh_key_ssm_parameter_name is set."
   type        = string
   default     = "main"
 }
 
-variable "github_token_ssm_parameter_name" {
-  description = "Optional SSM Parameter Store SecureString name containing a GitHub token. When set, EC2 auto-clones repository_url."
+variable "app_repo_ssh_key_ssm_parameter_name" {
+  description = "Optional SSM Parameter Store SecureString name containing the read-only SSH deploy private key for this app repo. When set, EC2 auto-clones app_repository_url."
   type        = string
   default     = null
 
   validation {
-    condition     = var.github_token_ssm_parameter_name == null || length(trimspace(var.github_token_ssm_parameter_name)) > 0
-    error_message = "github_token_ssm_parameter_name must be null or a non-empty SSM parameter name."
+    condition     = var.app_repo_ssh_key_ssm_parameter_name == null ? true : length(trimspace(var.app_repo_ssh_key_ssm_parameter_name)) > 0
+    error_message = "app_repo_ssh_key_ssm_parameter_name must be null or a non-empty SSM parameter name."
   }
 }
 
-variable "github_token_kms_key_arn" {
-  description = "Optional KMS key ARN if the GitHub token SecureString uses a customer-managed KMS key."
+variable "app_repo_ssh_key_kms_key_arn" {
+  description = "Optional KMS key ARN if the app repo SSH key SecureString uses a customer-managed KMS key."
   type        = string
   default     = null
 
   validation {
-    condition     = var.github_token_kms_key_arn == null || length(trimspace(var.github_token_kms_key_arn)) > 0
-    error_message = "github_token_kms_key_arn must be null or a non-empty KMS key ARN."
+    condition     = var.app_repo_ssh_key_kms_key_arn == null ? true : length(trimspace(var.app_repo_ssh_key_kms_key_arn)) > 0
+    error_message = "app_repo_ssh_key_kms_key_arn must be null or a non-empty KMS key ARN."
+  }
+}
+
+variable "wiki_data_repository_url" {
+  description = "Optional SSH Git repository URL for the separate wiki data repo. Use the github.com-llm-wiki-data host alias when using a deploy key."
+  type        = string
+  default     = "git@github.com-llm-wiki-data:100Thieves-team/team-wiki-v2.git"
+}
+
+variable "wiki_data_repo_ssh_key_ssm_parameter_name" {
+  description = "Optional SSM Parameter Store SecureString name containing the SSH deploy private key for the wiki data repo. Set this with wiki_data_repository_url to clone existing wiki data."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.wiki_data_repo_ssh_key_ssm_parameter_name == null ? true : length(trimspace(var.wiki_data_repo_ssh_key_ssm_parameter_name)) > 0
+    error_message = "wiki_data_repo_ssh_key_ssm_parameter_name must be null or a non-empty SSM parameter name."
+  }
+}
+
+variable "wiki_data_repo_ssh_key_kms_key_arn" {
+  description = "Optional KMS key ARN if the wiki data repo SSH key SecureString uses a customer-managed KMS key."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.wiki_data_repo_ssh_key_kms_key_arn == null ? true : length(trimspace(var.wiki_data_repo_ssh_key_kms_key_arn)) > 0
+    error_message = "wiki_data_repo_ssh_key_kms_key_arn must be null or a non-empty KMS key ARN."
   }
 }
 
