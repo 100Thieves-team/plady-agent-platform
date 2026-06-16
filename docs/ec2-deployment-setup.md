@@ -103,6 +103,7 @@ instance_type = "t3.micro"
 root_volume_size = 30
 
 domain_name = "plady.kro.kr"
+acme_email = "admin@plady.kro.kr"
 
 # t3.micro가 너무 느리고 계정에서 허용된다면 t3.small로 올리세요.
 
@@ -177,7 +178,7 @@ DNS 설정 후 로컬에서 확인합니다.
 dig +short plady.kro.kr A
 ```
 
-출력 IP가 Terraform의 `public_ip`와 같아야 Caddy가 Let's Encrypt 인증서를 발급받을 수 있습니다. DNS 전파 전에도 EC2는 떠 있지만 HTTPS 검증은 실패할 수 있고, Caddy가 자동으로 재시도합니다.
+출력 IP가 Terraform의 `public_ip`와 같아야 Caddy가 Let's Encrypt/ZeroSSL 인증서를 발급받을 수 있습니다. DNS 전파 전에도 EC2는 떠 있지만 HTTPS 검증은 실패할 수 있고, Caddy가 자동으로 재시도합니다.
 
 ## 6. GitHub Actions ECR push 설정
 
@@ -361,7 +362,7 @@ EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
 - **`AccessDeniedException` on SSM**: SSM parameter 이름이 Terraform 변수와 일치하는지 확인하고, customer-managed KMS를 썼다면 KMS key ARN 변수도 설정합니다.
 - **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.
-- **HTTPS 인증서 발급 실패**: `dig +short plady.kro.kr A`가 `terraform output -raw public_ip`와 같은지 확인합니다. 80/tcp가 열려 있어야 Let's Encrypt HTTP-01 검증이 통과합니다.
+- **HTTPS 인증서 발급 실패**: `dig +short plady.kro.kr A`가 `terraform output -raw public_ip`와 같은지 확인합니다. 80/tcp가 열려 있어야 ACME HTTP-01 검증이 통과합니다. `kro.kr` 공유 도메인은 Let's Encrypt registered-domain rate limit에 걸릴 수 있어 Caddy에 ACME email을 넣어 ZeroSSL fallback도 사용할 수 있게 구성했습니다.
 - **직접 `:1313`, `:18765` 접근 실패**: HTTPS 구성에서는 direct container ports를 public으로 닫고 Caddy만 `80/443`으로 공개합니다. UI는 `https://plady.kro.kr`, MCP는 `https://plady.kro.kr/mcp`를 사용하세요.
 - **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
 - **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.

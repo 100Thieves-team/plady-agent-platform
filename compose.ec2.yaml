@@ -5,12 +5,17 @@ services:
       - wiki-ui
       - mcp-proxy
     environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
       WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:?Set WIKI_DOMAIN_NAME}
     command:
       - /bin/sh
       - -ec
       - |
         cat >/etc/caddy/Caddyfile <<'CADDY'
+        {
+          email {$$ACME_EMAIL}
+        }
+
         {$$WIKI_DOMAIN_NAME} {
           encode gzip
 

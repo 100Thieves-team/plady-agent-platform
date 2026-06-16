@@ -66,7 +66,7 @@ GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_reposit
 
 - Terraform은 Deploy Key 값을 직접 읽지 않습니다. SSM parameter 이름만 state에 저장하고, 실제 private key는 EC2 user-data가 SSM에서 읽습니다.
 - wiki 산출물은 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 쌓이도록 `wiki-workspace/` remote와 sync timer를 구성합니다.
-- Caddy가 `domain_name`에 대해 Let's Encrypt 인증서를 자동 발급하고 UI는 `https://<domain_name>`, MCP는 `https://<domain_name>/mcp`로 노출합니다.
+- Caddy가 `domain_name`에 대해 Let's Encrypt/ZeroSSL 인증서를 자동 발급하고 UI는 `https://<domain_name>`, MCP는 `https://<domain_name>/mcp`로 노출합니다.
 - MCP HTTP는 Caddy 뒤의 `mcp-proxy`가 `Authorization: Bearer <token>`을 검사한 뒤에만 llm-wiki로 전달합니다.
 - `allowed_ui_cidr_blocks`, `allowed_mcp_cidr_blocks`는 direct container port용입니다. HTTPS 운영에서는 빈 배열로 두고 `80/443`만 공개하세요.
 - llm-wiki 데이터는 EC2의 `/opt/100thieves-wiki-mcp/wiki-workspace`에 clone되는 별도 git repo이며, 기본 remote는 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.

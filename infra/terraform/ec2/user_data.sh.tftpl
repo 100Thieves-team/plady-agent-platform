@@ -7,6 +7,7 @@ APP_DIR="${app_dir}"
 APP_REPOSITORY_REF="${app_repository_ref}"
 APP_REPOSITORY_URL="${app_repository_url}"
 APP_REPO_SSH_KEY_SSM_PARAMETER_NAME="${app_repo_ssh_key_ssm_parameter_name}"
+ACME_EMAIL="${acme_email}"
 AWS_REGION="${aws_region}"
 DOCKER_COMPOSE_VERSION="${docker_compose_version}"
 ECR_REGISTRY="${ecr_registry}"
@@ -268,6 +269,7 @@ bootstrap_with_deploy_keys() {
   cat >.env.ec2 <<ENV
 LLM_WIKI_IMAGE=$${LLM_WIKI_IMAGE}
 WIKI_UI_IMAGE=$${WIKI_UI_IMAGE}
+ACME_EMAIL=$${ACME_EMAIL}
 WIKI_DOMAIN_NAME=$${WIKI_DOMAIN_NAME}
 MCP_BEARER_TOKEN=$${MCP_BEARER_TOKEN}
 ENV

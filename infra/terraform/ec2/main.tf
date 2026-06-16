@@ -417,6 +417,7 @@ resource "aws_instance" "app" {
     app_repo_ssh_key_ssm_parameter_name       = coalesce(var.app_repo_ssh_key_ssm_parameter_name, "")
     app_repository_ref                        = var.app_repository_ref
     app_repository_url                        = var.app_repository_url
+    acme_email                                = var.acme_email
     aws_region                                = var.aws_region
     docker_compose_version                    = var.docker_compose_version
     ecr_registry                              = local.ecr_registry

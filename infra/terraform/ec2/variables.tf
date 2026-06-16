@@ -93,6 +93,17 @@ variable "domain_name" {
   }
 }
 
+variable "acme_email" {
+  description = "Contact email for ACME certificate accounts. Caddy can use it for CA fallback such as ZeroSSL when Let's Encrypt is rate limited."
+  type        = string
+  default     = "admin@plady.kro.kr"
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.acme_email))
+    error_message = "acme_email must be a valid email address."
+  }
+}
+
 variable "app_dir" {
   description = "Directory on the EC2 instance where the repository is cloned or where you can manually clone it."
   type        = string
