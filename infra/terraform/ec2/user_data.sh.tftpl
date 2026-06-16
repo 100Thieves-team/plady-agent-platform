@@ -174,20 +174,26 @@ if [ ! -d "$${REPO}/.git" ]; then
   exit 0
 fi
 
+export HOME="/root"
+export GIT_SSH_COMMAND="ssh -i $${KEY} -o IdentitiesOnly=yes -o UserKnownHostsFile=$${KNOWN_HOSTS} -o StrictHostKeyChecking=accept-new"
+
+git -C "$${REPO}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 git config --global --add safe.directory "$${REPO}" || true
 git -C "$${REPO}" config user.name "llm-wiki"
 git -C "$${REPO}" config user.email "llm-wiki@localhost"
 
-export GIT_SSH_COMMAND="ssh -i $${KEY} -o IdentitiesOnly=yes -o UserKnownHostsFile=$${KNOWN_HOSTS} -o StrictHostKeyChecking=accept-new"
-
-git -C "$${REPO}" pull --rebase --autostash origin main || true
+if git -C "$${REPO}" rev-parse --verify HEAD >/dev/null 2>&1; then
+  git -C "$${REPO}" pull --rebase --autostash origin main || true
+fi
 
 if [ -n "$(git -C "$${REPO}" status --porcelain)" ]; then
   git -C "$${REPO}" add -A
   git -C "$${REPO}" commit -m "sync: wiki data $(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
 fi
 
-git -C "$${REPO}" push origin HEAD:main
+if git -C "$${REPO}" rev-parse --verify HEAD >/dev/null 2>&1; then
+  git -C "$${REPO}" push origin HEAD:main
+fi
 SYNC
   chmod +x /usr/local/bin/llm-wiki-data-sync
 

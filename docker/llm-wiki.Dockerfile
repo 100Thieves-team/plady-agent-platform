@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 ARG LLM_WIKI_VERSION=0.4.1
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git tar \
