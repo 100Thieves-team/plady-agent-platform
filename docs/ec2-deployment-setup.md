@@ -149,18 +149,21 @@ Terraform output을 GitHub Actions repository variables로 등록합니다. role
 `AWS_ROLE_TO_ASSUME`가 설정되기 전에는 workflow가 의도적으로 skip됩니다.
 
 ```bash
-# GitHub CLI를 쓰는 경우
-/opt/homebrew/bin/gh variable set AWS_ROLE_TO_ASSUME --body "$(terraform output -raw github_actions_ecr_role_arn)"
-/opt/homebrew/bin/gh variable set AWS_REGION --body "ap-northeast-2"
-/opt/homebrew/bin/gh variable set ECR_LLM_WIKI_REPOSITORY --body "$(terraform output -raw ecr_llm_wiki_repository)"
-/opt/homebrew/bin/gh variable set ECR_WIKI_UI_REPOSITORY --body "$(terraform output -raw ecr_wiki_ui_repository)"
+# repo root에서 실행
+scripts/configure-github-actions-ecr.sh
 ```
 
-그 다음 GitHub Actions에서 `Build Docker images` workflow를 수동 실행하거나, `main`에 push해서 이미지를 ECR에 올립니다.
+스크립트는 아래 repository variables를 설정합니다.
+
+- `AWS_ROLE_TO_ASSUME`
+- `AWS_REGION`
+- `ECR_LLM_WIKI_REPOSITORY`
+- `ECR_WIKI_UI_REPOSITORY`
+
+변수 설정과 동시에 GitHub Actions `Build Docker images` workflow를 실행하려면:
 
 ```bash
-# GitHub CLI를 쓰는 경우
-/opt/homebrew/bin/gh workflow run docker-images.yml
+scripts/configure-github-actions-ecr.sh --run-workflow
 ```
 
 이미 EC2가 먼저 떠서 local build fallback 상태라면, workflow 성공 후 EC2에서 아래를 한 번 실행하면 prebuilt image로 전환됩니다.

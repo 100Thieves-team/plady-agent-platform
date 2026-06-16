@@ -56,7 +56,7 @@ PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를
 
 자세한 단계는 [`../../../docs/ec2-deployment-setup.md`](../../../docs/ec2-deployment-setup.md)를 참고하세요.
 
-GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_repository`, `ecr_wiki_ui_repository` output 값을 등록한 뒤 `Build Docker images` workflow를 실행합니다. 배포 후 출력되는 `wiki_ui_url`로 접속합니다. MCP HTTP endpoint는 `mcp_http_url`입니다.
+GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_repository`, `ecr_wiki_ui_repository` output 값을 등록한 뒤 `Build Docker images` workflow를 실행합니다. repo root에서 `scripts/configure-github-actions-ecr.sh --run-workflow`를 실행하면 이 과정을 한 번에 처리할 수 있습니다. 배포 후 출력되는 `wiki_ui_url`로 접속합니다. MCP HTTP endpoint는 `mcp_http_url`입니다.
 
 ## 주의
 
