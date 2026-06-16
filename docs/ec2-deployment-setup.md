@@ -28,7 +28,15 @@ git remote -v
 
 ## 1. GitHub token 준비
 
-자동 clone을 쓰려면 GitHub fine-grained token을 만듭니다.
+자동 clone을 쓰려면 GitHub fine-grained token을 만듭니다. 개인 계정보다는 별도 봇/머신 계정을 권장합니다.
+
+권장 계정 정책:
+
+- 봇 계정 예시: `100thieves-wiki-bot`
+- 봇 계정에는 이 저장소 접근 권한만 부여
+- token 소유자는 개인 계정이 아니라 봇 계정으로 설정
+- token 만료일과 rotation 담당자를 정해 운영 문서에 기록
+- 퇴사/권한 변경에 영향을 받는 개인 token은 사용하지 않기
 
 - 대상 repository: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp)
 - 필요한 권한: **Contents: Read-only**
