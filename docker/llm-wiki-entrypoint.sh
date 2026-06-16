@@ -31,4 +31,21 @@ else
   llm-wiki --config "$LLM_WIKI_CONFIG" spaces set-default "$LLM_WIKI_NAME" || true
 fi
 
+# If the global config volume says the space already exists but the workspace was
+# recreated, llm-wiki only re-registers it. Make the bind-mounted workspace
+# explicitly git-backed in that case too.
+if [ ! -d "$LLM_WIKI_WORKSPACE/.git" ]; then
+  git -C "$LLM_WIKI_WORKSPACE" init
+fi
+
+git -C "$LLM_WIKI_WORKSPACE" config user.name "llm-wiki"
+git -C "$LLM_WIKI_WORKSPACE" config user.email "llm-wiki@localhost"
+
+if ! git -C "$LLM_WIKI_WORKSPACE" rev-parse --verify HEAD >/dev/null 2>&1 || \
+  [ -n "$(git -C "$LLM_WIKI_WORKSPACE" status --porcelain)" ]; then
+  git -C "$LLM_WIKI_WORKSPACE" add -A
+  git -C "$LLM_WIKI_WORKSPACE" diff --cached --quiet || \
+    git -C "$LLM_WIKI_WORKSPACE" commit -m "create: $LLM_WIKI_NAME"
+fi
+
 exec "$@"
