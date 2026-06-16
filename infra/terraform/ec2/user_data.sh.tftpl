@@ -20,7 +20,7 @@ WIKI_DATA_REPO_SSH_KEY_PATH="/home/ec2-user/.ssh/llm_wiki_data_repo"
 
 # Base packages and Docker daemon.
 dnf update -y
-dnf install -y docker git curl ca-certificates openssh-clients
+dnf install -y docker git ca-certificates openssh-clients
 systemctl enable --now docker
 usermod -aG docker ec2-user || true
 
