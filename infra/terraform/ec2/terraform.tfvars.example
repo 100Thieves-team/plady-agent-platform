@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and adjust before applying.
+aws_region   = "ap-northeast-2"
+project_name = "100thieves-wiki"
+
+# t3.large is recommended for the initial Rust Docker build.
+instance_type = "t3.large"
+
+# Optional existing EC2 key pair. Prefer SSM if possible.
+# key_name = "your-key-pair-name"
+
+# The UI can be public, but restrict it if this wiki contains private content.
+allowed_ui_cidr_blocks = ["0.0.0.0/0"]
+
+# Keep MCP and SSH restricted to your IP/CIDR.
+# allowed_mcp_cidr_blocks = ["203.0.113.10/32"]
+# allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
+
+repository_url = "https://github.com/100Thieves-team/100Thieves-wiki-mcp.git"
+repository_ref = "main"

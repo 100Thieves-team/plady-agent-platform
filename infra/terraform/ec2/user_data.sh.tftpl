@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euxo pipefail
+
+exec > >(tee -a /var/log/llm-wiki-bootstrap.log | logger -t llm-wiki-bootstrap -s 2>/dev/console) 2>&1
+
+APP_DIR="${app_dir}"
+REPOSITORY_URL="${repository_url}"
+REPOSITORY_REF="${repository_ref}"
+DOCKER_COMPOSE_VERSION="${docker_compose_version}"
+
+# Base packages and Docker daemon.
+dnf update -y
+dnf install -y docker git curl ca-certificates
+systemctl enable --now docker
+usermod -aG docker ec2-user || true
+
+# Docker Compose v2 plugin.
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64) COMPOSE_ARCH="x86_64" ;;
+  aarch64|arm64) COMPOSE_ARCH="aarch64" ;;
+  *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+esac
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v$${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$${COMPOSE_ARCH}" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+
+# Fetch or update the deployment repository.
+if [ -d "$${APP_DIR}/.git" ]; then
+  git -C "$${APP_DIR}" fetch --all --prune
+  git -C "$${APP_DIR}" checkout "$${REPOSITORY_REF}"
+  git -C "$${APP_DIR}" pull --ff-only origin "$${REPOSITORY_REF}" || true
+else
+  rm -rf "$${APP_DIR}"
+  git clone --branch "$${REPOSITORY_REF}" --depth 1 "$${REPOSITORY_URL}" "$${APP_DIR}"
+fi
+
+cd "$${APP_DIR}"
+docker compose up -d --build
+
+cat >/etc/systemd/system/llm-wiki-compose.service <<SERVICE
+[Unit]
+Description=100 Thieves llm-wiki docker compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=$${APP_DIR}
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable llm-wiki-compose.service

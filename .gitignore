@@ -4,6 +4,15 @@
 # It is its own git-backed wiki space, separate from this wrapper repo.
 wiki-workspace/
 
+# Terraform local state and provider cache
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+
 # Local/editor noise
 .idea/
 .vscode/*.log

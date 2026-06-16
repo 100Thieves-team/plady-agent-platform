@@ -33,3 +33,17 @@ docker compose down -v
 ```
 
 wiki 데이터까지 지우려면 컨테이너를 내린 뒤 로컬 `wiki-workspace/` 디렉터리를 삭제하세요.
+
+## EC2 배포
+
+EC2 한 대에 Docker Compose 스택을 올리는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
+
+```bash
+cd infra/terraform/ec2
+cp terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan
+terraform apply
+```
+
+자세한 설정값과 주의사항은 [`infra/terraform/ec2/README.md`](infra/terraform/ec2/README.md)를 참고하세요.
