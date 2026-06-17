@@ -1,7 +1,11 @@
 {{ define "main" }}
 <article class="page">
   <header class="page-header">
-    <h1 class="page-title">{{ .Title }}</h1>
+    {{ $fallbackTitle := .RelPermalink }}
+    {{ with .File }}
+      {{ $fallbackTitle = .BaseFileName | replaceRE "[-_]+" " " | humanize }}
+    {{ end }}
+    <h1 class="page-title">{{ .Title | default $fallbackTitle }}</h1>
     {{ if .Site.Params.showMetadata }}
       {{ partial "metadata.html" . }}
     {{ end }}
