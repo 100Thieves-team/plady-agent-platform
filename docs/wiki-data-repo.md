@@ -131,9 +131,11 @@ wiki-workspace/
   raw/legacy-team-wiki/attachments/  # 이미지/첨부파일
   raw/legacy-team-wiki/views/        # 기존 view 정의
   raw/legacy-team-wiki/root/         # 루트 markdown/html 문서
-  wiki/                              # 기존 curated wiki seed pages
+  wiki/                              # 새 llm-wiki doc schema로 정규화한 seed pages
   migration/team-wiki-migration-report.md
 ```
+
+legacy repo의 자체 LLM Wiki/Obsidian 규칙은 active 규칙으로 가져오지 않습니다. `AGENTS.md`, `CLAUDE.md` 같은 루트 규칙성 문서는 `raw/legacy-team-wiki/root/`에 archive만 하고, 실제 index 대상 seed page는 현재 repo의 `doc` schema frontmatter로 정규화합니다.
 
 이관 후에는 한 번에 전부 재작성하지 말고 batch별로 검증합니다.
 

@@ -94,6 +94,106 @@ copy_dir() {
   fi
 }
 
+
+transform_wiki_seed() {
+  if [ ! -d "$SRC/wiki" ]; then
+    return 0
+  fi
+
+  if [ "$APPLY" != true ]; then
+    echo "normalize-wiki-seed $SRC/wiki -> $DST/wiki"
+    find "$SRC/wiki" -type f -name '*.md' ! -name '.DS_Store' | sed "s#^$SRC/wiki/#  #" | sort | sed -n '1,80p'
+    return 0
+  fi
+
+  SRC_WIKI="$SRC/wiki" DST_WIKI="$DST/wiki" python3 <<'PY_NORMALIZE'
+from pathlib import Path
+from datetime import date
+import os
+import re
+
+src = Path(os.environ['SRC_WIKI'])
+dst = Path(os.environ['DST_WIKI'])
+
+def split_frontmatter(text):
+    if text.startswith('---\n'):
+        end = text.find('\n---\n', 4)
+        if end != -1:
+            return text[4:end], text[end+5:]
+    return '', text
+
+def scalar(frontmatter, key):
+    m = re.search(rf'^{re.escape(key)}:\s*(.*)$', frontmatter, re.M)
+    if not m:
+        return ''
+    value = m.group(1).strip()
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        value = value[1:-1]
+    return value
+
+def first_heading(body):
+    for line in body.splitlines():
+        if line.startswith('# '):
+            return line[2:].strip()
+    return ''
+
+def summary_from_body(body):
+    m = re.search(r'(?ms)^## Summary\s+(.+?)(?:\n## |\Z)', body)
+    if not m:
+        return ''
+    for line in m.group(1).splitlines():
+        line = line.strip()
+        if line and not line.startswith('-'):
+            return line[:180]
+    return ''
+
+def yaml_string(value):
+    value = str(value).replace('"', '\\"')
+    return f'"{value}"'
+
+for path in src.rglob('*.md'):
+    if path.name == '.DS_Store':
+        continue
+    rel = path.relative_to(src)
+    target = dst / rel
+    text = path.read_text(encoding='utf-8')
+    fm, body = split_frontmatter(text)
+    title = scalar(fm, 'title') or first_heading(body) or path.stem
+    legacy_type = scalar(fm, 'type') or 'unknown'
+    last_updated = scalar(fm, 'updated') or scalar(fm, 'date') or date.today().isoformat()
+    purpose = scalar(fm, 'purpose')
+    summary = purpose or summary_from_body(body) or f'Legacy team-wiki seed page: {title}'
+    rel_posix = rel.as_posix()
+    section = rel.parts[0] if len(rel.parts) > 1 else 'root'
+    tags = ['legacy-team-wiki', section]
+    if legacy_type and legacy_type != 'unknown':
+        tags.append(legacy_type.lower())
+
+    new_fm = [
+        '---',
+        f'title: {yaml_string(title)}',
+        'type: doc',
+        'status: active',
+        f'summary: {yaml_string(summary)}',
+        f'last_updated: {yaml_string(last_updated)}',
+        'tags:',
+    ]
+    for tag in tags:
+        safe = re.sub(r'[^0-9A-Za-z가-힣_-]+', '-', tag).strip('-').lower() or 'legacy'
+        new_fm.append(f'  - {safe}')
+    new_fm += [
+        f'legacy_source_repo: {yaml_string("100Thieves-team/team-wiki")}',
+        f'legacy_source_path: {yaml_string("wiki/" + rel_posix)}',
+        f'legacy_type: {yaml_string(legacy_type)}',
+        '---',
+        '',
+    ]
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('\n'.join(new_fm) + body.lstrip(), encoding='utf-8')
+PY_NORMALIZE
+}
+
 count_files() {
   local dir="$1"
   local pattern="$2"
@@ -127,7 +227,7 @@ copy_dir "$SRC/raw" "$DST/raw/legacy-team-wiki/raw"
 copy_dir "$SRC/Clippings" "$DST/raw/legacy-team-wiki/Clippings"
 copy_dir "$SRC/attachments" "$DST/raw/legacy-team-wiki/attachments"
 copy_dir "$SRC/views" "$DST/raw/legacy-team-wiki/views"
-copy_dir "$SRC/wiki" "$DST/wiki"
+transform_wiki_seed
 
 ROOT_DEST="$DST/raw/legacy-team-wiki/root"
 mkdir -p "$ROOT_DEST"
@@ -171,7 +271,7 @@ tags: [migration, team-wiki]
 | attachments/ | raw/legacy-team-wiki/attachments/ | Binary/image assets preserved |
 | views/ | raw/legacy-team-wiki/views/ | Legacy view definitions preserved |
 | root docs | raw/legacy-team-wiki/root/ | Root-level markdown/html docs preserved |
-| wiki/ | wiki/ | Curated seed pages imported for llm-wiki indexing |
+| wiki/ | wiki/ | Curated seed pages normalized to this repo's llm-wiki `doc` schema |
 
 ## Counts at migration time
 
@@ -181,6 +281,8 @@ tags: [migration, team-wiki]
 - Attachments: ${ATTACHMENT_COUNT}
 
 ## Follow-up
+
+The legacy repo's own wiki rules are not imported as active rules. Root-level docs such as AGENTS.md/CLAUDE.md are archived under `raw/legacy-team-wiki/root/` only.
 
 Run MCP ingest/lint in batches:
 
