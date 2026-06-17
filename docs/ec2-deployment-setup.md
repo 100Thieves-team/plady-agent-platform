@@ -269,7 +269,30 @@ docker compose up -d --build
 docker compose ps
 ```
 
-## 9. 배포 확인
+## 9. Codex MCP client 설정
+
+Codex에서 팀 wiki MCP를 쓰려면 로컬 Codex 설정에 HTTP MCP endpoint를 추가합니다. Bearer token 값은 Codex config에 저장하지 않고 환경변수로 주입합니다.
+
+```bash
+scripts/configure-codex-mcp.sh
+
+export LLM_WIKI_MCP_BEARER_TOKEN="$(aws ssm get-parameter \
+  --region ap-northeast-2 \
+  --name /100thieves/wiki/mcp-bearer-token \
+  --with-decryption \
+  --query Parameter.Value \
+  --output text)"
+
+codex mcp list | grep team-wiki
+```
+
+현재 운영 endpoint는 `https://plady.kro.kr/mcp`입니다. `wiki.plady.kro.kr`로 전환한 뒤에는 아래처럼 URL을 지정해서 다시 실행하세요.
+
+```bash
+scripts/configure-codex-mcp.sh --url https://wiki.plady.kro.kr/mcp
+```
+
+## 10. 배포 확인
 
 로컬에서 Terraform output URL로 확인합니다.
 
@@ -323,7 +346,7 @@ sudo git log --oneline -5
 sudo /usr/local/bin/llm-wiki-data-sync
 ```
 
-## 10. 운영 작업
+## 11. 운영 작업
 
 ### 새 코드 반영
 
@@ -363,7 +386,7 @@ terraform destroy
 
 EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는지 확인하세요.
 
-## 11. 자주 보는 문제
+## 12. 자주 보는 문제
 
 - **EC2가 app repo clone 실패**: app repo deploy key가 [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp)에 등록되어 있는지, `app_repo_ssh_key_ssm_parameter_name`이 맞는지 확인합니다.
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
