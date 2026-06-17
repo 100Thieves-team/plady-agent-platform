@@ -94,7 +94,7 @@ variable "domain_name" {
 }
 
 variable "acme_email" {
-  description = "Contact email for ACME certificate accounts. Caddy can use it for CA fallback such as ZeroSSL when Let's Encrypt is rate limited."
+  description = "Contact email for the Caddy ACME account. Caddy uses ZeroSSL as the primary ACME CA for this deployment."
   type        = string
   default     = "admin@plady.kro.kr"
 
