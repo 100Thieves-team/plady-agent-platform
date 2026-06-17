@@ -5,7 +5,8 @@
     {{ with .Content }}<div class="section-intro">{{ . }}</div>{{ end }}
   </header>
 
-  {{ $pages := .Pages | complement (where .Pages "Params.status" "archived") }}
+  {{ $allPages := union .Sections .RegularPagesRecursive }}
+  {{ $pages := $allPages | complement (where $allPages "Params.status" "archived") }}
   {{ $byType := $pages.GroupByParam "type" }}
 
   {{ if gt (len $byType) 1 }}
