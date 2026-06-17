@@ -276,12 +276,11 @@ Codex에서 팀 wiki MCP를 쓰려면 로컬 Codex 설정에 HTTP MCP endpoint�
 ```bash
 scripts/configure-codex-mcp.sh
 
-export LLM_WIKI_MCP_BEARER_TOKEN="$(aws ssm get-parameter \
-  --region ap-northeast-2 \
-  --name /100thieves/wiki/mcp-bearer-token \
-  --with-decryption \
-  --query Parameter.Value \
-  --output text)"
+# GUI Codex 앱이면 macOS login session에 token env를 설정한 뒤 앱을 재시작합니다.
+scripts/set-codex-mcp-token-env.sh
+
+# 터미널에서 Codex CLI를 바로 실행할 때만 현재 shell export가 필요합니다.
+eval "$(scripts/set-codex-mcp-token-env.sh --mode shell)"
 
 codex mcp list | grep team-wiki
 ```
