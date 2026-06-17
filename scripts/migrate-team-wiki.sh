@@ -286,10 +286,10 @@ The legacy repo's own wiki rules are not imported as active rules. Root-level do
 
 Run MCP ingest/lint in batches:
 
-1. wiki_ingest path=people
-2. wiki_ingest path=topics
-3. wiki_ingest path=sources
-4. wiki_ingest path=../raw/legacy-team-wiki/raw
+1. wiki_ingest path=wiki/people
+2. wiki_ingest path=wiki/topics
+3. wiki_ingest path=wiki/sources
+4. wiki_ingest path=raw/legacy-team-wiki/raw
 5. wiki_lint
 6. wiki_index_rebuild
 
