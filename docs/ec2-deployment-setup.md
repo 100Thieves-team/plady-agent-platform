@@ -109,7 +109,7 @@ project_name  = "100thieves-wiki"
 instance_type = "t3.micro"
 root_volume_size = 30
 
-domain_name = "wiki.plady.kro.kr"
+domain_name = "plady.kro.kr"
 acme_email = "admin@plady.kro.kr"
 
 # t3.micro가 너무 느리고 계정에서 허용된다면 t3.small로 올리세요.
@@ -176,13 +176,13 @@ Terraform이 Elastic IP를 만들고 `dns_a_record` output에 필요한 값을 �
 
 ```bash
 terraform output -raw dns_a_record
-# 예: wiki.plady.kro.kr A 203.0.113.10
+# 예: plady.kro.kr A 203.0.113.10
 ```
 
 DNS 설정 후 로컬에서 확인합니다.
 
 ```bash
-dig +short wiki.plady.kro.kr A
+dig +short plady.kro.kr A
 ```
 
 출력 IP가 Terraform의 `public_ip`와 같아야 Caddy가 ZeroSSL 인증서를 발급받을 수 있습니다. DNS 전파 전에도 EC2는 떠 있지만 HTTPS 검증은 실패할 수 있고, Caddy가 자동으로 재시도합니다.
@@ -285,10 +285,10 @@ eval "$(scripts/set-codex-mcp-token-env.sh --mode shell)"
 codex mcp list | grep team-wiki
 ```
 
-현재 운영 endpoint는 `https://plady.kro.kr/mcp`입니다. `wiki.plady.kro.kr`로 전환한 뒤에는 아래처럼 URL을 지정해서 다시 실행하세요.
+현재 운영 endpoint는 `https://plady.kro.kr/mcp`입니다. Codex MCP 설정을 다시 적용하려면 아래처럼 URL을 지정해서 실행하세요.
 
 ```bash
-scripts/configure-codex-mcp.sh --url https://wiki.plady.kro.kr/mcp
+scripts/configure-codex-mcp.sh --url https://plady.kro.kr/mcp
 ```
 
 ## 10. 배포 확인
@@ -297,7 +297,7 @@ scripts/configure-codex-mcp.sh --url https://wiki.plady.kro.kr/mcp
 
 ```bash
 curl -I $(terraform output -raw wiki_ui_url)
-# https://wiki.plady.kro.kr
+# https://plady.kro.kr
 ```
 
 MCP endpoint는 HTTPS와 bearer token이 모두 있어야 proxy를 통과합니다. token 없이 호출하면 `401 Unauthorized`가 나와야 정상입니다.
@@ -391,8 +391,8 @@ EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
 - **`AccessDeniedException` on SSM**: SSM parameter 이름이 Terraform 변수와 일치하는지 확인하고, customer-managed KMS를 썼다면 KMS key ARN 변수도 설정합니다.
 - **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.
-- **HTTPS 인증서 발급 실패**: `dig +short wiki.plady.kro.kr A`가 `terraform output -raw public_ip`와 같은지 확인합니다. 80/tcp가 열려 있어야 ACME HTTP-01 검증이 통과합니다. `kro.kr` 공유 도메인은 Let's Encrypt registered-domain rate limit에 걸릴 수 있어 Caddy의 기본 ACME CA를 ZeroSSL로 지정했습니다.
-- **직접 `:1313`, `:18765` 접근 실패**: HTTPS 구성에서는 direct container ports를 public으로 닫고 Caddy만 `80/443`으로 공개합니다. UI는 `https://wiki.plady.kro.kr`, MCP는 `https://wiki.plady.kro.kr/mcp`를 사용하세요.
+- **HTTPS 인증서 발급 실패**: `dig +short plady.kro.kr A`가 `terraform output -raw public_ip`와 같은지 확인합니다. 80/tcp가 열려 있어야 ACME HTTP-01 검증이 통과합니다. `kro.kr` 공유 도메인은 Let's Encrypt registered-domain rate limit에 걸릴 수 있어 Caddy의 기본 ACME CA를 ZeroSSL로 지정했습니다.
+- **직접 `:1313`, `:18765` 접근 실패**: HTTPS 구성에서는 direct container ports를 public으로 닫고 Caddy만 `80/443`으로 공개합니다. UI는 `https://plady.kro.kr`, MCP는 `https://plady.kro.kr/mcp`를 사용하세요.
 - **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
 - **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.
 - **Codex에서 `team-wiki`가 `Tools: (none)`으로 보임**: 먼저 서버 자체가 tool을 내보내는지 확인합니다. `scripts/check-mcp-tools.sh`를 실행했을 때 `wiki_ingest`, `wiki_search` 등이 보이면 서버는 정상입니다. 그 다음 `~/.codex/config.toml`의 `[mcp_servers.team-wiki]`에서 `bearer_token_env_var = "LLM_WIKI_MCP_BEARER_TOKEN"`인지 확인하세요. 여기에 실제 token 값을 넣으면 Codex는 그 문자열을 환경변수 이름으로 오해합니다.

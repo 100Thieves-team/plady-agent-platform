@@ -85,7 +85,7 @@ variable "mcp_port" {
 variable "domain_name" {
   description = "Public DNS name served by Caddy with automatic HTTPS."
   type        = string
-  default     = "wiki.plady.kro.kr"
+  default     = "plady.kro.kr"
 
   validation {
     condition     = length(trimspace(var.domain_name)) > 0
