@@ -271,7 +271,7 @@ tags: [migration, team-wiki]
 | attachments/ | raw/legacy-team-wiki/attachments/ | Binary/image assets preserved |
 | views/ | raw/legacy-team-wiki/views/ | Legacy view definitions preserved |
 | root docs | raw/legacy-team-wiki/root/ | Root-level markdown/html docs preserved |
-| wiki/ | wiki/ | Curated seed pages normalized to this repo's llm-wiki `doc` schema |
+| wiki/ | wiki/ | Curated seed pages normalized to this repo's llm-wiki \`doc\` schema |
 
 ## Counts at migration time
 
@@ -282,7 +282,7 @@ tags: [migration, team-wiki]
 
 ## Follow-up
 
-The legacy repo's own wiki rules are not imported as active rules. Root-level docs such as AGENTS.md/CLAUDE.md are archived under `raw/legacy-team-wiki/root/` only.
+The legacy repo's own wiki rules are not imported as active rules. Root-level docs such as AGENTS.md/CLAUDE.md are archived under \`raw/legacy-team-wiki/root/\` only.
 
 Run MCP ingest/lint in batches:
 
