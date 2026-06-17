@@ -84,6 +84,13 @@ unset MCP_BEARER_TOKEN
 
 기본 AWS managed KMS key를 쓰면 추가 설정이 필요 없습니다. customer-managed KMS key를 쓴 경우에는 Terraform 변수에 해당 KMS key ARN도 설정합니다.
 MCP bearer token 값은 채팅/문서에 남기지 말고, 필요할 때 SSM에서 조회하세요.
+이 token은 서버 시작 때마다 새로 만들지 않습니다. SSM의 `/100thieves/wiki/mcp-bearer-token` 값을 다시 `put-parameter --overwrite`로 덮어쓸 때만 rotation됩니다.
+
+SSM의 고정 token 값을 EC2 `.env.ec2`에 다시 반영해야 할 때는 repo root에서 아래 helper를 실행합니다. 이 명령은 token을 새로 만들지 않고 SSM SecureString 값을 다시 읽어 `mcp-proxy`만 재기동합니다.
+
+```bash
+scripts/refresh-ec2-runtime-env.sh
+```
 
 SSM 저장이 끝난 뒤 로컬 private key 파일은 필요 없으면 삭제해도 됩니다.
 
