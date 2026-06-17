@@ -2,7 +2,7 @@
 
 결론부터 말하면, MCP로 `wiki_ingest` 요청을 날렸을 때 쌓이는 회의록/ADR/멘토링 정리 데이터는 이 wrapper repo가 아니라 **별도 git repo인 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)**에 저장되도록 구성합니다.
 
-로컬/컨테이너 내부에서는 그 repo가 `wiki-workspace/` 경로로 mount됩니다.
+로컬/컨테이너 내부에서는 그 repo가 `wiki-workspace/` 경로로 mount됩니다. Hugo UI는 `wiki-workspace/wiki`를 사이트 root로, `wiki-workspace/raw`를 `/raw/` section으로 노출합니다.
 
 ## 저장소 역할
 

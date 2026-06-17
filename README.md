@@ -19,7 +19,7 @@ docker compose up -d --build
 | `mcp-proxy` | `http://localhost:18765/mcp` | Bearer token으로 보호되는 llm-wiki MCP HTTP endpoint |
 | `wiki-ui` | `http://localhost:1313` | Hugo wiki UI |
 
-처음 실행하면 `llm-wiki` 컨테이너가 로컬 `./wiki-workspace`에 `100thieves` wiki space를 만들고, `wiki-ui`가 같은 wiki content를 Hugo로 보여줍니다. `./wiki-workspace`는 llm-wiki가 init하는 별도 git repo라서 이 wrapper repo에서는 ignore합니다.
+처음 실행하면 `llm-wiki` 컨테이너가 로컬 `./wiki-workspace`에 `100thieves` wiki space를 만들고, `wiki-ui`가 같은 wiki content를 Hugo로 보여줍니다. UI는 curated page(`/people`, `/topics`, `/sources`)와 raw source archive(`/raw`)를 함께 노출합니다. `./wiki-workspace`는 llm-wiki가 init하는 별도 git repo라서 이 wrapper repo에서는 ignore합니다.
 
 MCP 요청은 `Authorization: Bearer $MCP_BEARER_TOKEN` 헤더가 있어야 `mcp-proxy`를 통과합니다.
 

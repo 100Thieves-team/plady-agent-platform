@@ -1,6 +1,6 @@
-baseURL = "https://example.github.io/my-wiki/"
-title = "My Wiki"
-languageCode = "en"
+baseURL = "https://plady.kro.kr/"
+title = "100Thieves Wiki"
+languageCode = "ko-kr"
 
 # Point directly at the wiki content directory.
 # Option A (Hugo site at wiki repo root): contentDir = "wiki"
@@ -18,16 +18,28 @@ languageCode = "en"
   author = "owner"
   type   = "type"
 
-# Mount wiki/ as the content directory, excluding non-content folders
+# Mount curated wiki pages and raw source documents as Hugo content.
+# `wiki/` stays at the site root (people/topics/sources), while `raw/` is
+# exposed under /raw/ so original meeting notes and ADR inputs remain readable.
 [module]
   [[module.mounts]]
     source = "../wiki"
     target = "content"
     excludeFiles = [
-      "inbox/**",
-      "raw/**",
-      "schemas/**",
       "**/*.json",
+      "**/*.txt",
+      "**/LINT.md",
+    ]
+
+  [[module.mounts]]
+    source = "../raw"
+    target = "content/raw"
+    excludeFiles = [
+      "attachments/**",
+      "views/**",
+      "**/*.json",
+      "**/*.yml",
+      "**/*.yaml",
       "**/*.txt",
       "**/LINT.md",
     ]
@@ -46,7 +58,7 @@ languageCode = "en"
   section = ["HTML", "RSS"]
 
 [params]
-  description = "A wiki powered by llm-wiki and Hugo"
+  description = "100Thieves team knowledge base powered by llm-wiki and Hugo"
   mermaid     = true
   showMetadata   = true
   showBacklinks  = true
