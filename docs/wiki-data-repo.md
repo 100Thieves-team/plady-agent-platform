@@ -105,3 +105,49 @@ docker compose up -d --build
 - 운영 SSOT는 [`team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.
 - EC2 인스턴스를 destroy하기 전에 `llm-wiki-data-sync`가 최신 commit을 push했는지 확인하세요.
 - data repo Deploy Key는 write 권한이 필요하지만, 권한 범위가 `team-wiki-v2` 단일 repo로 제한되므로 PAT보다 안전합니다.
+
+## Legacy `team-wiki` migration
+
+기존 [`100Thieves-team/team-wiki`](https://github.com/100Thieves-team/team-wiki) 문서는 `scripts/migrate-team-wiki.sh`로 새 llm-wiki data workspace에 이관합니다.
+
+기본은 dry-run입니다.
+
+```bash
+scripts/migrate-team-wiki.sh
+```
+
+실제 복사:
+
+```bash
+scripts/migrate-team-wiki.sh --apply
+```
+
+이관 구조:
+
+```text
+wiki-workspace/
+  raw/legacy-team-wiki/raw/          # 기존 raw 원문
+  raw/legacy-team-wiki/Clippings/    # 기존 clipping 문서
+  raw/legacy-team-wiki/attachments/  # 이미지/첨부파일
+  raw/legacy-team-wiki/views/        # 기존 view 정의
+  raw/legacy-team-wiki/root/         # 루트 markdown/html 문서
+  wiki/                              # 기존 curated wiki seed pages
+  migration/team-wiki-migration-report.md
+```
+
+이관 후에는 한 번에 전부 재작성하지 말고 batch별로 검증합니다.
+
+```bash
+scripts/check-mcp-tools.sh
+# MCP에서 wiki_ingest, wiki_lint, wiki_index_rebuild를 batch별로 실행
+```
+
+권장 순서:
+
+1. `wiki/people`
+2. `wiki/topics`
+3. `wiki/sources`
+4. `raw/legacy-team-wiki/raw`
+5. `raw/legacy-team-wiki/Clippings`
+
+마지막으로 `wiki-workspace`에서 `git status`를 확인하고, 문제가 없으면 `team-wiki-v2`에 commit/push합니다.
