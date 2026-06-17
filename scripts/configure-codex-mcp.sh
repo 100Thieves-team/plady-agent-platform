@@ -55,6 +55,17 @@ command -v "$CODEX_BIN" >/dev/null 2>&1 || {
   exit 1
 }
 
+if [[ ! "$TOKEN_ENV_VAR" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  cat >&2 <<ERROR
+Invalid --token-env-var: ${TOKEN_ENV_VAR}
+
+Pass the environment variable name, not the token value.
+Example:
+  --token-env-var LLM_WIKI_MCP_BEARER_TOKEN
+ERROR
+  exit 1
+fi
+
 if "$CODEX_BIN" mcp get "$MCP_NAME" >/dev/null 2>&1; then
   "$CODEX_BIN" mcp remove "$MCP_NAME"
 fi

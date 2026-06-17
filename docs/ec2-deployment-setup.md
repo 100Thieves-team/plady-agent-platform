@@ -396,6 +396,7 @@ EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는
 - **직접 `:1313`, `:18765` 접근 실패**: HTTPS 구성에서는 direct container ports를 public으로 닫고 Caddy만 `80/443`으로 공개합니다. UI는 `https://wiki.plady.kro.kr`, MCP는 `https://wiki.plady.kro.kr/mcp`를 사용하세요.
 - **ECR pull 실패**: GitHub Actions workflow가 성공했는지, EC2 role에 ECR pull 권한이 있는지, `.env.ec2`의 image URI가 맞는지 확인합니다.
 - **UI 접속 불가**: `allowed_ui_cidr_blocks`, EC2 public IP, `docker compose --env-file .env.ec2 -f compose.ec2.yaml ps`를 확인합니다.
+- **Codex에서 `team-wiki`가 `Tools: (none)`으로 보임**: 먼저 서버 자체가 tool을 내보내는지 확인합니다. `scripts/check-mcp-tools.sh`를 실행했을 때 `wiki_ingest`, `wiki_search` 등이 보이면 서버는 정상입니다. 그 다음 `~/.codex/config.toml`의 `[mcp_servers.team-wiki]`에서 `bearer_token_env_var = "LLM_WIKI_MCP_BEARER_TOKEN"`인지 확인하세요. 여기에 실제 token 값을 넣으면 Codex는 그 문자열을 환경변수 이름으로 오해합니다.
 - **MCP가 `401 Unauthorized` 반환**: `Authorization: Bearer <token>` 헤더가 없거나 SSM의 `/100thieves/wiki/mcp-bearer-token` 값과 다릅니다.
 - **MCP 접속 불가**: `allowed_mcp_cidr_blocks`는 기본 차단입니다. 필요한 client IP만 `/32`로 열거나, public 노출이 필요할 때만 `0.0.0.0/0`로 열어주세요. HTTP bearer token은 TLS 없이는 탈취될 수 있으므로 운영에서는 HTTPS를 붙이는 것을 권장합니다.
 - **기존 EC2에 user_data 변경이 반영되지 않음**: user-data는 기본적으로 최초 부팅 때 실행됩니다. 새 인스턴스로 재생성하거나 EC2 안에서 수동 절차를 실행하세요.
