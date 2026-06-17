@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linear Issue Session"
+  short_description: "Run one Linear issue via Workpad"
+  default_prompt: "Use $linear-issue-session to run this Linear issue session through a single ## Codex Workpad, Jean boundary, validation, and proof-of-work handoff."
