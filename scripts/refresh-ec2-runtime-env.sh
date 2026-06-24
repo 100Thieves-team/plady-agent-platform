@@ -7,7 +7,7 @@ TF_DIR="${TF_DIR:-${REPO_ROOT}/infra/terraform/ec2}"
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 TERRAFORM_BIN="${TERRAFORM_BIN:-terraform}"
 AWS_BIN="${AWS_BIN:-aws}"
-APP_DIR="${APP_DIR:-/opt/100thieves-wiki-mcp}"
+APP_DIR="${APP_DIR:-/opt/plady-agent-platform}"
 MCP_BEARER_TOKEN_SSM_PARAMETER_NAME="${MCP_BEARER_TOKEN_SSM_PARAMETER_NAME:-/100thieves/wiki/mcp-bearer-token}"
 DRY_RUN=false
 
@@ -17,6 +17,8 @@ Usage: $0 [options]
 
 Refresh EC2 runtime .env.ec2 from stable SSM secrets without rotating them.
 Use this after changing domain_name or after intentionally rotating the MCP token in SSM.
+Existing legacy EC2 hosts cloned at /opt/100thieves-wiki-mcp must pass
+--app-dir /opt/100thieves-wiki-mcp or set APP_DIR=/opt/100thieves-wiki-mcp.
 
 Options:
   --tf-dir DIR       Terraform directory. Default: ${TF_DIR}

@@ -1,63 +1,90 @@
-# 100Thieves wiki MCP
+# plady-agent-platform
 
-기존 코드베이스를 비우고 upstream 코드를 그대로 받은 상태입니다.
+`plady-agent-platform` is the platform foundation repo for Plady agent services. It currently wraps the upstream `llm-wiki` MCP server and Hugo wiki UI, and defines the contracts that future platform work will implement under `agent.plady.io`.
+
+Upstream code mirrors:
 
 - `llm-wiki/`: https://github.com/geronimo-iia/llm-wiki
 - `llm-wiki-hugo-cms/`: https://github.com/geronimo-iia/llm-wiki-hugo-cms
 
-## Docker Compose 실행
+## Platform contracts
+
+PLA-246 establishes the initial platform contracts in `docs/`:
+
+- [`docs/platform-contract.md`](docs/platform-contract.md): root `plady.io` vs delegated `agent.plady.io` ownership, public endpoint contracts, Route 53 access note, and SSM parameter name contracts.
+- [`docs/pla-244-handoff.md`](docs/pla-244-handoff.md): handoff contract for PLA-244 Slack ↔ Hermes integration work.
+
+Current endpoint contract:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `https://wiki.agent.plady.io` | public wiki UI |
+| `https://mcp.agent.plady.io/mcp` | bearer-token-protected llm-wiki MCP HTTP endpoint |
+| `https://hermes.agent.plady.io` | Hermes Gateway public origin |
+| `https://hermes.agent.plady.io/v1` | OpenAI-compatible Hermes base URL |
+| `https://n8n.agent.plady.io` | reserved for later n8n work |
+| OTEL collector | internal-only; no public endpoint |
+
+Secret values must never be committed or pasted into Linear/GitHub/docs. Only the parameter names documented in [`docs/platform-contract.md`](docs/platform-contract.md) are part of this repo contract.
+
+## Agent skills
+
+Approved agent skills live under `.agents/skills/<name>/` as the SSOT. Claude-compatible skill discovery uses relative symlinks under `.claude/skills/<name>`.
+
+```text
+.agents/skills/linear-issue-session/
+.agents/skills/linear-parallel-planner/
+.claude/skills/linear-issue-session -> ../../.agents/skills/linear-issue-session
+.claude/skills/linear-parallel-planner -> ../../.agents/skills/linear-parallel-planner
+```
+
+Do not copy unapproved skill/plugin expansions from abandoned worktrees into this repo.
+
+## Docker Compose local run
 
 ```bash
 export MCP_BEARER_TOKEN="dev-only-change-me"
 docker compose up -d --build
 ```
 
-실행되는 서비스:
+Services:
 
-| Service | URL | 용도 |
+| Service | URL | Purpose |
 | --- | --- | --- |
-| `mcp-proxy` | `http://localhost:18765/mcp` | Bearer token으로 보호되는 llm-wiki MCP HTTP endpoint |
-| `wiki-ui` | `http://localhost:1313` | Hugo wiki UI |
+| `mcp-proxy` | `http://localhost:18765/mcp` | local bearer-token-protected llm-wiki MCP HTTP endpoint |
+| `wiki-ui` | `http://localhost:1313` | local Hugo wiki UI |
 
-처음 실행하면 `llm-wiki` 컨테이너가 로컬 `./wiki-workspace`에 `100thieves` wiki space를 만들고, `wiki-ui`가 같은 wiki content를 Hugo로 보여줍니다. UI는 curated page(`/people`, `/topics`, `/sources`)와 raw source archive(`/raw`)를 함께 노출합니다. `./wiki-workspace`는 llm-wiki가 init하는 별도 git repo라서 이 wrapper repo에서는 ignore합니다.
+On first run, the `llm-wiki` container initializes a `100thieves` wiki space in local `./wiki-workspace`, and `wiki-ui` renders the same wiki content with curated pages (`/people`, `/topics`, `/sources`) plus raw source archive (`/raw`). `./wiki-workspace` is a separate git repo initialized by llm-wiki and is ignored by this wrapper repo.
 
-MCP 요청은 `Authorization: Bearer $MCP_BEARER_TOKEN` 헤더가 있어야 `mcp-proxy`를 통과합니다.
+MCP requests must include the `Authorization: Bearer $MCP_BEARER_TOKEN` header to pass through `mcp-proxy`.
 
-중지:
+Stop services:
 
 ```bash
 docker compose down
 ```
 
-설정 볼륨까지 초기화하려면:
+Reset Compose volumes:
 
 ```bash
 docker compose down -v
 ```
 
-wiki 데이터까지 지우려면 컨테이너를 내린 뒤 로컬 `wiki-workspace/` 디렉터리를 삭제하세요.
+To delete local wiki data too, stop containers and remove `wiki-workspace/`.
 
-## Wiki 데이터 저장소
+## Wiki data repository
 
-MCP ingest로 쌓이는 실제 회의록/ADR/멘토링 데이터는 이 wrapper repo가 아니라 `wiki-workspace/`에 clone된 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 저장됩니다. 자세한 내용은 [`docs/wiki-data-repo.md`](docs/wiki-data-repo.md)를 참고하세요.
+MCP ingest output (meeting notes, ADRs, mentoring notes, and other durable wiki knowledge) is stored in [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2), not in this wrapper repo. See [`docs/wiki-data-repo.md`](docs/wiki-data-repo.md).
 
-## EC2 배포
+## Deployment status
 
-EC2 한 대와 ECR repositories/GitHub Actions OIDC role을 만드는 Terraform 설정은 `infra/terraform/ec2/`에 있습니다.
-저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화하고, EC2는 GitHub Actions가 ECR에 올린 prebuilt image를 pull합니다. 운영 노출은 Caddy + ZeroSSL로 `https://plady.kro.kr`와 `https://plady.kro.kr/mcp`를 사용합니다.
+The legacy EC2/Caddy deployment docs remain for historical wiki deployment context, but they are **not** the new `agent.plady.io` platform contract. New DNS/ACM/ALB/Terraform implementation belongs to PLA-247 and must follow [`docs/platform-contract.md`](docs/platform-contract.md).
 
-```bash
-cd infra/terraform/ec2
-cp terraform.tfvars.example terraform.tfvars
-terraform init
-terraform plan
-terraform apply
-```
+Legacy references:
 
-실제 배포자가 따라갈 단계별 절차는 [`docs/ec2-deployment-setup.md`](docs/ec2-deployment-setup.md)를 참고하세요. 자세한 Terraform 설정값과 주의사항은 [`infra/terraform/ec2/README.md`](infra/terraform/ec2/README.md)에 있습니다.
-MCP Bearer token은 SSM SecureString `/100thieves/wiki/mcp-bearer-token`에 고정 저장되며, 서버 재시작만으로 바뀌지 않습니다. SSM 값을 EC2 런타임에 다시 반영해야 하면 `scripts/refresh-ec2-runtime-env.sh`를 사용하세요.
-Codex client에는 `scripts/configure-codex-mcp.sh`로 MCP endpoint를 추가하고, token은 `LLM_WIKI_MCP_BEARER_TOKEN` 환경변수로 주입합니다. GUI Codex용 token 환경변수는 `scripts/set-codex-mcp-token-env.sh`로 macOS login session에 설정하세요.
+- [`docs/ec2-deployment-setup.md`](docs/ec2-deployment-setup.md)
+- [`infra/terraform/ec2/README.md`](infra/terraform/ec2/README.md)
 
 ## Agent ingest workflow
 
-`wiki_ingest`는 AI compile 자체가 아니라 검증/index/git commit 단계입니다. raw 문서를 durable wiki knowledge로 바꾸는 책임은 MCP client agent가 맡습니다. 표준 절차는 [`docs/agent-ingest-workflow.md`](docs/agent-ingest-workflow.md)를 참고하세요.
+`wiki_ingest` is the validation/index/git-commit step, not the AI compilation step itself. The MCP client agent is responsible for transforming raw documents into durable wiki knowledge. See [`docs/agent-ingest-workflow.md`](docs/agent-ingest-workflow.md).

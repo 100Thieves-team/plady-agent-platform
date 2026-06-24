@@ -8,14 +8,14 @@
 
 | 저장소/경로 | 역할 | Git 관리 |
 | --- | --- | --- |
-| [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) | Docker Compose, Terraform, upstream `llm-wiki`, Hugo UI scaffold | app wrapper repo |
+| [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform) | Docker Compose, Terraform, upstream `llm-wiki`, Hugo UI scaffold | app wrapper repo |
 | [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2) | 실제 wiki content, raw 문서, schema, llm-wiki ingest 결과 | wiki data SSOT repo |
 | `wiki-workspace/` | `team-wiki-v2`가 clone되는 로컬 작업 디렉터리 | wrapper repo에서는 `.gitignore` 처리 |
 
 현재 구조는 아래처럼 동작합니다.
 
 ```text
-100Thieves-wiki-mcp/
+plady-agent-platform/
   compose.yaml
   docker/
   llm-wiki/
@@ -31,7 +31,7 @@
 EC2에서는 기본적으로 아래 경로가 됩니다.
 
 ```text
-/opt/100thieves-wiki-mcp/wiki-workspace/
+/opt/plady-agent-platform/wiki-workspace/
 ```
 
 ## ingest 시 일어나는 일
@@ -59,7 +59,7 @@ git remote -v
 
 PAT는 범위가 넓고 회전/감사가 불편하므로 기본 방식으로 쓰지 않습니다. 대신 repo별 GitHub Deploy Key를 사용합니다.
 
-- app repo deploy key: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) read-only clone용
+- app repo deploy key: [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform) read-only clone용
 - wiki data deploy key: [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2) clone/push용, write 허용
 - private key는 AWS SSM Parameter Store `SecureString`에 저장
 - Terraform state에는 SSM parameter 이름만 저장
@@ -92,8 +92,8 @@ sudo /usr/local/bin/llm-wiki-data-sync
 기존 wiki 데이터 repo를 새 서버에 붙이려면 app repo를 clone한 뒤, Compose 실행 전에 `wiki-workspace` 위치에 [`team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)를 clone합니다.
 
 ```bash
-git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git /opt/100thieves-wiki-mcp
-cd /opt/100thieves-wiki-mcp
+git clone https://github.com/100Thieves-team/plady-agent-platform.git /opt/plady-agent-platform
+cd /opt/plady-agent-platform
 rm -rf wiki-workspace
 git clone https://github.com/100Thieves-team/team-wiki-v2.git wiki-workspace
 docker compose up -d --build

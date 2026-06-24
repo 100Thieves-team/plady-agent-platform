@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TF_DIR="${TF_DIR:-${REPO_ROOT}/infra/terraform/ec2}"
-GITHUB_REPO="${GITHUB_REPO:-100Thieves-team/100Thieves-wiki-mcp}"
+GITHUB_REPO="${GITHUB_REPO:-100Thieves-team/plady-agent-platform}"
 GH_BIN="${GH_BIN:-/opt/homebrew/bin/gh}"
 TERRAFORM_BIN="${TERRAFORM_BIN:-terraform}"
 AWS_REGION="${AWS_REGION:-}"

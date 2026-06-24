@@ -1,14 +1,28 @@
 # EC2 배포 셋업 절차
 
-이 문서는 `100Thieves-wiki-mcp`를 AWS EC2에 배포하기 위해 작업자가 순서대로 수행할 절차입니다.
+
+> **PLA-246 note:** This is legacy EC2/Caddy wiki deployment guidance. It is kept for historical operations only. The new `agent.plady.io` platform contract is [`docs/platform-contract.md`](platform-contract.md); DNS/ACM/ALB/Terraform implementation belongs to PLA-247. Legacy `plady.kro.kr` and `/100thieves/wiki/...` values below are not the new platform contract.
+
+이 문서는 `plady-agent-platform`를 AWS EC2에 배포하기 위해 작업자가 순서대로 수행할 절차입니다.
 
 **선택한 안전한 방식:** GitHub PAT를 쓰지 않고, GitHub **Deploy Key + AWS SSM Parameter Store SecureString**을 사용합니다. 컨테이너 이미지는 GitHub Actions가 **ECR**에 미리 빌드/푸시하고, EC2는 `docker compose pull && up`만 수행합니다.
 
-- App repo deploy key: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) clone용, **read-only**
+- App repo deploy key: [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform) clone용, **read-only**
 - Wiki data repo deploy key: [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2) wiki 산출물 저장용, **write 허용**
 - private key 값은 Terraform state에 넣지 않고 SSM SecureString에만 저장합니다.
 - EC2는 instance role로 SSM에서 private key를 읽고, repo별 SSH host alias를 사용합니다.
 - EC2는 ECR read 권한으로 prebuilt image를 pull합니다.
+
+
+### Existing legacy instance path
+
+New examples use `/opt/plady-agent-platform` after the repo rename. If you are operating an already-running legacy EC2 instance that was cloned at `/opt/100thieves-wiki-mcp`, do not assume the path changed in place. Either migrate the checkout deliberately or pass the old path explicitly when using helper scripts, for example:
+
+```bash
+APP_DIR=/opt/100thieves-wiki-mcp scripts/refresh-ec2-runtime-env.sh
+# or
+scripts/refresh-ec2-runtime-env.sh --app-dir /opt/100thieves-wiki-mcp
+```
 
 ## 0. 준비물
 
@@ -42,7 +56,7 @@ ssh-keygen -t ed25519 -C "llm-wiki-data-repo" -f .deploy-keys/llm_wiki_data_repo
 
 GitHub에 public key를 등록합니다.
 
-1. [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) → Settings → Deploy keys
+1. [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform) → Settings → Deploy keys
    - title: `llm-wiki-ec2-prod-app-readonly`
    - key: `.deploy-keys/llm_wiki_app_repo.pub`
    - **Allow write access: OFF**
@@ -122,9 +136,9 @@ allowed_https_cidr_blocks = ["0.0.0.0/0"]
 allowed_ui_cidr_blocks  = []
 allowed_mcp_cidr_blocks = []
 
-app_dir = "/opt/100thieves-wiki-mcp"
+app_dir = "/opt/plady-agent-platform"
 
-app_repository_url                  = "git@github.com-llm-wiki-app:100Thieves-team/100Thieves-wiki-mcp.git"
+app_repository_url                  = "git@github.com-llm-wiki-app:100Thieves-team/plady-agent-platform.git"
 app_repository_ref                  = "main"
 app_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/app-repo-deploy-key"
 
@@ -213,7 +227,7 @@ scripts/configure-github-actions-ecr.sh --run-workflow
 이미 EC2가 먼저 떠서 local build fallback 상태라면, workflow 성공 후 EC2에서 아래를 한 번 실행하면 prebuilt image로 전환됩니다.
 
 ```bash
-cd /opt/100thieves-wiki-mcp
+cd /opt/plady-agent-platform
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml pull
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
 ```
@@ -225,7 +239,7 @@ Deploy Key 설정이 완료되어 있으면 cloud-init이 아래 작업을 수�
 1. Docker/Git/curl/SSH client 설치
 2. Docker Compose 설치
 3. SSM Parameter Store에서 app repo deploy private key 읽기
-4. [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp) clone
+4. [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform) clone
 5. SSM Parameter Store에서 wiki data repo deploy private key 읽기
 6. [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)를 `wiki-workspace/`로 clone
 7. SSM SecureString에서 MCP bearer token을 읽어 `.env.ec2`에 기록
@@ -246,7 +260,7 @@ sudo tail -f /var/log/llm-wiki-bootstrap.log
 상태 확인:
 
 ```bash
-cd /opt/100thieves-wiki-mcp
+cd /opt/plady-agent-platform
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo systemctl status llm-wiki-data-sync.timer
 ```
@@ -261,8 +275,8 @@ sudo -iu ec2-user
 cat ~/LLM_WIKI_DEPLOY.md
 
 gh auth login
-git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git /opt/100thieves-wiki-mcp
-cd /opt/100thieves-wiki-mcp
+git clone https://github.com/100Thieves-team/plady-agent-platform.git /opt/plady-agent-platform
+cd /opt/plady-agent-platform
 rm -rf wiki-workspace
 git clone https://github.com/100Thieves-team/team-wiki-v2.git wiki-workspace
 docker compose up -d --build
@@ -328,7 +342,7 @@ unset MCP_BEARER_TOKEN
 EC2 내부 상태:
 
 ```bash
-cd /opt/100thieves-wiki-mcp
+cd /opt/plady-agent-platform
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml logs --tail=100 llm-wiki
 sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml logs --tail=100 wiki-ui
@@ -339,7 +353,7 @@ sudo journalctl -u llm-wiki-data-sync.service -n 100 --no-pager
 `team-wiki-v2`에 push되는지 확인:
 
 ```bash
-cd /opt/100thieves-wiki-mcp/wiki-workspace
+cd /opt/plady-agent-platform/wiki-workspace
 sudo git remote -v
 sudo git log --oneline -5
 sudo /usr/local/bin/llm-wiki-data-sync
@@ -352,7 +366,7 @@ sudo /usr/local/bin/llm-wiki-data-sync
 ```bash
 aws ssm start-session --region ap-northeast-2 --target <instance-id>
 sudo -iu ec2-user
-cd /opt/100thieves-wiki-mcp
+cd /opt/plady-agent-platform
 git pull --ff-only origin main
 docker compose --env-file .env.ec2 -f compose.ec2.yaml pull
 docker compose --env-file .env.ec2 -f compose.ec2.yaml up -d
@@ -387,7 +401,7 @@ EC2를 destroy하기 전에 `team-wiki-v2`에 최신 commit이 push되어 있는
 
 ## 12. 자주 보는 문제
 
-- **EC2가 app repo clone 실패**: app repo deploy key가 [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp)에 등록되어 있는지, `app_repo_ssh_key_ssm_parameter_name`이 맞는지 확인합니다.
+- **EC2가 app repo clone 실패**: app repo deploy key가 [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform)에 등록되어 있는지, `app_repo_ssh_key_ssm_parameter_name`이 맞는지 확인합니다.
 - **EC2가 wiki data repo clone/push 실패**: data repo deploy key가 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)에 등록되어 있고 **Allow write access**가 켜져 있는지 확인합니다.
 - **`AccessDeniedException` on SSM**: SSM parameter 이름이 Terraform 변수와 일치하는지 확인하고, customer-managed KMS를 썼다면 KMS key ARN 변수도 설정합니다.
 - **`EntityAlreadyExists` on GitHub OIDC provider**: AWS 계정에 `token.actions.githubusercontent.com` OIDC provider가 이미 있으면 `github_actions_oidc_provider_arn`에 기존 ARN을 넣고 다시 `terraform apply`합니다.

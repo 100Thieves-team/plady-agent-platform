@@ -107,13 +107,13 @@ variable "acme_email" {
 variable "app_dir" {
   description = "Directory on the EC2 instance where the repository is cloned or where you can manually clone it."
   type        = string
-  default     = "/opt/100thieves-wiki-mcp"
+  default     = "/opt/plady-agent-platform"
 }
 
 variable "app_repository_url" {
   description = "SSH Git repository URL for this app repo. Use the github.com-llm-wiki-app host alias when using the deploy-key bootstrap."
   type        = string
-  default     = "git@github.com-llm-wiki-app:100Thieves-team/100Thieves-wiki-mcp.git"
+  default     = "git@github.com-llm-wiki-app:100Thieves-team/plady-agent-platform.git"
 }
 
 variable "app_repository_ref" {
@@ -204,7 +204,7 @@ variable "mcp_bearer_token_kms_key_arn" {
 variable "github_actions_repository" {
   description = "GitHub repository allowed to assume the ECR push role, in owner/name form."
   type        = string
-  default     = "100Thieves-team/100Thieves-wiki-mcp"
+  default     = "100Thieves-team/plady-agent-platform"
 }
 
 variable "github_actions_oidc_provider_arn" {
