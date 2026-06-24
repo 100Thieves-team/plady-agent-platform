@@ -1,11 +1,9 @@
 # EC2 Terraform deployment
 
-
 > **PLA-246 note:** This module documents the legacy EC2/Caddy wiki deployment. Do not treat it as the new `agent.plady.io` platform Terraform contract; PLA-247 owns the replacement DNS/ACM/ALB/platform Terraform work.
 
 이 Terraform 모듈은 EC2 한 대, ECR repositories, GitHub Actions OIDC push role을 만듭니다.
 GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화하고, EC2는 ECR prebuilt image를 pull합니다.
-
 
 ## Legacy path note
 

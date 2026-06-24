@@ -2,6 +2,8 @@
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
+# Legacy default: old EC2/Caddy SSM path. For agent-platform, pass
+# --param /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token after provisioning.
 TOKEN_PARAM="${TOKEN_PARAM:-/100thieves/wiki/mcp-bearer-token}"
 TOKEN_ENV_VAR="${TOKEN_ENV_VAR:-LLM_WIKI_MCP_BEARER_TOKEN}"
 AWS_BIN="${AWS_BIN:-aws}"
@@ -12,6 +14,7 @@ usage() {
 Usage: $0 [options]
 
 Load the Codex MCP bearer token from AWS SSM and expose it without printing the token.
+The default parameter is the legacy EC2/Caddy SSM path; pass --param for the new agent-platform path once provisioned.
 Default mode writes it to macOS launchctl so GUI Codex can read it after app restart.
 
 Options:

@@ -1,6 +1,5 @@
 # EC2 배포 셋업 절차
 
-
 > **PLA-246 note:** This is legacy EC2/Caddy wiki deployment guidance. It is kept for historical operations only. The new `agent.plady.io` platform contract is [`docs/platform-contract.md`](platform-contract.md); DNS/ACM/ALB/Terraform implementation belongs to PLA-247. Legacy `plady.kro.kr` and `/100thieves/wiki/...` values below are not the new platform contract.
 
 이 문서는 `plady-agent-platform`를 AWS EC2에 배포하기 위해 작업자가 순서대로 수행할 절차입니다.
@@ -12,7 +11,6 @@
 - private key 값은 Terraform state에 넣지 않고 SSM SecureString에만 저장합니다.
 - EC2는 instance role로 SSM에서 private key를 읽고, repo별 SSH host alias를 사용합니다.
 - EC2는 ECR read 권한으로 prebuilt image를 pull합니다.
-
 
 ### Existing legacy instance path
 

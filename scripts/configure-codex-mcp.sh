@@ -3,6 +3,8 @@ set -euo pipefail
 
 CODEX_BIN="${CODEX_BIN:-codex}"
 MCP_NAME="${MCP_NAME:-team-wiki}"
+# Legacy default: the old EC2/Caddy wiki endpoint. For agent-platform, pass
+# --url https://mcp.agent.plady.io/mcp after PLA-247 provisions it.
 MCP_URL="${MCP_URL:-https://plady.kro.kr/mcp}"
 TOKEN_ENV_VAR="${TOKEN_ENV_VAR:-LLM_WIKI_MCP_BEARER_TOKEN}"
 
@@ -11,6 +13,7 @@ usage() {
 Usage: $0 [options]
 
 Add the 100Thieves LLM Wiki MCP endpoint to local Codex config.
+The default URL is the legacy EC2/Caddy endpoint; pass --url for the new agent-platform endpoint once PLA-247 provisions it.
 The bearer token itself is not stored in Codex config; Codex reads it from an environment variable.
 
 Options:

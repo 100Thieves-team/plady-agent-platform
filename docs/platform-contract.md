@@ -8,6 +8,15 @@
 - 실 secret/token 값은 이 문서·코드·Linear에 절대 남기지 않습니다. 값은 각 runtime이 Secret Manager/SSM 등 승인된 secret store에서 조회합니다.
 - 기존 EC2/Caddy/`plady.kro.kr` 문서는 legacy wiki deployment 참고 자료입니다. 새 platform endpoint 계약은 이 문서를 우선합니다.
 
+
+## Delegated contract boundaries
+
+PLA-246 fixes the foundation contract: domain ownership, public endpoint names, reserved/internal endpoint boundaries, and secret parameter names. It does **not** define the full Hermes agent session lifecycle or MCP registry/safe tool policy.
+
+- Hermes agent session lifecycle (start/stop/restart/health, storage, and runbook) is owned by PLA-249.
+- MCP registry and safe tool policy are owned by PLA-250.
+- PLA-244 should consume those downstream contracts when it needs session semantics or write-tool approval policy; it should not infer them from this foundation document.
+
 ## 도메인 소유 경계
 
 | 영역 | 소유/변경 권한 | 계약 |

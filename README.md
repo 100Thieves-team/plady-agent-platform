@@ -14,7 +14,7 @@ PLA-246 establishes the initial platform contracts in `docs/`:
 - [`docs/platform-contract.md`](docs/platform-contract.md): root `plady.io` vs delegated `agent.plady.io` ownership, public endpoint contracts, Route 53 access note, and SSM parameter name contracts.
 - [`docs/pla-244-handoff.md`](docs/pla-244-handoff.md): handoff contract for PLA-244 Slack ↔ Hermes integration work.
 
-Current endpoint contract:
+Current endpoint summary (the SSOT is [`docs/platform-contract.md`](docs/platform-contract.md)):
 
 | Endpoint | Purpose |
 | --- | --- |

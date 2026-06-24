@@ -37,6 +37,7 @@
 - Hermes Gateway runtime, auth boundary, agent session lifecycle은 PLA-249의 책임입니다.
 - MCP registry/safe tool policy는 PLA-250의 책임입니다.
 - DNS/ACM/ALB와 public ingress는 PLA-247의 책임입니다.
+- PLA-246은 session lifecycle과 MCP safe tool policy의 owner를 지정할 뿐, 상세 계약을 정의하지 않습니다.
 - PLA-244는 Hermes session storage schema나 MCP registry를 직접 정의하지 않습니다. 필요한 필드는 PLA-249/250 계약에 이슈 링크로 요청합니다.
 
 ## Ready checklist for PLA-244
@@ -46,6 +47,8 @@ PLA-244는 아래가 충족되면 platform 쪽 계약을 소비할 수 있습니
 - [ ] `https://hermes.agent.plady.io` ingress가 PLA-247/249에서 준비됨.
 - [ ] `https://hermes.agent.plady.io/v1` OpenAI-compatible base URL이 PLA-249에서 준비됨.
 - [ ] Slack에서 호출할 Hermes path가 PLA-249에서 확정됨.
+- [ ] Agent session lifecycle/start-stop-health 계약이 PLA-249에서 확정됨.
+- [ ] MCP registry/safe tool policy가 PLA-250에서 확정됨.
 - [ ] `/plady/agent-platform/<env>/hermes-api-server-key` 값이 secret store에 준비됨.
 - [ ] Hermes가 MCP를 호출해야 하는 경우 `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` 값이 secret store에 준비됨.
 - [ ] 실제 secret 값은 Slack/Linear/GitHub 문서에 남기지 않음.
