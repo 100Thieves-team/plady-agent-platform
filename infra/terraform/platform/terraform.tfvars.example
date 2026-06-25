@@ -1,0 +1,39 @@
+# Copy to terraform.tfvars and adjust before applying.
+aws_region   = "ap-northeast-2"
+project_name = "plady-agent-platform"
+environment  = "prod"
+
+agent_zone_name = "agent.plady.io"
+
+# ---------------------------------------------------------------------------
+# DNS mode
+#
+#   manage_dns = true  -> create the Route 53 delegated zone, ACM validation
+#                         records, and service alias records in Route 53, and
+#                         emit agent_zone_name_servers for PLA-248 to delegate
+#                         from the Cloudflare plady.io root.
+#
+#   manage_dns = false -> Route 53 is blocked by an SCP in this account. Skip all
+#                         Route 53 resources, apply the ALB/ACM/compute stack, and
+#                         create the ACM validation CNAME + service CNAMEs in
+#                         Cloudflare using the acm_validation_records and
+#                         cloudflare_service_records outputs. See README runbook.
+# ---------------------------------------------------------------------------
+manage_dns = true
+
+# Public ingress to the ALB.
+allowed_https_cidr_blocks = ["0.0.0.0/0"]
+allowed_http_cidr_blocks  = ["0.0.0.0/0"]
+
+# Origin instance. TLS terminates at the ALB; the origin serves plain HTTP.
+instance_type   = "t3.small"
+app_origin_port = 80
+# allowed_ssh_cidr_blocks = ["203.0.113.10/32"]  # prefer SSM Session Manager
+
+# SSM parameter name contract (names only — never put values here).
+# hermes_api_server_key_ssm_parameter_name = "/plady/agent-platform/prod/hermes-api-server-key"
+# mcp_bearer_token_ssm_parameter_name      = "/plady/agent-platform/prod/llm-wiki-mcp-bearer-token"
+# ssm_parameter_kms_key_arn                = "arn:aws:kms:ap-northeast-2:123456789012:key/..."
+
+github_actions_repository = "100Thieves-team/plady-agent-platform"
+# github_actions_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
