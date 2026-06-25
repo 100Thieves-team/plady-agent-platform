@@ -27,12 +27,12 @@ allowed_ui_cidr_blocks = []
 allowed_mcp_cidr_blocks = []
 # allowed_ssh_cidr_blocks = ["203.0.113.10/32"]
 
-app_dir = "/opt/100thieves-wiki-mcp"
+app_dir = "/opt/plady-agent-platform"
 
 # Recommended: SSH Deploy Keys stored as SSM SecureString values.
-# App repo key: GitHub Deploy Key on 100Thieves-team/100Thieves-wiki-mcp, read-only.
+# App repo key: GitHub Deploy Key on 100Thieves-team/plady-agent-platform, read-only.
 # Wiki data key: GitHub Deploy Key on 100Thieves-team/team-wiki-v2, allow write access.
-app_repository_url                  = "git@github.com-llm-wiki-app:100Thieves-team/100Thieves-wiki-mcp.git"
+app_repository_url                  = "git@github.com-llm-wiki-app:100Thieves-team/plady-agent-platform.git"
 app_repository_ref                  = "main"
 app_repo_ssh_key_ssm_parameter_name = "/100thieves/wiki/app-repo-deploy-key"
 

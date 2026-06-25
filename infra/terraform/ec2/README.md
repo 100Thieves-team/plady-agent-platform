@@ -1,7 +1,13 @@
 # EC2 Terraform deployment
 
+> **PLA-246 note:** This module documents the legacy EC2/Caddy wiki deployment. Do not treat it as the new `agent.plady.io` platform Terraform contract; PLA-247 owns the replacement DNS/ACM/ALB/platform Terraform work.
+
 이 Terraform 모듈은 EC2 한 대, ECR repositories, GitHub Actions OIDC push role을 만듭니다.
 GitHub 인증과 저장소 clone은 PAT 대신 GitHub Deploy Key를 SSM Parameter Store SecureString에 저장해서 자동화하고, EC2는 ECR prebuilt image를 pull합니다.
+
+## Legacy path note
+
+The renamed repo default path is `/opt/plady-agent-platform`. Existing EC2 hosts created before the rename may still use `/opt/100thieves-wiki-mcp`; pass `APP_DIR=/opt/100thieves-wiki-mcp` or `--app-dir /opt/100thieves-wiki-mcp` to helper scripts such as `scripts/refresh-ec2-runtime-env.sh` unless you have intentionally migrated the checkout.
 
 ## 생성 리소스
 
@@ -43,8 +49,8 @@ sudo -iu ec2-user
 cat ~/LLM_WIKI_DEPLOY.md
 
 gh auth login
-git clone https://github.com/100Thieves-team/100Thieves-wiki-mcp.git /opt/100thieves-wiki-mcp
-cd /opt/100thieves-wiki-mcp
+git clone https://github.com/100Thieves-team/plady-agent-platform.git /opt/plady-agent-platform
+cd /opt/plady-agent-platform
 docker compose up -d --build
 docker compose ps
 ```
@@ -55,7 +61,7 @@ docker compose ps
 
 PAT는 사용하지 않습니다. repo별 Deploy Key를 만들고 private key를 SSM SecureString에 저장합니다. MCP bearer token도 SSM SecureString에 저장하고 EC2가 부팅 시 `.env.ec2`로만 읽습니다.
 
-- App repo: [`100Thieves-team/100Thieves-wiki-mcp`](https://github.com/100Thieves-team/100Thieves-wiki-mcp), read-only deploy key
+- App repo: [`100Thieves-team/plady-agent-platform`](https://github.com/100Thieves-team/plady-agent-platform), read-only deploy key
 - Wiki data repo: [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2), write deploy key
 
 자세한 단계는 [`../../../docs/ec2-deployment-setup.md`](../../../docs/ec2-deployment-setup.md)를 참고하세요.
@@ -69,7 +75,7 @@ GitHub Actions 변수에는 `github_actions_ecr_role_arn`, `ecr_llm_wiki_reposit
 - Caddy가 `domain_name`에 대해 ZeroSSL 인증서를 자동 발급하고 UI는 `https://<domain_name>`, MCP는 `https://<domain_name>/mcp`로 노출합니다.
 - MCP HTTP는 Caddy 뒤의 `mcp-proxy`가 `Authorization: Bearer <token>`을 검사한 뒤에만 llm-wiki로 전달합니다.
 - `allowed_ui_cidr_blocks`, `allowed_mcp_cidr_blocks`는 direct container port용입니다. HTTPS 운영에서는 빈 배열로 두고 `80/443`만 공개하세요.
-- llm-wiki 데이터는 EC2의 `/opt/100thieves-wiki-mcp/wiki-workspace`에 clone되는 별도 git repo이며, 기본 remote는 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.
+- llm-wiki 데이터는 EC2의 `/opt/plady-agent-platform/wiki-workspace`에 clone되는 별도 git repo이며, 기본 remote는 [`100Thieves-team/team-wiki-v2`](https://github.com/100Thieves-team/team-wiki-v2)입니다.
 
 ## 확인 명령
 
@@ -84,7 +90,7 @@ SSM 접속 후 상태 확인:
 
 ```bash
 sudo systemctl status docker
-cd /opt/100thieves-wiki-mcp && sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
+cd /opt/plady-agent-platform && sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml ps
 sudo tail -f /var/log/llm-wiki-bootstrap.log
 sudo systemctl status llm-wiki-data-sync.timer
 ```

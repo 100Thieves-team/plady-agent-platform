@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Legacy defaults: old EC2/Caddy wiki endpoint and SSM path. For the new
+# agent-platform endpoint, override MCP_URL and TOKEN_PARAM explicitly.
 MCP_URL="${MCP_URL:-https://plady.kro.kr/mcp}"
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 TOKEN_PARAM="${TOKEN_PARAM:-/100thieves/wiki/mcp-bearer-token}"

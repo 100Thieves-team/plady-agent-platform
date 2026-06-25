@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linear Parallel Planner"
+  short_description: "Plan Linear agent DAGs"
+  default_prompt: "Use $linear-parallel-planner to plan my Linear issues into Jean-ready sessions with concise CLI output, Workpad bootstraps, dispatch eligibility, and a reconciliation/merge plan."
