@@ -73,5 +73,40 @@ services:
       - "1313:1313"
     restart: unless-stopped
 
+  # Hermes Agent Gateway (NousResearch/hermes-agent). OpenAI-compatible API
+  # server on port 8642. Gated behind the `hermes` profile so a default
+  # `docker compose up` is unaffected and provider keys are not required.
+  # See docs/hermes-gateway.md.
+  hermes-gateway:
+    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.4.3}
+    # Image publishes linux/amd64 only; pin platform so it pulls on Apple
+    # Silicon (via emulation) and EC2 (native amd64) alike.
+    platform: ${HERMES_PLATFORM:-linux/amd64}
+    profiles:
+      - hermes
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
+      # Required at runtime when the `hermes` profile is used (value from
+      # /plady/agent-platform/<env>/hermes-api-server-key). Left optional here
+      # (`:-`) on purpose: a `:?` guard would abort interpolation for the whole
+      # file — including non-hermes `docker compose up`/`config` — because
+      # Compose interpolates every service before profile filtering. Hermes
+      # itself requires this key for every deployment and refuses to serve
+      # without it, so an empty value fails fast in the container, not the file.
+      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
+      HERMES_UID: ${HERMES_UID:-10000}
+      HERMES_GID: ${HERMES_GID:-10000}
+    volumes:
+      - hermes-home:/opt/data
+    # Loopback-only host publish: the gateway persists OAuth tokens and tool
+    # credentials in /opt/data, so do not expose it on all host interfaces.
+    ports:
+      - "127.0.0.1:8642:8642"
+    restart: unless-stopped
+
 volumes:
   llm-wiki-config:
+  hermes-home:

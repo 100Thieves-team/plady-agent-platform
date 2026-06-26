@@ -13,6 +13,7 @@ PLA-246 establishes the initial platform contracts in `docs/`:
 
 - [`docs/platform-contract.md`](docs/platform-contract.md): root `plady.io` vs delegated `agent.plady.io` ownership, public endpoint contracts, Route 53 access note, and SSM parameter name contracts.
 - [`docs/pla-244-handoff.md`](docs/pla-244-handoff.md): handoff contract for PLA-244 Slack ↔ Hermes integration work.
+- [`docs/hermes-gateway.md`](docs/hermes-gateway.md): Hermes Gateway runtime runbook (PLA-249) — start/stop/restart/health, session persistence/reset/rollback, security notes, and the OpenAI-compatible client contract.
 
 Current endpoint summary (the SSOT is [`docs/platform-contract.md`](docs/platform-contract.md)):
 
@@ -53,6 +54,15 @@ Services:
 | --- | --- | --- |
 | `mcp-proxy` | `http://localhost:18765/mcp` | local bearer-token-protected llm-wiki MCP HTTP endpoint |
 | `wiki-ui` | `http://localhost:1313` | local Hugo wiki UI |
+| `hermes-gateway` | `http://localhost:8642/v1` | Hermes Agent OpenAI-compatible gateway (profile `hermes`; see [`docs/hermes-gateway.md`](docs/hermes-gateway.md)) |
+
+The `hermes-gateway` service is gated behind the `hermes` compose profile and needs `HERMES_API_SERVER_KEY` (value from `/plady/agent-platform/<env>/hermes-api-server-key`). It is not started by a default `docker compose up`:
+
+```bash
+export HERMES_API_SERVER_KEY="dev-only-change-me"
+docker compose --profile hermes up -d hermes-gateway
+scripts/hermes-gateway-smoke.sh   # health + auth boundary + /v1/models
+```
 
 On first run, the `llm-wiki` container initializes a `100thieves` wiki space in local `./wiki-workspace`, and `wiki-ui` renders the same wiki content with curated pages (`/people`, `/topics`, `/sources`) plus raw source archive (`/raw`). `./wiki-workspace` is a separate git repo initialized by llm-wiki and is ignored by this wrapper repo.
 
