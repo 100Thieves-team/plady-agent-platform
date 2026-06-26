@@ -14,6 +14,8 @@ PLA-246 establishes the initial platform contracts in `docs/`:
 - [`docs/platform-contract.md`](docs/platform-contract.md): root `plady.io` vs delegated `agent.plady.io` ownership, public endpoint contracts, Route 53 access note, and SSM parameter name contracts.
 - [`docs/pla-244-handoff.md`](docs/pla-244-handoff.md): handoff contract for PLA-244 Slack ↔ Hermes integration work.
 - [`docs/hermes-gateway.md`](docs/hermes-gateway.md): Hermes Gateway runtime runbook (PLA-249) — start/stop/restart/health, session persistence/reset/rollback, security notes, and the OpenAI-compatible client contract.
+- [`docs/otel-collector.md`](docs/otel-collector.md): internal-only OpenTelemetry Collector runbook (PLA-251) — internal OTLP targets, file/local-first export, and the privacy/sanitization contract (no raw prompts/completions, secrets/tokens, or PII).
+- [`docs/n8n-placeholder.md`](docs/n8n-placeholder.md): `n8n.agent.plady.io` reserved/disabled placeholder contract (PLA-251) and the future enable checklist.
 
 Current endpoint summary (the SSOT is [`docs/platform-contract.md`](docs/platform-contract.md)):
 
@@ -23,8 +25,8 @@ Current endpoint summary (the SSOT is [`docs/platform-contract.md`](docs/platfor
 | `https://mcp.agent.plady.io/mcp` | bearer-token-protected llm-wiki MCP HTTP endpoint |
 | `https://hermes.agent.plady.io` | Hermes Gateway public origin |
 | `https://hermes.agent.plady.io/v1` | OpenAI-compatible Hermes base URL |
-| `https://n8n.agent.plady.io` | reserved for later n8n work |
-| OTEL collector | internal-only; no public endpoint |
+| `https://n8n.agent.plady.io` | reserved/disabled placeholder ([`docs/n8n-placeholder.md`](docs/n8n-placeholder.md)) |
+| OTEL collector | internal-only; no public endpoint ([`docs/otel-collector.md`](docs/otel-collector.md)) |
 
 Secret values must never be committed or pasted into Linear/GitHub/docs. Only the parameter names documented in [`docs/platform-contract.md`](docs/platform-contract.md) are part of this repo contract.
 
@@ -63,6 +65,24 @@ export HERMES_API_SERVER_KEY="dev-only-change-me"
 docker compose --profile hermes up -d hermes-gateway
 scripts/hermes-gateway-smoke.sh   # health + auth boundary + /v1/models
 ```
+
+The `otel-collector` service is also profile-gated (`otel`) and **internal-only** —
+it receives OTLP on the compose network at `otel-collector:4317` (gRPC) /
+`otel-collector:4318` (HTTP), has no host publish and no public endpoint, and
+exports file/local-first while stripping raw prompts/completions, secrets/tokens,
+and PII (see [`docs/otel-collector.md`](docs/otel-collector.md)):
+
+```bash
+# validate config without starting
+docker run --rm -v "$PWD/otel/collector-config.yaml":/etc/otelcol-contrib/config.yaml:ro \
+  otel/opentelemetry-collector-contrib:0.154.0 validate --config /etc/otelcol-contrib/config.yaml
+
+docker compose --profile otel up -d otel-collector
+```
+
+`n8n.agent.plady.io` is a reserved, disabled placeholder only (the public ALB
+returns 503; the compose `n8n` block is commented out and cannot start). See
+[`docs/n8n-placeholder.md`](docs/n8n-placeholder.md).
 
 On first run, the `llm-wiki` container initializes a `100thieves` wiki space in local `./wiki-workspace`, and `wiki-ui` renders the same wiki content with curated pages (`/people`, `/topics`, `/sources`) plus raw source archive (`/raw`). `./wiki-workspace` is a separate git repo initialized by llm-wiki and is ignored by this wrapper repo.
 
