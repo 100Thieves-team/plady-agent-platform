@@ -11,6 +11,8 @@ Use this skill inside one issue worker session. One Linear issue owns one narrow
 
 Use the single `## Codex Workpad` comment as the progress SSOT. Do not scatter execution state across issue body edits, extra progress comments, and local notes. If Linear comment editing is unavailable, create a local `_workspace/linear-checkins/` Workpad update draft and say exactly what could not be written.
 
+The `## Codex Workpad` header is a fixed progress-comment label, independent of which execution backend (`claude`, `codex`, `cursor`, or `opencode`) runs the session. Keep the header verbatim regardless of backend so tooling and the daily planner can match it.
+
 ## Jean Context Rule
 
 When running inside Jean:

@@ -1,6 +1,6 @@
 ---
 name: linear-parallel-planner
-description: Plan Linear issues into safe parallel agent sessions with Symphony-style dispatch eligibility, state-machine routing, Codex Workpad bootstrap/update plans, Jean worktree/session manifests, merge plans, and reconciliation sweeps. Use for Linear issue decomposition, daily In Progress planning, assigned issue boards, parent/sub-issue DAGs, cmux or Jean parallel launch plans, stalled active issue reconciliation, Rework/Human Review routing, and approved Jean MCP worktree/session launches.
+description: Plan Linear issues into safe parallel agent sessions with Symphony-style dispatch eligibility, state-machine routing, user-selected execution backend (claude/codex/cursor/opencode), Codex Workpad bootstrap/update plans, Jean worktree/session manifests, merge plans, and reconciliation sweeps. Use for Linear issue decomposition, daily In Progress planning, assigned issue boards, parent/sub-issue DAGs, cmux or Jean parallel launch plans, stalled active issue reconciliation, Rework/Human Review routing, and approved Jean MCP worktree/session launches.
 ---
 
 # Linear Parallel Planner
@@ -114,6 +114,7 @@ Keep the planning process thorough, but keep the default CLI result short and de
 - Do not manually run `git worktree add` when Jean MCP is available.
 - Launch only rows with satisfied start condition. Keep blocked rows in the manifest with the blocker.
 - Before `create_worktree`, resolve the source branch/upstream for each row. Pass the branch the work should be created from as `baseBranch`; do not silently fall back to `origin/dev`.
+- The execution backend is a user choice surfaced during planning, not a hardcoded default. Offer `claude`, `codex`, `cursor`, or `opencode`; propose `codex` by default, and call `mcp__jean.create_session` with the backend confirmed in the approved manifest row. Do not spawn a session with an unconfirmed backend.
 - Default Jean chat `executionMode` is `plan`. Use `build` only when the user explicitly asks sessions to implement immediately.
 - Always pass `executionMode` explicitly to `mcp__jean.send_chat_message`; never rely on Jean, MCP, SDK, or client defaults.
 - Treat "바로 구현해", "build 모드로 보내", "즉시 구현 시작", or equivalent wording as explicit `build` approval. A launch approval alone is not `build` approval.
@@ -167,7 +168,7 @@ Use this flow for daily In Progress/assigned work.
    - End-of-day: integration, Workpad/Linear state sweep.
 5. Generate one Korean session launch prompt per launchable issue. Tell workers to use `$linear-issue-session` before coding.
 6. Generate Workpad bootstrap/update drafts for issues missing a current Workpad.
-7. Generate Jean MCP launch manifest with `customName`, `baseBranch`, `sessionName`, `executionMode`, and start condition.
+7. Generate Jean MCP launch manifest with `customName`, `baseBranch`, `backend`, `sessionName`, `executionMode`, and start condition.
 8. In the default CLI output, show only prompt/workpad/manifest summaries. Paste full prompts or Workpad drafts only on explicit request, Linear update, or approved Jean launch.
 
 ## Reconciliation Sweep Mode
@@ -253,6 +254,7 @@ Answer before proposing sub-issues or sessions. These are internal planning chec
 10. Does this need an ADR/tech spec before implementation?
 11. Which items are safe to launch now, and which must wait for a contract branch/merge?
 12. Does each launchable issue have or need a `## Codex Workpad`?
+13. Which execution backend should each session use (`claude`/`codex`/`cursor`/`opencode`), and has the user confirmed it?
 
 ## Decomposition Rules
 
@@ -436,15 +438,17 @@ Only use a contract-first branch as base after it has a committed contract. Othe
 
 Every launchable plan must carry a Jean launch manifest. In default CLI output, show the compact form below; keep `sessionName` and the full Korean first prompt available internally for launch execution.
 
-| Issue | Launch? | customName | baseBranch | executionMode | Start condition |
-|---|---|---|---|---|---|
+| Issue | Launch? | backend | customName | baseBranch | executionMode | Start condition |
+|---|---|---|---|---|---|---|
 
 Rules:
 
 - `Launch?` is `yes`, `blocked`, or `manual-only`.
+- Every launchable row must include a user-confirmed `backend` (`claude`/`codex`/`cursor`/`opencode`); propose `codex` by default and surface it as a user decision rather than spawning silently.
 - Every launchable row must include `executionMode`; default every row to `plan`.
 - Every launchable row must include the resolved creation source in `baseBranch`; it must match the branch/upstream the work should be created from.
 - When approved for Jean execution, pass that exact `baseBranch` to `mcp__jean.create_worktree({ projectId, customName, baseBranch })`.
+- Pass the confirmed `backend` to `mcp__jean.create_session({ worktreeId, backend, name: sessionName })`; do not hardcode `codex`.
 - Do not leave `executionMode` blank, implicit, or described as "default".
 - Use `build` only when the user explicitly approved immediate implementation.
 - Before launch, verify every `mcp__jean.send_chat_message` payload explicitly includes `executionMode`, normally `executionMode: "plan"`.

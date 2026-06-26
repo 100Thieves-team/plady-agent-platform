@@ -9,8 +9,9 @@ Jean owns the worktree/session lifecycle. For Linear work, create or reuse one J
 ## Preconditions
 
 - A reviewed plan exists with a `Jean MCP launch manifest`.
-- Each row has `Issue`, `customName`, `baseBranch`, `sessionName`, `executionMode`, start condition, and a full session launch prompt.
+- Each row has `Issue`, `customName`, `baseBranch`, `backend`, `sessionName`, `executionMode`, start condition, and a full session launch prompt.
 - Each `baseBranch` is the resolved source branch/upstream the worktree should be created from, not a guessed default.
+- Each `backend` is the user-chosen execution engine (`claude`, `codex`, `cursor`, or `opencode`); do not assume one silently. The planner asks the user for the backend during planning and records the confirmed value per row. There is no default backend.
 - Each row defaults `executionMode` to `plan`; do not leave it blank, implicit, or described as "default".
 - Each launchable issue satisfies dispatch eligibility from `WORKFLOW.md`: active state, required label, clear blockers, and concurrency slot.
 - Each full prompt is written in Korean. Keep skill names, issue keys, branch names, paths, commands, and API/tool names verbatim.
@@ -27,10 +28,18 @@ Jean owns the worktree/session lifecycle. For Linear work, create or reuse one J
 - Never use `build` merely because the issue is launchable, the plan was approved, or the manifest row omitted `executionMode`.
 - Do not use `yolo` unless the user explicitly requested that exact execution mode.
 
+## Backend policy
+
+- The execution backend is a user decision made during planning, not a fixed default. Valid values are `claude`, `codex`, `cursor`, and `opencode` (the `mcp__jean.create_session` `backend` enum).
+- Pass the exact `backend` confirmed in the approved manifest row to `mcp__jean.create_session`.
+- There is no default backend. Always ask the user and use only the confirmed value. The `codex-ready` / `agent-ready` label gates dispatch eligibility, not backend choice — never read a label, a prior session, or a skill-reference example as an implied backend.
+- Do not launch a session with a backend the user has not chosen or confirmed. If a launchable row lacks a confirmed `backend`, ask before creating the session.
+
 ## Launch checklist
 
 Before sending any Jean chat message:
 
+- [ ] Every launchable manifest row has a user-confirmed `backend` (`claude`/`codex`/`cursor`/`opencode`).
 - [ ] Every launchable manifest row has an explicit `executionMode`.
 - [ ] Every default row uses `executionMode: "plan"`.
 - [ ] Every `mcp__jean.send_chat_message` payload explicitly includes `executionMode`.
@@ -76,8 +85,9 @@ For each launchable row:
    - `issueNumber` is for GitHub issues.
    - Use `issueNumber` or `prNumber` only when the plan is explicitly based on a GitHub issue/PR.
 3. Create a chat session when no matching session exists:
-   - `mcp__jean.create_session({ worktreeId, backend: "codex", name: sessionName })`
-   - Use another backend only if the user or manifest explicitly requested it.
+   - `mcp__jean.create_session({ worktreeId, backend, name: sessionName })`
+   - Pass the `backend` the user chose for this row in the approved manifest (`claude`/`codex`/`cursor`/`opencode`).
+   - If the row has no confirmed backend, stop and ask; do not silently default to `codex`.
 4. Send the full Korean launch prompt:
    - `mcp__jean.send_chat_message({ sessionId, executionMode: "plan", message })`
    - If the manifest row has an approved non-default mode, pass that explicit value instead of `"plan"`.
