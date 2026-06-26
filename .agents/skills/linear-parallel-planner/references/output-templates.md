@@ -67,6 +67,7 @@ Keep prompts issue-local and Korean. Do not paste unrelated repo-wide guidance.
 
 ## Jean MCP Launch Manifest Rules
 
+- Every launchable row must include a user-confirmed `backend` (`claude`/`codex`/`cursor`/`opencode`); propose `codex` by default but surface it as a user decision, never spawn silently.
 - Every launchable row must include an explicit `executionMode`.
 - Every launchable row must include a resolved `baseBranch` that is the branch/upstream Jean should create the worktree from.
 - Do not substitute `origin/dev` when the issue depends on a contract, parent, PR head, or current feature branch.
@@ -98,8 +99,8 @@ Produce:
 - Integration:
 
 ## 4. Jean launch summary
-| Issue | Launch? | customName | baseBranch | executionMode | Start condition |
-|---|---|---|---|---|---|
+| Issue | Launch? | backend | customName | baseBranch | executionMode | Start condition |
+|---|---|---|---|---|---|---|
 
 
 ## 5. 필요한 사용자 결정 / 누락 정보
@@ -151,8 +152,8 @@ Produce:
 - End-of-day sweep:
 
 ## 4. Jean launch summary
-| Issue | Launch? | customName | baseBranch | executionMode | Start condition |
-|---|---|---|---|---|---|
+| Issue | Launch? | backend | customName | baseBranch | executionMode | Start condition |
+|---|---|---|---|---|---|---|
 
 
 ## 5. 필요한 사용자 결정 / 생략한 상세 산출물
