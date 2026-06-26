@@ -39,11 +39,13 @@
 
 실제 100 Thieves 팀 개발자 데이터가 이 collector로 흐르고 EC2에서 처리됩니다. config의 processor 파이프라인이 다음을 **강제**합니다:
 
-- **raw prompt 저장 금지 / raw completion 저장 금지** — `attributes/scrub`가 GenAI/LLM prompt·completion·message·content 계열 attribute key를 **삭제**(마스킹이 아니라 삭제)합니다.
-- **secret/token 저장 금지** — `api_key`·`secret`·`token`·`authorization`·`password`·`credential`·`cookie`·`*_key` 계열 key 삭제 + `redaction/privacy`가 Bearer 토큰·`sk-...`·AWS access key·JWT 값을 **마스킹**합니다.
-- **PII 저장 금지** — `email`·`phone`·`ssn`·`credit_card` 계열 key 삭제 + email 값 마스킹.
-- 파이프라인 순서(모든 시그널 traces/metrics/logs 공통): `memory_limiter → attributes/scrub(키 삭제) → redaction/privacy(값 마스킹) → batch → [file, debug]`.
-- 과삭제(over-deletion)가 안전한 방향이므로 의도적으로 넓게 잡았습니다. 새 instrumentation이 위 패턴 밖의 민감 필드를 만들면 `otel/collector-config.yaml`의 패턴/키를 먼저 갱신하세요.
+- **raw prompt 저장 금지 / raw completion 저장 금지** — `attributes/scrub`가 record-level attribute의 prompt·completion·message·content 계열 key를 **삭제**하고, `transform/scrub`가 **span event attribute**(이벤트형 GenAI 계측이 prompt/completion을 담는 곳)의 같은 key를 삭제합니다.
+- **secret/token 저장 금지** — `api_key`·`secret`·`token`·`authorization`·`password`·`credential`·`cookie`·`*_key` 계열 key 삭제(record + resource + span event) + `redaction/privacy`가 attribute 값의 Bearer·`sk-...`·AWS key·JWT를 **마스킹** + `transform/scrub`가 **log body** 안의 같은 값을 마스킹합니다.
+- **PII 저장 금지** — `email`·`phone`·`ssn`·`credit_card` 계열 key 삭제 + email 등 값 마스킹(attribute 값 + log body).
+- **processor별 적용 범위(중요)**: `attributes`/`redaction` processor는 **record-level attribute map만** 봅니다(span event·log body·resource/scope attribute·span name은 못 봅니다). 그래서 `transform/scrub`(OTTL)를 추가해 **resource attribute 키 삭제(전 시그널)** + **span event attribute 키 삭제** + **log body 값 마스킹**을 커버합니다.
+- 파이프라인 순서(모든 시그널 traces/metrics/logs 공통): `memory_limiter → attributes/scrub → transform/scrub → redaction/privacy → batch → [file, debug]`.
+- 과삭제(over-deletion)가 안전한 방향이므로 의도적으로 넓게 잡았습니다(예: `*token*` 키는 token-count usage 메트릭까지 삭제될 수 있음 — usage가 필요하면 해당 instrumentation에 맞춰 패턴을 정교화). 새 instrumentation이 위 패턴 밖의 민감 필드를 만들면 `otel/collector-config.yaml`의 패턴/키를 먼저 갱신하세요.
+- **알려진 잔여 한계**(현재 sender가 없어 실측 불가): ① **span name**에 직접 박힌 PII/secret(예: SQL/URL을 span name으로 쓰는 계측)은 삭제하지 않습니다(이름 변경은 trace grouping을 깸). ② 비문자열(int/bytes) 값에 담긴 민감 데이터는 값 마스킹 대상이 아닙니다(키가 패턴에 걸리면 삭제됨). 실제 sender 연결 시 이 두 경우를 재점검하세요.
 
 ## Runbook (start / stop / validate)
 
@@ -57,22 +59,28 @@ docker compose --profile otel up -d otel-collector
 
 # logs (basic verbosity — 텔레메트리 내용 미포함)
 docker compose logs -f otel-collector
+```
 
-# health (컨테이너 내부에서; host publish 없음)
-docker compose exec otel-collector wget -qO- localhost:13133/ || true
+> ⚠️ contrib 이미지는 **distroless**라 셸/`wget`/`ls`가 없습니다. `docker compose exec otel-collector sh/ls/wget ...`는 "executable file not found"로 실패합니다. health 확인과 파일 산출물 확인은 아래처럼 **사이드카/볼륨**으로 합니다.
 
-# 파일 산출물 확인
-docker compose exec otel-collector ls -la /var/lib/otel/
+```bash
+# health: collector의 네트워크 네임스페이스에 일회용 curl 컨테이너를 붙여 확인
+docker run --rm --network "container:$(docker compose ps -q otel-collector)" \
+  curlimages/curl -fsS localhost:13133/ && echo
+
+# 파일 산출물 확인: named volume을 busybox 사이드카로 마운트
+#   <project>_otel-data 실제 볼륨명은 `docker volume ls`로 확인 (compose 프로젝트명 = 디렉터리명 소문자).
+docker run --rm -v <project>_otel-data:/data busybox ls -la /data
 
 # stop
 docker compose --profile otel stop otel-collector
 ```
 
-운영(EC2)도 동일하게 internal-only로 띄웁니다:
+운영(EC2)도 동일하게 internal-only로 띄웁니다(여기서도 distroless라 사이드카로 확인):
 
 ```bash
 docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile otel up -d otel-collector
-docker compose --env-file .env.ec2 -f compose.ec2.yaml exec otel-collector ls -la /var/lib/otel/
+docker run --rm -v <project>_otel-data:/data busybox ls -la /data
 ```
 
 ### Sanitization 스모크(권장)
