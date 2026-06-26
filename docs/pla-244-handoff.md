@@ -20,6 +20,17 @@
 - Slack event/interactivity/OAuth path의 최종 shape는 Hermes runtime owner인 PLA-249와 맞춘다.
 - PLA-246 범위에서는 path를 구현하거나 Slack app을 설정하지 않는다.
 
+### OpenAI-compatible client 호출 계약 (PLA-249 확정)
+
+PLA-249 런타임 runbook은 [`hermes-gateway.md`](hermes-gateway.md)가 SSOT다. PLA-244는 아래 헤더 계약을 그대로 소비한다.
+
+| 항목 | 값 |
+| --- | --- |
+| Base URL | `https://hermes.agent.plady.io/v1` |
+| Auth header | `Authorization: Bearer <API_SERVER_KEY>` (값은 아래 secret reference에서 조회) |
+| Session header(선택) | `X-Hermes-Session-Key: <scope>` — Slack workspace/user 단위 세션 스코프. ≤256자, control char(`\r`,`\n`,`\x00`) 금지, 응답에 echo. |
+| Health(무인증) | `GET https://hermes.agent.plady.io/health` → `{"status":"ok"}` |
+
 ## PLA-244가 소비할 secret reference
 
 값은 기록하지 않습니다. PLA-244는 아래 **parameter 이름** 또는 그에 매핑된 runtime secret reference만 인용합니다.
