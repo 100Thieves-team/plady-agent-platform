@@ -14,6 +14,7 @@ PLA-246 establishes the initial platform contracts in `docs/`:
 - [`docs/platform-contract.md`](docs/platform-contract.md): root `plady.io` vs delegated `agent.plady.io` ownership, public endpoint contracts, Route 53 access note, and SSM parameter name contracts.
 - [`docs/pla-244-handoff.md`](docs/pla-244-handoff.md): handoff contract for PLA-244 Slack ↔ Hermes integration work.
 - [`docs/hermes-gateway.md`](docs/hermes-gateway.md): Hermes Gateway runtime runbook (PLA-249) — start/stop/restart/health, session persistence/reset/rollback, security notes, and the OpenAI-compatible client contract.
+- [`docs/mcp-registry.md`](docs/mcp-registry.md): MCP registry + safe tool policy contract (PLA-250) — server registry, allow/approve/deny tool tiers, write-approval flow, and registration/smoke runbook. Machine-readable form: [`config/mcp-registry.yaml`](config/mcp-registry.yaml).
 
 Current endpoint summary (the SSOT is [`docs/platform-contract.md`](docs/platform-contract.md)):
 
