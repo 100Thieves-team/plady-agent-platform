@@ -18,9 +18,9 @@
 | --- | --- | --- | --- | --- |
 | `llm-wiki` | HTTP `https://mcp.agent.plady.io/mcp` | `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` | live | **authoritative** (`platform-contract.md`) |
 | `github` | stdio `npx -y @modelcontextprotocol/server-github` | `/plady/agent-platform/<env>/github-mcp-pat` | contract-only | proposed placeholder |
-| `linear` | HTTP/stdio (Linear MCP) | `/plady/agent-platform/<env>/linear-mcp-api-key` | contract-only | proposed placeholder |
+| `linear` | TBD (stdio \| http) | `/plady/agent-platform/<env>/linear-mcp-api-key` | contract-only | proposed placeholder |
 | `slack` | PLA-244가 확정 | PLA-244가 확정 (예: `/plady/agent-platform/<env>/slack-bot-token`) | PLA-244 소관 | proposed / PLA-244-owned |
-| `google-calendar` | OAuth (stdio/remote) | `/plady/agent-platform/<env>/google-calendar-mcp-oauth` | contract-only | proposed placeholder |
+| `google-calendar` | TBD (stdio \| http); auth=OAuth | `/plady/agent-platform/<env>/google-calendar-mcp-oauth` | contract-only | proposed placeholder |
 | `context7` | remote HTTP `https://mcp.context7.com/mcp` | `/plady/agent-platform/<env>/context7-api-key` (optional) | contract-only | proposed placeholder |
 | `n8n` | — | — | reserved (**PLA-251 소관**) | — |
 | 그 외 미등록 | — | — | — | **default-deny** |
@@ -28,6 +28,7 @@
 - `llm-wiki`만 현재 live 입니다(이미 compose `mcp-proxy`가 bearer 보호). 나머지는 **계약 entry**이며, 실제 연결은 소비 이슈(PLA-244 등)가 credential 주입 후 수행합니다.
 - `n8n.agent.plady.io`는 [`platform-contract.md`](platform-contract.md)에서 reserved이며 실제 계약은 PLA-251 소관입니다. 여기서는 reserved 스텁(현재 live 아님, default-deny)만 둡니다.
 - Slack MCP은 PLA-244에서 활성화됩니다. secret 이름과 transport 상세는 PLA-244가 [`pla-244-handoff.md`](pla-244-handoff.md)에서 확정합니다.
+- **transport 표기 규칙**: MCP 표준 transport는 `stdio`와 Streamable `http` 둘뿐입니다([MCP spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)). OAuth/PAT/API key는 transport가 아니라 **auth 계층**(`auth.*`)입니다. transport가 아직 안 정해진 서버는 `TBD (stdio \| http)`로 표기하고, 인증 방식은 auth 컬럼/필드에 둡니다.
 
 ## 안전한 도구 정책 (3-tier, default-deny)
 
@@ -113,7 +114,7 @@ dispatch table 기준(`llm-wiki/src/mcp/tools.rs`) 정확히 23개. 합계: allo
   ```bash
   curl -i -H "Authorization: Bearer <ref값>" http://localhost:18765/mcp
   ```
-- **credential-required smoke (사람 주입 후)** — `github`/`linear`/`google-calendar`(stdio/OAuth)·`context7`는 실제 PAT/OAuth/key가 있어야 `tools/list`가 응답합니다. credential 주입 전에는 실행하지 않고, 아래 blocker 방식으로 기록합니다.
+- **credential-required smoke (사람 주입 후)** — `github`/`linear`/`google-calendar`/`context7`는 실제 PAT/OAuth/key가 있어야 `tools/list`가 응답합니다. credential 주입 전에는 실행하지 않고, 아래 blocker 방식으로 기록합니다.
 
 ### credential blocker 기록 방식
 

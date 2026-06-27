@@ -81,7 +81,7 @@ servers:
     status: contract-only
     secret_ref_authority: proposed
     transport:
-      type: stdio                    # 또는 Linear 원격 MCP(HTTP). 소비 이슈가 확정.
+      type: tbd                      # MCP transport는 stdio | http 둘뿐. Linear는 원격 HTTP(mcp.linear.app) 또는 stdio 래퍼 — 소비 이슈가 확정.
     auth:
       type: api_key
       secret_ref: /plady/agent-platform/<env>/linear-mcp-api-key
@@ -107,9 +107,9 @@ servers:
     status: contract-only
     secret_ref_authority: proposed
     transport:
-      type: oauth                    # stdio/remote OAuth. 소비 이슈가 확정.
+      type: tbd                      # MCP transport는 stdio | http 둘뿐. OAuth는 transport가 아니라 auth(아래). 소비 이슈가 확정.
     auth:
-      type: oauth
+      type: oauth                    # OAuth는 authorization 계층(여기가 맞는 위치)
       secret_ref: /plady/agent-platform/<env>/google-calendar-mcp-oauth
     tool_policy:
       # read(list/get events) allow, write(create/update/delete event) approve.
