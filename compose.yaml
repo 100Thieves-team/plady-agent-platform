@@ -107,6 +107,53 @@ services:
       - "127.0.0.1:8642:8642"
     restart: unless-stopped
 
+  # Internal-only OpenTelemetry Collector (contrib distribution — needs the
+  # redaction processor + file exporter). Receives OTLP on the compose network
+  # ONLY: gRPC otel-collector:4317, HTTP otel-collector:4318. There is no host
+  # publish (`expose:` only, never `ports:`) and no public endpoint
+  # (no otel.agent.plady.io). Gated behind the `otel` profile so a default
+  # `docker compose up` is unaffected. Privacy + file/local-first export contract
+  # live in otel/collector-config.yaml. See docs/otel-collector.md.
+  otel-collector:
+    image: ${OTEL_IMAGE:-otel/opentelemetry-collector-contrib:0.154.0}
+    profiles:
+      - otel
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    # The otel-data named volume is root-owned on first mount; run as root so
+    # the file exporter can write /var/lib/otel. Internal-only service.
+    user: "0:0"
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - otel-data:/var/lib/otel
+    expose:
+      - "4317"
+      - "4318"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # n8n — RESERVED PLACEHOLDER, INTENTIONALLY DISABLED (PLA-251).
+  #
+  # n8n.agent.plady.io is a reserved hostname only; the public ALB returns 503
+  # for it (infra/terraform/platform/alb.tf reserved_unavailable rule) until a
+  # real runtime exists. PLA-251 explicitly forbids a live n8n runtime, so this
+  # block is COMMENTED OUT and cannot start. A future teammate owns enabling it;
+  # the block is the reserved slot + internal-target convention (n8n:5678).
+  # Enable checklist: docs/n8n-placeholder.md.
+  #
+  # n8n:
+  #   image: ${N8N_IMAGE:-n8nio/n8n:<pin>}
+  #   profiles:
+  #     - n8n
+  #   environment:
+  #     N8N_PORT: "5678"
+  #     # Secrets (DB creds, N8N_ENCRYPTION_KEY) come from SSM at enable time,
+  #     # e.g. /plady/agent-platform/<env>/n8n-encryption-key. Never commit values.
+  #   expose:
+  #     - "5678"          # internal target n8n:5678; public via PLA-247 ingress only
+  #   restart: unless-stopped
+  # ---------------------------------------------------------------------------
+
 volumes:
   llm-wiki-config:
   hermes-home:
+  otel-data:

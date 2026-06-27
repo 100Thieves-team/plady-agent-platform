@@ -1,0 +1,149 @@
+# Internal OpenTelemetry Collector config (PLA-251).
+#
+# PRIVACY CONTRACT (enforced by the processors below — do not weaken):
+#   - NEVER persist raw prompts or completions.
+#   - NEVER persist secrets / API keys / tokens / Authorization headers.
+#   - NEVER persist PII (emails, phone numbers, etc.).
+# This collector is INTERNAL-ONLY. It receives OTLP on the compose network
+# (otel-collector:4317 gRPC, otel-collector:4318 HTTP) and exports
+# file/local-first ONLY (no external/network egress). Real 100 Thieves team
+# developer telemetry flows here, so sanitization is mandatory and the data
+# never leaves the host. See docs/otel-collector.md.
+#
+# Requires the contrib distribution (redaction processor + file exporter).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Backpressure / OOM guard. Keep first in every pipeline.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  # Layer 1 — DELETE attribute keys that carry sensitive content outright.
+  # Uses regex key patterns (re2) plus a few explicit GenAI semantic-convention
+  # keys as belt-and-suspenders. Deletion (not masking) so the value never lands
+  # in any exporter. Over-deletion is the intended safe direction here.
+  attributes/scrub:
+    actions:
+      # GenAI/LLM prompt & completion content (OTel GenAI conventions + common libs)
+      - action: delete
+        pattern: '(?i)(gen_ai|llm|ai|openai|anthropic)\.(.*\.)?(prompt|completion|content|message|messages|input|output|response|request|tool_call|function_call).*'
+      # Generic prompt/completion-bearing keys from any instrumentation
+      - action: delete
+        pattern: '(?i).*(prompt|completion).*'
+      # Secrets / credentials
+      - action: delete
+        pattern: '(?i).*(api[_.-]?key|secret|token|password|passwd|authorization|auth[_.-]?header|credential|cookie|session[_.-]?key|private[_.-]?key|access[_.-]?key|bearer).*'
+      # PII
+      - action: delete
+        pattern: '(?i).*(email|e[_.-]?mail|phone|mobile|ssn|social[_.-]?security|credit[_.-]?card|card[_.-]?number|passport|national[_.-]?id).*'
+      # Explicit well-known GenAI content keys
+      - action: delete
+        key: gen_ai.prompt
+      - action: delete
+        key: gen_ai.completion
+      - action: delete
+        key: gen_ai.input.messages
+      - action: delete
+        key: gen_ai.output.messages
+
+  # Layer 1b — the attributes/redaction processors ONLY touch the record-level
+  # attribute MAP. They do NOT see span events, log record bodies, span names,
+  # or resource/scope attributes — and OTel GenAI instrumentation commonly emits
+  # prompts/completions as span EVENTS or log BODIES, while secrets/PII can ride
+  # on RESOURCE attributes. This transform closes those bypass paths (OTTL):
+  #   - delete sensitive keys on resource attributes (all signals)
+  #   - delete sensitive keys on span-event attributes (where prompt/completion
+  #     content lives for event-style GenAI instrumentation)
+  #   - mask secret/PII VALUES inside string log bodies
+  # error_mode: ignore so a non-string body / missing field skips the statement
+  # instead of dropping the record.
+  transform/scrub:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(prompt|completion|content|message|api[_.-]?key|secret|token|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key|bearer|email|e[_.-]?mail|phone|mobile|ssn|social[_.-]?security|credit[_.-]?card|card[_.-]?number|passport|national[_.-]?id).*")
+      - context: spanevent
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(prompt|completion|content|message|input|output|response|request|api[_.-]?key|secret|token|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key|bearer|email|e[_.-]?mail|phone|mobile|ssn|social[_.-]?security|credit[_.-]?card|card[_.-]?number|passport|national[_.-]?id).*")
+    metric_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(prompt|completion|content|message|api[_.-]?key|secret|token|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key|bearer|email|e[_.-]?mail|phone|mobile|ssn|social[_.-]?security|credit[_.-]?card|card[_.-]?number|passport|national[_.-]?id).*")
+    log_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(prompt|completion|content|message|api[_.-]?key|secret|token|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key|bearer|email|e[_.-]?mail|phone|mobile|ssn|social[_.-]?security|credit[_.-]?card|card[_.-]?number|passport|national[_.-]?id).*")
+      - context: log
+        statements:
+          # Mask secret/PII values inside string log bodies (redaction cannot see bodies).
+          - replace_pattern(body, "(?i)bearer\\s+[a-z0-9._\\-]{8,}", "****")
+          - replace_pattern(body, "sk-[A-Za-z0-9]{16,}", "****")
+          - replace_pattern(body, "AKIA[0-9A-Z]{16}", "****")
+          - replace_pattern(body, "eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}", "****")
+          - replace_pattern(body, "[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}", "****")
+
+  # Layer 2 — MASK secret/PII-looking VALUES that slip through on otherwise
+  # allowed keys (e.g. inside db.statement or http.url query strings). Operates
+  # on record-level attribute VALUES only (not bodies — those are handled by the
+  # transform above). allow_all_keys: true because Layer 1 already removed
+  # disallowed keys. summary: info -> counts only in logs, no key names/values.
+  redaction/privacy:
+    allow_all_keys: true
+    blocked_values:
+      - '(?i)bearer\s+[a-z0-9._\-]{8,}'        # Authorization: Bearer <...>
+      - 'sk-[A-Za-z0-9]{16,}'                   # OpenAI-style secret keys
+      - 'AKIA[0-9A-Z]{16}'                      # AWS access key id
+      - 'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}'  # JWT
+      - '[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'                   # email (PII)
+    summary: info
+
+  batch: {}
+
+exporters:
+  # File/local-first sink. Stays on the host (named volume otel-data); no
+  # external backend is configured on purpose.
+  file:
+    path: /var/lib/otel/otel-data.json
+    rotation:
+      max_megabytes: 50
+      max_days: 7
+      max_backups: 3
+  # Liveness only. basic verbosity prints counts, never telemetry content.
+  debug:
+    verbosity: basic
+
+extensions:
+  # Internal health endpoint (otel-collector:13133). Not host-published.
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, transform/scrub, redaction/privacy, batch]
+      exporters: [file, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, transform/scrub, redaction/privacy, batch]
+      exporters: [file, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, transform/scrub, redaction/privacy, batch]
+      exporters: [file, debug]
+  telemetry:
+    # Do not open the collector's own self-metrics listener; keep the footprint
+    # internal and minimal.
+    metrics:
+      level: none

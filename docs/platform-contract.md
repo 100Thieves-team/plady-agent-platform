@@ -41,8 +41,8 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `https://mcp.agent.plady.io/mcp` | Public HTTPS + bearer token | PLA-247 + PLA-250 | llm-wiki MCP HTTP endpoint. 반드시 bearer token 보호 뒤에 노출한다. |
 | `https://hermes.agent.plady.io` | Public HTTPS | PLA-247 + PLA-249 | Hermes Gateway public origin. Slack event/interactivity/OAuth callback 등 non-OpenAI path의 origin. |
 | `https://hermes.agent.plady.io/v1` | Public HTTPS + Hermes API key | PLA-249 + PLA-244 | OpenAI-compatible Hermes base URL. PLA-244가 OpenAI-compatible client 설정에 소비하는 canonical base URL. |
-| `https://n8n.agent.plady.io` | Reserved, not live by default | PLA-251 | n8n placeholder/reserved endpoint. PLA-251 전에는 공개 runtime으로 간주하지 않는다. |
-| OTEL collector | Internal-only | PLA-251 | public DNS/Internet endpoint를 만들지 않는다. VPC/internal service discovery 또는 private endpoint만 허용한다. |
+| `https://n8n.agent.plady.io` | Reserved, not live by default | PLA-251 | n8n placeholder/reserved endpoint. PLA-251에서 disabled placeholder로 구현(ALB 503 + compose 주석 블록, 내부 타깃 `n8n:5678` 예약). 런북 [`n8n-placeholder.md`](n8n-placeholder.md). |
+| OTEL collector | Internal-only | PLA-251 | public DNS/Internet endpoint를 만들지 않는다. 내부 OTLP `otel-collector:4317`(gRPC)/`4318`(HTTP), file/local-first export, raw prompt/completion·secret/token·PII 미저장. 런북 [`otel-collector.md`](otel-collector.md). |
 
 ### Endpoint 보안 기본값
 
@@ -72,5 +72,5 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 - PLA-247: `agent.plady.io` DNS/ACM/ALB/platform Terraform 구현. Cloudflare root와 Route 53 권한 차단 사실을 고려해 구현 가능 경로를 확정한다.
 - PLA-249: `https://hermes.agent.plady.io` runtime path, `https://hermes.agent.plady.io/v1` OpenAI-compatible API, API auth, agent session lifecycle 구현.
 - PLA-250: `https://mcp.agent.plady.io/mcp` registry/safe tool policy와 bearer-token 보호 세부 계약 구현.
-- PLA-251: internal OTEL collector와 reserved `n8n.agent.plady.io` placeholder 계약 구현.
+- PLA-251: internal OTEL collector(내부 OTLP `otel-collector:4317`/`4318`, file/local-first export, privacy sanitization — 런북 [`otel-collector.md`](otel-collector.md))와 reserved `n8n.agent.plady.io` disabled placeholder(런북 [`n8n-placeholder.md`](n8n-placeholder.md)) 구현.
 - PLA-244: Slack integration은 [`docs/pla-244-handoff.md`](pla-244-handoff.md)를 우선 참고한다.
