@@ -46,7 +46,7 @@ PLA-249 런타임 runbook은 [`hermes-gateway.md`](hermes-gateway.md)가 SSOT다
 
 - Slack event 수신과 Slack UX 구성은 PLA-244의 책임입니다.
 - Hermes Gateway runtime, auth boundary, agent session lifecycle은 PLA-249의 책임입니다.
-- MCP registry/safe tool policy는 PLA-250의 책임입니다.
+- MCP registry/safe tool policy는 PLA-250의 책임입니다. 소비 계약(endpoint·secret ref·write 승인 흐름·도구 tier)은 [`mcp-registry.md`](mcp-registry.md)와 [`config/mcp-registry.yaml`](../config/mcp-registry.yaml)를 따릅니다.
 - DNS/ACM/ALB와 public ingress는 PLA-247의 책임입니다.
 - PLA-246은 session lifecycle과 MCP safe tool policy의 owner를 지정할 뿐, 상세 계약을 정의하지 않습니다.
 - PLA-244는 Hermes session storage schema나 MCP registry를 직접 정의하지 않습니다. 필요한 필드는 PLA-249/250 계약에 이슈 링크로 요청합니다.

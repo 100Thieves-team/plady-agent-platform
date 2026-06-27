@@ -71,6 +71,6 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 
 - PLA-247: `agent.plady.io` DNS/ACM/ALB/platform Terraform 구현. Cloudflare root와 Route 53 권한 차단 사실을 고려해 구현 가능 경로를 확정한다.
 - PLA-249: `https://hermes.agent.plady.io` runtime path, `https://hermes.agent.plady.io/v1` OpenAI-compatible API, API auth, agent session lifecycle 구현.
-- PLA-250: `https://mcp.agent.plady.io/mcp` registry/safe tool policy와 bearer-token 보호 세부 계약 구현.
+- PLA-250: `https://mcp.agent.plady.io/mcp` registry/safe tool policy와 bearer-token 보호 세부 계약 구현. 상세는 [`mcp-registry.md`](mcp-registry.md)(+ [`config/mcp-registry.yaml`](../config/mcp-registry.yaml))가 SSOT.
 - PLA-251: internal OTEL collector(내부 OTLP `otel-collector:4317`/`4318`, file/local-first export, privacy sanitization — 런북 [`otel-collector.md`](otel-collector.md))와 reserved `n8n.agent.plady.io` disabled placeholder(런북 [`n8n-placeholder.md`](n8n-placeholder.md)) 구현.
 - PLA-244: Slack integration은 [`docs/pla-244-handoff.md`](pla-244-handoff.md)를 우선 참고한다.

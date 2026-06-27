@@ -1,0 +1,143 @@
+# MCP 레지스트리 — 머신 소비용 선언 계약 (PLA-250)
+#
+# 이 파일은 계약 산출물입니다. Hermes Gateway(PLA-249)와 PLA-244(Slack)가 이 파일을
+# 번역해 소비합니다(Hermes ~/.hermes/config.yaml의 mcp_servers 등). 런타임 자체는
+# 변경하지 않습니다.
+#
+# 규칙:
+# - 실제 secret/token/OAuth 값은 절대 넣지 않습니다. auth.secret_ref 는 SSM 이름만.
+# - 'llm-wiki-mcp-bearer-token' 만 docs/platform-contract.md 에 비준된 authoritative
+#   이름입니다. 나머지 secret_ref 는 컨벤션을 따른 proposed placeholder 이며 소비
+#   이슈가 확정하기 전까지 보장값이 아닙니다.
+# - 도구 tier: allow(read, 자동 허용) / approve(write, 호출 단위 사람 승인) /
+#   deny(관리·파괴적, 운영자 opt-in 전 차단). 미분류 도구는 default 로 차단.
+# - 사람이 읽는 SSOT 계약은 docs/mcp-registry.md. 이 파일과 서버 집합·tier 가 항상
+#   일치해야 합니다.
+
+version: 1
+
+defaults:
+  tool_policy: deny            # 레지스트리에 없는 서버/도구는 default-deny
+
+servers:
+  # ---- live ----
+  llm-wiki:
+    status: live
+    secret_ref_authority: authoritative
+    transport:
+      type: http
+      url: https://mcp.agent.plady.io/mcp        # local: http://localhost:18765/mcp
+    auth:
+      type: bearer
+      secret_ref: /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token
+    tool_policy:
+      allow:
+        - wiki_search
+        - wiki_list
+        - wiki_content_read
+        - wiki_resolve
+        - wiki_stats
+        - wiki_lint
+        - wiki_history
+        - wiki_suggest
+        - wiki_graph
+        - wiki_index_status
+        - wiki_spaces_list
+      approve:
+        - wiki_content_write
+        - wiki_content_new
+        - wiki_content_commit
+        - wiki_ingest
+        - wiki_export       # llms.txt/JSON 파일을 디스크에 씀(임의 path 가능) → write
+      deny:
+        - wiki_spaces_create
+        - wiki_spaces_register
+        - wiki_spaces_remove
+        - wiki_spaces_set_default
+        - wiki_config       # set 포함 → 도구 단위 deny (read 액션 손실은 알려진 trade-off)
+        - wiki_schema       # add/remove 포함 → 도구 단위 deny
+        - wiki_index_rebuild
+      default: deny
+
+  # ---- contract-only (credential 주입 전 비활성) ----
+  github:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-github"]
+    auth:
+      type: pat
+      secret_ref: /plady/agent-platform/<env>/github-mcp-pat   # env: GITHUB_PERSONAL_ACCESS_TOKEN
+    tool_policy:
+      # read 도구(이슈/PR/코드 조회 등)는 allow, mutation 은 approve.
+      # 도구명은 업스트림 server-github 버전에 따르므로 능력 기준으로 gate.
+      allow_capability: read
+      approve_capability: mutation   # create_issue / update_issue / create_or_update_file / merge_pull_request 등
+      default: deny
+
+  linear:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: tbd                      # MCP transport는 stdio | http 둘뿐. Linear는 원격 HTTP(mcp.linear.app) 또는 stdio 래퍼 — 소비 이슈가 확정.
+    auth:
+      type: api_key
+      secret_ref: /plady/agent-platform/<env>/linear-mcp-api-key
+    tool_policy:
+      allow_capability: read
+      approve_capability: mutation   # 이슈/코멘트 생성·수정
+      default: deny
+
+  slack:
+    status: pla-244-owned
+    secret_ref_authority: proposed
+    transport:
+      type: tbd                      # PLA-244 가 확정
+    auth:
+      type: bot_token
+      secret_ref: /plady/agent-platform/<env>/slack-bot-token   # proposed, PLA-244 확정
+    tool_policy:
+      allow_capability: read
+      approve_capability: mutation   # 메시지 전송 등
+      default: deny
+
+  google-calendar:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: tbd                      # MCP transport는 stdio | http 둘뿐. OAuth는 transport가 아니라 auth(아래). 소비 이슈가 확정.
+    auth:
+      type: oauth                    # OAuth는 authorization 계층(여기가 맞는 위치)
+      secret_ref: /plady/agent-platform/<env>/google-calendar-mcp-oauth
+    tool_policy:
+      # read(list/get events) allow, write(create/update/delete event) approve.
+      # Calendar write workflow 구현은 범위 밖(정책만 정의).
+      allow_capability: read
+      approve_capability: mutation
+      default: deny
+
+  context7:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: http
+      url: https://mcp.context7.com/mcp
+    auth:
+      type: api_key
+      optional: true                 # context7 는 key 없이도 동작(레이트리밋 완화용 선택)
+      secret_ref: /plady/agent-platform/<env>/context7-api-key
+    tool_policy:
+      # 문서 조회 read-only 도구만 노출 → 전부 allow, write 없음.
+      allow_capability: read
+      default: deny
+
+  # ---- reserved (PLA-251 소관) ----
+  n8n:
+    status: reserved
+    owner: PLA-251
+    # n8n.agent.plady.io 는 platform-contract.md 기준 reserved. 실제 계약은 PLA-251.
+    # 현재 도구 노출 없음 → default-deny 스텁.
+    tool_policy:
+      default: deny
