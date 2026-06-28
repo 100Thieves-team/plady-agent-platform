@@ -21,7 +21,6 @@
 #   PLATFORM_ENV=dev
 #   HERMES_KEY_PARAM=/plady/agent-platform/<env>/hermes-api-server-key
 #   MCP_TOKEN_PARAM=/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token
-#   CLAUDE_OAUTH_PARAM=/plady/agent-platform/<env>/claude-code-oauth-token (optional)
 #   WIKI_DATA_KEY_PARAM=/plady/agent-platform/<env>/team-wiki-v2-deploy-key (optional;
 #     write-enabled deploy key for team-wiki-v2. Absent -> wiki backing disabled, sidecar idles)
 #   TEAM_WIKI_V2_REPO_SSH=git@github.com:100Thieves-team/team-wiki-v2.git
@@ -44,7 +43,6 @@ APP_DIR="${APP_DIR:-/opt/plady-agent-platform}"
 PLATFORM_ENV="${PLATFORM_ENV:-dev}"
 HERMES_KEY_PARAM="${HERMES_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/hermes-api-server-key}"
 MCP_TOKEN_PARAM="${MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/llm-wiki-mcp-bearer-token}"
-CLAUDE_OAUTH_PARAM="${CLAUDE_OAUTH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/claude-code-oauth-token}"
 WIKI_DATA_KEY_PARAM="${WIKI_DATA_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/team-wiki-v2-deploy-key}"
 TEAM_WIKI_V2_REPO_SSH="${TEAM_WIKI_V2_REPO_SSH:-git@github.com:100Thieves-team/team-wiki-v2.git}"
 WIKI_SYNC_INTERVAL="${WIKI_SYNC_INTERVAL:-120}"
@@ -87,7 +85,6 @@ ssm_get() {
 log "Reading runtime secrets from SSM"
 HERMES_API_SERVER_KEY="$(ssm_get "$HERMES_KEY_PARAM")"
 MCP_BEARER_TOKEN="$(ssm_get "$MCP_TOKEN_PARAM")"
-CLAUDE_CODE_OAUTH_TOKEN="$(ssm_get "$CLAUDE_OAUTH_PARAM")"
 SLACK_BOT_TOKEN="$(ssm_get "$SLACK_BOT_TOKEN_PARAM")"
 SLACK_APP_TOKEN="$(ssm_get "$SLACK_APP_TOKEN_PARAM")"
 SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
@@ -96,7 +93,6 @@ SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
   || { echo "FATAL: ${HERMES_KEY_PARAM} missing/undecryptable" >&2; exit 1; }
 [ -n "$MCP_BEARER_TOKEN" ] && [ "$MCP_BEARER_TOKEN" != "None" ] \
   || { echo "FATAL: ${MCP_TOKEN_PARAM} missing/undecryptable" >&2; exit 1; }
-[ "$CLAUDE_CODE_OAUTH_TOKEN" = "None" ] && CLAUDE_CODE_OAUTH_TOKEN=""
 # Slack params are optional; normalize "None" (missing) to empty so absent
 # tokens leave the platform off and an empty allowlist stays fail-closed.
 [ "$SLACK_BOT_TOKEN" = "None" ] && SLACK_BOT_TOKEN=""
@@ -112,7 +108,11 @@ if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_APP_TOKEN" ]; then
   SLACK_BOT_TOKEN=""
   SLACK_APP_TOKEN=""
 fi
-echo "  hermes key: present | mcp token: present | claude code oauth: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo present || echo 'absent (provider unconfigured)')"
+# Codex (openai-codex) provider auth is a device-code OAuth session persisted to
+# the hermes-home volume (/opt/data/auth.json), written once by a human via
+# `hermes auth add codex-oauth` — NOT an SSM secret. Nothing to inject here; the
+# config-init merge sets model.provider declaratively. See docs/hermes-gateway.md.
+echo "  hermes key: present | mcp token: present | codex auth: device-code OAuth in hermes-home volume (not env)"
 if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_APP_TOKEN" ]; then
   if [ -n "$SLACK_ALLOWED_USERS" ]; then slack_state="enabled (allowlist set)"; else slack_state="enabled (allowlist EMPTY -> all users denied)"; fi
 else
@@ -146,7 +146,6 @@ MCP_PUBLIC_HOST=${MCP_PUBLIC_HOST}
 HERMES_PUBLIC_HOST=${HERMES_PUBLIC_HOST}
 MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN}
 HERMES_API_SERVER_KEY=${HERMES_API_SERVER_KEY}
-CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
 TEAM_WIKI_V2_REPO_SSH=${TEAM_WIKI_V2_REPO_SSH}
 TEAM_WIKI_V2_DEPLOY_KEY_B64=${TEAM_WIKI_V2_DEPLOY_KEY_B64}
 WIKI_SYNC_INTERVAL=${WIKI_SYNC_INTERVAL}
@@ -163,15 +162,19 @@ aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS 
 log "Pulling images"
 "${DC[@]}" pull
 
-# --- 4b. Hermes mcp_servers mapping (PLA-244) ------------------------------
-# Merge the llm-wiki MCP server into the hermes config inside the hermes-home
-# volume (~/.hermes/config.yaml == /opt/data/config.yaml) before the gateway
-# starts, so its first boot already sees the tool. Idempotent and surgical: the
-# one-shot hermes-config-init service rewrites only mcp_servers.llm-wiki and
-# leaves the human-managed model/provider section intact. No secret is written —
-# the token is injected to the gateway as LLM_WIKI_MCP_BEARER_TOKEN env and
-# resolved from the config placeholder at connect-time. See docs/hermes-gateway.md.
-log "Merging hermes mcp_servers mapping (llm-wiki) into the hermes-home config"
+# --- 4b. Hermes config merge (model.provider + mcp_servers, PLA-244/PLA-277) ---
+# Merge the runtime backend selection (model.provider: openai-codex) and the
+# llm-wiki MCP server into the hermes config inside the hermes-home volume
+# (~/.hermes/config.yaml == /opt/data/config.yaml) before the gateway starts, so
+# its first boot already sees both. Idempotent and surgical: the one-shot
+# hermes-config-init service leaf-`set`s only model.provider/default,
+# mcp_servers.llm-wiki and the slack keys, preserving any human-placed keys. No
+# secret is written — the MCP token is injected to the gateway as
+# LLM_WIKI_MCP_BEARER_TOKEN env and resolved from the config placeholder at
+# connect-time, and the Codex provider credential is the device-code OAuth
+# session in /opt/data/auth.json (human-written, not touched here).
+# See docs/hermes-gateway.md.
+log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki) into the hermes-home config"
 # -T: this runs under SSM Run Command (no TTY); `compose run` allocates a
 # pseudo-TTY by default and would abort with "the input device is not a TTY".
 # Matches the `exec -T` smoke checks below.
