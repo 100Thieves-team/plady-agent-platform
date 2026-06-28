@@ -16,7 +16,7 @@ services:
       - /bin/sh
       - -ec
       - |
-        cat >/etc/caddy/Caddyfile <<CADDY
+        cat >/etc/caddy/Caddyfile <<'CADDY'
         {
           auto_https off
           admin off

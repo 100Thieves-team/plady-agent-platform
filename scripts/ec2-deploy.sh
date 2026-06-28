@@ -126,12 +126,17 @@ for i in $(seq 1 30); do
 done
 [ "$ok" = 1 ] && echo "  wiki-ui: OK" || { echo "  wiki-ui: FAIL"; fail=1; }
 
-# mcp-proxy: no bearer -> 401
-code="$("${DC[@]}" exec -T caddy wget -q -S -O /dev/null http://mcp-proxy:18765/mcp 2>&1 | awk '/HTTP\//{print $2; exit}')"
+# mcp-proxy: no bearer -> 401. wget exits non-zero on a 401, and with
+# `pipefail` that would abort the script under `set -e`, so swallow it with
+# `|| true` — the assertion below is what actually judges the result.
+code="$("${DC[@]}" exec -T caddy wget -q -S -O /dev/null http://mcp-proxy:18765/mcp 2>&1 | awk '/HTTP\//{print $2; exit}' || true)"
 [ "$code" = "401" ] && echo "  mcp-proxy no-auth: 401 OK" || { echo "  mcp-proxy no-auth: got '${code}', want 401"; fail=1; }
 
-# hermes: /health -> ok
-if "${DC[@]}" exec -T hermes-gateway curl -fsS --max-time 10 http://localhost:8642/health 2>/dev/null | grep -q '"status":"ok"'; then
+# hermes: /health -> ok. Probe from caddy (busybox wget) over the compose
+# network rather than `curl` inside hermes-gateway — keeps the smoke checks
+# consistent and avoids assuming curl exists in the upstream image. This also
+# exercises the caddy->hermes routing the public origin depends on.
+if "${DC[@]}" exec -T caddy wget -q -O - http://hermes-gateway:8642/health 2>/dev/null | grep -q '"status":"ok"'; then
   echo "  hermes /health: OK"
 else
   echo "  hermes /health: FAIL"; fail=1
