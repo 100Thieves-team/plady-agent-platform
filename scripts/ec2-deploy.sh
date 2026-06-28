@@ -102,6 +102,16 @@ SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
 [ "$SLACK_BOT_TOKEN" = "None" ] && SLACK_BOT_TOKEN=""
 [ "$SLACK_APP_TOKEN" = "None" ] && SLACK_APP_TOKEN=""
 [ "$SLACK_ALLOWED_USERS" = "None" ] && SLACK_ALLOWED_USERS=""
+# Allowlist holds Slack Member IDs (no internal whitespace); strip any stray
+# spaces/newlines so a "U1, U2" SSM value still matches.
+SLACK_ALLOWED_USERS="$(printf '%s' "$SLACK_ALLOWED_USERS" | tr -d '[:space:]')"
+# Both-or-neither: Socket Mode needs the bot (xoxb) AND app (xapp) token. A
+# half-configured pair can't connect, so blank both to keep Slack cleanly off
+# rather than booting a broken adapter.
+if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_APP_TOKEN" ]; then
+  SLACK_BOT_TOKEN=""
+  SLACK_APP_TOKEN=""
+fi
 echo "  hermes key: present | mcp token: present | claude code oauth: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo present || echo 'absent (provider unconfigured)')"
 if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_APP_TOKEN" ]; then
   if [ -n "$SLACK_ALLOWED_USERS" ]; then slack_state="enabled (allowlist set)"; else slack_state="enabled (allowlist EMPTY -> all users denied)"; fi
