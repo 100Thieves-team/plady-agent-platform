@@ -45,9 +45,6 @@ services:
         caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     ports:
       - "80:80"
-    volumes:
-      - caddy-data:/data
-      - caddy-config:/config
     restart: unless-stopped
 
   llm-wiki:
@@ -113,8 +110,12 @@ services:
       WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
     # Sync the baked Hugo scaffold into the shared /workspace/site, ensure the
     # llm-wiki content dir exists (empty is fine — Hugo still renders), then serve.
+    # Ensure both Hugo module-mount sources exist (../wiki and ../raw per
+    # hugo.toml) before serving — on a fresh wiki-data volume neither is created
+    # yet, and a missing mount source aborts the Hugo build. Wipe+recopy the
+    # baked scaffold so files removed from the image don't linger in the volume.
     command: >-
-      sh -c 'mkdir -p /workspace/site /workspace/wiki && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+      sh -c 'mkdir -p /workspace/wiki /workspace/raw && rm -rf /workspace/site && mkdir -p /workspace/site && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
     volumes:
       - wiki-data:/workspace
     expose:
@@ -210,8 +211,6 @@ services:
   # ---------------------------------------------------------------------------
 
 volumes:
-  caddy-data:
-  caddy-config:
   wiki-data:
   llm-wiki-config:
   hermes-home:

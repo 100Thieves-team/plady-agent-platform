@@ -129,7 +129,9 @@ jobs:
           echo "SSM command: ${CMD_ID}"
 
           # Poll to a terminal state (ssm wait can time out on long installs).
-          for i in $(seq 1 120); do
+          # Budget must cover executionTimeout (1800s) + margin, else a slow
+          # first deploy is abandoned mid-run and reported failed: 190*10s=1900s.
+          for i in $(seq 1 190); do
             STATUS="$(aws ssm get-command-invocation --region "$AWS_REGION" \
               --command-id "$CMD_ID" --instance-id "$PLATFORM_INSTANCE_ID" \
               --query Status --output text 2>/dev/null || echo Pending)"
