@@ -225,24 +225,31 @@ export HERMES_API_SERVER_KEY="$(aws ssm get-parameter \
 
 `KEY` 셸 변수는 사용 후 `unset KEY`. 값은 Linear/PR/Slack/문서에 붙여넣지 않는다.
 
-### 2. Hermes provider 자격 구성 (`/v1/models`·chat용)
+### 2. Hermes provider 자격 구성 — Claude Code 구독 OAuth 토큰 (`/v1/models`·chat용)
 
-provider(예: Anthropic/OpenAI/Nous Portal)를 구성해야 `/v1/models`가 모델을 반환한다. 설정은 `~/.hermes/config.yaml`(model/provider) + `~/.hermes/.env`(API key)에 저장되며, **우리 compose에서는 이 경로가 named volume `hermes-home`(`/opt/data`)에 매핑**된다.
+런타임 백엔드는 **Claude Code 구독(Pro/Max)** 이다(PLA-273 결정 — raw API key 아님). 자격은 `claude setup-token`이 발급하는 **1년짜리 장수명 OAuth 토큰**이고, 컨테이너에는 `CLAUDE_CODE_OAUTH_TOKEN` env로 주입된다. Claude Code가 이 env를 **네이티브로** 읽으므로 — 일반 provider와 달리 — `hermes-gateway setup` 마법사도, `hermes-home` 볼륨에 쓰는 설정도 필요 없다. SSM에 토큰만 넣고 재배포하면 끝. (배선: SSM `claude-code-oauth-token` → `scripts/ec2-deploy.sh` → `.env.ec2` → compose `CLAUDE_CODE_OAUTH_TOKEN`.)
 
-> ⚠️ 업스트림 문서의 `docker run -v ~/.hermes:/opt/data ... setup`을 그대로 쓰면 **다른 위치**(호스트 `~/.hermes`)에 저장되어 우리 `hermes-gateway` 컨테이너가 보지 못한다. 반드시 아래처럼 **`docker compose run`으로 같은 `hermes-home` 볼륨**에 설정한다.
+> 토큰은 1년 뒤 만료되고, **만료/무효 시 동일 절차로 재발급(`--overwrite`)** 한다. 발급은 브라우저+로그인된 Pro/Max 세션이 있는 사람만 할 수 있다(헤드리스 EC2에서는 불가).
 
 ```bash
-# HERMES_API_SERVER_KEY 가 export 되어 있어야 한다(위 1단계).
+# (1) 브라우저 + 로그인된 Pro/Max claude가 있는 로컬 머신에서 1년 토큰 발급.
+#     사용량은 별도 API 청구가 아니라 구독 플랜 한도에 카운트된다.
+claude setup-token
+#   → 브라우저 OAuth 플로우 → 토큰 출력(sk-ant-oat... 형식). 이 값은 secret.
 
-# 방식 A: 대화형 setup 마법사 (권장) — 같은 hermes-home 볼륨에 기록
-docker compose --profile hermes run --rm hermes-gateway setup
-#   → provider 선택, API key 입력(또는 Nous Portal OAuth 브라우저 플로우).
+# (2) SSM SecureString에 저장 (재발급이면 --overwrite 추가). <env> = dev|staging|prod
+aws ssm put-parameter \
+  --region ap-northeast-2 \
+  --name "/plady/agent-platform/dev/claude-code-oauth-token" \
+  --type SecureString \
+  --overwrite \
+  --value "sk-ant-oat..."   # 위 출력값. 셸 히스토리/문서/Slack에 남기지 말 것.
 
-# 방식 B: 이미 구성된 설치에서 provider/model 추가·전환
-docker compose --profile hermes run --rm hermes-gateway model
+# (3) 재배포 — ec2-deploy.sh가 SSM에서 읽어 .env.ec2 주입 후 컨테이너 재기동.
+#     (main 머지로 GHA 무인 배포, 또는 EC2에서 scripts/ec2-deploy.sh 직접 실행.)
 ```
 
-provider별 env 변수(참고): Anthropic `ANTHROPIC_API_KEY`, OpenAI `OPENAI_API_KEY`, OpenRouter `OPENROUTER_API_KEY`, Google `GOOGLE_API_KEY`/`GEMINI_API_KEY`, DeepSeek `DEEPSEEK_API_KEY`. Nous Portal은 OAuth 자동. (env로 주입하려면 secrets-manager/CI 연계 시 `-e` 전달; 디스크에 키를 두지 않으려는 경우에 유용.)
+> 토큰 값은 Linear/PR/Slack/문서에 붙여넣지 않는다. 배포 로그는 값을 찍지 않고 `claude code oauth: present`만 출력한다(`scripts/ec2-deploy.sh`).
 
 ### 3. 기동 + smoke (위 1·2 완료 후)
 
