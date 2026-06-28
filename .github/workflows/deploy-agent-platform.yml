@@ -1,0 +1,179 @@
+name: Deploy agent-platform
+
+# Branch push = deploy. Builds the platform images, pushes to ECR, then drives an
+# unmanned EC2 deploy via SSM Run Command (no inbound SSH), and finally smoke-tests
+# the four public endpoints. Mirrors plady's deploy-aws.yml (ECS) translated to the
+# EC2 + docker compose model (ECS update-service -> SSM Run Command). See PLA-273.
+#
+# Trigger is `main` only because the OIDC role trust policy currently allows only
+# refs/heads/main (infra/terraform/platform/iam.tf). Adding `dev` requires widening
+# that trust (a PLA-247 follow-up).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-agent-platform.yml
+      - scripts/ec2-deploy.sh
+      - compose.ec2.yaml
+      - docker/**
+      - llm-wiki/**
+      - llm-wiki-hugo-cms/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-agent-platform
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+  ECR_LLM_WIKI_REPOSITORY: ${{ vars.ECR_LLM_WIKI_REPOSITORY || 'plady-agent-platform/llm-wiki' }}
+  ECR_WIKI_UI_REPOSITORY: ${{ vars.ECR_WIKI_UI_REPOSITORY || 'plady-agent-platform/wiki-ui' }}
+  PLATFORM_INSTANCE_ID: ${{ vars.PLATFORM_INSTANCE_ID }}
+  PLATFORM_ENV: ${{ vars.PLATFORM_ENV || 'dev' }}
+  WIKI_PUBLIC_HOST: ${{ vars.WIKI_PUBLIC_HOST || 'wiki.agent.plady.io' }}
+  MCP_PUBLIC_HOST: ${{ vars.MCP_PUBLIC_HOST || 'mcp.agent.plady.io' }}
+  HERMES_PUBLIC_HOST: ${{ vars.HERMES_PUBLIC_HOST || 'hermes.agent.plady.io' }}
+
+jobs:
+  deploy:
+    # Skip cleanly until the platform OIDC role + instance id are wired as repo vars.
+    if: ${{ vars.AWS_ROLE_TO_ASSUME != '' && vars.PLATFORM_INSTANCE_ID != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push llm-wiki
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/llm-wiki.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_LLM_WIKI_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_LLM_WIKI_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push wiki-ui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/hugo.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_WIKI_UI_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_WIKI_UI_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to EC2 via SSM Run Command
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Build the remote bootstrap: write compose + deploy script, export the
+          # image/env coordinates, then run the deploy. The box needs no repo checkout.
+          COMPOSE_B64="$(base64 -w0 compose.ec2.yaml)"
+          DEPLOY_B64="$(base64 -w0 scripts/ec2-deploy.sh)"
+
+          REMOTE=$(cat <<EOF
+          set -euo pipefail
+          mkdir -p /opt/plady-agent-platform
+          echo "${COMPOSE_B64}" | base64 -d > /opt/plady-agent-platform/compose.ec2.yaml
+          echo "${DEPLOY_B64}" | base64 -d > /tmp/ec2-deploy.sh
+          export AWS_REGION="${AWS_REGION}"
+          export ECR_REGISTRY="${ECR_REGISTRY}"
+          export LLM_WIKI_REPO="${ECR_LLM_WIKI_REPOSITORY}"
+          export WIKI_UI_REPO="${ECR_WIKI_UI_REPOSITORY}"
+          export IMAGE_TAG="${IMAGE_TAG}"
+          export PLATFORM_ENV="${PLATFORM_ENV}"
+          export WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST}"
+          export MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST}"
+          export HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST}"
+          bash /tmp/ec2-deploy.sh
+          EOF
+          )
+
+          PARAMS="$(mktemp)"
+          jq -n --arg c "$REMOTE" '{commands: [$c], executionTimeout: ["1800"]}' > "$PARAMS"
+
+          CMD_ID="$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$PLATFORM_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "PLA-273 deploy ${IMAGE_TAG}" \
+            --parameters "file://${PARAMS}" \
+            --query Command.CommandId --output text)"
+          rm -f "$PARAMS"
+          echo "SSM command: ${CMD_ID}"
+
+          # Poll to a terminal state (ssm wait can time out on long installs).
+          # Budget must cover executionTimeout (1800s) + margin, else a slow
+          # first deploy is abandoned mid-run and reported failed: 190*10s=1900s.
+          for i in $(seq 1 190); do
+            STATUS="$(aws ssm get-command-invocation --region "$AWS_REGION" \
+              --command-id "$CMD_ID" --instance-id "$PLATFORM_INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            sleep 10
+          done
+
+          echo "::group::SSM stdout"
+          aws ssm get-command-invocation --region "$AWS_REGION" \
+            --command-id "$CMD_ID" --instance-id "$PLATFORM_INSTANCE_ID" \
+            --query StandardOutputContent --output text || true
+          echo "::endgroup::"
+          echo "::group::SSM stderr"
+          aws ssm get-command-invocation --region "$AWS_REGION" \
+            --command-id "$CMD_ID" --instance-id "$PLATFORM_INSTANCE_ID" \
+            --query StandardErrorContent --output text || true
+          echo "::endgroup::"
+
+          echo "Final SSM status: ${STATUS}"
+          [ "$STATUS" = "Success" ] || { echo "Deploy failed on the instance"; exit 1; }
+
+      - name: Smoke test public endpoints
+        run: |
+          set -euo pipefail
+          fail=0
+
+          echo "== wiki: https://${WIKI_PUBLIC_HOST}/ (expect 200)"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${WIKI_PUBLIC_HOST}/" || echo 000)"
+          echo "  -> ${code}"; [ "$code" = "200" ] || { echo "  FAIL"; fail=1; }
+
+          echo "== mcp: https://${MCP_PUBLIC_HOST}/mcp no-auth (expect 401)"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -H 'Accept: text/event-stream' "https://${MCP_PUBLIC_HOST}/mcp" || echo 000)"
+          echo "  -> ${code}"; [ "$code" = "401" ] || { echo "  FAIL"; fail=1; }
+
+          echo "== hermes: https://${HERMES_PUBLIC_HOST}/health (expect status ok)"
+          body="$(curl -sS --max-time 20 "https://${HERMES_PUBLIC_HOST}/health" || true)"
+          echo "  -> ${body}"; printf '%s' "$body" | grep -q '"status":"ok"' || { echo "  FAIL"; fail=1; }
+
+          echo "== hermes: /v1/models no-auth (expect 401)"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${HERMES_PUBLIC_HOST}/v1/models" || echo 000)"
+          echo "  -> ${code}"; [ "$code" = "401" ] || { echo "  FAIL"; fail=1; }
+
+          [ "$fail" = 0 ] && echo "All public smoke checks passed." || { echo "Smoke checks failed."; exit 1; }

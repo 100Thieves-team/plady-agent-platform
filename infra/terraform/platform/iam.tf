@@ -68,3 +68,39 @@ resource "aws_iam_role_policy" "github_actions_ecr_push" {
   role   = aws_iam_role.github_actions_ecr.id
   policy = data.aws_iam_policy_document.github_actions_ecr_push.json
 }
+
+# ---------------------------------------------------------------------------
+# Deploy: GitHub Actions drives an unmanned EC2 deploy via SSM Run Command
+# (no inbound SSH). The instance pulls images and reads its own SSM secrets
+# under its instance role, so the CI role only needs to send the command and
+# read back the invocation result. See .github/workflows/deploy-agent-platform.yml
+# and scripts/ec2-deploy.sh (PLA-273).
+# ---------------------------------------------------------------------------
+data "aws_iam_policy_document" "github_actions_deploy_ssm" {
+  statement {
+    sid       = "SendCommandToOrigin"
+    actions   = ["ssm:SendCommand"]
+    resources = [aws_instance.app.arn]
+  }
+
+  statement {
+    sid       = "SendCommandDocument"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:${data.aws_partition.current.partition}:ssm:${var.aws_region}::document/AWS-RunShellScript"]
+  }
+
+  statement {
+    sid = "ReadCommandResult"
+    actions = [
+      "ssm:GetCommandInvocation",
+      "ssm:ListCommandInvocations",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_deploy_ssm" {
+  name   = "${var.project_name}-deploy-ssm"
+  role   = aws_iam_role.github_actions_ecr.id
+  policy = data.aws_iam_policy_document.github_actions_deploy_ssm.json
+}
