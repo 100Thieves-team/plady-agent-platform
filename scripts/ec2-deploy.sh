@@ -108,8 +108,26 @@ aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS 
 log "Pulling images"
 "${DC[@]}" pull
 
+# --- 4b. Hermes mcp_servers mapping (PLA-244) ------------------------------
+# Merge the llm-wiki MCP server into the hermes config inside the hermes-home
+# volume (~/.hermes/config.yaml == /opt/data/config.yaml) before the gateway
+# starts, so its first boot already sees the tool. Idempotent and surgical: the
+# one-shot hermes-config-init service rewrites only mcp_servers.llm-wiki and
+# leaves the human-managed model/provider section intact. No secret is written —
+# the token is injected to the gateway as LLM_WIKI_MCP_BEARER_TOKEN env and
+# resolved from the config placeholder at connect-time. See docs/hermes-gateway.md.
+log "Merging hermes mcp_servers mapping (llm-wiki) into the hermes-home config"
+"${DC[@]}" run --rm hermes-config-init
+
 log "Bringing the stack up"
 "${DC[@]}" up -d --remove-orphans
+
+# hermes reads config.yaml only at startup. On a redeploy where the image tag is
+# unchanged, `up -d` leaves the running gateway as-is, so restart it to pick up
+# any mcp_servers change merged above (cheap; the /health gate below retries
+# through the ~70-tool boot).
+log "Restarting hermes-gateway to load the MCP config"
+"${DC[@]}" restart hermes-gateway
 
 # --- 5. Health gate --------------------------------------------------------
 log "Container status"

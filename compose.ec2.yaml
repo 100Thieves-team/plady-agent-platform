@@ -140,6 +140,10 @@ services:
     platform: ${HERMES_PLATFORM:-linux/amd64}
     profiles:
       - hermes
+    # llm-wiki MCP is reached internally (mcp-proxy:18765); start the proxy first
+    # so the agent's first MCP tool call resolves. PLA-244.
+    depends_on:
+      - mcp-proxy
     command: ["gateway", "run"]
     environment:
       API_SERVER_ENABLED: "true"
@@ -160,6 +164,13 @@ services:
       # /health and the auth boundary still come up. Claude Code reads this env
       # var natively for headless/CI auth. See docs/hermes-gateway.md.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Bearer token the agent presents to the llm-wiki MCP endpoint. Its
+      # ~/.hermes/config.yaml carries only the ${LLM_WIKI_MCP_BEARER_TOKEN}
+      # placeholder (no secret on disk / in repo); hermes resolves it from this
+      # env var at MCP connect-time. Same value as the mcp-proxy bearer
+      # (MCP_BEARER_TOKEN, from /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token)
+      # because the agent calls mcp-proxy internally. PLA-244. See docs/hermes-gateway.md.
+      LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
       HERMES_UID: ${HERMES_UID:-10000}
       HERMES_GID: ${HERMES_GID:-10000}
     volumes:
@@ -167,6 +178,64 @@ services:
     expose:
       - "8642"
     restart: unless-stopped
+
+  # One-shot: merge the llm-wiki MCP server mapping into the hermes config
+  # (~/.hermes/config.yaml == /opt/data/config.yaml in the hermes-home volume),
+  # idempotently and WITHOUT clobbering the human-managed model/provider section
+  # (a full-file rewrite would wipe the provider set up by `hermes setup`). The
+  # bearer token is never written here — config.yaml only carries the
+  # ${LLM_WIKI_MCP_BEARER_TOKEN} placeholder, resolved by hermes from the
+  # hermes-gateway container env at MCP connect-time. Runs before the stack comes
+  # up (scripts/ec2-deploy.sh). Gated behind the `hermes` profile. PLA-244.
+  #
+  # Tool policy (config/mcp-registry.yaml, PLA-250): only the read-only `allow`
+  # tier is whitelisted here. The write-capable `approve` tier (wiki_content_*,
+  # wiki_ingest, wiki_export) is intentionally left out until the Slack
+  # interactive write-approval gate ships (PLA-244-B) — default-deny by omission.
+  hermes-config-init:
+    image: mikefarah/yq:4
+    profiles:
+      - hermes
+    # root so chown works on a fresh (root-owned) volume; the file is handed back
+    # to HERMES_UID/GID below so the gateway (which runs as that uid) can read it.
+    user: "0:0"
+    environment:
+      HERMES_UID: ${HERMES_UID:-10000}
+      HERMES_GID: ${HERMES_GID:-10000}
+    volumes:
+      - hermes-home:/opt/data
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        CONFIG=/opt/data/config.yaml
+        [ -f "$$CONFIG" ] || printf '{}\n' > "$$CONFIG"
+        cat > /tmp/llm-wiki.yaml <<'YAML'
+        url: http://mcp-proxy:18765/mcp
+        headers:
+          Authorization: "Bearer $${LLM_WIKI_MCP_BEARER_TOKEN}"
+        timeout: 120
+        connect_timeout: 60
+        tools:
+          include:
+            - wiki_search
+            - wiki_list
+            - wiki_content_read
+            - wiki_resolve
+            - wiki_stats
+            - wiki_lint
+            - wiki_history
+            - wiki_suggest
+            - wiki_graph
+            - wiki_index_status
+            - wiki_spaces_list
+          resources: false
+          prompts: false
+        YAML
+        yq -i '.mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")' "$$CONFIG"
+        chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
+        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only tier) into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network

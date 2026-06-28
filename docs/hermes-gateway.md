@@ -122,6 +122,45 @@ docker compose --env-file .env.ec2 -f compose.ec2.yaml exec hermes-gateway \
 
 상세 소비 계약은 [`pla-244-handoff.md`](pla-244-handoff.md)를 따릅니다.
 
+## MCP 도구 연동 (`mcp_servers` 매핑, PLA-244)
+
+Hermes 에이전트가 llm-wiki MCP 도구를 호출하려면 `~/.hermes/config.yaml`(= named volume `hermes-home`, 컨테이너 `/opt/data/config.yaml`)의 `mcp_servers`에 llm-wiki 서버를 등록해야 한다. PLA-250 레지스트리([`mcp-registry.md`](mcp-registry.md) / [`config/mcp-registry.yaml`](../config/mcp-registry.yaml)) 계약을 Hermes config 스키마로 번역한 것이다.
+
+### 어떻게 주입되는가 (멱등·secret-free)
+
+- **헬퍼 서비스**: `compose.ec2.yaml`의 one-shot `hermes-config-init`(이미지 `mikefarah/yq`, profile `hermes`)가 `hermes-home` 볼륨의 `config.yaml`에 `mcp_servers.llm-wiki`만 **surgical merge**한다. `model`/provider 섹션이나 다른 `mcp_servers` 엔트리는 건드리지 않으므로, 사람이 `hermes setup`으로 구성한 provider가 보존된다(파일 전체 덮어쓰기 금지).
+- **배포 흐름**: `scripts/ec2-deploy.sh`가 이미지 pull 직후 `docker compose ... run --rm hermes-config-init`로 merge하고, 스택을 올린 뒤 `restart hermes-gateway`로 config를 로드시킨다. 매 배포 멱등(같은 키를 다시 써도 동일 결과).
+- **endpoint**: 같은 compose 네트워크 내부 주소 `http://mcp-proxy:18765/mcp`를 쓴다(ALB 왕복·TLS 불필요). 공개 origin `https://mcp.agent.plady.io/mcp`도 동일 도구를 제공하지만 내부 경로가 더 짧고 안전하다.
+- **토큰(절대 파일/repo에 평문 미커밋)**: `config.yaml`에는 `Authorization: "Bearer ${LLM_WIKI_MCP_BEARER_TOKEN}"` **플레이스홀더만** 들어간다. Hermes는 `transport.url`·`headers` 안의 `${VAR}`를 **MCP connect 시점에** 컨테이너 env(+`~/.hermes/.env`)에서 해석한다([업스트림 MCP config 문서](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/mcp.md)). 그 env는 `hermes-gateway` 서비스의 `LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}`로 주입되며, 값은 기존 `.env.ec2`의 `MCP_BEARER_TOKEN`(SSM `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`)과 동일하다. mcp-proxy가 같은 토큰을 검증하므로 한 값으로 충분하다.
+
+> Hermes `mcp_servers` HTTP 항목 스키마는 평면형(`url`/`headers`/`timeout`/`tools.include`)이며 `transport:` 중첩이 아니다. 출처: [hermes-agent MCP config reference](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/mcp-config-reference.md), [use-mcp-with-hermes](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/use-mcp-with-hermes.md).
+
+### 등록되는 도구 (현재: read-only `allow` tier만)
+
+`config/mcp-registry.yaml`의 llm-wiki `allow` tier 11개만 `tools.include`에 넣는다(`include`는 화이트리스트 — 나머지는 자동 제외 = default-deny):
+
+```
+wiki_search, wiki_list, wiki_content_read, wiki_resolve, wiki_stats, wiki_lint,
+wiki_history, wiki_suggest, wiki_graph, wiki_index_status, wiki_spaces_list
+```
+
+⚠️ **write(`approve`) tier는 의도적으로 제외**: `wiki_content_write`/`wiki_content_new`/`wiki_content_commit`/`wiki_ingest`/`wiki_export`는 [MCP 레지스트리의 Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier)을 강제하는 Slack interactive 승인 게이트(**PLA-244-B**)가 떠야 안전하게 노출할 수 있다. 그 게이트가 없는 현재 단계에서 include하면 `/v1` 경유 요청이 승인 없이 위키를 쓸 수 있으므로(완료 기준 "write는 명시적 승인 뒤에만" 위반), 244-B에서 승인 게이트와 함께 `hermes-config-init`의 include 목록에 추가한다. `deny` tier(`wiki_spaces_*`/`wiki_config`/`wiki_schema`/`wiki_index_rebuild`)는 운영자 opt-in 전까지 항상 제외.
+
+### 검증
+
+```bash
+# (1) merge 결과 확인 — config.yaml에 mcp_servers.llm-wiki가 있고 토큰은 placeholder로만 존재
+docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+  run --rm --entrypoint /bin/sh hermes-config-init -c 'cat /opt/data/config.yaml'
+#   → mcp_servers.llm-wiki.url=http://mcp-proxy:18765/mcp,
+#     headers.Authorization="Bearer ${LLM_WIKI_MCP_BEARER_TOKEN}" (평문 토큰 없음)
+
+# (2) 에이전트가 실제로 도구를 잡는지 — provider(Claude Code OAuth) 구성된 뒤,
+#     /v1 chat completion으로 위키 검색을 유도하고 hermes 로그에서 llm-wiki MCP
+#     연결/도구 호출을 확인. (MCP 연결은 lazy: 첫 도구 호출 시점에 맺어짐.)
+docker compose --env-file .env.ec2 -f compose.ec2.yaml logs hermes-gateway | grep -i 'mcp\|llm-wiki'
+```
+
 ## 🙋 사람이 직접 해야 하는 일 (구체 절차)
 
 > 아래는 사람만 할 수 있는 작업이다(실 secret/credential, 외부 자격). 실제 키 값은 어디에도 커밋하지 않는다.
@@ -191,6 +230,10 @@ EC2(운영)는 host publish가 없으므로 컨테이너 내부 또는 PLA-247 i
 docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes up -d hermes-gateway
 docker compose --env-file .env.ec2 -f compose.ec2.yaml exec hermes-gateway curl -fsS localhost:8642/health
 ```
+
+### 3.5. MCP 도구 연동 적용 (PLA-244)
+
+`mcp_servers.llm-wiki` 매핑은 배포 흐름(`scripts/ec2-deploy.sh`의 `hermes-config-init`)이 자동으로 멱등 주입한다. **새 SSM secret을 만들 필요 없음** — bearer 토큰은 이미 존재하는 `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`(런타임 `MCP_BEARER_TOKEN`)을 재사용한다. 적용하려면 `main`에 머지(=재배포)하면 끝. 상세·검증은 위 [MCP 도구 연동](#mcp-도구-연동-mcp_servers-매핑-pla-244) 절을 따른다. write 도구 노출은 PLA-244-B(Slack 승인 게이트)에서 추가.
 
 ### 4. (PLA-247) 공개 라우팅 — 별도 이슈 소관
 
