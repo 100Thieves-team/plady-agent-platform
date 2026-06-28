@@ -175,42 +175,68 @@ services:
         fi
 
         # Never log the key. Write it, lock it down, point ssh at it only.
-        printf '%s' "$${TEAM_WIKI_V2_DEPLOY_KEY_B64}" | base64 -d > "$$SSH_DIR/id_deploy"
+        # Trailing `echo` restores the final newline: SSM read ($(...)) + ec2-deploy's
+        # `printf %s | base64 -w0` strips the PEM's trailing newline, and OpenSSL
+        # rejects a key without it ("error in libcrypto" -> Permission denied).
+        { printf '%s' "$${TEAM_WIKI_V2_DEPLOY_KEY_B64}" | base64 -d; echo; } > "$$SSH_DIR/id_deploy"
         chmod 600 "$$SSH_DIR/id_deploy"
         touch "$$SSH_DIR/known_hosts"; chmod 644 "$$SSH_DIR/known_hosts"
         export GIT_SSH_COMMAND="ssh -i $$SSH_DIR/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$$SSH_DIR/known_hosts"
         git config --global --add safe.directory "$$WS"
         cd "$$WS"
 
+        # /workspace may already be a git repo: llm-wiki initializes the workspace
+        # with its own "create:" commit before this sidecar runs, so we can assume
+        # NEITHER a fresh dir NOR an existing `origin`. Make the wiring idempotent —
+        # the old `[ ! -d .git ]` branch wrongly took the redeploy path and then
+        # `git remote set-url origin` failed ("No such remote 'origin'"), crash-looping.
         if [ ! -d "$$WS/.git" ]; then
-          # First boot on a fresh volume: turn /workspace into a v2 checkout.
+          echo "[wiki-data-sync] first boot: initializing $$WS as a git repo"
+          git init -q
+        fi
+        if git remote get-url origin >/dev/null 2>&1; then
+          git remote set-url origin "$${TEAM_WIKI_V2_REPO_SSH}"
+        else
+          git remote add origin "$${TEAM_WIKI_V2_REPO_SSH}"
+        fi
+        git fetch origin "$$BRANCH"
+        # Keep any uncommitted local changes before aligning with origin.
+        if [ -n "$$(git status --porcelain)" ]; then
+          git add -A
+          git commit -q -m "chore(wiki-sync): local changes on boot $$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+        fi
+        if git merge-base HEAD "origin/$$BRANCH" >/dev/null 2>&1; then
+          # Shared history (normal redeploy): keep unpushed local commits, rebase on remote.
+          echo "[wiki-data-sync] syncing existing $$WS with origin/$$BRANCH"
+          git pull --rebase --autostash origin "$$BRANCH" || { echo "[wiki-data-sync] boot rebase failed; aborting"; git rebase --abort 2>/dev/null || true; }
+        else
+          # No shared history (fresh repo, or llm-wiki's placeholder commit): adopt origin.
           # `checkout -f -B` fills tracked files (wiki/ raw/ inbox/ schemas/ wiki.toml)
           # and leaves untracked site/ (gitignored in v2, owned by wiki-ui) alone.
-          echo "[wiki-data-sync] first boot: initializing $$WS from origin ($$BRANCH)"
-          git init -q
-          git remote add origin "$${TEAM_WIKI_V2_REPO_SSH}"
-          git fetch origin "$$BRANCH"
+          echo "[wiki-data-sync] no shared history with origin/$$BRANCH; checking out origin"
           git checkout -f -B "$$BRANCH" "origin/$$BRANCH"
-        else
-          # Redeploy: volume persisted. Keep any unpushed local commits, rebase on remote.
-          echo "[wiki-data-sync] redeploy: syncing existing $$WS with origin/$$BRANCH"
-          git remote set-url origin "$${TEAM_WIKI_V2_REPO_SSH}"
-          if [ -n "$$(git status --porcelain)" ]; then
-            git add -A
-            git commit -q -m "chore(wiki-sync): local changes on boot $$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
-          fi
-          git fetch origin "$$BRANCH" || true
-          git pull --rebase --autostash origin "$$BRANCH" || { echo "[wiki-data-sync] boot rebase failed; aborting"; git rebase --abort 2>/dev/null || true; }
         fi
 
         echo "[wiki-data-sync] backing ENABLED -> sync loop every $${INTERVAL}s on $$BRANCH"
         while true; do
           sleep "$$INTERVAL"
-          git add -A
-          if [ -z "$$(git status --porcelain)" ]; then
+          # Don't fight a manual git operation: if an admin exec'd in to resolve a
+          # conflict (rebase/merge/cherry-pick in progress), skip this cycle so we
+          # never commit a half-finished state or `rebase --abort` their work.
+          if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ] || [ -f .git/MERGE_HEAD ] || [ -f .git/CHERRY_PICK_HEAD ]; then
+            echo "[wiki-data-sync] git operation in progress; skipping sync cycle for manual resolution"
             continue
           fi
-          git commit -q -m "chore(wiki-sync): runtime/MCP changes $$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+          git add -A
+          # Commit working-tree changes. If the tree is clean but we still have
+          # unpushed local commits (e.g. a prior cycle committed but `push` failed,
+          # or the boot commit never got pushed), fall through to pull/push instead
+          # of idling forever until the next file change.
+          if [ -n "$$(git status --porcelain)" ]; then
+            git commit -q -m "chore(wiki-sync): runtime/MCP changes $$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+          elif [ -z "$$(git cherry origin/$$BRANCH 2>/dev/null)" ]; then
+            continue
+          fi
           # Pull-then-push; a write landing between the two is caught next cycle.
           if ! git pull --rebase --autostash origin "$$BRANCH"; then
             echo "[wiki-data-sync] pull --rebase failed; aborting rebase, skipping push this cycle"

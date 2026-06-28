@@ -82,9 +82,9 @@ team-wiki-v2 백킹은 배포 플랫폼에 따라 **두 가지 모델**이 있�
 동작:
 
 - **deploy key 없음** → 사이드카는 "backing DISABLED" 로그 후 idle. wiki-ui는 빈 scaffold를 계속 서빙하고 MCP는 볼륨을 read/write하지만 git 백킹은 안 됨. (스택 전체를 죽이지 않음.)
-- **첫 부팅(볼륨 비어 `.git` 없음)** → `git init` → `remote add origin` → `fetch origin <branch>` → `checkout -f -B <branch> origin/<branch>`. tracked(`wiki/ raw/ inbox/ schemas/ wiki.toml`)는 채우고, untracked `site/`(v2 `.gitignore` 대상, wiki-ui가 wipe+recopy)는 보존.
-- **재배포(볼륨 persist, `.git` 있음)** → 미커밋 로컬 변경 commit → `pull --rebase --autostash` (미푸시 로컬 커밋 보존).
-- **동기화 루프** → `WIKI_SYNC_INTERVAL`초(기본 120)마다 `git add -A` → 변경 있으면 commit → `pull --rebase --autostash` → `push origin HEAD:<branch>`. pull→push 사이에 들어온 MCP write는 다음 사이클이 잡음. rebase 충돌 시 `rebase --abort` 후 그 사이클 push skip + 경고 로그, 다음 사이클 재시도.
+- **워크스페이스 배선(부팅 공통, 멱등)** → `.git` 없으면 `git init`만, origin은 `get-url`로 있으면 `set-url` 없으면 `add` (※ llm-wiki가 `/workspace`를 먼저 `git init`+`create:` 커밋해두므로 "`.git` 없음=첫부팅" 가정 금지 — 옛 코드가 redeploy 분기로 빠져 `set-url origin`이 "No such remote 'origin'"으로 crash-loop했음) → `fetch origin <branch>` → 미커밋 변경 commit → origin과 **공유 히스토리 있으면** `pull --rebase --autostash`(미푸시 커밋 보존), **없으면**(fresh/placeholder) `checkout -f -B <branch> origin/<branch>`로 origin 채택. untracked `site/`(v2 `.gitignore`, wiki-ui가 wipe+recopy)는 보존.
+- **deploy key 쓰기 주의** → `base64 -d` 뒤 반드시 trailing newline 보강(`{ ...; echo; }`). SSM read `$(...)` + ec2-deploy의 `printf %s|base64 -w0`가 PEM 끝 개행을 제거해, 그대로 쓰면 OpenSSL이 `error in libcrypto` → `Permission denied (publickey)`로 fetch/push 인증 실패함.
+- **동기화 루프** → `WIKI_SYNC_INTERVAL`초(기본 120)마다: ① `.git/rebase-merge|rebase-apply|MERGE_HEAD|CHERRY_PICK_HEAD` 있으면(관리자가 `exec`로 수동 충돌 해결 중) 그 사이클 skip → 작업 깨뜨리지 않음. ② `git add -A` 후 working tree 변경 있으면 commit. 변경이 없어도 **미푸시 로컬 커밋이 있으면**(직전 사이클 push 실패 또는 부팅 커밋) pull/push로 진행 — clean tree여도 무한 idle하지 않음. ③ `pull --rebase --autostash` → `push origin HEAD:<branch>`. pull→push 사이에 들어온 MCP write는 다음 사이클이 잡음. rebase 충돌 시 `rebase --abort` 후 그 사이클 push skip + 경고 로그, 다음 사이클 재시도.
 
 관련 env(`scripts/ec2-deploy.sh`가 SSM에서 읽어 `.env.ec2`로 렌더):
 
