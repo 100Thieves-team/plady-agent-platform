@@ -19,7 +19,7 @@
 | `llm-wiki` | HTTP `https://mcp.agent.plady.io/mcp` | `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` | live | **authoritative** (`platform-contract.md`) |
 | `github` | stdio `npx -y @modelcontextprotocol/server-github` | `/plady/agent-platform/<env>/github-mcp-pat` | contract-only | proposed placeholder |
 | `linear` | TBD (stdio \| http) | `/plady/agent-platform/<env>/linear-mcp-api-key` | contract-only | proposed placeholder |
-| `slack` | PLA-244가 확정 | PLA-244가 확정 (예: `/plady/agent-platform/<env>/slack-bot-token`) | PLA-244 소관 | proposed / PLA-244-owned |
+| `slack` | **platform** (Socket Mode, MCP 서버 아님) | `/plady/agent-platform/<env>/slack-bot-token` + `…/slack-app-token` + `…/slack-allowed-users` | PLA-244-B 확정 | confirmed / PLA-244-owned |
 | `google-calendar` | TBD (stdio \| http); auth=OAuth | `/plady/agent-platform/<env>/google-calendar-mcp-oauth` | contract-only | proposed placeholder |
 | `context7` | remote HTTP `https://mcp.context7.com/mcp` | `/plady/agent-platform/<env>/context7-api-key` (optional) | contract-only | proposed placeholder |
 | `n8n` | — | — | reserved (**PLA-251 소관**) | — |
@@ -27,7 +27,7 @@
 
 - `llm-wiki`만 현재 live 입니다(이미 compose `mcp-proxy`가 bearer 보호). 나머지는 **계약 entry**이며, 실제 연결은 소비 이슈(PLA-244 등)가 credential 주입 후 수행합니다.
 - `n8n.agent.plady.io`는 [`platform-contract.md`](platform-contract.md)에서 reserved이며 실제 계약은 PLA-251 소관입니다. 여기서는 reserved 스텁(현재 live 아님, default-deny)만 둡니다.
-- Slack MCP은 PLA-244에서 활성화됩니다. secret 이름과 transport 상세는 PLA-244가 [`pla-244-handoff.md`](pla-244-handoff.md)에서 확정합니다.
+- **Slack은 MCP 서버가 아니라 hermes 메시징 *플랫폼*입니다**(Socket Mode). 같은 `gateway run` 프로세스가 서빙하며 `mcp_servers`가 아니라 `SLACK_*` env + config `platforms.slack`로 구성합니다. PLA-244-B가 secret 이름을 확정했습니다: `slack-bot-token`(xoxb) + `slack-app-token`(xapp) + `slack-allowed-users`(Member ID allowlist, fail-closed). 런북 [`hermes-gateway.md`](hermes-gateway.md) "Slack 연동".
 - **transport 표기 규칙**: MCP 표준 transport는 `stdio`와 Streamable `http` 둘뿐입니다([MCP spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)). OAuth/PAT/API key는 transport가 아니라 **auth 계층**(`auth.*`)입니다. transport가 아직 안 정해진 서버는 `TBD (stdio \| http)`로 표기하고, 인증 방식은 auth 컬럼/필드에 둡니다.
 
 ## 안전한 도구 정책 (3-tier, default-deny)
@@ -50,6 +50,8 @@
 4. 승인 → 호출 forward / 거부·타임아웃 → 호출 거부(에러 반환). 승인 스코프는 기본 **호출 단위**(세션 전체 승인 아님)입니다.
 
 `deny` tier 도구는 위 흐름으로 풀리지 않으며, 운영자가 config에서 명시적으로 tier를 올려야만 활성화됩니다.
+
+> ⚠️ **구현 현실 (PLA-244-B 확인)**: 위 흐름은 *설계 계약*이지만, 현재 hermes-agent(`v2026.4.3`)에는 **MCP 도구 호출을 가로채는 승인 게이트가 없습니다**. `approvals.mode`(manual/smart/off)는 셸 명령만 게이트하며, MCP first-invoke 승인은 업스트림 제안 단계([#16462](https://github.com/NousResearch/hermes-agent/issues/16462))입니다. 따라서 1~4단계를 강제할 런타임 수단이 없어, PLA-244는 `approve` tier(write) 도구를 **아예 노출하지 않음**(default-deny by omission)으로 "write는 승인 뒤에만" 기준을 충족합니다. write를 실제로 켜려면 별도 승인 메커니즘(자체 프록시/게이트)이 선행되어야 합니다 — 후속 이슈.
 
 ## llm-wiki MCP 도구 분류 (23개)
 
@@ -149,7 +151,7 @@ PLA-244는 아래가 모두 명확하면 MCP 정책을 추측 없이 소비할 �
 - [x] llm-wiki MCP endpoint: `https://mcp.agent.plady.io/mcp` (authoritative).
 - [x] bearer secret ref: `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` (authoritative).
 - [x] write-capable 도구 승인 정책: [Write 승인 흐름](#write-승인-흐름-approve-tier).
-- [ ] Slack MCP의 secret 이름/transport는 PLA-244가 확정(현재 proposed/PLA-244-owned).
+- [x] Slack의 secret 이름/transport 확정(PLA-244-B): platform=Socket Mode, `slack-bot-token`+`slack-app-token`+`slack-allowed-users`. (Slack은 MCP 서버가 아니라 hermes 플랫폼.)
 
 ## 🙋 사람이 직접 해야 하는 일
 
@@ -160,7 +162,7 @@ PLA-244는 아래가 모두 명확하면 MCP 정책을 추측 없이 소비할 �
 - `linear`: API key → `/plady/agent-platform/<env>/linear-mcp-api-key` 저장.
 - `google-calendar`: OAuth 토큰 → `/plady/agent-platform/<env>/google-calendar-mcp-oauth` 저장.
 - `context7`: (선택) API key → `/plady/agent-platform/<env>/context7-api-key` 저장.
-- `slack`: PLA-244가 secret 이름 확정 후 주입.
+- `slack`(플랫폼): `slack-bot-token`(xoxb)·`slack-app-token`(xapp)·`slack-allowed-users`(Member ID, 쉼표구분)를 SSM SecureString으로 저장. 절차는 [`hermes-gateway.md`](hermes-gateway.md) "Slack 연동".
 
 ```bash
 # 예시: SSM SecureString 저장 (<env> = dev|staging|prod). 값은 절대 커밋/공유 금지.

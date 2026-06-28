@@ -48,6 +48,10 @@ CLAUDE_OAUTH_PARAM="${CLAUDE_OAUTH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/
 WIKI_DATA_KEY_PARAM="${WIKI_DATA_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/team-wiki-v2-deploy-key}"
 TEAM_WIKI_V2_REPO_SSH="${TEAM_WIKI_V2_REPO_SSH:-git@github.com:100Thieves-team/team-wiki-v2.git}"
 WIKI_SYNC_INTERVAL="${WIKI_SYNC_INTERVAL:-120}"
+# Slack messaging platform (PLA-244-B). All optional: absent → Slack stays off.
+SLACK_BOT_TOKEN_PARAM="${SLACK_BOT_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-bot-token}"
+SLACK_APP_TOKEN_PARAM="${SLACK_APP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-app-token}"
+SLACK_ALLOWED_USERS_PARAM="${SLACK_ALLOWED_USERS_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-allowed-users}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -84,13 +88,27 @@ log "Reading runtime secrets from SSM"
 HERMES_API_SERVER_KEY="$(ssm_get "$HERMES_KEY_PARAM")"
 MCP_BEARER_TOKEN="$(ssm_get "$MCP_TOKEN_PARAM")"
 CLAUDE_CODE_OAUTH_TOKEN="$(ssm_get "$CLAUDE_OAUTH_PARAM")"
+SLACK_BOT_TOKEN="$(ssm_get "$SLACK_BOT_TOKEN_PARAM")"
+SLACK_APP_TOKEN="$(ssm_get "$SLACK_APP_TOKEN_PARAM")"
+SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
 
 [ -n "$HERMES_API_SERVER_KEY" ] && [ "$HERMES_API_SERVER_KEY" != "None" ] \
   || { echo "FATAL: ${HERMES_KEY_PARAM} missing/undecryptable" >&2; exit 1; }
 [ -n "$MCP_BEARER_TOKEN" ] && [ "$MCP_BEARER_TOKEN" != "None" ] \
   || { echo "FATAL: ${MCP_TOKEN_PARAM} missing/undecryptable" >&2; exit 1; }
 [ "$CLAUDE_CODE_OAUTH_TOKEN" = "None" ] && CLAUDE_CODE_OAUTH_TOKEN=""
+# Slack params are optional; normalize "None" (missing) to empty so absent
+# tokens leave the platform off and an empty allowlist stays fail-closed.
+[ "$SLACK_BOT_TOKEN" = "None" ] && SLACK_BOT_TOKEN=""
+[ "$SLACK_APP_TOKEN" = "None" ] && SLACK_APP_TOKEN=""
+[ "$SLACK_ALLOWED_USERS" = "None" ] && SLACK_ALLOWED_USERS=""
 echo "  hermes key: present | mcp token: present | claude code oauth: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo present || echo 'absent (provider unconfigured)')"
+if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_APP_TOKEN" ]; then
+  if [ -n "$SLACK_ALLOWED_USERS" ]; then slack_state="enabled (allowlist set)"; else slack_state="enabled (allowlist EMPTY -> all users denied)"; fi
+else
+  slack_state="off (bot/app token absent)"
+fi
+echo "  slack: ${slack_state}"
 
 # team-wiki-v2 deploy key (PLA-275). Optional, like the Claude OAuth token: absent
 # -> wiki backing disabled, the wiki-data-sync sidecar idles, the stack still
@@ -122,6 +140,9 @@ CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
 TEAM_WIKI_V2_REPO_SSH=${TEAM_WIKI_V2_REPO_SSH}
 TEAM_WIKI_V2_DEPLOY_KEY_B64=${TEAM_WIKI_V2_DEPLOY_KEY_B64}
 WIKI_SYNC_INTERVAL=${WIKI_SYNC_INTERVAL}
+SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+SLACK_ALLOWED_USERS=${SLACK_ALLOWED_USERS}
 ENV
 chmod 600 "$ENV_FILE"
 
