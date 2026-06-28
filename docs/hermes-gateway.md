@@ -4,7 +4,7 @@
 
 ## 무엇을 띄우는가
 
-- 런타임: [`NousResearch/hermes-agent`](https://github.com/NousResearch/hermes-agent) 공개 이미지 `nousresearch/hermes-agent` (compose 기본 핀 `v2026.4.3`, `HERMES_IMAGE`로 override).
+- 런타임: [`NousResearch/hermes-agent`](https://github.com/NousResearch/hermes-agent) 공개 이미지 `nousresearch/hermes-agent` (compose 기본 핀 `v2026.6.19` = v0.17.0, `HERMES_IMAGE`로 override). 초기 배포는 `v2026.4.3`(v0.7.0)였으나 PLA-244-B에서 성숙한 Slack 지원(`slack manifest`·스레드/승인 버튼)을 위해 상향.
 - 프로세스 모델: 단일 `gateway run` 프로세스가 **OpenAI 호환 HTTP API 서버**를 노출. 별도 `dashboard` 컨테이너는 API key를 저장하므로 **공개하지 않음**(필요 시 127.0.0.1 + SSH 터널).
 - compose 서비스: `hermes-gateway` (profile `hermes`). 기본 `docker compose up`에서는 뜨지 않음.
 - 영속화: named volume `hermes-home` → 컨테이너 `/opt/data`.
@@ -29,7 +29,7 @@
 | `API_SERVER_KEY` | **모든 배포에서 필수**(loopback 포함) Bearer 인증 키. 값은 SSM `/plady/agent-platform/<env>/hermes-api-server-key`에서 조회. compose에는 host env `HERMES_API_SERVER_KEY`로 주입. |
 | `API_SERVER_PORT=8642` / `API_SERVER_HOST=0.0.0.0` | 위 표 참조. |
 | `HERMES_UID` / `HERMES_GID` | `hermes-home` 볼륨 파일 소유자. 기본 `10000`. |
-| `HERMES_IMAGE` | 이미지 override(기본 `nousresearch/hermes-agent:v2026.4.3`). |
+| `HERMES_IMAGE` | 이미지 override(기본 `nousresearch/hermes-agent:v2026.6.19`). |
 | `HERMES_PLATFORM` | 이미지 플랫폼(기본 `linux/amd64`). 이미지가 amd64 전용이라 Apple Silicon(arm64)에서는 에뮬레이션으로 실행된다. EC2(amd64)는 네이티브. |
 
 실제 키 값은 문서/코드/Linear/PR에 **절대** 남기지 않습니다.
@@ -169,7 +169,7 @@ Slack은 hermes의 **네이티브 메시징 플랫폼**이다. 별도 서비스/
 
 - **활성화 = 토큰 존재**. `SLACK_BOT_TOKEN`(xoxb-)·`SLACK_APP_TOKEN`(xapp-)이 컨테이너 env에 있으면 Slack 플랫폼이 자동으로 켜진다(별도 enable 플래그 없음). 둘 다 비면 Slack은 그냥 꺼진 채 API 서버만 뜬다.
 - **env 주입**: `compose.ec2.yaml`의 `hermes-gateway`가 `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`/`SLACK_ALLOWED_USERS`를 받고, `scripts/ec2-deploy.sh`가 SSM에서 읽어 `.env.ec2`로 채운다(모두 optional). hermes의 env 우선순위는 process env > `~/.hermes/.env` > 기본값이라 컨테이너 env 주입이 그대로 동작한다(기존 `API_SERVER_KEY` 방식과 동일).
-- **동작 설정**: `hermes-config-init`이 config.yaml에 `platforms.slack` 블록을 merge한다(`require_mention: true`, `unauthorized_dm_behavior: ignore`, 스레드 답장). 플랫폼 활성화는 토큰이 하고, 이 블록은 동작만 튜닝한다.
+- **동작 설정**: `hermes-config-init`이 config.yaml에 Slack 동작 키를 merge한다. hermes(v0.17) 스키마상 키가 **두 곳으로 분리**됨(소스 `gateway/config.py`·`messaging/slack.md`로 검증): 최상위 `slack:`에 `require_mention: true` + `unauthorized_dm_behavior: ignore`, `platforms.slack:`에 `reply_to_mode: first` + `extra.reply_in_thread/reply_broadcast`. 플랫폼 활성화는 토큰이 하고, 이 키들은 동작만 튜닝한다. (leaf 단위로 set 해서 사람이 둔 다른 키는 보존.)
 - **접근 제어(allowlist) = `SLACK_ALLOWED_USERS`** (Slack Member ID `U…`, 쉼표 구분). **fail-closed**: 비어 있으면 모든 Slack 사용자 거부(이관 #2 충족). 미인가 DM은 `unauthorized_dm_behavior: ignore`로 조용히 무시(원하면 `pair`로 바꿔 1회용 페어링 코드 발급 가능).
 
 ### write 도구 정책 (현재 read-only)

@@ -233,7 +233,10 @@ services:
   # to hermes-gateway:8642 by PLA-247 (DNS/ACM/ALB). Gated behind the `hermes`
   # profile. See docs/hermes-gateway.md.
   hermes-gateway:
-    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.4.3}
+    # v2026.6.19 (v0.17.0): bumped from the original v2026.4.3 (v0.7.0) for mature
+    # Slack support — v0.7.0 shipped only an early Slack adapter without the
+    # `slack manifest` CLI or thread/approval-button UX (added v0.8.0+). PLA-244-B.
+    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.6.19}
     # Image publishes linux/amd64 only; pin platform so it pulls on Apple
     # Silicon (via emulation) and EC2 (native amd64) alike.
     platform: ${HERMES_PLATFORM:-linux/amd64}
@@ -306,9 +309,11 @@ services:
   # without confirmation — violating "writes only behind explicit approval".
   # Re-enabling writes needs a real approval mechanism (separate issue).
   #
-  # platforms.slack: behavior only (require_mention, fail-closed unauthorized DMs,
-  # thread replies). The platform itself enables from the SLACK_* env tokens, not
-  # from this block; access control is SLACK_ALLOWED_USERS (Member IDs).
+  # Slack behavior keys live in TWO places (hermes v0.17 schema, verified against
+  # gateway/config.py + messaging/slack.md): top-level `slack:` holds
+  # require_mention + unauthorized_dm_behavior; `platforms.slack:` holds
+  # reply_to_mode + extra.reply_*. The platform itself enables from the SLACK_*
+  # env tokens, not from these keys; access control is SLACK_ALLOWED_USERS.
   hermes-config-init:
     image: mikefarah/yq:4
     profiles:
@@ -352,18 +357,16 @@ services:
           resources: false
           prompts: false
         YAML
-        cat > /tmp/slack.yaml <<'YAML'
-        require_mention: true
-        strict_mention: false
-        reply_to_mode: "first"
-        unauthorized_dm_behavior: ignore
-        extra:
-          reply_in_thread: true
-          reply_broadcast: false
-        YAML
-        yq -i '.mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml") | .platforms.slack = load("/tmp/slack.yaml")' "$$CONFIG"
+        yq -i '
+          .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
+          | .slack.require_mention = true
+          | .slack.unauthorized_dm_behavior = "ignore"
+          | .platforms.slack.reply_to_mode = "first"
+          | .platforms.slack.extra.reply_in_thread = true
+          | .platforms.slack.extra.reply_broadcast = false
+        ' "$$CONFIG"
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
-        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only) + platforms.slack into $$CONFIG"
+        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network
