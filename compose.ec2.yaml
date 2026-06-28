@@ -146,12 +146,13 @@ services:
       # itself requires this key for every deployment and refuses to serve
       # without it, so an empty value fails fast in the container, not the file.
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
-      # Provider credential for the Claude Code runtime backend (PLA-273 decision).
-      # Injected from SSM by scripts/ec2-deploy.sh when the parameter exists;
-      # empty otherwise so /health and the auth boundary still come up. Model
-      # selection beyond the key is a one-time `hermes-gateway setup`/`model`
-      # step persisted in the hermes-home volume. See docs/hermes-gateway.md.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Provider credential for the Claude Code runtime backend (PLA-273 decision:
+      # subscription, not a raw API key). A long-lived OAuth token from
+      # `claude setup-token` (Pro/Max login), injected from SSM by
+      # scripts/ec2-deploy.sh when the parameter exists; empty otherwise so
+      # /health and the auth boundary still come up. Claude Code reads this env
+      # var natively for headless/CI auth. See docs/hermes-gateway.md.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       HERMES_UID: ${HERMES_UID:-10000}
       HERMES_GID: ${HERMES_GID:-10000}
     volumes:

@@ -21,7 +21,7 @@
 #   PLATFORM_ENV=dev
 #   HERMES_KEY_PARAM=/plady/agent-platform/<env>/hermes-api-server-key
 #   MCP_TOKEN_PARAM=/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token
-#   ANTHROPIC_KEY_PARAM=/plady/agent-platform/<env>/anthropic-api-key  (optional)
+#   CLAUDE_OAUTH_PARAM=/plady/agent-platform/<env>/claude-code-oauth-token (optional)
 #   WIKI_PUBLIC_HOST=wiki.agent.plady.io
 #   MCP_PUBLIC_HOST=mcp.agent.plady.io
 #   HERMES_PUBLIC_HOST=hermes.agent.plady.io
@@ -40,7 +40,7 @@ APP_DIR="${APP_DIR:-/opt/plady-agent-platform}"
 PLATFORM_ENV="${PLATFORM_ENV:-dev}"
 HERMES_KEY_PARAM="${HERMES_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/hermes-api-server-key}"
 MCP_TOKEN_PARAM="${MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/llm-wiki-mcp-bearer-token}"
-ANTHROPIC_KEY_PARAM="${ANTHROPIC_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/anthropic-api-key}"
+CLAUDE_OAUTH_PARAM="${CLAUDE_OAUTH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/claude-code-oauth-token}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -76,14 +76,14 @@ ssm_get() {
 log "Reading runtime secrets from SSM"
 HERMES_API_SERVER_KEY="$(ssm_get "$HERMES_KEY_PARAM")"
 MCP_BEARER_TOKEN="$(ssm_get "$MCP_TOKEN_PARAM")"
-ANTHROPIC_API_KEY="$(ssm_get "$ANTHROPIC_KEY_PARAM")"
+CLAUDE_CODE_OAUTH_TOKEN="$(ssm_get "$CLAUDE_OAUTH_PARAM")"
 
 [ -n "$HERMES_API_SERVER_KEY" ] && [ "$HERMES_API_SERVER_KEY" != "None" ] \
   || { echo "FATAL: ${HERMES_KEY_PARAM} missing/undecryptable" >&2; exit 1; }
 [ -n "$MCP_BEARER_TOKEN" ] && [ "$MCP_BEARER_TOKEN" != "None" ] \
   || { echo "FATAL: ${MCP_TOKEN_PARAM} missing/undecryptable" >&2; exit 1; }
-[ "$ANTHROPIC_API_KEY" = "None" ] && ANTHROPIC_API_KEY=""
-echo "  hermes key: present | mcp token: present | anthropic key: $([ -n "$ANTHROPIC_API_KEY" ] && echo present || echo 'absent (provider unconfigured)')"
+[ "$CLAUDE_CODE_OAUTH_TOKEN" = "None" ] && CLAUDE_CODE_OAUTH_TOKEN=""
+echo "  hermes key: present | mcp token: present | claude code oauth: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo present || echo 'absent (provider unconfigured)')"
 
 # --- 3. Render .env.ec2 (secret-grade; never committed) --------------------
 log "Rendering ${ENV_FILE}"
@@ -97,7 +97,7 @@ MCP_PUBLIC_HOST=${MCP_PUBLIC_HOST}
 HERMES_PUBLIC_HOST=${HERMES_PUBLIC_HOST}
 MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN}
 HERMES_API_SERVER_KEY=${HERMES_API_SERVER_KEY}
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
 ENV
 chmod 600 "$ENV_FILE"
 
