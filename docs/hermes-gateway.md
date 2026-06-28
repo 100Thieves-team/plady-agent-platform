@@ -128,7 +128,7 @@ Hermes 에이전트가 llm-wiki MCP 도구를 호출하려면 `~/.hermes/config.
 
 ### 어떻게 주입되는가 (멱등·secret-free)
 
-- **헬퍼 서비스**: `compose.ec2.yaml`의 one-shot `hermes-config-init`(이미지 `mikefarah/yq`, profile `hermes`)가 `hermes-home` 볼륨의 `config.yaml`에 **runtime backend(`model.provider: openai-codex`, `model.default: codex`, PLA-277)** + `mcp_servers.llm-wiki` + slack 동작 키를 **surgical leaf-`set`**으로 머지한다. 명시된 leaf만 건드리므로 사람이 둔 다른 키는 보존된다(파일 전체 덮어쓰기 금지). provider **자격**(Codex device-code OAuth 세션)은 같은 볼륨의 `auth.json`에 따로 있고 이 merge가 건드리지 않는다 — §2 참조.
+- **헬퍼 서비스**: `compose.ec2.yaml`의 one-shot `hermes-config-init`(이미지 `mikefarah/yq`, profile `hermes`)가 `hermes-home` 볼륨의 `config.yaml`에 **runtime backend(`model.provider: openai-codex`, `model.default: gpt-5.5`, PLA-277)** + `mcp_servers.llm-wiki` + slack 동작 키를 **surgical leaf-`set`**으로 머지한다. 명시된 leaf만 건드리므로 사람이 둔 다른 키는 보존된다(파일 전체 덮어쓰기 금지). provider **자격**(Codex device-code OAuth 세션)은 같은 볼륨의 `auth.json`에 따로 있고 이 merge가 건드리지 않는다 — §2 참조.
 - **배포 흐름**: `scripts/ec2-deploy.sh`가 이미지 pull 직후 `docker compose ... run --rm hermes-config-init`로 merge하고, 스택을 올린 뒤 `restart hermes-gateway`로 config를 로드시킨다. 매 배포 멱등(같은 키를 다시 써도 동일 결과).
 - **endpoint**: 같은 compose 네트워크 내부 주소 `http://mcp-proxy:18765/mcp`를 쓴다(ALB 왕복·TLS 불필요). 공개 origin `https://mcp.agent.plady.io/mcp`도 동일 도구를 제공하지만 내부 경로가 더 짧고 안전하다.
 - **토큰(절대 파일/repo에 평문 미커밋)**: `config.yaml`에는 `Authorization: "Bearer ${LLM_WIKI_MCP_BEARER_TOKEN}"` **플레이스홀더만** 들어간다. Hermes는 `transport.url`·`headers` 안의 `${VAR}`를 **MCP connect 시점에** 컨테이너 env(+`~/.hermes/.env`)에서 해석한다([업스트림 MCP config 문서](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/mcp.md)). 그 env는 `hermes-gateway` 서비스의 `LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}`로 주입되며, 값은 기존 `.env.ec2`의 `MCP_BEARER_TOKEN`(SSM `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`)과 동일하다. mcp-proxy가 같은 토큰을 검증하므로 한 값으로 충분하다.
@@ -231,7 +231,7 @@ export HERMES_API_SERVER_KEY="$(aws ssm get-parameter \
 
 **Claude 경로와의 핵심 차이 — 자격은 env가 아니라 볼륨 파일이다.** Codex 자격은 SSM secret이나 env 토큰이 아니라 **device-code OAuth 세션**(리프레시 토큰)으로, hermes가 `~/.hermes/auth.json`(= `hermes-home` 볼륨의 `/opt/data/auth.json`)에 영속한다. 그래서:
 
-- **provider 선택**은 코드가 선언적으로 한다 — `hermes-config-init`이 `config.yaml`에 `model.provider: openai-codex` + `model.default: codex`를 머지(별도 `hermes setup` 마법사 불필요). API key·`OPENAI_API_KEY`·Codex CLI 설치 **모두 불필요**.
+- **provider 선택**은 코드가 선언적으로 한다 — `hermes-config-init`이 `config.yaml`에 `model.provider: openai-codex` + `model.default: gpt-5.5`를 머지(별도 `hermes setup` 마법사 불필요). API key·`OPENAI_API_KEY`·Codex CLI 설치 **모두 불필요**. (별칭 `codex`는 ChatGPT 계정 백엔드가 HTTP 400 `unsupported-model`로 거부하므로 실제 모델 ID `gpt-5.5`를 쓴다.)
 - **로그인은 사람이 1회** — 브라우저로 device-code OAuth를 통과해 `auth.json`을 **같은 볼륨에** 써야 게이트웨이가 본다. SSM 정적 주입과 맞지 않는 부분(이관 #2).
 - 볼륨이 유지되는 한 재시작/이미지 업데이트에도 자격이 보존된다. **볼륨 reset 시 재로그인** 필요(아래 "Session persistence / reset").
 
@@ -240,16 +240,20 @@ export HERMES_API_SERVER_KEY="$(aws ssm get-parameter \
 ```bash
 # (1) provider 선택을 config.yaml에 머지 (배포 흐름이 자동으로 하지만, 수동도 가능).
 #     main 머지/재배포 시 ec2-deploy.sh가 hermes-config-init으로 멱등 적용한다.
-docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+#     NOTE: EC2의 .env.ec2는 root 소유 600 secret이라 모든 compose 명령에 sudo 필요.
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
   run -T --rm hermes-config-init
-#   → config.yaml에 model.provider: openai-codex / model.default: codex 머지
+#   → config.yaml에 model.provider: openai-codex / model.default: gpt-5.5 머지
+#     (model.default는 ChatGPT 계정에서 거부되는 별칭 "codex"가 아니라 실제 모델 ID여야 한다.)
 
 # (2) device-code OAuth 로그인 — 사람이 1회, 같은 hermes-home 볼륨에 대고 실행.
 #     브라우저로 ChatGPT 구독 로그인(device code 입력). 자격은 /opt/data/auth.json에 영속.
-docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
-  run --rm hermes-gateway auth add codex-oauth
+#     provider 이름은 핀 버전(v2026.6.19)이 받는 "openai-codex"다("codex-oauth"는
+#     Unknown provider로 거부됨 — 버전 스큐). 이름 헷갈리면 `... model` 인터랙티브 권장.
+sudo docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+  run --rm hermes-gateway auth add openai-codex
 #   → 출력된 URL 열고 코드 입력 → ChatGPT(구독) 로그인 → auth.json 기록.
-#     (대안: `... run --rm hermes-gateway model` 에서 OpenAI Codex 선택 시 같은 플로우.)
+#     (대안/권장: `... run --rm hermes-gateway model` 에서 OpenAI Codex + gpt-5.5 선택.)
 
 # (3) 게이트웨이 기동/재기동 — config.yaml(provider) + auth.json(자격)을 로드.
 docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes up -d hermes-gateway

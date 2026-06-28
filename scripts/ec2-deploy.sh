@@ -110,7 +110,7 @@ if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_APP_TOKEN" ]; then
 fi
 # Codex (openai-codex) provider auth is a device-code OAuth session persisted to
 # the hermes-home volume (/opt/data/auth.json), written once by a human via
-# `hermes auth add codex-oauth` — NOT an SSM secret. Nothing to inject here; the
+# `hermes auth add openai-codex` — NOT an SSM secret. Nothing to inject here; the
 # config-init merge sets model.provider declaratively. See docs/hermes-gateway.md.
 echo "  hermes key: present | mcp token: present | codex auth: device-code OAuth in hermes-home volume (not env)"
 if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_APP_TOKEN" ]; then

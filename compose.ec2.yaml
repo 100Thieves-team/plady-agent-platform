@@ -290,7 +290,7 @@ services:
       # openai-codex); its credential is NOT an env var. Unlike the former Claude
       # Code path, Codex auth is a device-code OAuth session ("Sign in with
       # ChatGPT") persisted to /opt/data/auth.json in the hermes-home volume — a
-      # human runs `hermes auth add codex-oauth` once against this volume (see
+      # human runs `hermes auth add openai-codex` once against this volume (see
       # docs/hermes-gateway.md §2). No API key, no Codex CLI, no SSM secret for
       # the provider. The volume below carries that credential across restarts.
       # Bearer token the agent presents to the llm-wiki MCP endpoint. Its
@@ -324,9 +324,11 @@ services:
   # /opt/data/config.yaml in the hermes-home volume), idempotently via surgical
   # leaf-`set` (other keys a human may have placed are preserved — no full-file
   # rewrite). The runtime backend is set declaratively here: model.provider =
-  # openai-codex, model.default = codex (PLA-277). This selects the provider only
+  # openai-codex, model.default = gpt-5.5 (PLA-277). The bare "codex" alias is
+  # rejected by the ChatGPT-account Codex backend (HTTP 400 unsupported-model);
+  # ChatGPT-account auth requires a concrete model id (gpt-5.5). This selects the provider only
   # — the credential is the device-code OAuth session in /opt/data/auth.json,
-  # written once by a human (`hermes auth add codex-oauth`), NOT by this merge.
+  # written once by a human (`hermes auth add openai-codex`), NOT by this merge.
   # No secret is written here — the MCP bearer is a ${LLM_WIKI_MCP_BEARER_TOKEN}
   # placeholder resolved at connect-time, and the Slack tokens live only in the
   # gateway container env. Runs before the stack comes up (scripts/ec2-deploy.sh).
@@ -390,7 +392,7 @@ services:
         YAML
         yq -i '
           .model.provider = "openai-codex"
-          | .model.default = "codex"
+          | .model.default = "gpt-5.5"
           | .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
           | .slack.require_mention = true
           | .slack.unauthorized_dm_behavior = "ignore"
