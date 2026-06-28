@@ -128,7 +128,7 @@ Hermes 에이전트가 llm-wiki MCP 도구를 호출하려면 `~/.hermes/config.
 
 ### 어떻게 주입되는가 (멱등·secret-free)
 
-- **헬퍼 서비스**: `compose.ec2.yaml`의 one-shot `hermes-config-init`(이미지 `mikefarah/yq`, profile `hermes`)가 `hermes-home` 볼륨의 `config.yaml`에 `mcp_servers.llm-wiki`만 **surgical merge**한다. `model`/provider 섹션이나 다른 `mcp_servers` 엔트리는 건드리지 않으므로, 사람이 `hermes setup`으로 구성한 provider가 보존된다(파일 전체 덮어쓰기 금지).
+- **헬퍼 서비스**: `compose.ec2.yaml`의 one-shot `hermes-config-init`(이미지 `mikefarah/yq`, profile `hermes`)가 `hermes-home` 볼륨의 `config.yaml`에 **runtime backend(`model.provider: openai-codex`, `model.default: codex`, PLA-277)** + `mcp_servers.llm-wiki` + slack 동작 키를 **surgical leaf-`set`**으로 머지한다. 명시된 leaf만 건드리므로 사람이 둔 다른 키는 보존된다(파일 전체 덮어쓰기 금지). provider **자격**(Codex device-code OAuth 세션)은 같은 볼륨의 `auth.json`에 따로 있고 이 merge가 건드리지 않는다 — §2 참조.
 - **배포 흐름**: `scripts/ec2-deploy.sh`가 이미지 pull 직후 `docker compose ... run --rm hermes-config-init`로 merge하고, 스택을 올린 뒤 `restart hermes-gateway`로 config를 로드시킨다. 매 배포 멱등(같은 키를 다시 써도 동일 결과).
 - **endpoint**: 같은 compose 네트워크 내부 주소 `http://mcp-proxy:18765/mcp`를 쓴다(ALB 왕복·TLS 불필요). 공개 origin `https://mcp.agent.plady.io/mcp`도 동일 도구를 제공하지만 내부 경로가 더 짧고 안전하다.
 - **토큰(절대 파일/repo에 평문 미커밋)**: `config.yaml`에는 `Authorization: "Bearer ${LLM_WIKI_MCP_BEARER_TOKEN}"` **플레이스홀더만** 들어간다. Hermes는 `transport.url`·`headers` 안의 `${VAR}`를 **MCP connect 시점에** 컨테이너 env(+`~/.hermes/.env`)에서 해석한다([업스트림 MCP config 문서](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/mcp.md)). 그 env는 `hermes-gateway` 서비스의 `LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}`로 주입되며, 값은 기존 `.env.ec2`의 `MCP_BEARER_TOKEN`(SSM `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`)과 동일하다. mcp-proxy가 같은 토큰을 검증하므로 한 값으로 충분하다.
@@ -155,7 +155,7 @@ docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
 #   → mcp_servers.llm-wiki.url=http://mcp-proxy:18765/mcp,
 #     headers.Authorization="Bearer ${LLM_WIKI_MCP_BEARER_TOKEN}" (평문 토큰 없음)
 
-# (2) 에이전트가 실제로 도구를 잡는지 — provider(Claude Code OAuth) 구성된 뒤,
+# (2) 에이전트가 실제로 도구를 잡는지 — provider(openai-codex device-code OAuth) 구성된 뒤,
 #     /v1 chat completion으로 위키 검색을 유도하고 hermes 로그에서 llm-wiki MCP
 #     연결/도구 호출을 확인. (MCP 연결은 lazy: 첫 도구 호출 시점에 맺어짐.)
 docker compose --env-file .env.ec2 -f compose.ec2.yaml logs hermes-gateway | grep -i 'mcp\|llm-wiki'
@@ -225,31 +225,39 @@ export HERMES_API_SERVER_KEY="$(aws ssm get-parameter \
 
 `KEY` 셸 변수는 사용 후 `unset KEY`. 값은 Linear/PR/Slack/문서에 붙여넣지 않는다.
 
-### 2. Hermes provider 자격 구성 — Claude Code 구독 OAuth 토큰 (`/v1/models`·chat용)
+### 2. Hermes provider 자격 구성 — openai-codex device-code OAuth (`/v1/models`·chat용)
 
-런타임 백엔드는 **Claude Code 구독(Pro/Max)** 이다(PLA-273 결정 — raw API key 아님). 자격은 `claude setup-token`이 발급하는 **1년짜리 장수명 OAuth 토큰**이고, 컨테이너에는 `CLAUDE_CODE_OAUTH_TOKEN` env로 주입된다. Claude Code가 이 env를 **네이티브로** 읽으므로 — 일반 provider와 달리 — `hermes-gateway setup` 마법사도, `hermes-home` 볼륨에 쓰는 설정도 필요 없다. SSM에 토큰만 넣고 재배포하면 끝. (배선: SSM `claude-code-oauth-token` → `scripts/ec2-deploy.sh` → `.env.ec2` → compose `CLAUDE_CODE_OAUTH_TOKEN`.)
+런타임 백엔드는 **`openai-codex` provider**(ChatGPT 구독, "Sign in with ChatGPT")이다(PLA-277). 이전 Claude Code OAuth 경로는 Anthropic의 서드파티 앱 구독 한도 차단(2026-04-04 정책)으로 막혀 전환했다 — 배경은 [PLA-277](https://linear.app/100-thieves/issue/PLA-277).
 
-> 토큰은 1년 뒤 만료되고, **만료/무효 시 동일 절차로 재발급(`--overwrite`)** 한다. 발급은 브라우저+로그인된 Pro/Max 세션이 있는 사람만 할 수 있다(헤드리스 EC2에서는 불가).
+**Claude 경로와의 핵심 차이 — 자격은 env가 아니라 볼륨 파일이다.** Codex 자격은 SSM secret이나 env 토큰이 아니라 **device-code OAuth 세션**(리프레시 토큰)으로, hermes가 `~/.hermes/auth.json`(= `hermes-home` 볼륨의 `/opt/data/auth.json`)에 영속한다. 그래서:
+
+- **provider 선택**은 코드가 선언적으로 한다 — `hermes-config-init`이 `config.yaml`에 `model.provider: openai-codex` + `model.default: codex`를 머지(별도 `hermes setup` 마법사 불필요). API key·`OPENAI_API_KEY`·Codex CLI 설치 **모두 불필요**.
+- **로그인은 사람이 1회** — 브라우저로 device-code OAuth를 통과해 `auth.json`을 **같은 볼륨에** 써야 게이트웨이가 본다. SSM 정적 주입과 맞지 않는 부분(이관 #2).
+- 볼륨이 유지되는 한 재시작/이미지 업데이트에도 자격이 보존된다. **볼륨 reset 시 재로그인** 필요(아래 "Session persistence / reset").
+
+> 로그인은 반드시 게이트웨이와 **같은 `hermes-home` 볼륨**에 기록해야 한다. `docker compose run`으로 `hermes-gateway`(같은 볼륨 마운트)에서 실행하면 TTY가 붙어 device code/URL을 읽을 수 있고, 결과 `auth.json`이 볼륨에 남아 이후 무인 기동에서 그대로 쓰인다. 헤드리스로 토큰만 주입하는 공식 경로는 없다 — 사람이 1회 인터랙티브 로그인.
 
 ```bash
-# (1) 브라우저 + 로그인된 Pro/Max claude가 있는 로컬 머신에서 1년 토큰 발급.
-#     사용량은 별도 API 청구가 아니라 구독 플랜 한도에 카운트된다.
-claude setup-token
-#   → 브라우저 OAuth 플로우 → 토큰 출력(sk-ant-oat... 형식). 이 값은 secret.
+# (1) provider 선택을 config.yaml에 머지 (배포 흐름이 자동으로 하지만, 수동도 가능).
+#     main 머지/재배포 시 ec2-deploy.sh가 hermes-config-init으로 멱등 적용한다.
+docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+  run -T --rm hermes-config-init
+#   → config.yaml에 model.provider: openai-codex / model.default: codex 머지
 
-# (2) SSM SecureString에 저장 (재발급이면 --overwrite 추가). <env> = dev|staging|prod
-aws ssm put-parameter \
-  --region ap-northeast-2 \
-  --name "/plady/agent-platform/dev/claude-code-oauth-token" \
-  --type SecureString \
-  --overwrite \
-  --value "sk-ant-oat..."   # 위 출력값. 셸 히스토리/문서/Slack에 남기지 말 것.
+# (2) device-code OAuth 로그인 — 사람이 1회, 같은 hermes-home 볼륨에 대고 실행.
+#     브라우저로 ChatGPT 구독 로그인(device code 입력). 자격은 /opt/data/auth.json에 영속.
+docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+  run --rm hermes-gateway auth add codex-oauth
+#   → 출력된 URL 열고 코드 입력 → ChatGPT(구독) 로그인 → auth.json 기록.
+#     (대안: `... run --rm hermes-gateway model` 에서 OpenAI Codex 선택 시 같은 플로우.)
 
-# (3) 재배포 — ec2-deploy.sh가 SSM에서 읽어 .env.ec2 주입 후 컨테이너 재기동.
-#     (main 머지로 GHA 무인 배포, 또는 EC2에서 scripts/ec2-deploy.sh 직접 실행.)
+# (3) 게이트웨이 기동/재기동 — config.yaml(provider) + auth.json(자격)을 로드.
+docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes up -d hermes-gateway
 ```
 
-> 토큰 값은 Linear/PR/Slack/문서에 붙여넣지 않는다. 배포 로그는 값을 찍지 않고 `claude code oauth: present`만 출력한다(`scripts/ec2-deploy.sh`).
+> `auth.json`은 OAuth 리프레시 토큰을 담은 **secret**이다 — `hermes-home` 볼륨은 secret-grade로 취급(커밋·비암호 백업 금지, `HERMES_UID/GID` 권한 제한). 배포 로그는 자격 값을 찍지 않고 `codex auth: device-code OAuth in hermes-home volume (not env)`만 출력한다(`scripts/ec2-deploy.sh`).
+>
+> **지속가능성/ToS 점검(이관 #3)**: 항상 떠 있는 멀티유저 Slack 게이트웨이를 ChatGPT 구독 1개로 운영하면 5시간/주간 rate limit + "구독으로 멀티유저 서빙" ToS가 걸릴 수 있다. 메커니즘은 first-party로 동작하나 **팀 정책 판단 사안** — 막히면 fallback으로 raw `ANTHROPIC_API_KEY` provider 회귀(PLA-277 대안 절).
 
 ### 3. 기동 + smoke (위 1·2 완료 후)
 

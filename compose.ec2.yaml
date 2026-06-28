@@ -285,13 +285,14 @@ services:
       # itself requires this key for every deployment and refuses to serve
       # without it, so an empty value fails fast in the container, not the file.
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
-      # Provider credential for the Claude Code runtime backend (PLA-273 decision:
-      # subscription, not a raw API key). A long-lived OAuth token from
-      # `claude setup-token` (Pro/Max login), injected from SSM by
-      # scripts/ec2-deploy.sh when the parameter exists; empty otherwise so
-      # /health and the auth boundary still come up. Claude Code reads this env
-      # var natively for headless/CI auth. See docs/hermes-gateway.md.
-      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Runtime LLM backend: openai-codex provider (PLA-277). The provider is set
+      # declaratively in config.yaml by hermes-config-init (model.provider:
+      # openai-codex); its credential is NOT an env var. Unlike the former Claude
+      # Code path, Codex auth is a device-code OAuth session ("Sign in with
+      # ChatGPT") persisted to /opt/data/auth.json in the hermes-home volume — a
+      # human runs `hermes auth add codex-oauth` once against this volume (see
+      # docs/hermes-gateway.md §2). No API key, no Codex CLI, no SSM secret for
+      # the provider. The volume below carries that credential across restarts.
       # Bearer token the agent presents to the llm-wiki MCP endpoint. Its
       # ~/.hermes/config.yaml carries only the ${LLM_WIKI_MCP_BEARER_TOKEN}
       # placeholder (no secret on disk / in repo); hermes resolves it from this
@@ -318,14 +319,18 @@ services:
       - "8642"
     restart: unless-stopped
 
-  # One-shot: merge the non-secret hermes config (mcp_servers.llm-wiki +
-  # platforms.slack) into ~/.hermes/config.yaml (== /opt/data/config.yaml in the
-  # hermes-home volume), idempotently and WITHOUT clobbering the human-managed
-  # model/provider section (a full-file rewrite would wipe the provider set up by
-  # `hermes setup`). No secret is written here — the MCP bearer is a
-  # ${LLM_WIKI_MCP_BEARER_TOKEN} placeholder resolved at connect-time, and the
-  # Slack tokens live only in the gateway container env. Runs before the stack
-  # comes up (scripts/ec2-deploy.sh). Gated behind the `hermes` profile. PLA-244.
+  # One-shot: merge the non-secret hermes config (model.provider +
+  # mcp_servers.llm-wiki + platforms.slack) into ~/.hermes/config.yaml (==
+  # /opt/data/config.yaml in the hermes-home volume), idempotently via surgical
+  # leaf-`set` (other keys a human may have placed are preserved — no full-file
+  # rewrite). The runtime backend is set declaratively here: model.provider =
+  # openai-codex, model.default = codex (PLA-277). This selects the provider only
+  # — the credential is the device-code OAuth session in /opt/data/auth.json,
+  # written once by a human (`hermes auth add codex-oauth`), NOT by this merge.
+  # No secret is written here — the MCP bearer is a ${LLM_WIKI_MCP_BEARER_TOKEN}
+  # placeholder resolved at connect-time, and the Slack tokens live only in the
+  # gateway container env. Runs before the stack comes up (scripts/ec2-deploy.sh).
+  # Gated behind the `hermes` profile. PLA-244, PLA-277.
   #
   # Tool policy (config/mcp-registry.yaml, PLA-250): only the read-only `allow`
   # tier is whitelisted. The write-capable `approve` tier (wiki_content_*,
@@ -384,7 +389,9 @@ services:
           prompts: false
         YAML
         yq -i '
-          .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
+          .model.provider = "openai-codex"
+          | .model.default = "codex"
+          | .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
           | .slack.require_mention = true
           | .slack.unauthorized_dm_behavior = "ignore"
           | .platforms.slack.reply_to_mode = "first"
@@ -392,7 +399,7 @@ services:
           | .platforms.slack.extra.reply_broadcast = false
         ' "$$CONFIG"
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
-        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
+        echo "hermes-config-init: merged model.provider=openai-codex + mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network
