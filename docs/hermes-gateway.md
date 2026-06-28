@@ -4,7 +4,7 @@
 
 ## 무엇을 띄우는가
 
-- 런타임: [`NousResearch/hermes-agent`](https://github.com/NousResearch/hermes-agent) 공개 이미지 `nousresearch/hermes-agent` (compose 기본 핀 `v2026.4.3`, `HERMES_IMAGE`로 override).
+- 런타임: [`NousResearch/hermes-agent`](https://github.com/NousResearch/hermes-agent) 공개 이미지 `nousresearch/hermes-agent` (compose 기본 핀 `v2026.6.19` = v0.17.0, `HERMES_IMAGE`로 override). 초기 배포는 `v2026.4.3`(v0.7.0)였으나 PLA-244-B에서 성숙한 Slack 지원(`slack manifest`·스레드/승인 버튼)을 위해 상향.
 - 프로세스 모델: 단일 `gateway run` 프로세스가 **OpenAI 호환 HTTP API 서버**를 노출. 별도 `dashboard` 컨테이너는 API key를 저장하므로 **공개하지 않음**(필요 시 127.0.0.1 + SSH 터널).
 - compose 서비스: `hermes-gateway` (profile `hermes`). 기본 `docker compose up`에서는 뜨지 않음.
 - 영속화: named volume `hermes-home` → 컨테이너 `/opt/data`.
@@ -29,7 +29,7 @@
 | `API_SERVER_KEY` | **모든 배포에서 필수**(loopback 포함) Bearer 인증 키. 값은 SSM `/plady/agent-platform/<env>/hermes-api-server-key`에서 조회. compose에는 host env `HERMES_API_SERVER_KEY`로 주입. |
 | `API_SERVER_PORT=8642` / `API_SERVER_HOST=0.0.0.0` | 위 표 참조. |
 | `HERMES_UID` / `HERMES_GID` | `hermes-home` 볼륨 파일 소유자. 기본 `10000`. |
-| `HERMES_IMAGE` | 이미지 override(기본 `nousresearch/hermes-agent:v2026.4.3`). |
+| `HERMES_IMAGE` | 이미지 override(기본 `nousresearch/hermes-agent:v2026.6.19`). |
 | `HERMES_PLATFORM` | 이미지 플랫폼(기본 `linux/amd64`). 이미지가 amd64 전용이라 Apple Silicon(arm64)에서는 에뮬레이션으로 실행된다. EC2(amd64)는 네이티브. |
 
 실제 키 값은 문서/코드/Linear/PR에 **절대** 남기지 않습니다.
@@ -161,6 +161,39 @@ docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
 docker compose --env-file .env.ec2 -f compose.ec2.yaml logs hermes-gateway | grep -i 'mcp\|llm-wiki'
 ```
 
+## Slack 연동 (PLA-244-B)
+
+Slack은 hermes의 **네이티브 메시징 플랫폼**이다. 별도 서비스/웹훅을 만들지 않는다 — 이미 떠 있는 `hermes-gateway`의 단일 `gateway run` 프로세스가 OpenAI API와 Slack을 **동시에** 서빙한다. **Socket Mode**(WebSocket)라 공개 인바운드 URL이 필요 없다(ALB/PLA-247 무관). 출처: [hermes-agent Slack 문서](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/messaging/slack.md), [messaging gateway](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/messaging/index.md).
+
+### 어떻게 배선되는가 (secret-free 코드)
+
+- **활성화 = 토큰 존재**. `SLACK_BOT_TOKEN`(xoxb-)·`SLACK_APP_TOKEN`(xapp-)이 컨테이너 env에 있으면 Slack 플랫폼이 자동으로 켜진다(별도 enable 플래그 없음). 둘 다 비면 Slack은 그냥 꺼진 채 API 서버만 뜬다.
+- **env 주입**: `compose.ec2.yaml`의 `hermes-gateway`가 `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`/`SLACK_ALLOWED_USERS`를 받고, `scripts/ec2-deploy.sh`가 SSM에서 읽어 `.env.ec2`로 채운다(모두 optional). hermes의 env 우선순위는 process env > `~/.hermes/.env` > 기본값이라 컨테이너 env 주입이 그대로 동작한다(기존 `API_SERVER_KEY` 방식과 동일).
+- **동작 설정**: `hermes-config-init`이 config.yaml에 Slack 동작 키를 merge한다. hermes(v0.17) 스키마상 키가 **두 곳으로 분리**됨(소스 `gateway/config.py`·`messaging/slack.md`로 검증): 최상위 `slack:`에 `require_mention: true` + `unauthorized_dm_behavior: ignore`, `platforms.slack:`에 `reply_to_mode: first` + `extra.reply_in_thread/reply_broadcast`. 플랫폼 활성화는 토큰이 하고, 이 키들은 동작만 튜닝한다. (leaf 단위로 set 해서 사람이 둔 다른 키는 보존.)
+- **접근 제어(allowlist) = `SLACK_ALLOWED_USERS`** (Slack Member ID `U…`, 쉼표 구분). **fail-closed**: 비어 있으면 모든 Slack 사용자 거부(이관 #2 충족). 미인가 DM은 `unauthorized_dm_behavior: ignore`로 조용히 무시(원하면 `pair`로 바꿔 1회용 페어링 코드 발급 가능).
+
+### write 도구 정책 (현재 read-only)
+
+Slack을 통한 에이전트의 도구는 `mcp_servers`가 제공하는 것뿐이고, 현재는 **llm-wiki read 도구만**(11개) 노출된다. write(`wiki_content_*`/`wiki_ingest`/`wiki_export`)는 **의도적으로 비활성**: hermes에는 MCP 도구 호출을 막는 승인 게이트가 없어(`approvals.mode`는 셸 명령만, [#16462](https://github.com/NousResearch/hermes-agent/issues/16462)은 제안 단계) write를 켜면 allowlist된 사용자가 승인 없이 위키를 변경하게 된다. 따라서 "write는 승인 뒤에만" 기준을 **노출하지 않음**으로 충족한다. 상세는 [`mcp-registry.md` Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier).
+
+### 장애 시 동작
+
+provider/MCP 오류는 hermes가 해당 Slack 스레드에 에러 메시지로 응답한다. hermes 자체가 다운되면 Socket Mode 연결이 끊겨 봇이 응답하지 않는다(공개 엔드포인트가 없어 외부로 새는 표면 없음). 별도 처리 불필요.
+
+### 검증 (사람: 앱·토큰 준비 후)
+
+```bash
+# config.yaml에 platforms.slack이 들어갔는지 (토큰 평문 없음 확인)
+docker compose --env-file .env.ec2 -f compose.ec2.yaml --profile hermes \
+  run --rm -T --entrypoint /bin/sh hermes-config-init -c 'cat /opt/data/config.yaml'
+
+# 부팅 로그에서 Slack 플랫폼 연결 확인 (allowlist 경고가 사라졌는지도)
+docker compose --env-file .env.ec2 -f compose.ec2.yaml logs hermes-gateway | grep -i slack
+```
+
+- allowlist에 든 사용자가 봇을 DM하거나 채널에서 `@봇` 멘션 → 응답 + (요청 시) 위키 검색 결과.
+- allowlist 밖 사용자가 DM → 무응답(ignore). → fail-closed 확인.
+
 ## 🙋 사람이 직접 해야 하는 일 (구체 절차)
 
 > 아래는 사람만 할 수 있는 작업이다(실 secret/credential, 외부 자격). 실제 키 값은 어디에도 커밋하지 않는다.
@@ -234,6 +267,37 @@ docker compose --env-file .env.ec2 -f compose.ec2.yaml exec hermes-gateway curl 
 ### 3.5. MCP 도구 연동 적용 (PLA-244)
 
 `mcp_servers.llm-wiki` 매핑은 배포 흐름(`scripts/ec2-deploy.sh`의 `hermes-config-init`)이 자동으로 멱등 주입한다. **새 SSM secret을 만들 필요 없음** — bearer 토큰은 이미 존재하는 `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`(런타임 `MCP_BEARER_TOKEN`)을 재사용한다. 적용하려면 `main`에 머지(=재배포)하면 끝. 상세·검증은 위 [MCP 도구 연동](#mcp-도구-연동-mcp_servers-매핑-pla-244) 절을 따른다. write 도구 노출은 PLA-244-B(Slack 승인 게이트)에서 추가.
+
+### 3.6. Slack 앱 생성 + 토큰/allowlist → SSM (PLA-244-B)
+
+코드 배선은 끝나 있다. 사람은 Slack 앱을 만들고 토큰 3개를 SSM에 넣은 뒤 재배포만 하면 된다.
+
+```bash
+# (1) Slack 앱 manifest 생성 (이미지가 기대하는 scope/event/Socket Mode 그대로)
+APP_NAME="Plady Hermes" bash scripts/hermes-slack-manifest.sh   # JSON 출력
+#   → https://api.slack.com/apps → Create New App → From a manifest 에 붙여넣기
+
+# (2) Slack 앱에서:
+#   - Socket Mode 활성화 → App-Level Token 발급(scope connections:write) = xapp-...
+#   - 워크스페이스에 Install → Bot User OAuth Token = xoxb-...
+#   - (manifest가 bot scope: chat:write, app_mentions:read, channels:history,
+#     im:history, users:read 등 + event message.im/message.channels/app_mention 포함)
+
+# (3) 허용할 사용자 Slack Member ID 수집 (프로필 → Copy member ID, U…)
+
+# (4) SSM SecureString 저장 (<env>=dev). 값은 절대 커밋/공유 금지.
+aws ssm put-parameter --region ap-northeast-2 --type SecureString \
+  --name /plady/agent-platform/dev/slack-bot-token   --value "xoxb-..."
+aws ssm put-parameter --region ap-northeast-2 --type SecureString \
+  --name /plady/agent-platform/dev/slack-app-token   --value "xapp-..."
+aws ssm put-parameter --region ap-northeast-2 --type SecureString \
+  --name /plady/agent-platform/dev/slack-allowed-users --value "U0AAA,U0BBB"   # 쉼표 구분
+
+# (5) 재배포(main 머지 또는 워크플로 dispatch). ec2-deploy.sh가 SSM→.env.ec2 주입,
+#     config-init이 platforms.slack merge, hermes 재시작 시 Slack 플랫폼 활성화.
+```
+
+> allowlist를 비워두면 **모든 Slack 사용자가 거부**된다(의도된 fail-closed). 최소 1명의 Member ID는 넣어야 봇이 동작한다. 토큰 회전은 `--overwrite`.
 
 ### 4. (PLA-247) 공개 라우팅 — 별도 이슈 소관
 

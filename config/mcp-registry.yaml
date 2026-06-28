@@ -92,15 +92,27 @@ servers:
 
   slack:
     status: pla-244-owned
-    secret_ref_authority: proposed
+    secret_ref_authority: confirmed   # PLA-244-B 확정
+    # NOTE: Slack is NOT an MCP tool server. In hermes it is a messaging
+    # *platform* (input channel) served by the same `gateway run` process via
+    # Socket Mode — no MCP transport, no mcp_servers entry. It is configured by
+    # the SLACK_* env tokens + a config.yaml `platforms.slack` behavior block,
+    # not by this registry's mcp_servers translation. Kept here only to pin the
+    # confirmed secret names. See docs/hermes-gateway.md "Slack 연동".
+    kind: messaging-platform           # vs the mcp_servers in this file
     transport:
-      type: tbd                      # PLA-244 가 확정
+      type: socket-mode                # WebSocket (app token); no public webhook
     auth:
       type: bot_token
-      secret_ref: /plady/agent-platform/<env>/slack-bot-token   # proposed, PLA-244 확정
+      # bot token (xoxb-) + app-level token (xapp-, Socket Mode).
+      secret_ref: /plady/agent-platform/<env>/slack-bot-token
+      app_token_secret_ref: /plady/agent-platform/<env>/slack-app-token
+    # Access control is the Slack user allowlist (Member IDs), fail-closed.
+    allowlist_secret_ref: /plady/agent-platform/<env>/slack-allowed-users
     tool_policy:
-      allow_capability: read
-      approve_capability: mutation   # 메시지 전송 등
+      # Slack exposes no MCP tools of its own. The agent's tools over Slack are
+      # whatever mcp_servers expose — currently llm-wiki read-only (writes off:
+      # hermes has no MCP-call approval gate). default-deny stands.
       default: deny
 
   google-calendar:

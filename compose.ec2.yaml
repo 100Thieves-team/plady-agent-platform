@@ -259,7 +259,10 @@ services:
   # to hermes-gateway:8642 by PLA-247 (DNS/ACM/ALB). Gated behind the `hermes`
   # profile. See docs/hermes-gateway.md.
   hermes-gateway:
-    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.4.3}
+    # v2026.6.19 (v0.17.0): bumped from the original v2026.4.3 (v0.7.0) for mature
+    # Slack support — v0.7.0 shipped only an early Slack adapter without the
+    # `slack manifest` CLI or thread/approval-button UX (added v0.8.0+). PLA-244-B.
+    image: ${HERMES_IMAGE:-nousresearch/hermes-agent:v2026.6.19}
     # Image publishes linux/amd64 only; pin platform so it pulls on Apple
     # Silicon (via emulation) and EC2 (native amd64) alike.
     platform: ${HERMES_PLATFORM:-linux/amd64}
@@ -296,6 +299,17 @@ services:
       # (MCP_BEARER_TOKEN, from /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token)
       # because the agent calls mcp-proxy internally. PLA-244. See docs/hermes-gateway.md.
       LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
+      # Slack messaging platform (PLA-244-B). The single `gateway run` process
+      # serves Slack alongside the OpenAI API; the platform auto-enables when the
+      # bot+app tokens are present (Socket Mode — no public webhook/ALB route).
+      # All three are optional (`:-`): absent → Slack simply stays off and the
+      # API server still serves. Tokens are SECRETS (SSM, never committed);
+      # SLACK_ALLOWED_USERS is a comma-separated Slack Member-ID allowlist and is
+      # fail-closed (empty → every Slack user denied). Injected by
+      # scripts/ec2-deploy.sh from SSM. See docs/hermes-gateway.md.
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       HERMES_UID: ${HERMES_UID:-10000}
       HERMES_GID: ${HERMES_GID:-10000}
     volumes:
@@ -304,19 +318,28 @@ services:
       - "8642"
     restart: unless-stopped
 
-  # One-shot: merge the llm-wiki MCP server mapping into the hermes config
-  # (~/.hermes/config.yaml == /opt/data/config.yaml in the hermes-home volume),
-  # idempotently and WITHOUT clobbering the human-managed model/provider section
-  # (a full-file rewrite would wipe the provider set up by `hermes setup`). The
-  # bearer token is never written here — config.yaml only carries the
-  # ${LLM_WIKI_MCP_BEARER_TOKEN} placeholder, resolved by hermes from the
-  # hermes-gateway container env at MCP connect-time. Runs before the stack comes
-  # up (scripts/ec2-deploy.sh). Gated behind the `hermes` profile. PLA-244.
+  # One-shot: merge the non-secret hermes config (mcp_servers.llm-wiki +
+  # platforms.slack) into ~/.hermes/config.yaml (== /opt/data/config.yaml in the
+  # hermes-home volume), idempotently and WITHOUT clobbering the human-managed
+  # model/provider section (a full-file rewrite would wipe the provider set up by
+  # `hermes setup`). No secret is written here — the MCP bearer is a
+  # ${LLM_WIKI_MCP_BEARER_TOKEN} placeholder resolved at connect-time, and the
+  # Slack tokens live only in the gateway container env. Runs before the stack
+  # comes up (scripts/ec2-deploy.sh). Gated behind the `hermes` profile. PLA-244.
   #
   # Tool policy (config/mcp-registry.yaml, PLA-250): only the read-only `allow`
-  # tier is whitelisted here. The write-capable `approve` tier (wiki_content_*,
-  # wiki_ingest, wiki_export) is intentionally left out until the Slack
-  # interactive write-approval gate ships (PLA-244-B) — default-deny by omission.
+  # tier is whitelisted. The write-capable `approve` tier (wiki_content_*,
+  # wiki_ingest, wiki_export) is intentionally left out: hermes has NO approval
+  # gate for MCP tool calls (its approvals.mode covers shell commands only), so
+  # including write tools would let any allowlisted Slack user mutate the wiki
+  # without confirmation — violating "writes only behind explicit approval".
+  # Re-enabling writes needs a real approval mechanism (separate issue).
+  #
+  # Slack behavior keys live in TWO places (hermes v0.17 schema, verified against
+  # gateway/config.py + messaging/slack.md): top-level `slack:` holds
+  # require_mention + unauthorized_dm_behavior; `platforms.slack:` holds
+  # reply_to_mode + extra.reply_*. The platform itself enables from the SLACK_*
+  # env tokens, not from these keys; access control is SLACK_ALLOWED_USERS.
   hermes-config-init:
     image: mikefarah/yq:4
     profiles:
@@ -360,9 +383,16 @@ services:
           resources: false
           prompts: false
         YAML
-        yq -i '.mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")' "$$CONFIG"
+        yq -i '
+          .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
+          | .slack.require_mention = true
+          | .slack.unauthorized_dm_behavior = "ignore"
+          | .platforms.slack.reply_to_mode = "first"
+          | .platforms.slack.extra.reply_in_thread = true
+          | .platforms.slack.extra.reply_broadcast = false
+        ' "$$CONFIG"
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
-        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only tier) into $$CONFIG"
+        echo "hermes-config-init: merged mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network
