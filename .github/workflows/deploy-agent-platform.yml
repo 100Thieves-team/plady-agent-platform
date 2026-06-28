@@ -170,7 +170,7 @@ jobs:
 
           echo "== hermes: https://${HERMES_PUBLIC_HOST}/health (expect status ok)"
           body="$(curl -sS --max-time 20 "https://${HERMES_PUBLIC_HOST}/health" || true)"
-          echo "  -> ${body}"; printf '%s' "$body" | grep -q '"status":"ok"' || { echo "  FAIL"; fail=1; }
+          echo "  -> ${body}"; printf '%s' "$body" | grep -qE '"status":[[:space:]]*"ok"' || { echo "  FAIL"; fail=1; }
 
           echo "== hermes: /v1/models no-auth (expect 401)"
           code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${HERMES_PUBLIC_HOST}/v1/models" || echo 000)"

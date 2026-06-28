@@ -114,8 +114,14 @@ services:
     # hugo.toml) before serving — on a fresh wiki-data volume neither is created
     # yet, and a missing mount source aborts the Hugo build. Wipe+recopy the
     # baked scaffold so files removed from the image don't linger in the volume.
+    # Clear /workspace/site CONTENTS (not the dir itself — it is the working_dir,
+    # so removing it pulls the cwd out from under the shell and Hugo dies with
+    # `failed to read dir "."`). find -mindepth 1 -delete drops stale scaffold
+    # files while keeping the inode. Both Hugo module-mount sources (../wiki and
+    # ../raw per hugo.toml) must exist before serving — on a fresh wiki-data
+    # volume neither is created yet, and a missing mount source aborts the build.
     command: >-
-      sh -c 'mkdir -p /workspace/wiki /workspace/raw && rm -rf /workspace/site && mkdir -p /workspace/site && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+      sh -c 'mkdir -p /workspace/wiki /workspace/raw /workspace/site && find /workspace/site -mindepth 1 -delete && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
     volumes:
       - wiki-data:/workspace
     expose:

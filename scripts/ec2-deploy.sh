@@ -135,11 +135,13 @@ code="$("${DC[@]}" exec -T caddy wget -q -S -O /dev/null http://mcp-proxy:18765/
 # hermes: /health -> ok. Probe from caddy (busybox wget) over the compose
 # network rather than `curl` inside hermes-gateway — keeps the smoke checks
 # consistent and avoids assuming curl exists in the upstream image. This also
-# exercises the caddy->hermes routing the public origin depends on.
-if "${DC[@]}" exec -T caddy wget -q -O - http://hermes-gateway:8642/health 2>/dev/null | grep -q '"status":"ok"'; then
-  echo "  hermes /health: OK"
-else
-  echo "  hermes /health: FAIL"; fail=1
-fi
+# exercises the caddy->hermes routing the public origin depends on. Retry:
+# hermes bundles ~70 tools at boot and is not ready the instant `up -d` returns.
+ok=0
+for i in $(seq 1 30); do
+  if "${DC[@]}" exec -T caddy wget -q -O - http://hermes-gateway:8642/health 2>/dev/null | grep -qE '"status":[[:space:]]*"ok"'; then ok=1; break; fi
+  sleep 2
+done
+[ "$ok" = 1 ] && echo "  hermes /health: OK" || { echo "  hermes /health: FAIL"; fail=1; }
 
 [ "$fail" = 0 ] && log "DEPLOY OK" || { log "DEPLOY DEGRADED — see above"; exit 1; }
