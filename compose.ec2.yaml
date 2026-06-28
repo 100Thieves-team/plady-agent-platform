@@ -1,29 +1,42 @@
 services:
+  # ALB origin. TLS is terminated at the PLA-247 ALB; Caddy serves plain HTTP on
+  # :80 and host-routes wiki/mcp/hermes to the internal upstreams. No ACME, no
+  # 443: the only ingress is the ALB security group (compute.tf). The bare :80
+  # site (no host matcher) also answers the ALB target-group health check, whose
+  # Host header is the instance IP, by routing it to the wiki UI.
   caddy:
     image: caddy:2-alpine
     depends_on:
       - wiki-ui
       - mcp-proxy
     environment:
-      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
-      WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:?Set WIKI_DOMAIN_NAME}
+      MCP_PUBLIC_HOST: ${MCP_PUBLIC_HOST:-mcp.agent.plady.io}
+      HERMES_PUBLIC_HOST: ${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}
     command:
       - /bin/sh
       - -ec
       - |
-        cat >/etc/caddy/Caddyfile <<'CADDY'
+        cat >/etc/caddy/Caddyfile <<CADDY
         {
-          email {$$ACME_EMAIL}
-          acme_ca https://acme.zerossl.com/v2/DV90
+          auto_https off
+          admin off
         }
 
-        {$$WIKI_DOMAIN_NAME} {
+        :80 {
           encode gzip
 
-          handle /mcp* {
+          @mcp host {$$MCP_PUBLIC_HOST}
+          @hermes host {$$HERMES_PUBLIC_HOST}
+
+          handle @mcp {
             reverse_proxy mcp-proxy:18765
           }
 
+          handle @hermes {
+            reverse_proxy hermes-gateway:8642
+          }
+
+          # Default: wiki UI. Also serves the ALB health check (Host = instance IP).
           handle {
             reverse_proxy wiki-ui:1313
           }
@@ -32,7 +45,6 @@ services:
         caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - caddy-data:/data
       - caddy-config:/config
@@ -46,7 +58,7 @@ services:
       LLM_WIKI_CONFIG: /config/config.toml
       LLM_WIKI_WORKSPACE: /workspace
     volumes:
-      - ./wiki-workspace:/workspace
+      - wiki-data:/workspace
       - llm-wiki-config:/config
     expose:
       - "18765"
@@ -98,12 +110,13 @@ services:
       - llm-wiki
     working_dir: /workspace/site
     environment:
-      WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:?Set WIKI_DOMAIN_NAME}
+      WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
+    # Sync the baked Hugo scaffold into the shared /workspace/site, ensure the
+    # llm-wiki content dir exists (empty is fine — Hugo still renders), then serve.
     command: >-
-      sh -c 'until [ -d /workspace/wiki ]; do echo "waiting for llm-wiki workspace..."; sleep 1; done; hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+      sh -c 'mkdir -p /workspace/site /workspace/wiki && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
     volumes:
-      - ./wiki-workspace:/workspace
-      - ./llm-wiki-hugo-cms/site:/workspace/site:ro
+      - wiki-data:/workspace
     expose:
       - "1313"
     restart: unless-stopped
@@ -133,6 +146,12 @@ services:
       # itself requires this key for every deployment and refuses to serve
       # without it, so an empty value fails fast in the container, not the file.
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
+      # Provider credential for the Claude Code runtime backend (PLA-273 decision).
+      # Injected from SSM by scripts/ec2-deploy.sh when the parameter exists;
+      # empty otherwise so /health and the auth boundary still come up. Model
+      # selection beyond the key is a one-time `hermes-gateway setup`/`model`
+      # step persisted in the hermes-home volume. See docs/hermes-gateway.md.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       HERMES_UID: ${HERMES_UID:-10000}
       HERMES_GID: ${HERMES_GID:-10000}
     volumes:
@@ -192,6 +211,7 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+  wiki-data:
   llm-wiki-config:
   hermes-home:
   otel-data:
