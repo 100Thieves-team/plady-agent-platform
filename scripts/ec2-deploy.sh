@@ -117,7 +117,10 @@ log "Pulling images"
 # the token is injected to the gateway as LLM_WIKI_MCP_BEARER_TOKEN env and
 # resolved from the config placeholder at connect-time. See docs/hermes-gateway.md.
 log "Merging hermes mcp_servers mapping (llm-wiki) into the hermes-home config"
-"${DC[@]}" run --rm hermes-config-init
+# -T: this runs under SSM Run Command (no TTY); `compose run` allocates a
+# pseudo-TTY by default and would abort with "the input device is not a TTY".
+# Matches the `exec -T` smoke checks below.
+"${DC[@]}" run -T --rm hermes-config-init
 
 log "Bringing the stack up"
 "${DC[@]}" up -d --remove-orphans

@@ -210,7 +210,9 @@ services:
     command:
       - |
         CONFIG=/opt/data/config.yaml
-        [ -f "$$CONFIG" ] || printf '{}\n' > "$$CONFIG"
+        # -s (exists AND non-empty): also re-seed a stray 0-byte config so the
+        # merge always runs against a valid YAML document.
+        [ -s "$$CONFIG" ] || printf '{}\n' > "$$CONFIG"
         cat > /tmp/llm-wiki.yaml <<'YAML'
         url: http://mcp-proxy:18765/mcp
         headers:
