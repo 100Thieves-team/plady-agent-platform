@@ -22,6 +22,10 @@
 #   HERMES_KEY_PARAM=/plady/agent-platform/<env>/hermes-api-server-key
 #   MCP_TOKEN_PARAM=/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token
 #   CLAUDE_OAUTH_PARAM=/plady/agent-platform/<env>/claude-code-oauth-token (optional)
+#   WIKI_DATA_KEY_PARAM=/plady/agent-platform/<env>/team-wiki-v2-deploy-key (optional;
+#     write-enabled deploy key for team-wiki-v2. Absent -> wiki backing disabled, sidecar idles)
+#   TEAM_WIKI_V2_REPO_SSH=git@github.com:100Thieves-team/team-wiki-v2.git
+#   WIKI_SYNC_INTERVAL=120
 #   WIKI_PUBLIC_HOST=wiki.agent.plady.io
 #   MCP_PUBLIC_HOST=mcp.agent.plady.io
 #   HERMES_PUBLIC_HOST=hermes.agent.plady.io
@@ -41,6 +45,9 @@ PLATFORM_ENV="${PLATFORM_ENV:-dev}"
 HERMES_KEY_PARAM="${HERMES_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/hermes-api-server-key}"
 MCP_TOKEN_PARAM="${MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/llm-wiki-mcp-bearer-token}"
 CLAUDE_OAUTH_PARAM="${CLAUDE_OAUTH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/claude-code-oauth-token}"
+WIKI_DATA_KEY_PARAM="${WIKI_DATA_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/team-wiki-v2-deploy-key}"
+TEAM_WIKI_V2_REPO_SSH="${TEAM_WIKI_V2_REPO_SSH:-git@github.com:100Thieves-team/team-wiki-v2.git}"
+WIKI_SYNC_INTERVAL="${WIKI_SYNC_INTERVAL:-120}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -85,6 +92,20 @@ CLAUDE_CODE_OAUTH_TOKEN="$(ssm_get "$CLAUDE_OAUTH_PARAM")"
 [ "$CLAUDE_CODE_OAUTH_TOKEN" = "None" ] && CLAUDE_CODE_OAUTH_TOKEN=""
 echo "  hermes key: present | mcp token: present | claude code oauth: $([ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && echo present || echo 'absent (provider unconfigured)')"
 
+# team-wiki-v2 deploy key (PLA-275). Optional, like the Claude OAuth token: absent
+# -> wiki backing disabled, the wiki-data-sync sidecar idles, the stack still
+# comes up. Base64-encode (single line) so it survives the .env.ec2 heredoc and
+# the compose interpolation; the sidecar decodes it. NEVER echo the value.
+WIKI_DATA_DEPLOY_KEY="$(ssm_get "$WIKI_DATA_KEY_PARAM")"
+[ "$WIKI_DATA_DEPLOY_KEY" = "None" ] && WIKI_DATA_DEPLOY_KEY=""
+if [ -n "$WIKI_DATA_DEPLOY_KEY" ]; then
+  TEAM_WIKI_V2_DEPLOY_KEY_B64="$(printf '%s' "$WIKI_DATA_DEPLOY_KEY" | base64 -w0)"
+  echo "  wiki backing: enabled (team-wiki-v2 deploy key present)"
+else
+  TEAM_WIKI_V2_DEPLOY_KEY_B64=""
+  echo "  wiki backing: disabled (${WIKI_DATA_KEY_PARAM} absent; sidecar idles, fill SSM + redeploy to enable)"
+fi
+
 # --- 3. Render .env.ec2 (secret-grade; never committed) --------------------
 log "Rendering ${ENV_FILE}"
 mkdir -p "$APP_DIR"
@@ -98,6 +119,9 @@ HERMES_PUBLIC_HOST=${HERMES_PUBLIC_HOST}
 MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN}
 HERMES_API_SERVER_KEY=${HERMES_API_SERVER_KEY}
 CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
+TEAM_WIKI_V2_REPO_SSH=${TEAM_WIKI_V2_REPO_SSH}
+TEAM_WIKI_V2_DEPLOY_KEY_B64=${TEAM_WIKI_V2_DEPLOY_KEY_B64}
+WIKI_SYNC_INTERVAL=${WIKI_SYNC_INTERVAL}
 ENV
 chmod 600 "$ENV_FILE"
 

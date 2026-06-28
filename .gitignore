@@ -7,6 +7,9 @@ wiki-workspace/
 # Local deploy keys generated while following the EC2 setup guide.
 .deploy-keys/
 
+# Rendered runtime env for the EC2 deploy (secret-grade; created by scripts/ec2-deploy.sh).
+.env.ec2
+
 # Terraform local state and provider cache
 **/.terraform/
 *.tfstate
