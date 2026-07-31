@@ -202,6 +202,13 @@ log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki) 
 log "Bringing the stack up"
 "${DC[@]}" up -d --remove-orphans
 
+# wiki-auth bind-mounts docker/wiki-auth/app.py (shipped by the workflow next to
+# compose.ec2.yaml). A content-only change to that file does NOT change the
+# container config, so `up -d` would leave the old process running the old code —
+# force-recreate the (tiny) sidecar every deploy so it always runs the shipped file.
+log "Recreating wiki-auth to load the shipped app.py"
+"${DC[@]}" up -d --force-recreate wiki-auth
+
 # hermes reads config.yaml only at startup. On a redeploy where the image tag is
 # unchanged, `up -d` leaves the running gateway as-is, so restart it to pick up
 # any mcp_servers change merged above (cheap; the /health gate below retries

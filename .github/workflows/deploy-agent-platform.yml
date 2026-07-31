@@ -92,15 +92,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Build the remote bootstrap: write compose + deploy script, export the
+          # Build the remote bootstrap: write compose + deploy script + the
+          # wiki-auth sidecar source (bind-mounted by compose.ec2.yaml), export the
           # image/env coordinates, then run the deploy. The box needs no repo checkout.
           COMPOSE_B64="$(base64 -w0 compose.ec2.yaml)"
           DEPLOY_B64="$(base64 -w0 scripts/ec2-deploy.sh)"
+          WIKI_AUTH_B64="$(base64 -w0 docker/wiki-auth/app.py)"
 
           REMOTE=$(cat <<EOF
           set -euo pipefail
-          mkdir -p /opt/plady-agent-platform
+          mkdir -p /opt/plady-agent-platform/docker/wiki-auth
           echo "${COMPOSE_B64}" | base64 -d > /opt/plady-agent-platform/compose.ec2.yaml
+          # If a deploy ever ran while app.py was missing, docker created a
+          # DIRECTORY at the bind-mount source path; clear it before writing the file.
+          rm -rf /opt/plady-agent-platform/docker/wiki-auth/app.py
+          echo "${WIKI_AUTH_B64}" | base64 -d > /opt/plady-agent-platform/docker/wiki-auth/app.py
           echo "${DEPLOY_B64}" | base64 -d > /tmp/ec2-deploy.sh
           export AWS_REGION="${AWS_REGION}"
           export ECR_REGISTRY="${ECR_REGISTRY}"
