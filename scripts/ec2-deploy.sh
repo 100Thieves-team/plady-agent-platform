@@ -50,6 +50,10 @@ WIKI_SYNC_INTERVAL="${WIKI_SYNC_INTERVAL:-120}"
 SLACK_BOT_TOKEN_PARAM="${SLACK_BOT_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-bot-token}"
 SLACK_APP_TOKEN_PARAM="${SLACK_APP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-app-token}"
 SLACK_ALLOWED_USERS_PARAM="${SLACK_ALLOWED_USERS_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-allowed-users}"
+# wiki-auth token issuer (docs/wiki-token-issuer.md). Both optional: either
+# absent -> issuer stays off (503) and static-token auth is unchanged.
+WIKI_TOKEN_PASSWORD_HASH_PARAM="${WIKI_TOKEN_PASSWORD_HASH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-password-hash}"
+WIKI_TOKEN_JWT_SECRET_PARAM="${WIKI_TOKEN_JWT_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-jwt-secret}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -88,6 +92,8 @@ MCP_BEARER_TOKEN="$(ssm_get "$MCP_TOKEN_PARAM")"
 SLACK_BOT_TOKEN="$(ssm_get "$SLACK_BOT_TOKEN_PARAM")"
 SLACK_APP_TOKEN="$(ssm_get "$SLACK_APP_TOKEN_PARAM")"
 SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
+WIKI_TOKEN_PASSWORD_HASH="$(ssm_get "$WIKI_TOKEN_PASSWORD_HASH_PARAM")"
+WIKI_TOKEN_JWT_SECRET="$(ssm_get "$WIKI_TOKEN_JWT_SECRET_PARAM")"
 
 [ -n "$HERMES_API_SERVER_KEY" ] && [ "$HERMES_API_SERVER_KEY" != "None" ] \
   || { echo "FATAL: ${HERMES_KEY_PARAM} missing/undecryptable" >&2; exit 1; }
@@ -107,6 +113,17 @@ SLACK_ALLOWED_USERS="$(printf '%s' "$SLACK_ALLOWED_USERS" | tr -d '[:space:]')"
 if [ -z "$SLACK_BOT_TOKEN" ] || [ -z "$SLACK_APP_TOKEN" ]; then
   SLACK_BOT_TOKEN=""
   SLACK_APP_TOKEN=""
+fi
+# wiki-auth issuer: both-or-neither (hash 없이 secret만 있으면 발급 불가 상태가
+# 모호해지므로 깨끗하게 off). NEVER echo the values.
+[ "$WIKI_TOKEN_PASSWORD_HASH" = "None" ] && WIKI_TOKEN_PASSWORD_HASH=""
+[ "$WIKI_TOKEN_JWT_SECRET" = "None" ] && WIKI_TOKEN_JWT_SECRET=""
+if [ -z "$WIKI_TOKEN_PASSWORD_HASH" ] || [ -z "$WIKI_TOKEN_JWT_SECRET" ]; then
+  WIKI_TOKEN_PASSWORD_HASH=""
+  WIKI_TOKEN_JWT_SECRET=""
+  echo "  wiki token issuer: off (${WIKI_TOKEN_PASSWORD_HASH_PARAM} / ${WIKI_TOKEN_JWT_SECRET_PARAM} absent; static token only)"
+else
+  echo "  wiki token issuer: on (password-hash + jwt-secret present)"
 fi
 # Codex (openai-codex) provider auth is a device-code OAuth session persisted to
 # the hermes-home volume (/opt/data/auth.json), written once by a human via
@@ -152,6 +169,8 @@ WIKI_SYNC_INTERVAL=${WIKI_SYNC_INTERVAL}
 SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
 SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
 SLACK_ALLOWED_USERS=${SLACK_ALLOWED_USERS}
+WIKI_TOKEN_PASSWORD_HASH=${WIKI_TOKEN_PASSWORD_HASH}
+WIKI_TOKEN_JWT_SECRET=${WIKI_TOKEN_JWT_SECRET}
 ENV
 chmod 600 "$ENV_FILE"
 

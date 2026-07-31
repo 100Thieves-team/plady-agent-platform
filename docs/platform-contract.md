@@ -37,8 +37,9 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 
 | Endpoint | 공개 범위 | 소유 후속 이슈 | 목적/계약 |
 | --- | --- | --- | --- |
-| `https://wiki.agent.plady.io` | Public HTTPS | PLA-247 + wiki UI deployment | llm-wiki/Hugo 기반 wiki UI의 canonical platform URL. |
-| `https://mcp.agent.plady.io/mcp` | Public HTTPS + bearer token | PLA-247 + PLA-250 | llm-wiki MCP HTTP endpoint. 반드시 bearer token 보호 뒤에 노출한다. |
+| `https://wiki.agent.plady.io` | Public HTTPS + **팀 비밀번호 세션** | PLA-247 + wiki UI deployment | llm-wiki/Hugo 기반 wiki UI의 canonical platform URL. 세션 쿠키 없으면 `/auth/login`으로 302 (wiki-auth 사이드카, 런북 [`wiki-token-issuer.md`](wiki-token-issuer.md)). |
+| `https://mcp.agent.plady.io/mcp` | Public HTTPS + bearer token | PLA-247 + PLA-250 | llm-wiki MCP HTTP endpoint. 반드시 bearer token 보호 뒤에 노출한다. bearer는 정적 토큰(`llm-wiki-mcp-bearer-token`) 또는 아래 발급 endpoint의 단기 JWT. |
+| `https://mcp.agent.plady.io/auth/token` | Public HTTPS (비밀번호 검증 후 발급) | PLA-250 후속 | llm-wiki MCP **단기 토큰 발급** endpoint (POST, wiki-auth 사이드카). 런북 [`wiki-token-issuer.md`](wiki-token-issuer.md). |
 | `https://hermes.agent.plady.io` | Public HTTPS | PLA-247 + PLA-249 | Hermes Gateway public origin. Slack event/interactivity/OAuth callback 등 non-OpenAI path의 origin. |
 | `https://hermes.agent.plady.io/v1` | Public HTTPS + Hermes API key | PLA-249 + PLA-244 | OpenAI-compatible Hermes base URL. PLA-244가 OpenAI-compatible client 설정에 소비하는 canonical base URL. |
 | `https://n8n.agent.plady.io` | Reserved, not live by default | PLA-251 | n8n placeholder/reserved endpoint. PLA-251에서 disabled placeholder로 구현(ALB 503 + compose 주석 블록, 내부 타깃 `n8n:5678` 예약). 런북 [`n8n-placeholder.md`](n8n-placeholder.md). |
@@ -47,6 +48,7 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 ### Endpoint 보안 기본값
 
 - `mcp.agent.plady.io/mcp`는 bearer token 없이 접근할 수 없어야 한다.
+- `wiki.agent.plady.io`는 유효한 세션 쿠키 없이는 콘텐츠를 노출하지 않는다(`/auth/*` 로그인 경로만 예외). ALB 기본(default) 라우트는 wiki로 프록시하지 않는다 — 임의 Host 헤더로 세션 게이트를 우회하는 것을 막기 위해서다.
 - `hermes.agent.plady.io/v1` OpenAI-compatible API는 `/plady/agent-platform/<env>/hermes-api-server-key` 또는 PLA-249가 확정하는 동등한 runtime secret reference로 보호한다.
 - `hermes.agent.plady.io`의 non-OpenAI paths는 PLA-249가 정의하는 API auth boundary 뒤에 둔다.
 - `n8n.agent.plady.io`는 reserved name일 뿐이며, enable 전에는 public service로 홍보하지 않는다.
@@ -60,6 +62,8 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | --- | --- | --- | --- |
 | `/plady/agent-platform/<env>/hermes-api-server-key` | Hermes API server auth key | Hermes Gateway runtime, Slack/Hermes integration | PLA-249/PLA-244가 값 주입 방식을 정한다. |
 | `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` | llm-wiki MCP bearer token | MCP reverse proxy/client config | `mcp.agent.plady.io/mcp` 보호에 사용한다. |
+| `/plady/agent-platform/<env>/wiki-token-password-hash` | 팀 비밀번호의 PBKDF2 해시 (`pbkdf2_sha256:<iters>:<salt>:<hash>`, 원문 아님) | wiki-auth 사이드카 | 생성: `scripts/gen-wiki-token-password-hash.py`. 런북 [`wiki-token-issuer.md`](wiki-token-issuer.md). |
+| `/plady/agent-platform/<env>/wiki-token-jwt-secret` | 단기 토큰/세션 쿠키 HS256 서명 시크릿 | wiki-auth 사이드카 | 예: `openssl rand -hex 32`. 회전하면 발급된 토큰/세션 전체 무효화. |
 
 ### `<env>` 규칙
 

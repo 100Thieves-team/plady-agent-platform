@@ -9,9 +9,11 @@ services:
     depends_on:
       - wiki-ui
       - mcp-proxy
+      - wiki-auth
     environment:
       MCP_PUBLIC_HOST: ${MCP_PUBLIC_HOST:-mcp.agent.plady.io}
       HERMES_PUBLIC_HOST: ${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}
+      WIKI_PUBLIC_HOST: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
     command:
       - /bin/sh
       - -ec
@@ -27,6 +29,7 @@ services:
 
           @mcp host {$$MCP_PUBLIC_HOST}
           @hermes host {$$HERMES_PUBLIC_HOST}
+          @wiki host {$$WIKI_PUBLIC_HOST}
 
           handle @mcp {
             reverse_proxy mcp-proxy:18765
@@ -36,9 +39,27 @@ services:
             reverse_proxy hermes-gateway:8642
           }
 
-          # Default: wiki UI. Also serves the ALB health check (Host = instance IP).
+          # Wiki UI: 팀 비밀번호 세션 뒤에만 노출 (docs/wiki-token-issuer.md).
+          # /auth/* 는 로그인 페이지/세션 발급이라 인증 없이 wiki-auth 로 직행,
+          # 나머지는 forward_auth 가 세션 쿠키를 검증하고 (없으면 wiki-auth 가
+          # /auth/login 으로 302) 통과 시에만 wiki-ui 로 프록시한다.
+          handle @wiki {
+            handle /auth/* {
+              reverse_proxy wiki-auth:8790
+            }
+            handle {
+              forward_auth wiki-auth:8790 {
+                uri /auth/verify-browser
+              }
+              reverse_proxy wiki-ui:1313
+            }
+          }
+
+          # Default: ALB target-group health check (Host = instance IP) 와 미지정
+          # host 만 온다. wiki 를 default 로 프록시하면 임의 Host 헤더로 세션
+          # 게이트를 우회할 수 있으므로 plain 200 만 응답한다.
           handle {
-            reverse_proxy wiki-ui:1313
+            respond "ok" 200
           }
         }
         CADDY
@@ -61,26 +82,62 @@ services:
       - "18765"
     restart: unless-stopped
 
+  # 토큰 발급/검증 사이드카 (docs/wiki-token-issuer.md). mcp-proxy가
+  # auth_request로 검증을 위임한다: 기존 정적 MCP_BEARER_TOKEN 또는
+  # POST /auth/token 이 발급한 단기 JWT 둘 다 통과. 발급기는
+  # WIKI_TOKEN_PASSWORD_HASH + WIKI_TOKEN_JWT_SECRET (SSM → .env.ec2,
+  # scripts/ec2-deploy.sh) 둘 다 있어야 켜진다 — 없으면 503으로 죽지 않고
+  # 정적 토큰 검증만 동작하므로 기존 스택과 완전히 동일하게 뜬다.
+  wiki-auth:
+    image: python:3.12-alpine
+    volumes:
+      - ./docker/wiki-auth/app.py:/app/app.py:ro
+    environment:
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?Set MCP_BEARER_TOKEN}
+      WIKI_TOKEN_PASSWORD_HASH: ${WIKI_TOKEN_PASSWORD_HASH:-}
+      WIKI_TOKEN_JWT_SECRET: ${WIKI_TOKEN_JWT_SECRET:-}
+    command: ["python", "/app/app.py"]
+    expose:
+      - "8790"
+    restart: unless-stopped
+
   mcp-proxy:
     image: nginx:1.27-alpine
     depends_on:
       - llm-wiki
-    environment:
-      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?Set MCP_BEARER_TOKEN}
+      - wiki-auth
     command:
       - /bin/sh
       - -ec
       - |
-        cat >/tmp/mcp.conf.template <<'NGINX'
+        cat >/etc/nginx/conf.d/default.conf <<'NGINX'
         server {
           listen 18765;
           resolver 127.0.0.11 valid=10s ipv6=off;
 
+          location = /auth/token {
+            set $$wiki_auth_upstream wiki-auth:8790;
+            proxy_http_version 1.1;
+            proxy_pass http://$$wiki_auth_upstream;
+          }
+
+          location = /_wiki_auth_verify {
+            internal;
+            set $$wiki_auth_upstream wiki-auth:8790;
+            proxy_pass http://$$wiki_auth_upstream/auth/verify;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header Authorization $$http_authorization;
+          }
+
+          location @unauthorized {
+            add_header WWW-Authenticate "Bearer" always;
+            return 401;
+          }
+
           location / {
-            if ($$http_authorization != "Bearer ${MCP_BEARER_TOKEN}") {
-              add_header WWW-Authenticate "Bearer" always;
-              return 401;
-            }
+            auth_request /_wiki_auth_verify;
+            error_page 401 = @unauthorized;
 
             proxy_http_version 1.1;
             proxy_set_header Host localhost;
@@ -95,7 +152,6 @@ services:
           }
         }
         NGINX
-        envsubst '$${MCP_BEARER_TOKEN}' </tmp/mcp.conf.template >/etc/nginx/conf.d/default.conf
         nginx -g 'daemon off;'
     expose:
       - "18765"
