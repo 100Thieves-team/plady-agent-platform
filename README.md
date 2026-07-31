@@ -13,6 +13,8 @@
 
 원본 다이어그램은 [`dev-environment-architecture.drawio`](dev-environment-architecture.drawio)이며, draw.io에서 열어 수정할 수 있습니다(PNG에도 다이어그램 XML이 포함되어 있어 draw.io에서 바로 열 수 있습니다).
 
+다이어그램 대비 미구현 구간과 단계별 구현 계획은 [`docs/dev-environment-implementation-plan.md`](docs/dev-environment-implementation-plan.md)를 참고하세요. Code Review Agent는 [`100Thieves-team/review-swarm`](https://github.com/100Thieves-team/review-swarm)을 사용합니다.
+
 ## 플랫폼 계약
 
 PLA-246은 `docs/` 아래에 초기 플랫폼 계약을 정의합니다.
