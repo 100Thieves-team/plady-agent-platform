@@ -202,7 +202,12 @@ class Handler(BaseHTTPRequestHandler):
                                 {"WWW-Authenticate": "Bearer"})
 
         elif path == "/auth/verify-browser":
-            if self._session_valid():
+            if not issuer_configured():
+                # 게이트 미구성(SSM 해시/시크릿 부재) 동안은 공개 유지 — 로그인
+                # 페이지가 503뿐인데 302로 보내면 위키 전체가 잠겨버린다.
+                # 값이 주입되는 순간부터 fail-closed로 전환된다.
+                self._send(204)
+            elif self._session_valid():
                 self._send(204)
             else:
                 original = self.headers.get("X-Forwarded-Uri", "/")

@@ -166,9 +166,17 @@ jobs:
           set -euo pipefail
           fail=0
 
-          echo "== wiki: https://${WIKI_PUBLIC_HOST}/ (expect 200)"
-          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${WIKI_PUBLIC_HOST}/" || echo 000)"
-          echo "  -> ${code}"; [ "$code" = "200" ] || { echo "  FAIL"; fail=1; }
+          # 200 = 게이트 미구성(공개), 302→/auth/login = 게이트 활성(비밀번호 세션).
+          # 둘 다 정상 상태다 — docs/wiki-token-issuer.md.
+          echo "== wiki: https://${WIKI_PUBLIC_HOST}/ (expect 200, or 302 to /auth/login)"
+          out="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 "https://${WIKI_PUBLIC_HOST}/" || echo 000)"
+          code="${out%% *}"; redirect="${out#* }"
+          echo "  -> ${code} ${redirect}"
+          case "${code}:${redirect}" in
+            200:*) ;;
+            302:*/auth/login*) ;;
+            *) echo "  FAIL"; fail=1 ;;
+          esac
 
           echo "== mcp: https://${MCP_PUBLIC_HOST}/mcp no-auth (expect 401)"
           code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -H 'Accept: text/event-stream' "https://${MCP_PUBLIC_HOST}/mcp" || echo 000)"
