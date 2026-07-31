@@ -85,7 +85,7 @@ Before starting Codex, export the token environment variable:
 
 export ${TOKEN_ENV_VAR}="\$(aws ssm get-parameter \\
   --region ap-northeast-2 \\
-  --name /100thieves/wiki/mcp-bearer-token \\
+  --name /plady/agent-platform/dev/llm-wiki-mcp-bearer-token \\
   --with-decryption \\
   --query Parameter.Value \\
   --output text)"

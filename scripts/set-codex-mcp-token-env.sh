@@ -4,7 +4,7 @@ set -euo pipefail
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 # Legacy default: old EC2/Caddy SSM path. For agent-platform, pass
 # --param /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token after provisioning.
-TOKEN_PARAM="${TOKEN_PARAM:-/100thieves/wiki/mcp-bearer-token}"
+TOKEN_PARAM="${TOKEN_PARAM:-/plady/agent-platform/dev/llm-wiki-mcp-bearer-token}"
 TOKEN_ENV_VAR="${TOKEN_ENV_VAR:-LLM_WIKI_MCP_BEARER_TOKEN}"
 AWS_BIN="${AWS_BIN:-aws}"
 MODE="launchctl"

@@ -8,7 +8,7 @@ AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 TERRAFORM_BIN="${TERRAFORM_BIN:-terraform}"
 AWS_BIN="${AWS_BIN:-aws}"
 APP_DIR="${APP_DIR:-/opt/plady-agent-platform}"
-MCP_BEARER_TOKEN_SSM_PARAMETER_NAME="${MCP_BEARER_TOKEN_SSM_PARAMETER_NAME:-/100thieves/wiki/mcp-bearer-token}"
+MCP_BEARER_TOKEN_SSM_PARAMETER_NAME="${MCP_BEARER_TOKEN_SSM_PARAMETER_NAME:-/plady/agent-platform/dev/llm-wiki-mcp-bearer-token}"
 DRY_RUN=false
 
 usage() {

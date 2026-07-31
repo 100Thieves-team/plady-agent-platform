@@ -5,7 +5,7 @@ set -euo pipefail
 # agent-platform endpoint, override MCP_URL and TOKEN_PARAM explicitly.
 MCP_URL="${MCP_URL:-https://plady.kro.kr/mcp}"
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
-TOKEN_PARAM="${TOKEN_PARAM:-/100thieves/wiki/mcp-bearer-token}"
+TOKEN_PARAM="${TOKEN_PARAM:-/plady/agent-platform/dev/llm-wiki-mcp-bearer-token}"
 AWS_BIN="${AWS_BIN:-aws}"
 
 TOKEN="$($AWS_BIN ssm get-parameter \
