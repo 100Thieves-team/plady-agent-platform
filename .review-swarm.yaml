@@ -1,0 +1,13 @@
+# review-swarm 설정 (없는 키는 내장 기본값). 전체 키:
+# https://github.com/100Thieves-team/review-swarm/blob/main/review-swarm.example.yaml
+engine:
+  default: claude
+
+router:
+  always: [security, pragmatist]
+  maxAgents: 6
+
+# 동작 확인 전까지는 단일 계정 게시로 시작 (App 자격 등록 후 apps 로 전환).
+# README 권장 순서: single 로 배선 검증 → App 등록 → apps.
+publish:
+  mode: single

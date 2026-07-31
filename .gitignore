@@ -22,3 +22,6 @@ crash.*.log
 # Local/editor noise
 .idea/
 .vscode/*.log
+
+# review-swarm 실행 산출물
+.review-swarm/

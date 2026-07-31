@@ -1,0 +1,48 @@
+# review-swarm 멀티에이전트 PR 리뷰 (구현계획 Phase 3).
+# 러너/App 준비 전에는 잡이 뜨지 않도록 repository variable
+# REVIEW_SWARM_ENABLED=true 로만 활성화한다 (self-hosted 러너가 없으면
+# 잡이 무기한 queued 로 남기 때문). 런북: docs/review-swarm.md
+name: review-swarm
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: review-swarm-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ vars.REVIEW_SWARM_ENABLED == 'true' }}
+    runs-on: [self-hosted, review-swarm]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run review swarm
+        uses: 100Thieves-team/review-swarm@main
+        with:
+          upload-artifacts: 'true'
+        env:
+          # 에이전트별 GitHub App 자격 (미등록 에이전트는 GITHUB_TOKEN 폴백으로 게시됨)
+          SWARM_SECURITY_APP_ID: ${{ secrets.SWARM_SECURITY_APP_ID }}
+          SWARM_SECURITY_PRIVATE_KEY: ${{ secrets.SWARM_SECURITY_PRIVATE_KEY }}
+          SWARM_CONSISTENCY_APP_ID: ${{ secrets.SWARM_CONSISTENCY_APP_ID }}
+          SWARM_CONSISTENCY_PRIVATE_KEY: ${{ secrets.SWARM_CONSISTENCY_PRIVATE_KEY }}
+          SWARM_PERFORMANCE_APP_ID: ${{ secrets.SWARM_PERFORMANCE_APP_ID }}
+          SWARM_PERFORMANCE_PRIVATE_KEY: ${{ secrets.SWARM_PERFORMANCE_PRIVATE_KEY }}
+          SWARM_ARCHITECT_APP_ID: ${{ secrets.SWARM_ARCHITECT_APP_ID }}
+          SWARM_ARCHITECT_PRIVATE_KEY: ${{ secrets.SWARM_ARCHITECT_PRIVATE_KEY }}
+          SWARM_PRAGMATIST_APP_ID: ${{ secrets.SWARM_PRAGMATIST_APP_ID }}
+          SWARM_PRAGMATIST_PRIVATE_KEY: ${{ secrets.SWARM_PRAGMATIST_PRIVATE_KEY }}
+          SWARM_COLLABORATOR_APP_ID: ${{ secrets.SWARM_COLLABORATOR_APP_ID }}
+          SWARM_COLLABORATOR_PRIVATE_KEY: ${{ secrets.SWARM_COLLABORATOR_PRIVATE_KEY }}
+          SWARM_MEDIATOR_APP_ID: ${{ secrets.SWARM_MEDIATOR_APP_ID }}
+          SWARM_MEDIATOR_PRIVATE_KEY: ${{ secrets.SWARM_MEDIATOR_PRIVATE_KEY }}
