@@ -25,19 +25,37 @@ PLA-246은 `docs/` 아래에 초기 플랫폼 계약을 정의합니다.
 - [`docs/mcp-registry.md`](docs/mcp-registry.md): MCP 레지스트리와 안전한 도구 정책 계약(PLA-250) — 서버 레지스트리, 허용/승인/거부 도구 등급, 쓰기 승인 흐름, 등록/스모크 런북. 기계가 읽을 수 있는 형식은 [`config/mcp-registry.yaml`](config/mcp-registry.yaml)입니다.
 - [`docs/otel-collector.md`](docs/otel-collector.md): 내부 전용 OpenTelemetry Collector 런북(PLA-251) — 내부 OTLP 대상, 파일/로컬 우선 export, 개인정보 보호/정제 계약(원본 프롬프트/완성, 시크릿/토큰, PII 금지).
 - [`docs/n8n-placeholder.md`](docs/n8n-placeholder.md): `n8n.agent.plady.io` 예약/비활성 플레이스홀더 계약(PLA-251)과 향후 활성화 체크리스트.
+- [`docs/wiki-token-issuer.md`](docs/wiki-token-issuer.md): wiki-auth 접근 제어 런북 — 위키 UI 비밀번호 세션 게이트 + MCP 단기 토큰 발급(`/auth/token`), 활성화 절차, smoke, 비밀번호/시크릿 회전.
 
 현재 엔드포인트 요약(SSOT는 [`docs/platform-contract.md`](docs/platform-contract.md)):
 
 | 엔드포인트 | 목적 |
 | --- | --- |
-| `public 비공개` | 위키 UI |
-| `https://mcp.agent.plady.io/mcp` | bearer token으로 보호되는 llm-wiki MCP HTTP 엔드포인트 |
+| `https://wiki.agent.plady.io` | 위키 UI — **팀 비밀번호 세션**으로 보호(비로그인 시 `/auth/login`으로 이동) |
+| `https://mcp.agent.plady.io/mcp` | bearer token(정적 토큰 또는 단기 JWT)으로 보호되는 llm-wiki MCP HTTP 엔드포인트 |
+| `https://mcp.agent.plady.io/auth/token` | 팀 비밀번호로 MCP 단기 토큰 발급(POST) |
 | `https://hermes.agent.plady.io` | Hermes Gateway 공개 origin |
 | `https://hermes.agent.plady.io/v1` | OpenAI 호환 Hermes base URL |
 | `https://n8n.agent.plady.io` | 예약/비활성 플레이스홀더([`docs/n8n-placeholder.md`](docs/n8n-placeholder.md)) |
 | OTEL collector | 내부 전용; 공개 엔드포인트 없음([`docs/otel-collector.md`](docs/otel-collector.md)) |
 
 시크릿 값은 절대 커밋하거나 Linear/GitHub/문서에 붙여 넣으면 안 됩니다. 이 저장소 계약에 포함되는 것은 [`docs/platform-contract.md`](docs/platform-contract.md)에 문서화된 파라미터 이름뿐입니다.
+
+## 위키 접근 가이드 (팀원)
+
+하나의 **팀 비밀번호**로 두 경로 모두 접근합니다(값은 팀 내부 채널로만 공유, 상세 런북은 [`docs/wiki-token-issuer.md`](docs/wiki-token-issuer.md)):
+
+- **브라우저**: [wiki.agent.plady.io](https://wiki.agent.plady.io) 접속 → 로그인 페이지에서 팀 비밀번호 입력 → 7일 세션. 로그아웃은 `/auth/logout`.
+- **에이전트/스크립트 (MCP)**: 비밀번호로 단기 토큰(기본 12시간)을 발급받아 `Authorization: Bearer`로 사용:
+
+  ```bash
+  eval "$(scripts/wiki-token.sh)"     # 비밀번호 프롬프트 → MCP_BEARER_TOKEN export
+  scripts/mcp-call.py list-tools --url https://mcp.agent.plady.io/mcp
+  ```
+
+  스크립트 없이 직접 발급하려면 `POST https://mcp.agent.plady.io/auth/token`에 `{"password": "...", "ttl_seconds": 3600}`.
+
+운영자용 비밀번호 설정/회전 절차(해시 생성 → SSM 주입)는 [`docs/wiki-token-issuer.md`](docs/wiki-token-issuer.md)의 활성화 절차를 따릅니다.
 
 ## 에이전트 스킬
 
