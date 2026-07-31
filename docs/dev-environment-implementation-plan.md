@@ -2,6 +2,15 @@
 
 [`dev-environment-architecture.drawio`](../dev-environment-architecture.drawio) 다이어그램과 현재 구현 상태를 대조해, 미구현 구간의 구현 계획을 정리합니다. 플랫폼 계약 SSOT는 [`platform-contract.md`](platform-contract.md)이며, 이 문서는 계획 문서입니다.
 
+## 진행 상태
+
+| Phase | 저장소 쪽 구현 | 남은 사람 작업 |
+| --- | --- | --- |
+| 1. MCP 레지스트리 | ✅ notion/figma 계약 추가, linear transport 확정 | SSM secret 주입 후 `live` 승격 ([`mcp-registry.md`](mcp-registry.md) 🙋 목록) |
+| 2. 회의 ingest | ✅ v0 경로 확정 + [`meeting-ingest.md`](meeting-ingest.md) + [`scripts/mcp-call.py`](../scripts/mcp-call.py) | 스크립트 live smoke; 수집 API/n8n/webex는 별도 이슈 (n8n은 PLA-251 금지 계약 유지) |
+| 3. review-swarm | ✅ 워크플로/설정 배선 ([`review-swarm.md`](review-swarm.md)) | 러너 등록, `REVIEW_SWARM_ENABLED` 설정, GitHub App/시크릿 |
+| 4. 관측성 | ⏳ 미착수 | Phase 2 계약 확정 후 진행 |
+
 ## 현재 상태 요약
 
 구현 완료(다이어그램과 일치):
