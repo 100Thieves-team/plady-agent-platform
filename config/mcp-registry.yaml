@@ -81,13 +81,44 @@ servers:
     status: contract-only
     secret_ref_authority: proposed
     transport:
-      type: tbd                      # MCP transport는 stdio | http 둘뿐. Linear는 원격 HTTP(mcp.linear.app) 또는 stdio 래퍼 — 소비 이슈가 확정.
+      type: http
+      url: https://mcp.linear.app/mcp   # Linear 공식 원격 MCP (Streamable HTTP). 구형 SSE는 /sse.
     auth:
-      type: api_key
+      type: api_key                     # Linear는 OAuth도 지원. api_key(Bearer) 경로를 기본으로 두고 소비 이슈가 최종 확정.
       secret_ref: /plady/agent-platform/<env>/linear-mcp-api-key
     tool_policy:
       allow_capability: read
       approve_capability: mutation   # 이슈/코멘트 생성·수정
+      default: deny
+
+  notion:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: http
+      url: https://mcp.notion.com/mcp   # Notion 공식 원격 MCP (Streamable HTTP)
+    auth:
+      type: oauth
+      secret_ref: /plady/agent-platform/<env>/notion-mcp-oauth
+    tool_policy:
+      # 용도: 회의록(PRD/스크럼/멘토링) read → ingest 파이프라인 입력.
+      allow_capability: read
+      approve_capability: mutation   # 페이지 생성·수정
+      default: deny
+
+  figma:
+    status: contract-only
+    secret_ref_authority: proposed
+    transport:
+      type: http
+      url: https://mcp.figma.com/mcp    # Figma 공식 원격 MCP. 로컬 데스크톱 서버(http://127.0.0.1:3845/mcp)는 개인 개발용 대안.
+    auth:
+      type: oauth
+      secret_ref: /plady/agent-platform/<env>/figma-mcp-oauth
+    tool_policy:
+      # 용도: 와이어프레임/KPT 회고 컨텍스트 read. write 용도 없음 → mutation은 approve로만 남김.
+      allow_capability: read
+      approve_capability: mutation
       default: deny
 
   slack:

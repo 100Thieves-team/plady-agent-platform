@@ -18,7 +18,9 @@
 | --- | --- | --- | --- | --- |
 | `llm-wiki` | HTTP `https://mcp.agent.plady.io/mcp` | `/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token` | live | **authoritative** (`platform-contract.md`) |
 | `github` | stdio `npx -y @modelcontextprotocol/server-github` | `/plady/agent-platform/<env>/github-mcp-pat` | contract-only | proposed placeholder |
-| `linear` | TBD (stdio \| http) | `/plady/agent-platform/<env>/linear-mcp-api-key` | contract-only | proposed placeholder |
+| `linear` | remote HTTP `https://mcp.linear.app/mcp` | `/plady/agent-platform/<env>/linear-mcp-api-key` | contract-only | proposed placeholder |
+| `notion` | remote HTTP `https://mcp.notion.com/mcp` | `/plady/agent-platform/<env>/notion-mcp-oauth` (OAuth) | contract-only | proposed placeholder |
+| `figma` | remote HTTP `https://mcp.figma.com/mcp` | `/plady/agent-platform/<env>/figma-mcp-oauth` (OAuth) | contract-only | proposed placeholder |
 | `slack` | **platform** (Socket Mode, MCP 서버 아님) | `/plady/agent-platform/<env>/slack-bot-token` + `…/slack-app-token` + `…/slack-allowed-users` | PLA-244-B 확정 | confirmed / PLA-244-owned |
 | `google-calendar` | TBD (stdio \| http); auth=OAuth | `/plady/agent-platform/<env>/google-calendar-mcp-oauth` | contract-only | proposed placeholder |
 | `context7` | remote HTTP `https://mcp.context7.com/mcp` | `/plady/agent-platform/<env>/context7-api-key` (optional) | contract-only | proposed placeholder |
@@ -88,7 +90,9 @@ dispatch table 기준(`llm-wiki/src/mcp/tools.rs`) 정확히 23개. 합계: allo
 ### 다른 서버 mutation gated 정책 (요약)
 
 - `github`: read(이슈/PR/코드 조회 등) `allow`, mutation(예: `create_issue`/`update_issue`/`create_or_update_file`/`merge_pull_request`) `approve`. 기본 활성화하지 않음(이슈 비목표).
-- `linear`: read `allow`, mutation(이슈/코멘트 생성·수정) `approve`.
+- `linear`: read `allow`, mutation(이슈/코멘트 생성·수정) `approve`. transport는 공식 원격 HTTP(`https://mcp.linear.app/mcp`)로 확정(구형 SSE `/sse`). auth는 api_key(Bearer) 기본, OAuth 전환 여부는 소비 이슈가 확정.
+- `notion`: read(회의록 조회 — PRD/스크럼/멘토링 회의록을 ingest 파이프라인 입력으로 사용) `allow`, mutation(페이지 생성·수정) `approve`.
+- `figma`: read(와이어프레임/KPT 회고 컨텍스트) `allow`, mutation `approve`(현재 write 용도 없음). 로컬 데스크톱 서버(`http://127.0.0.1:3845/mcp`)는 개인 개발용 대안 경로.
 - `slack`: PLA-244가 tier 확정. 메시지 전송 등 mutation은 `approve` 기본.
 - `google-calendar`: read(`list events`/`get event`) `allow`, write(`create`/`update`/`delete` event) `approve`. **Calendar write workflow 구현은 범위 밖**(정책만 정의).
 - `context7`: 문서 조회 read-only 도구만 노출 → 전부 `allow`, write 없음.
@@ -160,6 +164,8 @@ PLA-244는 아래가 모두 명확하면 MCP 정책을 추측 없이 소비할 �
 - `llm-wiki`: `MCP_BEARER_TOKEN`(로컬)/`/plady/agent-platform/<env>/llm-wiki-mcp-bearer-token`(SSM) 값 생성·주입.
 - `github`: PAT 발급 → `/plady/agent-platform/<env>/github-mcp-pat`(SSM SecureString) 저장.
 - `linear`: API key → `/plady/agent-platform/<env>/linear-mcp-api-key` 저장.
+- `notion`: OAuth 연결(워크스페이스 관리자 승인) → `/plady/agent-platform/<env>/notion-mcp-oauth` 저장.
+- `figma`: OAuth 연결 → `/plady/agent-platform/<env>/figma-mcp-oauth` 저장.
 - `google-calendar`: OAuth 토큰 → `/plady/agent-platform/<env>/google-calendar-mcp-oauth` 저장.
 - `context7`: (선택) API key → `/plady/agent-platform/<env>/context7-api-key` 저장.
 - `slack`(플랫폼): `slack-bot-token`(xoxb)·`slack-app-token`(xapp)·`slack-allowed-users`(Member ID, 쉼표구분)를 SSM SecureString으로 저장. 절차는 [`hermes-gateway.md`](hermes-gateway.md) "Slack 연동".
