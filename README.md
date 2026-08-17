@@ -22,7 +22,7 @@ PLA-246은 `docs/` 아래에 초기 플랫폼 계약을 정의합니다.
 
 | 엔드포인트 | 목적 |
 | --- | --- |
-| `https://wiki.agent.plady.io` | 공개 위키 UI |
+| `public 비공개` | 위키 UI |
 | `https://mcp.agent.plady.io/mcp` | bearer token으로 보호되는 llm-wiki MCP HTTP 엔드포인트 |
 | `https://hermes.agent.plady.io` | Hermes Gateway 공개 origin |
 | `https://hermes.agent.plady.io/v1` | OpenAI 호환 Hermes base URL |
