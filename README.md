@@ -7,6 +7,12 @@
 - `llm-wiki/`: https://github.com/geronimo-iia/llm-wiki
 - `llm-wiki-hugo-cms/`: https://github.com/geronimo-iia/llm-wiki-hugo-cms
 
+## 개발 환경 아키텍처
+
+![개발 환경 아키텍처](docs/images/dev-environment-architecture.drawio.png)
+
+원본 다이어그램은 [`dev-environment-architecture.drawio`](dev-environment-architecture.drawio)이며, draw.io에서 열어 수정할 수 있습니다(PNG에도 다이어그램 XML이 포함되어 있어 draw.io에서 바로 열 수 있습니다).
+
 ## 플랫폼 계약
 
 PLA-246은 `docs/` 아래에 초기 플랫폼 계약을 정의합니다.
