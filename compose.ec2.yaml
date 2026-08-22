@@ -290,7 +290,14 @@ services:
           # of idling forever until the next file change.
           if [ -n "$$(git status --porcelain)" ]; then
             git commit -q -m "chore(wiki-sync): runtime/MCP changes $$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
-          elif [ -z "$$(git cherry origin/$$BRANCH 2>/dev/null)" ]; then
+          fi
+          # Always check the remote too: a clean tree + no unpushed local commits
+          # used to `continue` here without ever fetching, so origin-only pushes
+          # (e.g. from a developer's laptop, with no MCP write happening on this
+          # box) were NEVER pulled down — `git cherry` only sees local-ahead, not
+          # local-behind. Fetch first, then check both directions.
+          git fetch origin "$$BRANCH" >/dev/null 2>&1 || true
+          if [ -z "$$(git rev-list HEAD..origin/$$BRANCH 2>/dev/null)" ] && [ -z "$$(git cherry origin/$$BRANCH 2>/dev/null)" ]; then
             continue
           fi
           # Pull-then-push; a write landing between the two is caught next cycle.
