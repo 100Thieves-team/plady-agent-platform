@@ -1,12 +1,13 @@
 {{ define "main" }}
 <section class="section">
+  {{ $allPages := union .Sections .RegularPagesRecursive }}
+  {{ $pages := $allPages | complement (where $allPages "Params.status" "archived") }}
+
   <header class="section-header">
-    <h1>{{ .Title }}</h1>
+    <h1>{{ .Title }} <span class="section-count">{{ len $pages }}</span></h1>
     {{ with .Content }}<div class="section-intro">{{ . }}</div>{{ end }}
   </header>
 
-  {{ $allPages := union .Sections .RegularPagesRecursive }}
-  {{ $pages := $allPages | complement (where $allPages "Params.status" "archived") }}
   {{ $byType := $pages.GroupByParam "type" }}
 
   {{ if gt (len $byType) 1 }}
@@ -14,8 +15,8 @@
     {{ range $byType }}
     <div class="type-group">
       <h2 class="type-heading">
-        <span class="type-badge type-{{ .Key | urlize }}">{{ .Key | default "other" }}</span>
-        <span class="type-count">({{ len .Pages }})</span>
+        {{ .Key | default "other" }}
+        <span class="type-count">{{ len .Pages }}</span>
       </h2>
       <ul class="page-list">
         {{ range .Pages.ByTitle }}

@@ -1,6 +1,7 @@
 baseURL = "https://plady.kro.kr/"
 title = "100Thieves Wiki"
 languageCode = "ko-kr"
+pluralizeListTitles = false
 
 # Point directly at the wiki content directory.
 # Option A (Hugo site at wiki repo root): contentDir = "wiki"
@@ -50,7 +51,7 @@ languageCode = "ko-kr"
     [markup.goldmark.renderer]
       unsafe = true        # required for mermaid fenced blocks and raw HTML
   [markup.highlight]
-    style = "monokai"
+    style = "github"
 
 # Output formats
 [outputs]
@@ -59,6 +60,7 @@ languageCode = "ko-kr"
 
 [params]
   description = "100Thieves team knowledge base powered by llm-wiki and Hugo"
+  sectionOrder = ["topics", "sources", "people", "raw"]
   mermaid     = true
   showMetadata   = true
   showBacklinks  = true
