@@ -1,0 +1,61 @@
+{{/*
+  Raw board sidebar — Jira/Confluence-style navigation for /raw/.
+  Groups are raw's first-level sections (mentoring, meetings, product, …),
+  built dynamically from .Site.GetPage "/raw". No-JS friendly:
+  <details>/<summary> folding, current section open, current page
+  highlighted. A tiny inline script collapses the whole sidebar on
+  small screens (no-JS mobile falls back to expanded — still usable).
+*/}}
+{{ $current := . }}
+{{ with .Site.GetPage "/raw" }}
+<details class="raw-sidebar" id="raw-sidebar" open>
+  <summary class="raw-sidebar-toggle">문서 목록</summary>
+  <nav class="raw-sidebar-nav" aria-label="Raw 문서 탐색">
+    <a href="{{ .RelPermalink }}" class="raw-sidebar-home{{ if eq $current . }} active{{ end }}">Raw 전체</a>
+    {{ range .Sections }}
+      {{ $sec := . }}
+      {{ $pages := $sec.RegularPagesRecursive }}
+      {{/* Meeting/mentoring notes read naturally newest-first — but many raw
+           originals carry no last_updated, so only use date order when the
+           section actually has dated pages; otherwise fall back to title
+           order (deterministic, date-in-title still reads fine).
+           Note: .Section returns the ROOT section ("raw") for nested
+           sections, so derive the folder name from the logical path. */}}
+      {{ $secName := path.Base $sec.Path }}
+      {{ $sorted := $pages.ByTitle }}
+      {{ if in (slice "meetings" "mentoring") $secName }}
+        {{ $dated := $pages.ByLastmod.Reverse }}
+        {{ with index $dated 0 }}
+          {{ if not .Lastmod.IsZero }}{{ $sorted = $dated }}{{ end }}
+        {{ end }}
+      {{ end }}
+      {{ $inSection := or (eq $current $sec) ($sec.IsAncestor $current) }}
+      <details class="raw-sidebar-group"{{ if $inSection }} open{{ end }}>
+        <summary>
+          <span class="raw-sidebar-group-title">{{ $sec.Title | replaceRE `(?i)\s+raw$` "" }}</span>
+          <span class="raw-sidebar-count">{{ len $pages }}</span>
+        </summary>
+        <ul>
+          {{ range $sorted }}
+            {{ $fallbackTitle := .RelPermalink }}
+            {{ with .File }}{{ $fallbackTitle = .BaseFileName | replaceRE "[-_]+" " " | humanize }}{{ end }}
+            <li>
+              <a href="{{ .RelPermalink }}"{{ if eq . $current }} class="active" aria-current="page"{{ end }}
+                 title="{{ .Title | default $fallbackTitle }}">{{ .Title | default $fallbackTitle }}</a>
+            </li>
+          {{ end }}
+        </ul>
+      </details>
+    {{ end }}
+  </nav>
+</details>
+<script>
+  (function () {
+    var sidebar = document.getElementById('raw-sidebar');
+    var mq = window.matchMedia('(max-width: 960px)');
+    var sync = function () { sidebar.open = !mq.matches; };
+    sync();
+    if (mq.addEventListener) { mq.addEventListener('change', sync); }
+  })();
+</script>
+{{ end }}

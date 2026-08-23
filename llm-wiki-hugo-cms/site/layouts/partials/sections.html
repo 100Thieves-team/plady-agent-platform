@@ -1,0 +1,18 @@
+{{/*
+  Returns top-level sections in a stable, curated order.
+  Sections listed in site param `sectionOrder` come first (in that
+  order); any remaining sections follow in Hugo's default order.
+*/}}
+{{ $ordered := slice }}
+{{ $order := .Site.Params.sectionOrder | default slice }}
+{{ range $order }}
+  {{ with $.Site.GetPage (printf "/%s" .) }}
+    {{ $ordered = $ordered | append . }}
+  {{ end }}
+{{ end }}
+{{ range .Site.Sections }}
+  {{ if not (in $order .Section) }}
+    {{ $ordered = $ordered | append . }}
+  {{ end }}
+{{ end }}
+{{ return $ordered }}

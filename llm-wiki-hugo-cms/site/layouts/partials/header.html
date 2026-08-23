@@ -2,14 +2,14 @@
   <nav class="site-nav">
     <a href="{{ "/" | relURL }}" class="site-title">{{ .Site.Title }}</a>
     <ul class="nav-links">
-      {{ range .Site.Sections }}
-      <li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>
+      {{ range partial "sections.html" . }}
+      <li>
+        <a href="{{ .RelPermalink }}"
+           {{ if and (ne $.Section "") (eq $.Section .Section) }}class="active" aria-current="true"{{ end }}>
+          {{ .Title }}
+        </a>
+      </li>
       {{ end }}
     </ul>
-    <div class="nav-search">
-      <form action="{{ "/search/" | relURL }}" method="get">
-        <input type="search" name="q" placeholder="Search…" aria-label="Search">
-      </form>
-    </div>
   </nav>
 </header>

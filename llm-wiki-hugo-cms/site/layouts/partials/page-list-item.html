@@ -3,11 +3,13 @@
   {{ with .File }}
     {{ $fallbackTitle = .BaseFileName | replaceRE "[-_]+" " " | humanize }}
   {{ end }}
-  <a href="{{ .RelPermalink }}" class="page-link">{{ .Title | default $fallbackTitle }}</a>
-  {{ with .Params.summary }}<span class="page-summary">— {{ . }}</span>{{ end }}
-  <span class="page-meta">
+  <div class="page-item-head">
+    <a href="{{ .RelPermalink }}" class="page-link">{{ .Title | default $fallbackTitle }}</a>
     {{ with .Params.type }}<span class="type-badge type-{{ . | urlize }}">{{ . }}</span>{{ end }}
     {{ with .Params.status }}{{ if ne . "active" }}<span class="status-badge status-{{ . }}">{{ . }}</span>{{ end }}{{ end }}
-    {{ with .Params.confidence }}<span class="confidence">{{ printf "%.0f%%" (mul . 100) }}</span>{{ end }}
-  </span>
+    {{ if not .Lastmod.IsZero }}
+    <span class="lastmod"><time datetime="{{ .Lastmod.Format "2006-01-02" }}">{{ .Lastmod.Format "2006-01-02" }}</time></span>
+    {{ end }}
+  </div>
+  {{ with .Params.summary }}<p class="page-summary">{{ . | markdownify }}</p>{{ end }}
 </li>
