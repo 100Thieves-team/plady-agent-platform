@@ -164,6 +164,8 @@ services:
     working_dir: /workspace/site
     environment:
       WIKI_DOMAIN_NAME: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
+      # Branch of the wiki-data checkout to watch; must match wiki-data-sync.
+      WIKI_SYNC_BRANCH: ${WIKI_SYNC_BRANCH:-main}
     # Sync the baked Hugo scaffold into the shared /workspace/site, ensure the
     # llm-wiki content dir exists (empty is fine — Hugo still renders), then serve.
     # Ensure both Hugo module-mount sources exist (../wiki and ../raw per
@@ -173,11 +175,19 @@ services:
     # Clear /workspace/site CONTENTS (not the dir itself — it is the working_dir,
     # so removing it pulls the cwd out from under the shell and Hugo dies with
     # `failed to read dir "."`). find -mindepth 1 -delete drops stale scaffold
-    # files while keeping the inode. Both Hugo module-mount sources (../wiki and
-    # ../raw per hugo.toml) must exist before serving — on a fresh wiki-data
-    # volume neither is created yet, and a missing mount source aborts the build.
+    # files while keeping the inode.
+    #
+    # Hugo's dev-server live-reload is NOT trusted for content changes: bulk
+    # file changes from a `git pull` overwhelm its watcher (observed 2026-08-23:
+    # a deleted section kept serving its stale route, and 10 of 11 newly added
+    # pages never registered until the container was recreated). Instead, a
+    # watcher polls the wiki-data checkout's branch ref every 30s and exits the
+    # container when the content HEAD moves; `restart: unless-stopped` brings it
+    # back for a clean full rebuild. /tmp/hugo-cache and /tmp/hugo-public are
+    # wiped at startup so even a plain `docker compose restart` (which reuses
+    # the container filesystem, including /tmp) always rebuilds from scratch.
     command: >-
-      sh -c 'mkdir -p /workspace/wiki /workspace/raw /workspace/site && find /workspace/site -mindepth 1 -delete && cp -a /opt/site-template/. /workspace/site/ && hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender'
+      sh -c 'rm -rf /tmp/hugo-cache /tmp/hugo-public; mkdir -p /workspace/wiki /workspace/raw /workspace/site && find /workspace/site -mindepth 1 -delete && cp -a /opt/site-template/. /workspace/site/ || exit 1; hugo server --bind 0.0.0.0 --port 1313 --baseURL https://$${WIKI_DOMAIN_NAME}/ --appendPort=false --buildDrafts --destination /tmp/hugo-public --cacheDir /tmp/hugo-cache --noBuildLock --disableFastRender & HUGO=$$!; REF="/workspace/.git/refs/heads/$${WIKI_SYNC_BRANCH}"; INIT="$$(cat "$$REF" 2>/dev/null)"; while kill -0 "$$HUGO" 2>/dev/null; do sleep 30; CUR="$$(cat "$$REF" 2>/dev/null)"; if [ "$$CUR" != "$$INIT" ]; then echo "[wiki-ui] content HEAD changed ($${INIT:-none} -> $${CUR:-none}); exiting for clean rebuild"; exit 0; fi; done; wait "$$HUGO"'
     volumes:
       - wiki-data:/workspace
     expose:
