@@ -1,4 +1,10 @@
 {{ define "main" }}
+{{ $isRaw := and .FirstSection (eq .FirstSection.Section "raw") }}
+{{ if $isRaw }}
+<div class="raw-layout">
+  {{ partial "raw-sidebar.html" . }}
+  <div class="raw-main">
+{{ end }}
 <article class="page">
   <header class="page-header">
     {{ $fallbackTitle := .RelPermalink }}
@@ -74,4 +80,8 @@
   {{ end }}
 
 </article>
+{{ if $isRaw }}
+  </div>
+</div>
+{{ end }}
 {{ end }}

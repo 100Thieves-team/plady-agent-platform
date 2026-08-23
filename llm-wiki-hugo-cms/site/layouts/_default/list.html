@@ -1,4 +1,10 @@
 {{ define "main" }}
+{{ $isRaw := and .FirstSection (eq .FirstSection.Section "raw") }}
+{{ if $isRaw }}
+<div class="raw-layout">
+  {{ partial "raw-sidebar.html" . }}
+  <div class="raw-main">
+{{ end }}
 <section class="section">
   {{ $allPages := union .Sections .RegularPagesRecursive }}
   {{ $pages := $allPages | complement (where $allPages "Params.status" "archived") }}
@@ -34,4 +40,8 @@
     </ul>
   {{ end }}
 </section>
+{{ if $isRaw }}
+  </div>
+</div>
+{{ end }}
 {{ end }}

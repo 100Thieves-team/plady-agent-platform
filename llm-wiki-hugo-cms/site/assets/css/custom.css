@@ -211,6 +211,8 @@ h1, h2, h3, h4, h5, h6 {
 .section-count { color: var(--color-text-faint); font-size: 0.9rem; }
 .section-intro { color: var(--color-text-secondary); margin-top: 0.75rem; font-size: 0.95rem; }
 .section-intro > *:first-child { margin-top: 0; }
+/* _index.md bodies repeat the section title as their first H1 — hide it */
+.section-intro > h1:first-child { display: none; }
 
 .type-group { margin-bottom: 2.25rem; }
 .type-heading {
@@ -463,6 +465,145 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text-faint);
   font-family: var(--font-mono);
   font-size: 0.85em;
+}
+
+/* ── Raw board layout (sidebar + content) ──────────────────── */
+.container-wide { max-width: 74rem; }
+
+.raw-layout {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  gap: 2.75rem;
+  align-items: start;
+}
+.raw-main { min-width: 0; }
+.raw-main .page { max-width: var(--measure); margin: 0; }
+
+.raw-sidebar {
+  position: sticky;
+  top: 1.5rem;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  padding-right: 0.25rem;
+}
+
+.raw-sidebar-toggle { display: none; }
+
+.raw-sidebar-home {
+  display: block;
+  font-weight: 700;
+  color: var(--color-text);
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.35rem;
+}
+.raw-sidebar-home:hover { background: var(--color-bg-inset); text-decoration: none; }
+.raw-sidebar-home.active { background: var(--color-bg-inset); }
+
+.raw-sidebar-group summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.32rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.raw-sidebar-group summary::-webkit-details-marker { display: none; }
+.raw-sidebar-group summary:hover { background: var(--color-bg-inset); color: var(--color-text); }
+.raw-sidebar-group summary::before {
+  content: "▸";
+  font-size: 0.68em;
+  color: var(--color-text-faint);
+  flex: none;
+}
+.raw-sidebar-group[open] > summary::before { content: "▾"; }
+.raw-sidebar-group-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.raw-sidebar-count {
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--color-text-faint);
+  flex: none;
+}
+
+.raw-sidebar-group ul {
+  list-style: none;
+  margin: 0.1rem 0 0.5rem;
+  padding: 0 0 0 0.95rem;
+}
+.raw-sidebar-group li { margin: 0; }
+.raw-sidebar-group ul a {
+  display: block;
+  padding: 0.24rem 0.55rem;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.raw-sidebar-group ul a:hover {
+  color: var(--color-text);
+  background: var(--color-bg-subtle);
+  text-decoration: none;
+}
+.raw-sidebar-group ul a.active {
+  color: var(--color-link);
+  font-weight: 600;
+  border-left: 2px solid var(--color-link);
+  padding-left: calc(0.55rem - 1px);
+  background: var(--color-bg-subtle);
+}
+
+@media (max-width: 960px) {
+  .raw-layout { display: block; }
+
+  .raw-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0;
+    margin-bottom: 1.75rem;
+  }
+
+  .raw-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 0.9rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    list-style: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .raw-sidebar-toggle::-webkit-details-marker { display: none; }
+  .raw-sidebar-toggle::before {
+    content: "▸";
+    font-size: 0.68em;
+    color: var(--color-text-faint);
+  }
+  .raw-sidebar[open] > .raw-sidebar-toggle::before { content: "▾"; }
+
+  .raw-sidebar-nav {
+    padding: 0.4rem 0.6rem 0.6rem;
+    border-top: 1px solid var(--color-border);
+  }
 }
 
 /* ── Mermaid ───────────────────────────────────────────────── */
