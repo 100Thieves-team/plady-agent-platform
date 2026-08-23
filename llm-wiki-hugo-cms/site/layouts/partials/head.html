@@ -10,8 +10,11 @@
 <link rel="canonical" href="{{ .Permalink }}">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-{{ $css := resources.Get "css/custom.css" | minify }}
-<link rel="stylesheet" href="{{ $css.RelPermalink }}">
+{{/* fingerprint puts a content hash in the URL so browsers can't serve a
+     stale cached stylesheet after a redesign deploy (the un-hashed
+     /css/custom.min.css path survived redesigns and got cached). */}}
+{{ $css := resources.Get "css/custom.css" | minify | fingerprint }}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
 {{ range .AlternativeOutputFormats -}}
 <link rel="{{ .Rel }}" type="{{ .MediaType.Type }}" href="{{ .Permalink | safeURL }}">
 {{ end }}
