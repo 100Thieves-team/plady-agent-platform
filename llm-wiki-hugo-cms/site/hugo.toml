@@ -30,7 +30,17 @@ pluralizeListTitles = false
       "**/*.json",
       "**/*.txt",
       "**/LINT.md",
+      # policy/viewer 는 콘텐츠가 아니라 정적 앱(상태-SSOT 인터랙티브 뷰어) —
+      # 아래 static 마운트로 verbatim 서빙한다.
+      "policy/viewer/**",
     ]
+
+  # 상태-SSOT 인터랙티브 뷰어(자체 CSS/JS 단일 HTML)를 /policy/viewer/ 아래
+  # 원본 그대로 서빙. 디렉토리는 wiki-ui 시작 커맨드가 mkdir 로 보장한다
+  # (마운트 소스가 없으면 Hugo 빌드가 중단되는 것과 같은 제약).
+  [[module.mounts]]
+    source = "../wiki/policy/viewer"
+    target = "static/policy/viewer"
 
   [[module.mounts]]
     source = "../raw"
