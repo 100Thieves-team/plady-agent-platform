@@ -351,6 +351,57 @@ services:
       - wiki-data:/workspace
     restart: unless-stopped
 
+  # 정책서 자동 렌더 사이드카. wiki/policy/_src/상태-SSOT.yaml (SSOT 원본,
+  # git push 또는 llm-wiki MCP asset write 로 도착)의 내용 해시를 폴링하다가
+  # 바뀌면 team-wiki-v2 의 tools/policy-renderer/render_wiki.py 로
+  # wiki/policy/ 파생 페이지들을 재렌더한다. 이후 체인은 기존 인프라가 잇는다:
+  # wiki-data-sync 가 커밋/푸시 + Slack 알림, wiki-ui HEAD 워처가 재빌드.
+  # 렌더 직후 내부 MCP(llm-wiki:18765, 프록시 인증 앞단 없음)로 검색 인덱스를
+  # 재빌드한다. 렌더 실패 시 이전 페이지를 유지하고 Slack 으로만 알린다 —
+  # 같은 깨진 판으로 매 주기 재시도해 스팸이 되지 않게 해시를 소진 처리한다.
+  policy-renderer:
+    image: ${POLICY_RENDERER_IMAGE:-python:3.12-alpine}
+    depends_on:
+      - llm-wiki
+    environment:
+      WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+      POLICY_RENDER_INTERVAL: ${POLICY_RENDER_INTERVAL:-60}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        pip install --quiet --no-cache-dir 'pyyaml==6.0.2'
+        SRC="/workspace/wiki/policy/_src/상태-SSOT.yaml"
+        OUT=/workspace/wiki/policy
+        TOOLS=/workspace/tools/policy-renderer
+        LAST=""
+        if [ -f "$$OUT/sync-manifest.json" ]; then
+          LAST="$$(python3 -c "import json;print(json.load(open('$$OUT/sync-manifest.json')).get('source_hash',''))" 2>/dev/null || true)"
+        fi
+        echo "[policy-renderer] watching $$SRC every $${POLICY_RENDER_INTERVAL}s (last=$${LAST:-none})"
+        while :; do
+          sleep "$$POLICY_RENDER_INTERVAL"
+          [ -f "$$SRC" ] || continue
+          [ -f "$$TOOLS/render_wiki.py" ] || continue
+          CUR="$$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:12])" "$$SRC")"
+          [ "$$CUR" = "$$LAST" ] && continue
+          echo "[policy-renderer] source changed ($${LAST:-none} -> $$CUR); rendering"
+          if python3 "$$TOOLS/render_wiki.py" -i "$$SRC" -o "$$OUT" --prd-dir /workspace/raw/product; then
+            echo "[policy-renderer] rendered @$$CUR; wiki-data-sync will commit+push, wiki-ui will rebuild"
+            python3 "$$TOOLS/rebuild_index.py" || echo "[policy-renderer] index rebuild failed (ignored)"
+          else
+            echo "[policy-renderer] RENDER FAILED @$$CUR — keeping previous pages"
+            if [ -n "$${WIKI_SLACK_WEBHOOK_URL}" ]; then
+              wget -q -O /dev/null --header='Content-Type: application/json' \
+                --post-data="{\"text\":\":x: policy-renderer: 상태-SSOT.yaml@$$CUR 렌더 실패 — 이전 정책서 유지, EC2 로그 확인 필요\"}" \
+                "$${WIKI_SLACK_WEBHOOK_URL}" || true
+            fi
+          fi
+          LAST="$$CUR"
+        done
+    volumes:
+      - wiki-data:/workspace
+    restart: unless-stopped
+
   # Hermes Agent Gateway (NousResearch/hermes-agent). OpenAI-compatible API
   # server on port 8642, exposed only on the compose network (no host publish).
   # Public origin https://hermes.agent.plady.io and its /v1 base URL are routed

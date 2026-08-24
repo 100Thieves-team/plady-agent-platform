@@ -11,7 +11,12 @@
 #   scripts/sync-policy.sh --skip-index # 인덱스 재빌드 생략
 #
 # 전제:
-#   - interview-ddd 는 로컬 폴더(비 git). 렌더 입력의 버전은 yaml 내용 해시로 스탬프된다.
+#   - SSOT yaml 과 렌더러는 team-wiki-v2 저장소 안에 있다:
+#     wiki/policy/_src/상태-SSOT.yaml + tools/policy-renderer/. 버전 스탬프는
+#     yaml 내용 해시다.
+#   - EC2 의 policy-renderer 사이드카가 같은 일을 자동으로 하므로, 이 스크립트는
+#     로컬에서 즉시 반영하고 싶을 때(또는 사이드카 장애 시)의 수동 경로다.
+#     yaml 만 push 해도 사이드카가 <=60s 내 렌더·게시한다.
 #   - 인덱스 재빌드는 AWS_PROFILE=plady-service 자격과 SSM 파라미터
 #     /plady/agent-platform/dev/llm-wiki-mcp-bearer-token 을 쓴다 (mcp-call.py 규약).
 #   - 렌더된 페이지 frontmatter 의 managed_by: harness 가 "직접 수정 금지" 표식이다.
@@ -19,8 +24,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DESIGN_DIR="${DESIGN_DIR:-$HOME/Desktop_nonsync/teams/100-thieves/interview-ddd/docs/design}"
 WIKI_DIR="${WIKI_DIR:-$REPO_DIR/wiki-workspace}"
+DESIGN_DIR="${DESIGN_DIR:-$WIKI_DIR/tools/policy-renderer}"
 POLICY_DIR="$WIKI_DIR/wiki/policy"
 MCP_URL="${MCP_URL:-https://mcp.agent.plady.io/mcp}"
 TOKEN_PARAM="${TOKEN_PARAM:-/plady/agent-platform/dev/llm-wiki-mcp-bearer-token}"
@@ -36,13 +41,14 @@ for arg in "$@"; do
   esac
 done
 
-[ -f "$DESIGN_DIR/상태-SSOT.yaml" ] || { echo "상태-SSOT.yaml 이 없다: $DESIGN_DIR" >&2; exit 1; }
+SSOT_YAML="$WIKI_DIR/wiki/policy/_src/상태-SSOT.yaml"
+[ -f "$SSOT_YAML" ] || { echo "상태-SSOT.yaml 이 없다: $SSOT_YAML" >&2; exit 1; }
 [ -d "$WIKI_DIR/.git" ] || { echo "wiki-workspace 가 git checkout 이 아니다: $WIKI_DIR" >&2; exit 1; }
 
 # ── 1. 렌더 (PRD § 참조 드리프트 검증 포함; [drift] 경고는 stderr 로 나온다) ──
 mkdir -p "$POLICY_DIR"
 python3 "$DESIGN_DIR/render_wiki.py" \
-  -i "$DESIGN_DIR/상태-SSOT.yaml" \
+  -i "$SSOT_YAML" \
   -o "$POLICY_DIR" \
   --prd-dir "$WIKI_DIR/raw/product"
 

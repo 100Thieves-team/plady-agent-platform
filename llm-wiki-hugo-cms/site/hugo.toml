@@ -29,6 +29,9 @@ pluralizeListTitles = false
     excludeFiles = [
       "**/*.json",
       "**/*.txt",
+      # wiki/policy/_src/상태-SSOT.yaml (정책서 SSOT 원본) 등 yaml 은 페이지가 아니다.
+      "**/*.yaml",
+      "**/*.yml",
       "**/LINT.md",
       # policy/viewer 는 콘텐츠가 아니라 정적 앱(상태-SSOT 인터랙티브 뷰어) —
       # 아래 static 마운트로 verbatim 서빙한다.
