@@ -118,10 +118,10 @@ pub fn tool_list() -> Vec<Tool> {
         ),
         Tool::new(
             "wiki_content_read",
-            "Read full content of a page by slug or URI",
+            "Read full content of a page by slug or URI. A path whose last segment has a non-.md extension reads the co-located asset instead (text assets are returned inline; binaries must be opened from the filesystem)",
             schema(
                 json!({
-                    "uri": str_prop("Slug or wiki:// URI"),
+                    "uri": str_prop("Slug, wiki:// URI, or asset path (e.g. policy/_src/state.yaml)"),
                     "no_frontmatter": opt_bool("Strip frontmatter from output"),
                     "list_assets": opt_bool("List co-located assets instead of content"),
                     "backlinks": opt_bool("Include incoming links — pages that link to this page"),
@@ -132,10 +132,10 @@ pub fn tool_list() -> Vec<Tool> {
         ),
         Tool::new(
             "wiki_content_write",
-            "Write content to a page in the wiki tree",
+            "Write content to a page in the wiki tree. Extensionless slugs write pages; a path whose last segment has a text asset extension (yaml, yml, json, txt, csv) writes a co-located asset instead — the write-side mirror of wiki_content_read's asset reads. Asset parents are created as needed; other extensions are rejected",
             schema(
                 json!({
-                    "uri": str_prop("Slug or wiki:// URI"),
+                    "uri": str_prop("Slug, wiki:// URI, or asset path (e.g. policy/_src/state.yaml)"),
                     "content": str_prop("File content"),
                     "wiki": opt_str("Target wiki name"),
                 }),

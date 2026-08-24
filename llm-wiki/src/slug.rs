@@ -198,6 +198,10 @@ pub enum ReadTarget {
 ///
 /// 1. Try `slug.resolve()` → page
 /// 2. If the last segment has a non-.md extension, split into parent slug + filename → asset
+///
+/// Reads accept any non-.md extension (images and other binaries included);
+/// writes narrow that to `WRITABLE_ASSET_EXTENSIONS`. Both share
+/// `split_asset_path` so path-traversal defenses are identical.
 pub fn resolve_read_target(input: &str, wiki_root: &Path) -> Result<ReadTarget> {
     // Step 1: try as page (may fail if input has an extension)
     if let Ok(slug) = Slug::try_from(input)
@@ -207,25 +211,138 @@ pub fn resolve_read_target(input: &str, wiki_root: &Path) -> Result<ReadTarget> 
     }
 
     // Step 2: check last segment for non-.md extension (asset)
-    if let Some(pos) = input.rfind('/') {
-        let filename = &input[pos + 1..];
-        if let Some(dot) = filename.rfind('.') {
-            let ext = &filename[dot + 1..];
-            if !ext.is_empty() && ext != "md" {
-                let parent_slug = &input[..pos];
-                let path = wiki_root.join(parent_slug).join(filename);
-                if path.is_file() {
-                    return Ok(ReadTarget::Asset(
-                        parent_slug.to_string(),
-                        filename.to_string(),
-                    ));
-                }
-                bail!("asset not found: {input}");
-            }
+    if let Some(ext) = last_segment_extension(input)
+        && ext != "md"
+    {
+        let (parent, filename) = split_asset_path(input)?;
+        let path = wiki_root.join(parent.as_str()).join(&filename);
+        if path.is_file() {
+            return Ok(ReadTarget::Asset(parent.as_str().to_string(), filename));
         }
+        bail!("asset not found: {input}");
     }
 
     bail!("page not found: {input}")
+}
+
+/// Extensions allowed for asset writes via wiki_content_write.
+/// Text formats only — binaries, HTML, and scripts are rejected.
+pub const WRITABLE_ASSET_EXTENSIONS: &[&str] = &["yaml", "yml", "json", "txt", "csv"];
+
+/// Result of slug vs asset resolution for wiki_content_write.
+#[derive(Debug)]
+pub enum WriteTarget {
+    /// Input is an extensionless slug — write as a page.
+    Page(crate::config::WikiEntry, Slug),
+    /// Input names a co-located text asset: (wiki entry, parent slug, filename).
+    Asset(crate::config::WikiEntry, Slug, String),
+}
+
+/// Return the extension of the last path segment, if any.
+pub fn last_segment_extension(input: &str) -> Option<&str> {
+    let last = input.rsplit('/').next().unwrap_or(input);
+    let dot = last.rfind('.')?;
+    let ext = &last[dot + 1..];
+    if ext.is_empty() { None } else { Some(ext) }
+}
+
+/// Resolve a slug or `wiki://` URI to its wiki space plus the path relative to
+/// the wiki root, without validating that path.
+///
+/// Mirrors the wiki-name resolution in `WikiUri::resolve`, but leaves slug/asset
+/// validation to the caller so read and write can apply their own rules to the
+/// same relative path.
+pub fn resolve_entry_and_rel(
+    input: &str,
+    wiki_flag: Option<&str>,
+    global: &crate::config::GlobalConfig,
+) -> Result<(crate::config::WikiEntry, String)> {
+    use crate::spaces;
+
+    let input = input.trim();
+    if let Some(stripped) = input.strip_prefix("wiki://") {
+        if stripped.is_empty() {
+            bail!("invalid wiki URI: {input}");
+        }
+        let parts: Vec<&str> = stripped.splitn(2, '/').collect();
+        if parts.len() == 2 && !parts[1].is_empty() {
+            if let Ok(entry) = spaces::resolve_name(parts[0], global) {
+                return Ok((entry, parts[1].to_string()));
+            }
+            // Candidate is not a wiki name — treat as first slug segment
+            let entry = spaces::resolve_name(&global.global.default_wiki, global)?;
+            return Ok((entry, format!("{}/{}", parts[0], parts[1])));
+        }
+        let entry = spaces::resolve_name(&global.global.default_wiki, global)?;
+        Ok((entry, stripped.trim_end_matches('/').to_string()))
+    } else {
+        let wiki_name = wiki_flag.unwrap_or(&global.global.default_wiki);
+        Ok((spaces::resolve_name(wiki_name, global)?, input.to_string()))
+    }
+}
+
+/// Split a wiki-root-relative asset path into a validated parent slug and
+/// filename. Shared by asset reads and writes so both reject the same paths.
+///
+/// Rejects path traversal (`../`, bare `..` segments), absolute paths, filenames
+/// carrying separators, and filenames with an empty stem.
+pub fn split_asset_path(rel: &str) -> Result<(Slug, String)> {
+    let Some(pos) = rel.rfind('/') else {
+        bail!("asset path needs a parent directory under the wiki root: {rel}");
+    };
+    let (parent, filename) = (&rel[..pos], &rel[pos + 1..]);
+
+    // Every parent segment must be a plain name — closes the bare `..` hole
+    // that the substring checks in Slug::try_from do not cover
+    if parent.split('/').any(|s| s.is_empty() || s == "." || s == "..") {
+        bail!("asset path cannot contain path traversal: {rel}");
+    }
+    // Parent goes through Slug validation — blocks ../ and absolute paths
+    let parent = Slug::try_from(parent)?;
+
+    // Filename hygiene: no separators or traversal, non-empty stem
+    if filename.contains('\\') || filename.contains("..") {
+        bail!("invalid asset filename: {filename}");
+    }
+    let Some(ext) = last_segment_extension(filename) else {
+        bail!("asset filename needs an extension: {filename}");
+    };
+    if filename.len() == ext.len() + 1 {
+        bail!("asset filename needs a name before the extension: {filename}");
+    }
+
+    Ok((parent, filename.to_string()))
+}
+
+/// Two-step resolution for wiki_content_write — write-side mirror of
+/// `resolve_read_target`.
+///
+/// 1. Extensionless input → page write (existing slug semantics, unchanged)
+/// 2. Last segment has an allowed text extension (yaml/yml/json/txt/csv) →
+///    asset write, validated by `split_asset_path` so the target stays under
+///    the wiki root.
+pub fn resolve_write_target(
+    input: &str,
+    wiki_flag: Option<&str>,
+    global: &crate::config::GlobalConfig,
+) -> Result<WriteTarget> {
+    let input = input.trim();
+    let Some(ext) = last_segment_extension(input) else {
+        // No extension — page write via the normal slug path
+        let (entry, slug) = WikiUri::resolve(input, wiki_flag, global)?;
+        return Ok(WriteTarget::Page(entry, slug));
+    };
+
+    if !WRITABLE_ASSET_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()) {
+        bail!(
+            "unsupported asset extension .{ext}: {input} — allowed: {} (pages are written via extensionless slugs)",
+            WRITABLE_ASSET_EXTENSIONS.join(", ")
+        );
+    }
+
+    let (entry, rel) = resolve_entry_and_rel(input, wiki_flag, global)?;
+    let (parent, filename) = split_asset_path(&rel)?;
+    Ok(WriteTarget::Asset(entry, parent, filename))
 }
 
 fn title_case(segment: &str) -> String {

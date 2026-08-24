@@ -196,8 +196,9 @@ pub fn handle_content_write(server: &McpServer, args: &Map<String, Value>) -> To
 
     let result = ops::content_write(&engine, &uri, wiki_flag.as_deref(), &content)
         .map_err(|e| format!("{e}"))?;
+    let kind = if result.asset { " (asset)" } else { "" };
     ok_text(format!(
-        "Wrote {} bytes to {}",
+        "Wrote {} bytes to {}{kind}",
         result.bytes_written,
         result.path.display()
     ))

@@ -13,7 +13,10 @@ use crate::engine::EngineState;
 use crate::git;
 use crate::index_schema::IndexSchema;
 use crate::markdown;
-use crate::slug::{ReadTarget, Slug, WikiUri, resolve_read_target};
+use crate::slug::{
+    ReadTarget, Slug, WikiUri, WriteTarget, resolve_entry_and_rel, resolve_read_target,
+    resolve_write_target,
+};
 
 /// A page that links to a given target — slug and display title.
 #[derive(Debug, Clone, Serialize)]
@@ -86,7 +89,11 @@ pub enum ContentReadResult {
     Binary,
 }
 
-/// Read a wiki page or list its co-located assets.
+/// Read a wiki page, a co-located asset, or list a page's assets.
+///
+/// Asset reads are wider than asset writes: any non-.md extension resolves to a
+/// file read (matching the long-standing `resolve_read_target` rule), while
+/// writes are limited to text formats. Path-traversal defenses are shared.
 pub fn content_read(
     engine: &EngineState,
     uri: &str,
@@ -94,16 +101,21 @@ pub fn content_read(
     no_frontmatter: bool,
     list_assets: bool,
 ) -> Result<ContentReadResult> {
-    let (entry, slug) = WikiUri::resolve(uri, wiki_flag, &engine.config)?;
+    // Entry resolution is split from path validation so extension-bearing asset
+    // paths survive to resolve_read_target instead of being rejected up front.
+    let (entry, rel) = resolve_entry_and_rel(uri, wiki_flag, &engine.config)?;
     let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
 
     if list_assets {
+        // Unchanged: asset listing keys off the parent (extensionless) slug
+        let slug = Slug::try_from(rel.as_str())?;
         let assets = markdown::list_assets(&slug, &wiki_root)?;
         return Ok(ContentReadResult::Assets(assets));
     }
 
-    match resolve_read_target(slug.as_str(), &wiki_root)? {
+    match resolve_read_target(&rel, &wiki_root)? {
         ReadTarget::Page(_) => {
+            let slug = Slug::try_from(rel.as_str())?;
             let wiki_cfg = config::load_wiki(&PathBuf::from(&entry.path)).unwrap_or_default();
             let resolved = config::resolve(&engine.config, &wiki_cfg);
             let strip = no_frontmatter || resolved.read.no_frontmatter;
@@ -127,22 +139,45 @@ pub struct WriteResult {
     pub bytes_written: usize,
     /// Absolute path of the written file.
     pub path: PathBuf,
+    /// True when the write targeted a co-located asset rather than a page.
+    pub asset: bool,
 }
 
-/// Write content to a wiki page identified by slug or URI.
+/// Write content to a wiki page or co-located text asset.
+///
+/// Extensionless slugs are written as pages (unchanged semantics). Paths whose
+/// last segment carries an allowed text extension (yaml/yml/json/txt/csv) are
+/// written as assets — the write-side mirror of the asset fallback in
+/// `resolve_read_target`. Asset writes skip frontmatter parsing and lint.
 pub fn content_write(
     engine: &EngineState,
     uri: &str,
     wiki_flag: Option<&str>,
     content: &str,
 ) -> Result<WriteResult> {
-    let (_entry, slug) = WikiUri::resolve(uri, wiki_flag, &engine.config)?;
-    let wiki_root = engine.space(&_entry.name)?.wiki_root.clone();
-    let path = markdown::write_page(slug.as_str(), content, &wiki_root)?;
-    Ok(WriteResult {
-        bytes_written: content.len(),
-        path,
-    })
+    match resolve_write_target(uri, wiki_flag, &engine.config)? {
+        WriteTarget::Page(entry, slug) => {
+            let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
+            let path = markdown::write_page(slug.as_str(), content, &wiki_root)?;
+            Ok(WriteResult {
+                bytes_written: content.len(),
+                path,
+                asset: false,
+            })
+        }
+        WriteTarget::Asset(entry, parent, filename) => {
+            let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
+            let dir = wiki_root.join(parent.as_str());
+            std::fs::create_dir_all(&dir)?;
+            let path = dir.join(&filename);
+            std::fs::write(&path, content)?;
+            Ok(WriteResult {
+                bytes_written: content.len(),
+                path,
+                asset: true,
+            })
+        }
+    }
 }
 
 /// Result of creating a new wiki page or section.
