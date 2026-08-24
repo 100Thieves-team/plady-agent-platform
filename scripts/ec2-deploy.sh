@@ -54,6 +54,7 @@ SLACK_ALLOWED_USERS_PARAM="${SLACK_ALLOWED_USERS_PARAM:-/plady/agent-platform/${
 # absent -> issuer stays off (503) and static-token auth is unchanged.
 WIKI_TOKEN_PASSWORD_HASH_PARAM="${WIKI_TOKEN_PASSWORD_HASH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-password-hash}"
 WIKI_TOKEN_JWT_SECRET_PARAM="${WIKI_TOKEN_JWT_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-jwt-secret}"
+WIKI_SLACK_WEBHOOK_URL_PARAM="${WIKI_SLACK_WEBHOOK_URL_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-slack-webhook-url}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -94,6 +95,15 @@ SLACK_APP_TOKEN="$(ssm_get "$SLACK_APP_TOKEN_PARAM")"
 SLACK_ALLOWED_USERS="$(ssm_get "$SLACK_ALLOWED_USERS_PARAM")"
 WIKI_TOKEN_PASSWORD_HASH="$(ssm_get "$WIKI_TOKEN_PASSWORD_HASH_PARAM")"
 WIKI_TOKEN_JWT_SECRET="$(ssm_get "$WIKI_TOKEN_JWT_SECRET_PARAM")"
+# wiki 반영 시점 Slack 알림용 incoming webhook (optional, fail-open). The URL
+# itself is the secret — NEVER echo it; report presence only.
+WIKI_SLACK_WEBHOOK_URL="$(ssm_get "$WIKI_SLACK_WEBHOOK_URL_PARAM")"
+[ "$WIKI_SLACK_WEBHOOK_URL" = "None" ] && WIKI_SLACK_WEBHOOK_URL=""
+if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
+  echo "  wiki slack notify: on (webhook present)"
+else
+  echo "  wiki slack notify: off (${WIKI_SLACK_WEBHOOK_URL_PARAM} absent)"
+fi
 
 [ -n "$HERMES_API_SERVER_KEY" ] && [ "$HERMES_API_SERVER_KEY" != "None" ] \
   || { echo "FATAL: ${HERMES_KEY_PARAM} missing/undecryptable" >&2; exit 1; }
@@ -171,6 +181,7 @@ SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
 SLACK_ALLOWED_USERS=${SLACK_ALLOWED_USERS}
 WIKI_TOKEN_PASSWORD_HASH=${WIKI_TOKEN_PASSWORD_HASH}
 WIKI_TOKEN_JWT_SECRET=${WIKI_TOKEN_JWT_SECRET}
+WIKI_SLACK_WEBHOOK_URL=${WIKI_SLACK_WEBHOOK_URL}
 ENV
 chmod 600 "$ENV_FILE"
 
