@@ -60,7 +60,7 @@ pluralizeListTitles = false
 
 [params]
   description = "100Thieves team knowledge base powered by llm-wiki and Hugo"
-  sectionOrder = ["topics", "sources", "people", "raw"]
+  sectionOrder = ["topics", "sources", "people", "policy", "raw"]
   mermaid     = true
   showMetadata   = true
   showBacklinks  = true
