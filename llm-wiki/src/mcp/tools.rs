@@ -38,7 +38,7 @@ fn opt_int(desc: &str) -> Value {
     json!({"type": "integer", "description": desc})
 }
 
-// ── Tool definitions (22 tools) ───────────────────────────────────────────────
+// ── Tool definitions ──────────────────────────────────────────────────────────
 
 /// Return the complete list of MCP tool definitions for registration.
 pub fn tool_list() -> Vec<Tool> {
@@ -312,6 +312,17 @@ pub fn tool_list() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "wiki_rules",
+            "Return this wiki's operating rules — the conventions governing how pages are written, linked, and ingested. Read these before creating or updating pages; they take precedence over patterns inferred from existing content. Omit `section` for the full document",
+            schema(
+                json!({
+                    "section": opt_str("Heading to return (substring, case-insensitive) — e.g. \"ingest\", \"link rules\". Omit for the whole document"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "wiki_resolve",
             "Resolve a slug or wiki:// URI to its local filesystem path. Use before writing content directly to disk.",
             schema(
@@ -368,6 +379,7 @@ pub fn call(server: &McpServer, name: &str, args: &Map<String, Value>) -> ToolRe
         "wiki_stats" => handlers::handle_stats(server, args),
         "wiki_lint" => handlers::handle_lint(server, args),
         "wiki_resolve" => handlers::handle_resolve(server, args),
+        "wiki_rules" => handlers::handle_rules(server, args),
         "wiki_suggest" => handlers::handle_suggest(server, args),
         "wiki_schema" => handlers::handle_schema(server, args),
         "wiki_export" => handlers::handle_export(server, args),

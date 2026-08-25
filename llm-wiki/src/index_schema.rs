@@ -273,6 +273,12 @@ impl SchemaBuilder {
         self.add_keyword("uri");
         self.add_text("body");
         self.add_keyword("body_links");
+        // `type` is an identifier, not prose. Left to schema classification it
+        // becomes a stemmed text field (base.json declares a plain string), and
+        // then a TermQuery for "source" misses documents indexed under the stem
+        // "sourc" — type filters fail silently for any type whose stem differs
+        // from itself. Registering it up front as a keyword makes the match exact.
+        self.add_keyword("type");
     }
 
     pub(crate) fn add_text(&mut self, name: &str) {

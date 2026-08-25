@@ -236,6 +236,17 @@ pub fn handle_content_new(server: &McpServer, args: &Map<String, Value>) -> Tool
     ok_text(s)
 }
 
+/// Handle `wiki_rules` — return the wiki's operating rules, or one section.
+pub fn handle_rules(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+    let section = arg_str(args, "section");
+
+    let text = ops::rules(&engine, &wiki_name, section.as_deref()).map_err(|e| format!("{e}"))?;
+    ok_text(text)
+}
+
 /// Handle `wiki_resolve` — resolve a slug or URI to its filesystem path.
 pub fn handle_resolve(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
     let uri = arg_str_req(args, "uri")?;

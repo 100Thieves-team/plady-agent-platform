@@ -175,3 +175,46 @@ fn commonmark_image_link_filtered() {
     let links = extract_body_wikilinks("![alt](image.png)");
     assert!(links.is_empty());
 }
+
+// ── Non-slug link shapes ──────────────────────────────────────────────────────
+
+#[test]
+fn bracketed_footnote_markers_are_not_wikilinks() {
+    // Slack exports write footnotes as `[[1]](url)`. Reading the inner `[1]`
+    // as a slug produces a broken link to a page named "1".
+    let links =
+        extract_body_wikilinks("see [[1]](https://example.com/a) and [[2]](https://example.com/b)");
+    assert!(
+        links.is_empty(),
+        "footnote markers leaked as links: {links:?}"
+    );
+}
+
+#[test]
+fn numeric_wikilinks_are_rejected_even_without_a_following_paren() {
+    let links = extract_body_wikilinks("citation [[12]] here");
+    assert!(
+        links.is_empty(),
+        "numeric citation treated as a slug: {links:?}"
+    );
+}
+
+#[test]
+fn real_wikilinks_still_extract() {
+    let links = extract_body_wikilinks("see [[topics/t-foo]] and [[sources/bar]]");
+    assert_eq!(links, ["topics/t-foo", "sources/bar"]);
+}
+
+#[test]
+fn site_absolute_paths_are_not_slugs() {
+    // Rendered pages link to site URLs; a slug is always relative.
+    let links = extract_body_wikilinks("[nav](/raw/product/rooms/) and [ok](topics/t-foo)");
+    assert_eq!(links, ["topics/t-foo"]);
+}
+
+#[test]
+fn trailing_slash_paths_are_not_slugs() {
+    // Section index pages navigate with relative site paths like `meetings/`.
+    let links = extract_body_wikilinks("[section](meetings/) and [ok](sources/bar)");
+    assert_eq!(links, ["sources/bar"]);
+}

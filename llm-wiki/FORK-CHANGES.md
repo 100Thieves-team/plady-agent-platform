@@ -76,3 +76,70 @@ error points at the two legitimate alternatives (add an addendum, or compile the
 `docker/llm-wiki.Dockerfile` (in the wrapper repo) builds this vendored source in a multi-stage
 cargo build. It previously downloaded an upstream release tarball, which silently discarded every
 local change.
+
+## Reachable agent rules
+
+The rules file (`AGENTS.md`) sits at the repo root, outside the wiki root, so no tool could read
+it: an agent had to already know the conventions in order to follow them. Two paths now expose it.
+
+The MCP handshake carries a short contract, delimited in the rules file itself:
+
+```markdown
+<!-- mcp-instructions:start -->
+…the contract every agent must have in context…
+<!-- mcp-instructions:end -->
+```
+
+Keeping it inside the rules file means one source of truth and no Rust rebuild when a convention
+changes. `wiki_rules({section?})` returns the full document, or one heading's section.
+
+- `src/ops/rules.rs` — new module
+- `src/config.rs` — `WikiConfig::rules_file` (default `AGENTS.md`; paths escaping the repo root are
+  refused)
+- `src/mcp/mod.rs` — `ServerInfo::with_instructions`
+- `src/mcp/{tools,handlers}.rs` — the `wiki_rules` tool
+- `tests/rules.rs`
+
+## Page types derived from location
+
+Every compiled page in this wiki declared `type: doc`, so `wiki_search(type=…)`, `wiki_list(type=…)`,
+the graph's `target_types`, and the `unknown-type` lint were all inert. The directory already
+encodes what a page is, so a wiki can declare the mapping instead of rewriting ~200 files:
+
+```toml
+# wiki.toml
+[type_by_prefix]
+sources = "source"
+topics  = "topic"
+raw     = "raw"
+```
+
+Applied at index time; `section` index pages keep their structural type. A wiki that declares no
+mapping is untouched.
+
+- `src/content_roots.rs` — `with_type_by_prefix`, `page_kind` (longest whole-segment prefix wins)
+- `src/config.rs` — `WikiConfig::type_by_prefix`
+- `src/index_manager.rs` — `apply_derived_type` at every parse site (full rebuild, partial rebuild,
+  incremental update) so all three agree
+- `tests/derived_types.rs`
+
+## Upstream bugs found on the way
+
+These are fixes to pre-existing behaviour, not consequences of the changes above.
+
+* **`type` was a stemmed text field.** `base.json` declares it as a plain string, so it was
+  classified as text and tokenized: a `TermQuery` for `source` missed documents indexed under the
+  stem `sourc`. Type filters failed silently for any type whose stem differs from itself — `doc`
+  worked only by luck. `type` is now registered as a keyword alongside `slug`, `uri`, and
+  `body_links` (`src/index_schema.rs`).
+* **`rebuild` could not recover from a schema change.** `Index::open_or_create` reuses an existing
+  index only when the schema matches, so adding a type schema made every rebuild fail — precisely
+  when a rebuild is needed. An incompatible directory is now discarded and recreated, which a
+  rebuild's `delete_all_documents` implied anyway (`src/index_manager.rs`).
+* **`[[1]](url)` was read as a wikilink to a page named `1`.** Slack exports write footnote markers
+  that way. A `]]` immediately followed by `(` is CommonMark link text, and an all-digit payload is
+  a citation marker — neither is a slug (`src/links.rs`).
+* **Site URLs were treated as slugs.** Rendered pages navigate with `/raw/product/rooms/` and
+  `meetings/`. A slug is relative and never ends in a separator, so leading- and trailing-slash
+  destinations are no longer extracted as links (`src/links.rs`). On this wiki these three link
+  fixes took lint from 121 errors to 1.

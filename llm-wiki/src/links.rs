@@ -77,7 +77,10 @@ fn extract_parsed_wikilinks(text: &str, seen: &mut HashSet<String>, result: &mut
         let after = &rest[start + 2..];
         if let Some(end) = after.find("]]") {
             let raw = after[..end].trim().to_string();
-            if !raw.is_empty() && seen.insert(raw.clone()) {
+            if is_wikilink_target(&raw)
+                && !bracketed_link_text(&after[end + 2..])
+                && seen.insert(raw.clone())
+            {
                 result.push(ParsedLink::parse(&raw));
             }
             rest = &after[end + 2..];
@@ -86,6 +89,22 @@ fn extract_parsed_wikilinks(text: &str, seen: &mut HashSet<String>, result: &mut
         }
     }
     extract_commonmark_links(text, seen, result);
+}
+
+/// Whether `]]` is immediately followed by `(` — the signature of a CommonMark
+/// link whose text is itself bracketed, `[[1]](https://…)`, not a wikilink.
+///
+/// Slack and other exports write footnote markers that way, and reading the
+/// inner `[1]` as a slug produces broken-link findings for pages named `1`.
+fn bracketed_link_text(after_close: &str) -> bool {
+    after_close.starts_with('(')
+}
+
+/// Whether a `[[…]]` payload can name a page.
+///
+/// Bare numbers are citation markers, not slugs.
+fn is_wikilink_target(raw: &str) -> bool {
+    !raw.is_empty() && !raw.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Extract CommonMark inline link destinations `[text](destination)` from body text.
@@ -111,6 +130,12 @@ fn extract_commonmark_links(text: &str, seen: &mut HashSet<String>, result: &mut
                     && !dest.starts_with("https://")
                     && !dest.starts_with("mailto:")
                     && !dest.starts_with('#')
+                    // A leading or trailing `/` marks a site URL, not a slug:
+                    // rendered pages navigate with `/raw/product/rooms/` and
+                    // `command-gates/`. A slug is relative and never ends in a
+                    // separator, so neither shape can resolve to a page.
+                    && !dest.starts_with('/')
+                    && !dest.ends_with('/')
                 {
                     let raw = dest.to_string();
                     if seen.insert(raw.clone()) {
@@ -153,7 +178,10 @@ pub fn extract_wikilinks(text: &str, seen: &mut HashSet<String>, result: &mut Ve
         let after = &rest[start + 2..];
         if let Some(end) = after.find("]]") {
             let slug = after[..end].trim();
-            if !slug.is_empty() && seen.insert(slug.to_string()) {
+            if is_wikilink_target(slug)
+                && !bracketed_link_text(&after[end + 2..])
+                && seen.insert(slug.to_string())
+            {
                 result.push(slug.to_string());
             }
             rest = &after[end + 2..];

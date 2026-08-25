@@ -977,3 +977,47 @@ fn update_refreshes_reader_immediately() {
         "held reader must see new page after update() without calling open() again"
     );
 }
+
+#[test]
+fn rebuild_recreates_an_index_whose_schema_no_longer_matches() {
+    // Adding a type schema changes the index schema. `Index::open_or_create`
+    // refuses to reuse the old directory, and a rebuild that cannot run is
+    // exactly when the index most needs rebuilding — so the stale directory
+    // must be discarded rather than reported as an error.
+    let dir = tempfile::tempdir().unwrap();
+    let wiki_root = setup_repo(dir.path());
+    write_page(&wiki_root, "concepts/a.md", &concept_page("A", "body"));
+    drop(build_index(dir.path(), &wiki_root));
+
+    // A new type schema declaring a field the old index has never seen.
+    let schemas = dir.path().join("schemas");
+    fs::create_dir_all(&schemas).unwrap();
+    fs::write(
+        schemas.join("gadget.json"),
+        r#"{
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "title": "Gadget",
+          "type": "object",
+          "required": ["title", "type"],
+          "properties": {
+            "title": {"type": "string"},
+            "type": {"type": "string"},
+            "brand_new_field": {"type": "string"}
+          },
+          "x-wiki-types": {"gadget": "A gadget"}
+        }"#,
+    )
+    .unwrap();
+
+    let (registry, index_schema) = space_builder::build_space(dir.path(), "en_stem").unwrap();
+    let mgr = make_manager(dir.path());
+    let report = mgr
+        .rebuild(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            &index_schema,
+            &registry,
+        )
+        .expect("rebuild must survive an incompatible existing index");
+    assert!(report.pages_indexed > 0, "no pages indexed after recreate");
+}

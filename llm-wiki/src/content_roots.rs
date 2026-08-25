@@ -12,10 +12,18 @@
 //! `wiki_root.join(slug)` becomes `roots.base_for(slug).join(slug)` with no
 //! change to slug syntax and no change to links already written.
 //!
-//! External roots are opt-in per wiki (`[content] external_roots` in
-//! `wiki.toml`). With none configured a `ContentRoots` behaves exactly like the
-//! bare `wiki_root` path it replaces.
+//! External roots are opt-in per wiki (`external_roots` in `wiki.toml`). With
+//! none configured a `ContentRoots` behaves exactly like the bare `wiki_root`
+//! path it replaces.
+//!
+//! The same layout answers a second question: **what kind of page lives here**.
+//! In this model the directory is the page kind — `sources/` holds source
+//! summaries, `topics/` holds concepts, `raw/` holds preserved originals — so a
+//! wiki can declare `type_by_prefix` and have the index derive each page's type
+//! from its slug instead of depending on frontmatter that says `doc` everywhere.
+//! See [`ContentRoots::page_kind`].
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
@@ -28,6 +36,7 @@ pub struct ContentRoots {
     primary: PathBuf,
     repo_root: PathBuf,
     external: Vec<String>,
+    type_by_prefix: BTreeMap<String, String>,
 }
 
 impl ContentRoots {
@@ -62,7 +71,51 @@ impl ContentRoots {
             primary,
             repo_root,
             external: names,
+            type_by_prefix: BTreeMap::new(),
         }
+    }
+
+    /// Declare slug-prefix → page-type mappings, e.g. `sources` → `source`.
+    ///
+    /// Prefixes match whole path segments, and the longest match wins, so a
+    /// wiki can map `raw` broadly and `raw/product` specifically.
+    pub fn with_type_by_prefix<I, K, V>(mut self, mapping: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        self.type_by_prefix = mapping
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let key = k.as_ref().trim().trim_matches('/').to_string();
+                let val = v.as_ref().trim().to_string();
+                (!key.is_empty() && !val.is_empty()).then_some((key, val))
+            })
+            .collect();
+        self
+    }
+
+    /// The page type this slug's location implies, if the wiki declares one.
+    ///
+    /// Matching is by whole segments — `sources` does not match `sources-archive`
+    /// — and the most specific declared prefix wins.
+    pub fn page_kind(&self, slug: &str) -> Option<&str> {
+        self.type_by_prefix
+            .iter()
+            .filter(|(prefix, _)| {
+                slug == prefix.as_str()
+                    || slug
+                        .strip_prefix(prefix.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .max_by_key(|(prefix, _)| prefix.len())
+            .map(|(_, kind)| kind.as_str())
+    }
+
+    /// Whether this wiki derives page types from slugs at all.
+    pub fn derives_types(&self) -> bool {
+        !self.type_by_prefix.is_empty()
     }
 
     /// Roots for a wiki with no external source directories — the behaviour of
@@ -292,6 +345,30 @@ mod tests {
                 .as_str(),
             "raw/product/prd"
         );
+    }
+
+    #[test]
+    fn page_kind_matches_whole_segments_only() {
+        let r = roots().with_type_by_prefix([("sources", "source"), ("raw", "raw")]);
+        assert_eq!(r.page_kind("sources/a"), Some("source"));
+        assert_eq!(r.page_kind("sources"), Some("source"));
+        assert_eq!(r.page_kind("sources-archive/a"), None);
+        assert_eq!(r.page_kind("raw/meetings/x"), Some("raw"));
+        assert_eq!(r.page_kind("topics/t"), None);
+    }
+
+    #[test]
+    fn page_kind_prefers_the_most_specific_prefix() {
+        let r = roots().with_type_by_prefix([("raw", "raw"), ("raw/product", "prd")]);
+        assert_eq!(r.page_kind("raw/product/rooms"), Some("prd"));
+        assert_eq!(r.page_kind("raw/meetings/x"), Some("raw"));
+    }
+
+    #[test]
+    fn no_mapping_means_no_derived_types() {
+        let r = roots();
+        assert!(!r.derives_types());
+        assert_eq!(r.page_kind("sources/a"), None);
     }
 
     #[test]

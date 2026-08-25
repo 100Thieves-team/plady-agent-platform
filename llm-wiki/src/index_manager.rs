@@ -253,6 +253,13 @@ impl SpaceIndexManager {
         }
     }
 
+    /// Open the tantivy index at `search_dir`, creating it if absent.
+    fn open_or_create_index(search_dir: &Path, is: &IndexSchema) -> Result<Index> {
+        let dir = MmapDirectory::open(search_dir)
+            .with_context(|| format!("failed to open index dir: {}", search_dir.display()))?;
+        Ok(Index::open_or_create(dir, is.schema.clone())?)
+    }
+
     /// Rebuild the full index by walking every Markdown file in the space's
     /// content roots — the primary wiki root plus any external source roots.
     pub fn rebuild(
@@ -267,10 +274,27 @@ impl SpaceIndexManager {
         let search_dir = self.index_path.join("search-index");
         std::fs::create_dir_all(&search_dir)?;
 
-        // Always open_or_create for rebuild (schema may have changed)
-        let dir = MmapDirectory::open(&search_dir)
-            .with_context(|| format!("failed to open index dir: {}", search_dir.display()))?;
-        let index = Index::open_or_create(dir, is.schema.clone())?;
+        // `open_or_create` reuses an existing index only when its schema matches
+        // byte-for-byte. Adding a field — a new type schema, or a field moving
+        // from text to keyword — makes it fail, and a rebuild that cannot run is
+        // exactly the moment the index most needs rebuilding. Since a rebuild
+        // discards every document anyway, an incompatible directory is thrown
+        // away rather than treated as an error.
+        let index = match Self::open_or_create_index(&search_dir, is) {
+            Ok(index) => index,
+            Err(e) => {
+                tracing::info!(
+                    wiki = %self.wiki_name,
+                    error = %e,
+                    "existing index is incompatible with the current schema; recreating",
+                );
+                std::fs::remove_dir_all(&search_dir).with_context(|| {
+                    format!("failed to clear index dir: {}", search_dir.display())
+                })?;
+                std::fs::create_dir_all(&search_dir)?;
+                Self::open_or_create_index(&search_dir, is)?
+            }
+        };
         let mut writer: IndexWriter = index.writer(50_000_000)?;
         writer.delete_all_documents()?;
 
@@ -303,7 +327,8 @@ impl SpaceIndexManager {
                     }
                 };
                 let uri = format!("wiki://{}/{slug}", self.wiki_name);
-                let page = frontmatter::parse(&content);
+                let mut page = frontmatter::parse(&content);
+                apply_derived_type(&mut page, slug.as_str(), roots);
 
                 writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
 
@@ -375,7 +400,8 @@ impl SpaceIndexManager {
             } else {
                 let full_path = repo_root.join(path);
                 if let Ok(content) = std::fs::read_to_string(&full_path) {
-                    let page = frontmatter::parse(&content);
+                    let mut page = frontmatter::parse(&content);
+                    apply_derived_type(&mut page, slug.as_str(), roots);
                     let uri = format!("wiki://{}/{slug}", self.wiki_name);
                     writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
                     updated += 1;
@@ -541,11 +567,6 @@ impl SpaceIndexManager {
                         continue;
                     }
                 };
-                let page = frontmatter::parse(&content);
-                let page_type = page.page_type().unwrap_or("page");
-                if !type_set.contains(page_type) {
-                    continue;
-                }
                 let slug = match Slug::from_path(path, slug_base) {
                     Ok(s) => s,
                     Err(e) => {
@@ -554,6 +575,12 @@ impl SpaceIndexManager {
                         continue;
                     }
                 };
+                let mut page = frontmatter::parse(&content);
+                apply_derived_type(&mut page, slug.as_str(), roots);
+                let page_type = page.page_type().unwrap_or("page");
+                if !type_set.contains(page_type) {
+                    continue;
+                }
                 let uri = format!("wiki://{}/{slug}", self.wiki_name);
                 writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
                 pages += 1;
@@ -588,6 +615,23 @@ impl SpaceIndexManager {
 }
 
 // ── Document building (private) ───────────────────────────────────────────────
+
+/// Overwrite a page's `type` with the one its location implies.
+///
+/// Section index pages are exempt: `section` is structural — search excludes
+/// them and lint treats them differently — so a derived type must not erase it.
+/// A wiki that declares no `type_by_prefix` is untouched.
+fn apply_derived_type(page: &mut frontmatter::ParsedPage, slug: &str, roots: &ContentRoots) {
+    if !roots.derives_types() || page.page_type() == Some("section") {
+        return;
+    }
+    if let Some(kind) = roots.page_kind(slug) {
+        page.frontmatter.insert(
+            "type".to_string(),
+            serde_yaml::Value::String(kind.to_string()),
+        );
+    }
+}
 
 fn index_page(
     is: &IndexSchema,

@@ -71,14 +71,30 @@ impl McpServer {
 
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
+        let info = ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
                 .enable_resources_list_changed()
                 .build(),
         )
-        .with_server_info(Implementation::new("llm-wiki", env!("CARGO_PKG_VERSION")))
+        .with_server_info(Implementation::new("llm-wiki", env!("CARGO_PKG_VERSION")));
+
+        // Hand the wiki's operating contract to the client during the
+        // handshake. Rules that arrive only when an agent thinks to ask for
+        // them are rules that get skipped; these arrive before the first tool
+        // call. Absent or unreadable rules are not an error — the server is
+        // still usable, just unguided.
+        match self.manager.state.read() {
+            Ok(engine) => {
+                let wiki = engine.default_wiki_name().to_string();
+                match crate::ops::instructions_for(&engine, &wiki) {
+                    Some(text) => info.with_instructions(text),
+                    None => info,
+                }
+            }
+            Err(_) => info,
+        }
     }
 
     fn list_tools(

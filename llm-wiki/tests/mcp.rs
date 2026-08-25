@@ -1,9 +1,9 @@
 use llm_wiki::mcp::tools;
 
 #[test]
-fn tool_list_returns_23_tools() {
+fn tool_list_returns_24_tools() {
     let tools = tools::tool_list();
-    assert_eq!(tools.len(), 23);
+    assert_eq!(tools.len(), 24);
 }
 
 #[test]
@@ -31,6 +31,7 @@ fn tool_list_contains_expected_names() {
         "wiki_stats",
         "wiki_lint",
         "wiki_resolve",
+        "wiki_rules",
         "wiki_suggest",
         "wiki_export",
     ];

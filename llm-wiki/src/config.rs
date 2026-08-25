@@ -522,6 +522,17 @@ pub struct WikiConfig {
     /// Content directory relative to repo root. Default: `"wiki"`.
     #[serde(default = "default_wiki_root")]
     pub wiki_root: String,
+    /// Markdown file at the repo root holding this wiki's agent rules. Its
+    /// `<!-- mcp-instructions:start -->` region is sent in the MCP handshake and
+    /// the whole document is served by `wiki_rules`. Default: `"AGENTS.md"`.
+    #[serde(default = "default_rules_file")]
+    pub rules_file: String,
+    /// Slug-prefix → page-type mapping, e.g. `sources = "source"`. When set, the
+    /// index derives each page's type from where it lives instead of trusting
+    /// frontmatter, so `type` filters and graph edges work without rewriting
+    /// every file. `section` index pages keep their type. Empty by default.
+    #[serde(default)]
+    pub type_by_prefix: std::collections::BTreeMap<String, String>,
     /// Sibling directories of `wiki_root` holding preserved source material —
     /// `["raw"]` in the three-layer model. Their pages are indexed and readable
     /// under a slug carrying the directory name (`raw/meetings/x`), but are not
@@ -646,6 +657,10 @@ fn default_stale_confidence_threshold() -> f32 {
 }
 fn default_wiki_root() -> String {
     "wiki".to_string()
+}
+
+fn default_rules_file() -> String {
+    "AGENTS.md".to_string()
 }
 // ── Functions ─────────────────────────────────────────────────────────────────
 
