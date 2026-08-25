@@ -118,10 +118,10 @@ pub fn tool_list() -> Vec<Tool> {
         ),
         Tool::new(
             "wiki_content_read",
-            "Read full content of a page by slug or URI. A path whose last segment has a non-.md extension reads the co-located asset instead (text assets are returned inline; binaries must be opened from the filesystem)",
+            "Read full content of a page by slug or URI, in any of the wiki's content roots — compiled pages (`topics/...`) and preserved sources (`raw/...`) alike. A path whose last segment has a non-.md extension reads the co-located asset instead (text assets are returned inline; binaries must be opened from the filesystem)",
             schema(
                 json!({
-                    "uri": str_prop("Slug, wiki:// URI, or asset path (e.g. policy/_src/state.yaml)"),
+                    "uri": str_prop("Slug, wiki:// URI, or asset path — e.g. topics/t-foo, raw/meetings/scrum-8-24, policy/_src/state.yaml"),
                     "no_frontmatter": opt_bool("Strip frontmatter from output"),
                     "list_assets": opt_bool("List co-located assets instead of content"),
                     "backlinks": opt_bool("Include incoming links — pages that link to this page"),
@@ -132,10 +132,10 @@ pub fn tool_list() -> Vec<Tool> {
         ),
         Tool::new(
             "wiki_content_write",
-            "Write content to a page in the wiki tree. Extensionless slugs write pages; a path whose last segment has a text asset extension (yaml, yml, json, txt, csv) writes a co-located asset instead — the write-side mirror of wiki_content_read's asset reads. Asset parents are created as needed; other extensions are rejected",
+            "Write content to a page in the wiki tree. Extensionless slugs write pages; a path whose last segment has a text asset extension (yaml, yml, json, txt, csv) writes a co-located asset instead — the write-side mirror of wiki_content_read's asset reads. Asset parents are created as needed; other extensions are rejected. A slug under an external source root (e.g. `raw/...`) writes preserved source material: creating a new file there is allowed, overwriting an existing one is refused — add an addendum or compile the correction into a wiki page instead",
             schema(
                 json!({
-                    "uri": str_prop("Slug, wiki:// URI, or asset path (e.g. policy/_src/state.yaml)"),
+                    "uri": str_prop("Slug, wiki:// URI, or asset path — e.g. topics/t-foo, raw/meetings/scrum-8-24, policy/_src/state.yaml"),
                     "content": str_prop("File content"),
                     "wiki": opt_str("Target wiki name"),
                 }),
@@ -203,10 +203,10 @@ pub fn tool_list() -> Vec<Tool> {
         ),
         Tool::new(
             "wiki_ingest",
-            "Validate, commit, and index files in the wiki tree",
+            "Validate, commit, and index files in any of the wiki's content roots. `path` is relative to the root its first segment names: `raw/meetings` resolves under the repo's raw source root, anything else under the wiki root",
             schema(
                 json!({
-                    "path": str_prop("File or folder path, relative to wiki root"),
+                    "path": str_prop("File or folder path, relative to the content root its first segment names (e.g. raw/meetings, topics)"),
                     "dry_run": opt_bool("Show what would be created without creating"),
                     "redact": opt_bool("Run redaction pass on file bodies before validation (opt-in; lossy — original values are replaced)"),
                     "wiki": opt_str("Target wiki name"),

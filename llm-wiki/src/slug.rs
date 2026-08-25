@@ -202,10 +202,13 @@ pub enum ReadTarget {
 /// Reads accept any non-.md extension (images and other binaries included);
 /// writes narrow that to `WRITABLE_ASSET_EXTENSIONS`. Both share
 /// `split_asset_path` so path-traversal defenses are identical.
-pub fn resolve_read_target(input: &str, wiki_root: &Path) -> Result<ReadTarget> {
+pub fn resolve_read_target(
+    input: &str,
+    roots: &crate::content_roots::ContentRoots,
+) -> Result<ReadTarget> {
     // Step 1: try as page (may fail if input has an extension)
     if let Ok(slug) = Slug::try_from(input)
-        && let Ok(path) = slug.resolve(wiki_root)
+        && let Ok(path) = roots.resolve(&slug)
     {
         return Ok(ReadTarget::Page(path));
     }
@@ -215,7 +218,10 @@ pub fn resolve_read_target(input: &str, wiki_root: &Path) -> Result<ReadTarget> 
         && ext != "md"
     {
         let (parent, filename) = split_asset_path(input)?;
-        let path = wiki_root.join(parent.as_str()).join(&filename);
+        let path = roots
+            .base_for(parent.as_str())
+            .join(parent.as_str())
+            .join(&filename);
         if path.is_file() {
             return Ok(ReadTarget::Asset(parent.as_str().to_string(), filename));
         }
@@ -294,7 +300,10 @@ pub fn split_asset_path(rel: &str) -> Result<(Slug, String)> {
 
     // Every parent segment must be a plain name — closes the bare `..` hole
     // that the substring checks in Slug::try_from do not cover
-    if parent.split('/').any(|s| s.is_empty() || s == "." || s == "..") {
+    if parent
+        .split('/')
+        .any(|s| s.is_empty() || s == "." || s == "..")
+    {
         bail!("asset path cannot contain path traversal: {rel}");
     }
     // Parent goes through Slug validation — blocks ../ and absolute paths

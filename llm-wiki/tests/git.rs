@@ -1,5 +1,6 @@
 use std::fs;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::git;
 
 #[test]
@@ -106,7 +107,7 @@ fn changed_wiki_files_detects_new_file() {
 
     fs::write(wiki.join("new-page.md"), "---\ntitle: New\n---\n").unwrap();
 
-    let changes = git::changed_wiki_files(dir.path(), &wiki).unwrap();
+    let changes = git::changed_wiki_files(dir.path(), &ContentRoots::single(&wiki)).unwrap();
     assert!(changes.iter().any(|c| c.path.ends_with("new-page.md")));
 }
 
@@ -122,7 +123,7 @@ fn changed_wiki_files_detects_modified_file() {
 
     fs::write(wiki.join("page.md"), "---\ntitle: New\n---\n").unwrap();
 
-    let changes = git::changed_wiki_files(dir.path(), &wiki).unwrap();
+    let changes = git::changed_wiki_files(dir.path(), &ContentRoots::single(&wiki)).unwrap();
     assert!(
         changes
             .iter()
@@ -142,7 +143,7 @@ fn changed_wiki_files_detects_deleted_file() {
 
     fs::remove_file(wiki.join("page.md")).unwrap();
 
-    let changes = git::changed_wiki_files(dir.path(), &wiki).unwrap();
+    let changes = git::changed_wiki_files(dir.path(), &ContentRoots::single(&wiki)).unwrap();
     assert!(
         changes
             .iter()
@@ -162,7 +163,7 @@ fn changed_wiki_files_ignores_non_md() {
 
     fs::write(wiki.join("image.png"), "fake-png").unwrap();
 
-    let changes = git::changed_wiki_files(dir.path(), &wiki).unwrap();
+    let changes = git::changed_wiki_files(dir.path(), &ContentRoots::single(&wiki)).unwrap();
     assert!(!changes.iter().any(|c| c.path.ends_with("image.png")));
 }
 
@@ -178,7 +179,7 @@ fn changed_wiki_files_ignores_files_outside_wiki() {
 
     fs::write(dir.path().join("README.md"), "# Hello").unwrap();
 
-    let changes = git::changed_wiki_files(dir.path(), &wiki).unwrap();
+    let changes = git::changed_wiki_files(dir.path(), &ContentRoots::single(&wiki)).unwrap();
     assert!(!changes.iter().any(|c| c.path.ends_with("README.md")));
 }
 
@@ -197,7 +198,8 @@ fn changed_since_commit_detects_gap() {
     fs::write(wiki.join("page-b.md"), "---\ntitle: B\n---\n").unwrap();
     git::commit(dir.path(), "second").unwrap();
 
-    let changes = git::changed_since_commit(dir.path(), &wiki, &first).unwrap();
+    let changes =
+        git::changed_since_commit(dir.path(), &ContentRoots::single(&wiki), &first).unwrap();
     assert!(changes.iter().any(|c| c.path.ends_with("page-b.md")));
     assert!(!changes.iter().any(|c| c.path.ends_with("page-a.md")));
 }
@@ -215,7 +217,8 @@ fn collect_changed_files_detects_new_file() {
 
     fs::write(wiki.join("new.md"), "---\ntitle: New\n---\n").unwrap();
 
-    let changes = git::collect_changed_files(dir.path(), &wiki, None).unwrap();
+    let changes =
+        git::collect_changed_files(dir.path(), &ContentRoots::single(&wiki), None).unwrap();
     assert!(!changes.is_empty());
 }
 
@@ -229,6 +232,7 @@ fn collect_changed_files_empty_when_clean() {
     git::commit(dir.path(), "add foo").unwrap();
     let head = git::current_head(dir.path()).unwrap();
 
-    let changes = git::collect_changed_files(dir.path(), &wiki, Some(&head)).unwrap();
+    let changes =
+        git::collect_changed_files(dir.path(), &ContentRoots::single(&wiki), Some(&head)).unwrap();
     assert!(changes.is_empty());
 }

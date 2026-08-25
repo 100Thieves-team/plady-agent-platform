@@ -522,6 +522,12 @@ pub struct WikiConfig {
     /// Content directory relative to repo root. Default: `"wiki"`.
     #[serde(default = "default_wiki_root")]
     pub wiki_root: String,
+    /// Sibling directories of `wiki_root` holding preserved source material —
+    /// `["raw"]` in the three-layer model. Their pages are indexed and readable
+    /// under a slug carrying the directory name (`raw/meetings/x`), but are not
+    /// overwritten once created. Empty by default.
+    #[serde(default)]
+    pub external_roots: Vec<String>,
 }
 
 /// Fully merged config for a specific wiki — global settings overlaid with per-wiki overrides.

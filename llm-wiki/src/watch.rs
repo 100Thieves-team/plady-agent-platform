@@ -104,17 +104,15 @@ pub async fn run_watcher(
                     .read()
                     .map_err(|_| anyhow::anyhow!("lock poisoned"))?;
                 for (wiki_name, space) in &state.spaces {
-                    let wiki_paths: Vec<&PathBuf> = paths
-                        .iter()
-                        .filter(|p| p.starts_with(&space.wiki_root))
-                        .collect();
+                    let wiki_paths: Vec<&PathBuf> =
+                        paths.iter().filter(|p| space.roots.contains(p)).collect();
                     if wiki_paths.is_empty() {
                         continue;
                     }
                     let start = std::time::Instant::now();
                     let last_commit = space.index_manager.last_commit();
                     match space.index_manager.update(
-                        &space.wiki_root,
+                        &space.roots,
                         &space.repo_root,
                         last_commit.as_deref(),
                         &space.index_schema,

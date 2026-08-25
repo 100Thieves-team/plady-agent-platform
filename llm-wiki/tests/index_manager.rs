@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::git;
 use llm_wiki::index_manager::SpaceIndexManager;
 use llm_wiki::index_schema::IndexSchema;
@@ -55,7 +56,13 @@ fn make_manager(dir: &Path) -> SpaceIndexManager {
 fn build_index(dir: &Path, wiki_root: &Path) -> SpaceIndexManager {
     let mgr = make_manager(dir);
     git::commit(dir, "index pages").unwrap();
-    mgr.rebuild(wiki_root, dir, &schema(), &registry()).unwrap();
+    mgr.rebuild(
+        &ContentRoots::single(wiki_root),
+        dir,
+        &schema(),
+        &registry(),
+    )
+    .unwrap();
     mgr.open(&schema(), None).unwrap();
     mgr
 }
@@ -96,7 +103,12 @@ fn rebuild_report_fields() {
 
     let mgr = make_manager(dir.path());
     let report = mgr
-        .rebuild(&wiki_root, dir.path(), &schema(), &registry())
+        .rebuild(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            &schema(),
+            &registry(),
+        )
         .unwrap();
 
     assert_eq!(report.wiki, "test");
@@ -181,7 +193,8 @@ fn update_adds_new_page() {
     let reg = registry();
 
     let mgr = make_manager(dir.path());
-    mgr.rebuild(&wiki_root, dir.path(), &is, &reg).unwrap();
+    mgr.rebuild(&ContentRoots::single(&wiki_root), dir.path(), &is, &reg)
+        .unwrap();
 
     write_page(
         &wiki_root,
@@ -189,7 +202,15 @@ fn update_adds_new_page() {
         &concept_page("NewPage", "new body"),
     );
 
-    let report = mgr.update(&wiki_root, dir.path(), None, &is, &reg).unwrap();
+    let report = mgr
+        .update(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            None,
+            &is,
+            &reg,
+        )
+        .unwrap();
     assert_eq!(report.updated, 1);
 
     let searcher = open_searcher(&mgr, &is);
@@ -214,7 +235,15 @@ fn update_noop_when_no_changes() {
     let is = schema();
     let reg = registry();
 
-    let report = mgr.update(&wiki_root, dir.path(), None, &is, &reg).unwrap();
+    let report = mgr
+        .update(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            None,
+            &is,
+            &reg,
+        )
+        .unwrap();
     assert_eq!(report.updated, 0);
     assert_eq!(report.deleted, 0);
 }
@@ -245,7 +274,15 @@ fn update_deletes_removed_page() {
     assert!(!results.results.is_empty());
 
     fs::remove_file(wiki_root.join("concepts/gone.md")).unwrap();
-    let report = mgr.update(&wiki_root, dir.path(), None, &is, &reg).unwrap();
+    let report = mgr
+        .update(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            None,
+            &is,
+            &reg,
+        )
+        .unwrap();
     assert_eq!(report.deleted, 1);
 
     let searcher = open_searcher(&mgr, &is);
@@ -279,7 +316,15 @@ fn update_modifies_existing_page() {
         "concepts/evolve.md",
         &concept_page("Evolve", "updated body with unicorn"),
     );
-    let report = mgr.update(&wiki_root, dir.path(), None, &is, &reg).unwrap();
+    let report = mgr
+        .update(
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            None,
+            &is,
+            &reg,
+        )
+        .unwrap();
     assert_eq!(report.updated, 1);
 
     let searcher = open_searcher(&mgr, &is);
@@ -356,7 +401,8 @@ fn open_recovers_from_corruption() {
     git::commit(dir.path(), "pages").unwrap();
     let is = schema();
     let reg = registry();
-    mgr.rebuild(&wiki_root, dir.path(), &is, &reg).unwrap();
+    mgr.rebuild(&ContentRoots::single(&wiki_root), dir.path(), &is, &reg)
+        .unwrap();
 
     // Corrupt the index files
     let search_dir = mgr.index_path().join("search-index");
@@ -368,7 +414,10 @@ fn open_recovers_from_corruption() {
     }
 
     // open with recovery should rebuild and succeed
-    let result = mgr.open(&is, Some((&wiki_root, dir.path(), &reg)));
+    let result = mgr.open(
+        &is,
+        Some((&ContentRoots::single(&wiki_root), dir.path(), &reg)),
+    );
     assert!(result.is_ok());
     assert!(mgr.searcher().is_ok());
 }
@@ -381,8 +430,13 @@ fn open_fails_without_recovery_on_corruption() {
 
     let mgr = make_manager(dir.path());
     git::commit(dir.path(), "pages").unwrap();
-    mgr.rebuild(&wiki_root, dir.path(), &schema(), &registry())
-        .unwrap();
+    mgr.rebuild(
+        &ContentRoots::single(&wiki_root),
+        dir.path(),
+        &schema(),
+        &registry(),
+    )
+    .unwrap();
 
     // Corrupt the index files
     let search_dir = mgr.index_path().join("search-index");
@@ -756,7 +810,13 @@ fn rebuild_types_reindexes_only_changed_type() {
 
     // Partial rebuild only "concept" type
     let report = mgr
-        .rebuild_types(&["concept".to_string()], &wiki_root, dir.path(), &is, &reg)
+        .rebuild_types(
+            &["concept".to_string()],
+            &ContentRoots::single(&wiki_root),
+            dir.path(),
+            &is,
+            &reg,
+        )
         .unwrap();
     assert_eq!(report.pages_indexed, 1);
 
@@ -851,7 +911,8 @@ fn rebuild_refreshes_reader_immediately() {
     git::commit(dir.path(), "add after").unwrap();
 
     // Second rebuild — no open() called afterward
-    mgr.rebuild(&wiki_root, dir.path(), &is, &reg).unwrap();
+    mgr.rebuild(&ContentRoots::single(&wiki_root), dir.path(), &is, &reg)
+        .unwrap();
 
     // The held reader must see the new page without calling open() again
     let searcher = mgr.searcher().unwrap();
@@ -892,7 +953,14 @@ fn update_refreshes_reader_immediately() {
     );
 
     // update() — no open() called afterward
-    mgr.update(&wiki_root, dir.path(), None, &is, &reg).unwrap();
+    mgr.update(
+        &ContentRoots::single(&wiki_root),
+        dir.path(),
+        None,
+        &is,
+        &reg,
+    )
+    .unwrap();
 
     // The held reader must see the new page via mgr.searcher() (not open_searcher)
     let searcher = mgr.searcher().unwrap();

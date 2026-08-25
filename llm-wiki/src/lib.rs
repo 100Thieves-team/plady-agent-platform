@@ -8,6 +8,8 @@ pub mod acp;
 pub mod cli;
 /// Global and per-wiki configuration types and loaders.
 pub mod config;
+/// Content roots — primary wiki root plus external source roots such as `raw/`.
+pub mod content_roots;
 /// Embedded default JSON schemas and body templates.
 pub mod default_schemas;
 /// Central wiki engine — mounts spaces and manages indexes.

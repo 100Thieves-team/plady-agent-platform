@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::git;
 use llm_wiki::graph::*;
 use llm_wiki::index_manager::SpaceIndexManager;
@@ -44,7 +45,13 @@ fn build_index(dir: &Path, wiki_root: &Path) -> SpaceIndexManager {
     let index_path = dir.join("index-store");
     git::commit(dir, "index pages").unwrap();
     let mgr = SpaceIndexManager::new("test", &index_path);
-    mgr.rebuild(wiki_root, dir, &schema(), &registry()).unwrap();
+    mgr.rebuild(
+        &ContentRoots::single(wiki_root),
+        dir,
+        &schema(),
+        &registry(),
+    )
+    .unwrap();
     mgr.open(&schema(), None).unwrap();
     mgr
 }
@@ -631,13 +638,13 @@ fn build_graph_cross_wiki_resolves_cross_wiki_edge() {
 
     let mgr_a = SpaceIndexManager::new("wiki-a", &index_a);
     mgr_a
-        .rebuild(&wiki_root_a, dir_a.path(), &is, &reg)
+        .rebuild(&ContentRoots::single(&wiki_root_a), dir_a.path(), &is, &reg)
         .unwrap();
     mgr_a.open(&is, None).unwrap();
 
     let mgr_b = SpaceIndexManager::new("wiki-b", &index_b);
     mgr_b
-        .rebuild(&wiki_root_b, dir_b.path(), &is, &reg)
+        .rebuild(&ContentRoots::single(&wiki_root_b), dir_b.path(), &is, &reg)
         .unwrap();
     mgr_b.open(&is, None).unwrap();
 

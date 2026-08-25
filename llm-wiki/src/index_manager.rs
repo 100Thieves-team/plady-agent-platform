@@ -12,6 +12,7 @@ use tantivy::{
 };
 use walkdir::WalkDir;
 
+use crate::content_roots::ContentRoots;
 use crate::frontmatter;
 use crate::git;
 use crate::index_schema::IndexSchema;
@@ -153,7 +154,7 @@ impl SpaceIndexManager {
     pub fn open(
         &self,
         is: &IndexSchema,
-        recovery: Option<(&Path, &Path, &SpaceTypeRegistry)>,
+        recovery: Option<(&ContentRoots, &Path, &SpaceTypeRegistry)>,
     ) -> Result<()> {
         let search_dir = self.index_path.join("search-index");
 
@@ -165,7 +166,7 @@ impl SpaceIndexManager {
         let index = match try_open() {
             Ok(idx) => idx,
             Err(e) => {
-                if let Some((wiki_root, repo_root, registry)) = recovery {
+                if let Some((roots, repo_root, registry)) = recovery {
                     tracing::warn!(
                         wiki = %self.wiki_name,
                         error = %e,
@@ -174,7 +175,7 @@ impl SpaceIndexManager {
                     if search_dir.exists() {
                         let _ = std::fs::remove_dir_all(&search_dir);
                     }
-                    self.rebuild(wiki_root, repo_root, is, registry)?;
+                    self.rebuild(roots, repo_root, is, registry)?;
                     try_open().context("index still corrupt after rebuild")?
                 } else {
                     return Err(e);
@@ -252,10 +253,11 @@ impl SpaceIndexManager {
         }
     }
 
-    /// Rebuild the full index by walking all Markdown files under `wiki_root`.
+    /// Rebuild the full index by walking every Markdown file in the space's
+    /// content roots — the primary wiki root plus any external source roots.
     pub fn rebuild(
         &self,
-        wiki_root: &Path,
+        roots: &ContentRoots,
         repo_root: &Path,
         is: &IndexSchema,
         registry: &SpaceTypeRegistry,
@@ -276,38 +278,40 @@ impl SpaceIndexManager {
         let mut sections = 0usize;
         let mut skipped = 0usize;
 
-        for entry in WalkDir::new(wiki_root).into_iter().filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
-                    skipped += 1;
+        for (dir, slug_base) in roots.walk_roots() {
+            for entry in WalkDir::new(&dir).into_iter().filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
                     continue;
                 }
-            };
 
-            let slug = match Slug::from_path(path, wiki_root) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(path = %path.display(), error = %e, "skipping invalid path");
-                    skipped += 1;
-                    continue;
+                let content = match std::fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
+                        skipped += 1;
+                        continue;
+                    }
+                };
+
+                let slug = match Slug::from_path(path, slug_base) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "skipping invalid path");
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                let uri = format!("wiki://{}/{slug}", self.wiki_name);
+                let page = frontmatter::parse(&content);
+
+                writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
+
+                if page.page_type() == Some("section") {
+                    sections += 1;
                 }
-            };
-            let uri = format!("wiki://{}/{slug}", self.wiki_name);
-            let page = frontmatter::parse(&content);
-
-            writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
-
-            if page.page_type() == Some("section") {
-                sections += 1;
+                pages += 1;
             }
-            pages += 1;
         }
 
         writer.commit()?;
@@ -338,13 +342,13 @@ impl SpaceIndexManager {
     /// Incrementally update the index for files changed since `last_indexed_commit`.
     pub fn update(
         &self,
-        wiki_root: &Path,
+        roots: &ContentRoots,
         repo_root: &Path,
         last_indexed_commit: Option<&str>,
         is: &IndexSchema,
         registry: &SpaceTypeRegistry,
     ) -> Result<UpdateReport> {
-        let changes = git::collect_changed_files(repo_root, wiki_root, last_indexed_commit)?;
+        let changes = git::collect_changed_files(repo_root, roots, last_indexed_commit)?;
         if changes.is_empty() {
             return Ok(UpdateReport::default());
         }
@@ -352,14 +356,11 @@ impl SpaceIndexManager {
         let mut writer = self.writer()?;
 
         let f_slug = is.field("slug");
-        let wiki_prefix = wiki_root
-            .strip_prefix(repo_root)
-            .unwrap_or(Path::new("wiki"));
         let mut updated = 0;
         let mut deleted = 0;
 
         for (path, status) in &changes {
-            let slug = match Slug::from_path(path, wiki_prefix) {
+            let slug = match roots.slug_from_repo_relative(path) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!(path = %path.display(), error = %e, "skipping invalid path in update");
@@ -507,7 +508,7 @@ impl SpaceIndexManager {
     pub fn rebuild_types(
         &self,
         types: &[String],
-        wiki_root: &Path,
+        roots: &ContentRoots,
         repo_root: &Path,
         is: &IndexSchema,
         registry: &SpaceTypeRegistry,
@@ -526,35 +527,37 @@ impl SpaceIndexManager {
         let mut pages = 0usize;
         let mut skipped = 0usize;
 
-        for entry in WalkDir::new(wiki_root).into_iter().filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
-                    skipped += 1;
+        for (dir, slug_base) in roots.walk_roots() {
+            for entry in WalkDir::new(&dir).into_iter().filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("md") {
                     continue;
                 }
-            };
-            let page = frontmatter::parse(&content);
-            let page_type = page.page_type().unwrap_or("page");
-            if !type_set.contains(page_type) {
-                continue;
-            }
-            let slug = match Slug::from_path(path, wiki_root) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(path = %path.display(), error = %e, "skipping invalid path");
-                    skipped += 1;
+                let content = match std::fs::read_to_string(path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "skipping unreadable file");
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                let page = frontmatter::parse(&content);
+                let page_type = page.page_type().unwrap_or("page");
+                if !type_set.contains(page_type) {
                     continue;
                 }
-            };
-            let uri = format!("wiki://{}/{slug}", self.wiki_name);
-            writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
-            pages += 1;
+                let slug = match Slug::from_path(path, slug_base) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), error = %e, "skipping invalid path");
+                        skipped += 1;
+                        continue;
+                    }
+                };
+                let uri = format!("wiki://{}/{slug}", self.wiki_name);
+                writer.add_document(index_page(is, registry, slug.as_str(), &uri, &page))?;
+                pages += 1;
+            }
         }
 
         writer.commit()?;

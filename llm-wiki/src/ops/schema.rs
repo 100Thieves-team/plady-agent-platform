@@ -204,7 +204,7 @@ pub fn schema_remove(
     let mut pages_deleted_from_disk = 0;
     if delete_pages && pages_to_remove > 0 {
         for page in &list_result.pages {
-            if markdown::delete_page(&page.slug, &space.wiki_root)? {
+            if markdown::delete_page(&page.slug, &space.roots)? {
                 pages_deleted_from_disk += 1;
             }
         }

@@ -1,14 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
+use crate::content_roots::ContentRoots;
 use crate::frontmatter;
 use crate::slug::Slug;
 
 /// Read a page by slug. Optionally strip frontmatter.
 /// Appends a supersession notice if `superseded_by` is set.
-pub fn read_page(slug: &Slug, wiki_root: &Path, no_frontmatter: bool) -> Result<String> {
-    let path = slug.resolve(wiki_root)?;
+pub fn read_page(slug: &Slug, roots: &ContentRoots, no_frontmatter: bool) -> Result<String> {
+    let path = roots.resolve(slug)?;
     let content = std::fs::read_to_string(&path)?;
 
     let page = frontmatter::parse(&content);
@@ -34,17 +35,17 @@ pub fn read_page(slug: &Slug, wiki_root: &Path, no_frontmatter: bool) -> Result<
 
 /// Write content to a page path resolved from slug.
 /// Creates parent directories if needed. Does not validate or commit.
-pub fn write_page(slug: &str, content: &str, wiki_root: &Path) -> Result<PathBuf> {
+pub fn write_page(slug: &str, content: &str, roots: &ContentRoots) -> Result<PathBuf> {
     // Try to resolve existing page first
     if let Ok(s) = Slug::try_from(slug)
-        && let Ok(path) = s.resolve(wiki_root)
+        && let Ok(path) = roots.resolve(&s)
     {
         std::fs::write(&path, content)?;
         return Ok(path);
     }
 
     // New file — write as flat page
-    let path = wiki_root.join(format!("{slug}.md"));
+    let path = roots.base_for(slug).join(format!("{slug}.md"));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -53,8 +54,8 @@ pub fn write_page(slug: &str, content: &str, wiki_root: &Path) -> Result<PathBuf
 }
 
 /// List co-located assets of a bundle page.
-pub fn list_assets(slug: &Slug, wiki_root: &Path) -> Result<Vec<String>> {
-    let bundle_dir = wiki_root.join(slug.as_str());
+pub fn list_assets(slug: &Slug, roots: &ContentRoots) -> Result<Vec<String>> {
+    let bundle_dir = roots.base_for(slug.as_str()).join(slug.as_str());
     if !bundle_dir.is_dir() || !bundle_dir.join("index.md").is_file() {
         return Ok(Vec::new());
     }
@@ -71,8 +72,11 @@ pub fn list_assets(slug: &Slug, wiki_root: &Path) -> Result<Vec<String>> {
 }
 
 /// Read raw bytes of a co-located asset.
-pub fn read_asset(slug: &Slug, filename: &str, wiki_root: &Path) -> Result<Vec<u8>> {
-    let path = wiki_root.join(slug.as_str()).join(filename);
+pub fn read_asset(slug: &Slug, filename: &str, roots: &ContentRoots) -> Result<Vec<u8>> {
+    let path = roots
+        .base_for(slug.as_str())
+        .join(slug.as_str())
+        .join(filename);
     if !path.is_file() {
         bail!("asset not found: {slug}/{filename}");
     }
@@ -89,19 +93,20 @@ pub fn read_asset(slug: &Slug, filename: &str, wiki_root: &Path) -> Result<Vec<u
 pub fn create_page(
     slug: &Slug,
     bundle: bool,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     name_override: Option<&str>,
     type_override: Option<&str>,
     body_template: Option<&str>,
 ) -> Result<PathBuf> {
     let slug_str = slug.as_str();
+    let base = roots.base_for(slug_str);
 
     // Auto-create parent sections
     let parts: Vec<&str> = slug_str.split('/').collect();
     if parts.len() > 1 {
         for i in 1..parts.len() {
             let parent_slug = parts[..i].join("/");
-            let parent_dir = wiki_root.join(&parent_slug);
+            let parent_dir = base.join(&parent_slug);
             if !parent_dir.exists() {
                 std::fs::create_dir_all(&parent_dir)?;
                 let parent_s = Slug::try_from(parent_slug.as_str())?;
@@ -123,16 +128,16 @@ pub fn create_page(
     let content = frontmatter::write(&fm, body);
 
     let path = if bundle {
-        let dir = wiki_root.join(slug_str);
+        let dir = base.join(slug_str);
         std::fs::create_dir_all(&dir)?;
         let p = dir.join("index.md");
         std::fs::write(&p, content)?;
         p
     } else {
-        if let Some(parent) = wiki_root.join(slug_str).parent() {
+        if let Some(parent) = base.join(slug_str).parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let p = wiki_root.join(format!("{slug_str}.md"));
+        let p = base.join(format!("{slug_str}.md"));
         std::fs::write(&p, content)?;
         p
     };
@@ -143,10 +148,10 @@ pub fn create_page(
 /// Create a new section (directory + index.md with type: section).
 pub fn create_section(
     slug: &Slug,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     body_template: Option<&str>,
 ) -> Result<PathBuf> {
-    let dir = wiki_root.join(slug.as_str());
+    let dir = roots.base_for(slug.as_str()).join(slug.as_str());
     std::fs::create_dir_all(&dir)?;
 
     let fm = frontmatter::scaffold(slug, true);
@@ -158,12 +163,13 @@ pub fn create_section(
 }
 
 /// Promote a flat page to a bundle (move .md into folder/index.md).
-pub fn promote_to_bundle(slug: &Slug, wiki_root: &Path) -> Result<()> {
-    let flat = wiki_root.join(format!("{}.md", slug.as_str()));
+pub fn promote_to_bundle(slug: &Slug, roots: &ContentRoots) -> Result<()> {
+    let base = roots.base_for(slug.as_str());
+    let flat = base.join(format!("{}.md", slug.as_str()));
     if !flat.is_file() {
         bail!("flat page not found for slug: {slug}");
     }
-    let bundle_dir = wiki_root.join(slug.as_str());
+    let bundle_dir = base.join(slug.as_str());
     std::fs::create_dir_all(&bundle_dir)?;
     let dest = bundle_dir.join("index.md");
     std::fs::rename(&flat, &dest)?;
@@ -172,19 +178,20 @@ pub fn promote_to_bundle(slug: &Slug, wiki_root: &Path) -> Result<()> {
 
 /// Delete a page from disk. Handles both flat (.md) and bundle (slug/index.md) formats.
 /// Returns true if a file was deleted, false if the page was not found.
-pub fn delete_page(slug: &str, wiki_root: &Path) -> Result<bool> {
+pub fn delete_page(slug: &str, roots: &ContentRoots) -> Result<bool> {
+    let base = roots.base_for(slug);
     // Try flat format: slug.md
-    let flat_path = wiki_root.join(format!("{slug}.md"));
+    let flat_path = base.join(format!("{slug}.md"));
     if flat_path.exists() {
         std::fs::remove_file(&flat_path)?;
         return Ok(true);
     }
 
     // Try bundle format: slug/index.md
-    let bundle_path = wiki_root.join(slug).join("index.md");
+    let bundle_path = base.join(slug).join("index.md");
     if bundle_path.exists() {
         // Remove the entire bundle directory
-        let bundle_dir = wiki_root.join(slug);
+        let bundle_dir = base.join(slug);
         std::fs::remove_dir_all(&bundle_dir)?;
         return Ok(true);
     }

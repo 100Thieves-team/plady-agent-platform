@@ -1,17 +1,18 @@
 use std::fs;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::frontmatter;
 use llm_wiki::markdown::*;
 use llm_wiki::slug::Slug;
 
-fn setup_wiki(dir: &std::path::Path) -> std::path::PathBuf {
+fn setup_wiki(dir: &std::path::Path) -> ContentRoots {
     let wiki_root = dir.join("wiki");
     fs::create_dir_all(&wiki_root).unwrap();
-    wiki_root
+    ContentRoots::single(wiki_root)
 }
 
-fn write_file(wiki_root: &std::path::Path, rel_path: &str, content: &str) {
-    let path = wiki_root.join(rel_path);
+fn write_file(roots: &ContentRoots, rel_path: &str, content: &str) {
+    let path = roots.primary().join(rel_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
     }
@@ -95,7 +96,7 @@ fn write_page_overwrites_existing() {
     write_file(&wiki, "concepts/foo.md", SAMPLE);
 
     write_page("concepts/foo", "# Updated\n", &wiki).unwrap();
-    let content = fs::read_to_string(wiki.join("concepts/foo.md")).unwrap();
+    let content = fs::read_to_string(wiki.primary().join("concepts/foo.md")).unwrap();
     assert_eq!(content, "# Updated\n");
 }
 
@@ -105,7 +106,7 @@ fn write_page_creates_parent_dirs() {
     let wiki = setup_wiki(dir.path());
 
     write_page("deep/nested/page", "content\n", &wiki).unwrap();
-    assert!(wiki.join("deep/nested/page.md").exists());
+    assert!(wiki.primary().join("deep/nested/page.md").exists());
 }
 
 // ── list_assets ───────────────────────────────────────────────────────────────
@@ -125,8 +126,8 @@ fn list_assets_returns_bundle_files() {
     let dir = tempfile::tempdir().unwrap();
     let wiki = setup_wiki(dir.path());
     write_file(&wiki, "concepts/foo/index.md", SAMPLE);
-    fs::write(wiki.join("concepts/foo/diagram.png"), b"fake").unwrap();
-    fs::write(wiki.join("concepts/foo/config.yaml"), b"key: val").unwrap();
+    fs::write(wiki.primary().join("concepts/foo/diagram.png"), b"fake").unwrap();
+    fs::write(wiki.primary().join("concepts/foo/config.yaml"), b"key: val").unwrap();
 
     let assets = list_assets(&slug("concepts/foo"), &wiki).unwrap();
     assert_eq!(assets.len(), 2);
@@ -141,7 +142,11 @@ fn read_asset_returns_bytes() {
     let dir = tempfile::tempdir().unwrap();
     let wiki = setup_wiki(dir.path());
     write_file(&wiki, "concepts/foo/index.md", SAMPLE);
-    fs::write(wiki.join("concepts/foo/data.bin"), b"\x00\x01\x02").unwrap();
+    fs::write(
+        wiki.primary().join("concepts/foo/data.bin"),
+        b"\x00\x01\x02",
+    )
+    .unwrap();
 
     let bytes = read_asset(&slug("concepts/foo"), "data.bin", &wiki).unwrap();
     assert_eq!(bytes, b"\x00\x01\x02");
@@ -164,7 +169,7 @@ fn create_page_flat() {
     let wiki = setup_wiki(dir.path());
 
     let path = create_page(&slug("concepts/bar"), false, &wiki, None, None, None).unwrap();
-    assert_eq!(path, wiki.join("concepts/bar.md"));
+    assert_eq!(path, wiki.primary().join("concepts/bar.md"));
     assert!(path.is_file());
 
     let page = frontmatter::parse(&fs::read_to_string(&path).unwrap());
@@ -179,7 +184,7 @@ fn create_page_bundle() {
     let wiki = setup_wiki(dir.path());
 
     let path = create_page(&slug("concepts/bar"), true, &wiki, None, None, None).unwrap();
-    assert_eq!(path, wiki.join("concepts/bar/index.md"));
+    assert_eq!(path, wiki.primary().join("concepts/bar/index.md"));
     assert!(path.is_file());
 }
 
@@ -226,18 +231,18 @@ fn create_page_auto_creates_parent_sections() {
 
     create_page(&slug("a/b/c"), false, &wiki, None, None, None).unwrap();
 
-    let a_index = wiki.join("a/index.md");
+    let a_index = wiki.primary().join("a/index.md");
     assert!(a_index.is_file());
     let page = frontmatter::parse(&fs::read_to_string(&a_index).unwrap());
     assert_eq!(page.page_type(), Some("section"));
     assert_eq!(page.title(), Some("A"));
 
-    let ab_index = wiki.join("a/b/index.md");
+    let ab_index = wiki.primary().join("a/b/index.md");
     assert!(ab_index.is_file());
     let page = frontmatter::parse(&fs::read_to_string(&ab_index).unwrap());
     assert_eq!(page.page_type(), Some("section"));
 
-    assert!(wiki.join("a/b/c.md").is_file());
+    assert!(wiki.primary().join("a/b/c.md").is_file());
 }
 
 // ── create_section ────────────────────────────────────────────────────────────
@@ -248,7 +253,7 @@ fn create_section_creates_index_md() {
     let wiki = setup_wiki(dir.path());
 
     let path = create_section(&slug("skills"), &wiki, None).unwrap();
-    assert_eq!(path, wiki.join("skills/index.md"));
+    assert_eq!(path, wiki.primary().join("skills/index.md"));
     assert!(path.is_file());
 
     let page = frontmatter::parse(&fs::read_to_string(&path).unwrap());
@@ -267,8 +272,8 @@ fn promote_to_bundle_moves_flat_to_bundle() {
 
     promote_to_bundle(&slug("concepts/foo"), &wiki).unwrap();
 
-    assert!(!wiki.join("concepts/foo.md").exists());
-    assert!(wiki.join("concepts/foo/index.md").is_file());
+    assert!(!wiki.primary().join("concepts/foo.md").exists());
+    assert!(wiki.primary().join("concepts/foo/index.md").is_file());
 }
 
 #[test]
@@ -279,8 +284,8 @@ fn promote_to_bundle_resolves_after() {
 
     promote_to_bundle(&slug("concepts/foo"), &wiki).unwrap();
 
-    let path = slug("concepts/foo").resolve(&wiki).unwrap();
-    assert_eq!(path, wiki.join("concepts/foo/index.md"));
+    let path = wiki.resolve(&slug("concepts/foo")).unwrap();
+    assert_eq!(path, wiki.primary().join("concepts/foo/index.md"));
 }
 
 #[test]

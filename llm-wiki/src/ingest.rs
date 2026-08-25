@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::config::{RedactConfig, ValidationConfig};
+use crate::content_roots::ContentRoots;
 use crate::frontmatter;
 use crate::git;
 use crate::ops::redact::{RedactionMatch, RedactionReport, redact_body};
@@ -51,44 +52,58 @@ pub struct IngestReport {
 }
 
 /// Walk `path` (file or directory), validate, optionally redact, commit, and return a report.
+///
+/// `path` may be absolute, or relative to whichever content root owns it: a
+/// leading external-root segment (`raw/meetings`) resolves against the repo
+/// root, anything else against the wiki root. That keeps `raw/` — the layer the
+/// wiki compiles from — reachable by the same call that ingests compiled pages.
 pub fn ingest(
     path: &Path,
     options: &IngestOptions,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     registry: &SpaceTypeRegistry,
     validation: &ValidationConfig,
 ) -> Result<IngestReport> {
-    let repo_root = wiki_root
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("wiki_root has no parent"))?;
+    let repo_root = roots.repo_root();
 
     let full_path = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        wiki_root.join(path)
+        roots.base_for(&path.to_string_lossy()).join(path)
     };
 
     if !full_path.exists() {
         bail!("path does not exist: {}", full_path.display());
     }
 
-    // Reject path traversal
+    // Reject anything outside the space's content roots
     let canonical = full_path.canonicalize()?;
-    let canonical_root = wiki_root.canonicalize()?;
-    if !canonical.starts_with(&canonical_root) {
-        bail!("path is outside wiki root");
+    let in_a_root = roots.walk_roots().iter().any(|(dir, _)| {
+        dir.canonicalize()
+            .map(|c| canonical.starts_with(&c))
+            .unwrap_or(false)
+    });
+    if !in_a_root {
+        let names: Vec<String> = std::iter::once("wiki".to_string())
+            .chain(roots.external_names().iter().cloned())
+            .collect();
+        bail!(
+            "path is outside this wiki's content roots ({}): {}",
+            names.join(", "),
+            full_path.display()
+        );
     }
 
     let mut report = IngestReport::default();
 
     if full_path.is_file() {
-        let skip = should_skip(&full_path, wiki_root, &options.changed_paths);
+        let skip = should_skip(&full_path, repo_root, &options.changed_paths);
         if skip {
             report.unchanged_count += 1;
         } else {
             validate_file(
                 &full_path,
-                wiki_root,
+                roots,
                 registry,
                 validation,
                 options.redact.as_ref(),
@@ -100,12 +115,12 @@ pub fn ingest(
             let p = entry.path();
             if p.is_file() {
                 if p.extension().and_then(|e| e.to_str()) == Some("md") {
-                    if should_skip(p, wiki_root, &options.changed_paths) {
+                    if should_skip(p, repo_root, &options.changed_paths) {
                         report.unchanged_count += 1;
                     } else {
                         validate_file(
                             p,
-                            wiki_root,
+                            roots,
                             registry,
                             validation,
                             options.redact.as_ref(),
@@ -133,27 +148,27 @@ pub fn ingest(
     Ok(report)
 }
 
-fn should_skip(abs_path: &Path, wiki_root: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {
+fn should_skip(abs_path: &Path, repo_root: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {
     let Some(set) = changed else { return false };
     if set.is_empty() {
         return false;
     }
-    let rel = abs_path.strip_prefix(wiki_root).unwrap_or(abs_path);
+    // `changed` holds repo-relative paths so files in external roots are
+    // representable; compare against the repo root, not the wiki root.
+    let rel = abs_path.strip_prefix(repo_root).unwrap_or(abs_path);
     !set.contains(rel)
 }
 
-fn slug_from_path(abs_path: &Path, wiki_root: &Path) -> String {
-    abs_path
-        .strip_prefix(wiki_root)
-        .unwrap_or(abs_path)
-        .with_extension("")
-        .to_string_lossy()
-        .into_owned()
+fn slug_from_path(abs_path: &Path, roots: &ContentRoots) -> String {
+    roots
+        .slug_from_path(abs_path)
+        .map(|s| s.as_str().to_string())
+        .unwrap_or_else(|_| abs_path.to_string_lossy().into_owned())
 }
 
 fn validate_file(
     path: &Path,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     registry: &SpaceTypeRegistry,
     validation: &ValidationConfig,
     redact_cfg: Option<&RedactConfig>,
@@ -183,7 +198,7 @@ fn validate_file(
             let body = &content[body_start..];
             let (redacted_body, matches) = redact_body(body, cfg);
             if !matches.is_empty() {
-                let slug = slug_from_path(path, wiki_root);
+                let slug = slug_from_path(path, roots);
                 // Adjust line numbers by frontmatter line count
                 let fm_lines = front.lines().count();
                 let adjusted: Vec<RedactionMatch> = matches
@@ -204,7 +219,7 @@ fn validate_file(
             // No frontmatter — redact the whole file
             let (redacted, matches) = redact_body(&content, cfg);
             if !matches.is_empty() {
-                let slug = slug_from_path(path, wiki_root);
+                let slug = slug_from_path(path, roots);
                 report.redacted.push(RedactionReport { slug, matches });
                 std::fs::write(path, &redacted)?;
                 content = normalize_line_endings(&redacted);

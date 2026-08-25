@@ -244,18 +244,24 @@ pub fn handle_resolve(server: &McpServer, args: &Map<String, Value>) -> ToolHand
 
     let (entry, slug) =
         WikiUri::resolve(&uri, wiki_flag.as_deref(), &engine.config).map_err(|e| format!("{e}"))?;
-    let wiki_root = engine
+    let roots = engine
         .space(&entry.name)
-        .map(|s| s.wiki_root.clone())
-        .unwrap_or_else(|_| std::path::PathBuf::from(&entry.path).join("wiki"));
+        .map(|s| s.roots.clone())
+        .unwrap_or_else(|_| {
+            crate::content_roots::ContentRoots::single(
+                std::path::PathBuf::from(&entry.path).join("wiki"),
+            )
+        });
 
-    let (path, exists, bundle) = match resolve_read_target(slug.as_str(), &wiki_root) {
+    let (path, exists, bundle) = match resolve_read_target(slug.as_str(), &roots) {
         Ok(ReadTarget::Page(p)) => {
             let bundle = p.ends_with("index.md");
             (p, true, bundle)
         }
         _ => {
-            let p = wiki_root.join(format!("{}.md", slug.as_str()));
+            let p = roots
+                .base_for(slug.as_str())
+                .join(format!("{}.md", slug.as_str()));
             (p, false, false)
         }
     };
@@ -263,7 +269,7 @@ pub fn handle_resolve(server: &McpServer, args: &Map<String, Value>) -> ToolHand
     let s = serde_json::to_string_pretty(&serde_json::json!({
         "slug":      slug.as_str(),
         "wiki":      entry.name,
-        "wiki_root": wiki_root,
+        "wiki_root": roots.primary(),
         "path":      path,
         "exists":    exists,
         "bundle":    bundle,

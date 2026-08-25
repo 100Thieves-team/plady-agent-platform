@@ -5,6 +5,8 @@ use anyhow::{Context, Result};
 use git2::{Delta, Repository, Signature};
 use serde::{Deserialize, Serialize};
 
+use crate::content_roots::ContentRoots;
+
 /// Initialise a new git repository at `path`.
 pub fn init_repo(path: &Path) -> Result<()> {
     Repository::init(path)
@@ -90,8 +92,9 @@ pub struct ChangedFile {
     pub status: Delta,
 }
 
-/// Detect changed `.md` files under `wiki/` in the working tree vs HEAD.
-pub fn changed_wiki_files(repo_root: &Path, wiki_root: &Path) -> Result<Vec<ChangedFile>> {
+/// Detect changed `.md` files under any of a space's content roots in the
+/// working tree vs HEAD.
+pub fn changed_wiki_files(repo_root: &Path, roots: &ContentRoots) -> Result<Vec<ChangedFile>> {
     let repo = Repository::open(repo_root)
         .with_context(|| format!("failed to open repo at {}", repo_root.display()))?;
     let head_tree = repo
@@ -101,16 +104,14 @@ pub fn changed_wiki_files(repo_root: &Path, wiki_root: &Path) -> Result<Vec<Chan
     let mut opts = git2::DiffOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
     let diff = repo.diff_tree_to_workdir_with_index(Some(&head_tree), Some(&mut opts))?;
-    let prefix = wiki_root
-        .strip_prefix(repo_root)
-        .unwrap_or(Path::new("wiki"));
-    Ok(collect_md_changes(&diff, prefix))
+    Ok(collect_md_changes(&diff, &roots.repo_relative_prefixes()))
 }
 
-/// Detect changed `.md` files under `wiki/` between a past commit and HEAD.
+/// Detect changed `.md` files under any of a space's content roots between a
+/// past commit and HEAD.
 pub fn changed_since_commit(
     repo_root: &Path,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     from_commit: &str,
 ) -> Result<Vec<ChangedFile>> {
     let repo = Repository::open(repo_root)
@@ -123,19 +124,16 @@ pub fn changed_since_commit(
         .and_then(|h| h.peel_to_tree())
         .context("no HEAD commit")?;
     let diff = repo.diff_tree_to_tree(Some(&from_tree), Some(&head_tree), None)?;
-    let prefix = wiki_root
-        .strip_prefix(repo_root)
-        .unwrap_or(Path::new("wiki"));
-    Ok(collect_md_changes(&diff, prefix))
+    Ok(collect_md_changes(&diff, &roots.repo_relative_prefixes()))
 }
 
-fn collect_md_changes(diff: &git2::Diff, wiki_prefix: &Path) -> Vec<ChangedFile> {
+fn collect_md_changes(diff: &git2::Diff, prefixes: &[PathBuf]) -> Vec<ChangedFile> {
     let mut changes = Vec::new();
     diff.foreach(
         &mut |delta, _| {
             let path = delta.new_file().path().or_else(|| delta.old_file().path());
             if let Some(p) = path
-                && p.starts_with(wiki_prefix)
+                && prefixes.iter().any(|prefix| p.starts_with(prefix))
                 && p.extension().and_then(|e| e.to_str()) == Some("md")
             {
                 changes.push(ChangedFile {
@@ -160,14 +158,14 @@ fn collect_md_changes(diff: &git2::Diff, wiki_prefix: &Path) -> Vec<ChangedFile>
 /// Working tree changes overwrite commit-based changes on duplicates.
 pub fn collect_changed_files(
     repo_root: &Path,
-    wiki_root: &Path,
+    roots: &ContentRoots,
     last_indexed_commit: Option<&str>,
 ) -> Result<HashMap<PathBuf, Delta>> {
     let mut changes = HashMap::new();
 
     // B: last indexed commit vs HEAD (insert first so A wins on duplicates)
     if let Some(from_hash) = last_indexed_commit
-        && let Ok(files) = changed_since_commit(repo_root, wiki_root, from_hash)
+        && let Ok(files) = changed_since_commit(repo_root, roots, from_hash)
     {
         for f in files {
             changes.insert(f.path, f.status);
@@ -175,7 +173,7 @@ pub fn collect_changed_files(
     }
 
     // A: working tree vs HEAD (overwrites B on duplicates)
-    if let Ok(files) = changed_wiki_files(repo_root, wiki_root) {
+    if let Ok(files) = changed_wiki_files(repo_root, roots) {
         for f in files {
             changes.insert(f.path, f.status);
         }

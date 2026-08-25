@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::git;
 use llm_wiki::index_manager::SpaceIndexManager;
 use llm_wiki::index_schema::IndexSchema;
@@ -41,7 +42,13 @@ fn build_index(dir: &Path, wiki_root: &Path) -> SpaceIndexManager {
     let index_path = dir.join("index-store");
     git::commit(dir, "index pages").unwrap();
     let mgr = SpaceIndexManager::new("test", &index_path);
-    mgr.rebuild(wiki_root, dir, &schema(), &registry()).unwrap();
+    mgr.rebuild(
+        &ContentRoots::single(wiki_root),
+        dir,
+        &schema(),
+        &registry(),
+    )
+    .unwrap();
     mgr.open(&schema(), None).unwrap();
     mgr
 }

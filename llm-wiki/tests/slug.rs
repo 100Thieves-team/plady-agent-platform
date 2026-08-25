@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::slug::{ReadTarget, Slug, WikiUri, resolve_read_target};
 
 // ── Slug construction ─────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ fn read_target_page() {
     std::fs::create_dir_all(wiki.join("concepts")).unwrap();
     std::fs::write(wiki.join("concepts/moe.md"), "# MoE").unwrap();
 
-    match resolve_read_target("concepts/moe", wiki).unwrap() {
+    match resolve_read_target("concepts/moe", &ContentRoots::single(wiki)).unwrap() {
         ReadTarget::Page(p) => assert_eq!(p, wiki.join("concepts/moe.md")),
         ReadTarget::Asset(..) => panic!("expected Page"),
     }
@@ -186,7 +187,7 @@ fn read_target_asset() {
     std::fs::write(wiki.join("concepts/moe/index.md"), "# MoE").unwrap();
     std::fs::write(wiki.join("concepts/moe/diagram.png"), "PNG").unwrap();
 
-    match resolve_read_target("concepts/moe/diagram.png", wiki).unwrap() {
+    match resolve_read_target("concepts/moe/diagram.png", &ContentRoots::single(wiki)).unwrap() {
         ReadTarget::Asset(parent, filename) => {
             assert_eq!(parent, "concepts/moe");
             assert_eq!(filename, "diagram.png");
@@ -198,7 +199,7 @@ fn read_target_asset() {
 #[test]
 fn read_target_not_found() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(resolve_read_target("concepts/moe", dir.path()).is_err());
+    assert!(resolve_read_target("concepts/moe", &ContentRoots::single(dir.path())).is_err());
 }
 
 // ── Display / AsRef ───────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 use llm_wiki::config::RedactConfig;
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::ops::redact::redact_body;
 
 fn cfg_default() -> RedactConfig {
@@ -181,7 +182,7 @@ fn ingest_redact_false_leaves_body_unchanged() {
     ingest(
         Path::new("concepts/test.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &SpaceTypeRegistry::from_embedded(),
         &ValidationConfig::default(),
     )

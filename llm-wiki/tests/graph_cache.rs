@@ -433,7 +433,7 @@ fn graph_cache_invalidated_after_rebuild() {
         space
             .index_manager
             .rebuild(
-                &space.wiki_root,
+                &space.roots,
                 &space.repo_root,
                 &space.index_schema,
                 &space.type_registry,

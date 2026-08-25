@@ -9,6 +9,7 @@ use tantivy::{
 };
 
 use crate::config;
+use crate::content_roots::ContentRoots;
 use crate::engine::EngineState;
 use crate::git;
 use crate::index_schema::IndexSchema;
@@ -104,27 +105,27 @@ pub fn content_read(
     // Entry resolution is split from path validation so extension-bearing asset
     // paths survive to resolve_read_target instead of being rejected up front.
     let (entry, rel) = resolve_entry_and_rel(uri, wiki_flag, &engine.config)?;
-    let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
+    let roots = engine.space(&entry.name)?.roots.clone();
 
     if list_assets {
         // Unchanged: asset listing keys off the parent (extensionless) slug
         let slug = Slug::try_from(rel.as_str())?;
-        let assets = markdown::list_assets(&slug, &wiki_root)?;
+        let assets = markdown::list_assets(&slug, &roots)?;
         return Ok(ContentReadResult::Assets(assets));
     }
 
-    match resolve_read_target(&rel, &wiki_root)? {
+    match resolve_read_target(&rel, &roots)? {
         ReadTarget::Page(_) => {
             let slug = Slug::try_from(rel.as_str())?;
             let wiki_cfg = config::load_wiki(&PathBuf::from(&entry.path)).unwrap_or_default();
             let resolved = config::resolve(&engine.config, &wiki_cfg);
             let strip = no_frontmatter || resolved.read.no_frontmatter;
-            let content = markdown::read_page(&slug, &wiki_root, strip)?;
+            let content = markdown::read_page(&slug, &roots, strip)?;
             Ok(ContentReadResult::Page(content))
         }
         ReadTarget::Asset(parent_slug, filename) => {
             let parent = Slug::try_from(parent_slug.as_str())?;
-            let bytes = markdown::read_asset(&parent, &filename, &wiki_root)?;
+            let bytes = markdown::read_asset(&parent, &filename, &roots)?;
             match String::from_utf8(bytes) {
                 Ok(text) => Ok(ContentReadResult::Page(text)),
                 Err(_) => Ok(ContentReadResult::Binary),
@@ -134,6 +135,7 @@ pub fn content_read(
 }
 
 /// Result of a content write operation.
+#[derive(Debug)]
 pub struct WriteResult {
     /// Number of bytes written to disk.
     pub bytes_written: usize,
@@ -141,6 +143,32 @@ pub struct WriteResult {
     pub path: PathBuf,
     /// True when the write targeted a co-located asset rather than a page.
     pub asset: bool,
+}
+
+/// Reject an overwrite of preserved source material.
+///
+/// Files in an external root (`raw/`) are the wiki's evidence base: agents read
+/// them and compile from them, but rewriting one destroys the record a compiled
+/// page was derived from. Creating a new file there is allowed — only replacing
+/// an existing one is refused, and the message points at the two legitimate
+/// alternatives (an addendum, or an edit to the compiled page).
+fn guard_external_overwrite(
+    roots: &ContentRoots,
+    slug: &str,
+    existing: Option<PathBuf>,
+) -> Result<()> {
+    let Some(root) = roots.external_prefix(slug) else {
+        return Ok(());
+    };
+    if let Some(path) = existing {
+        bail!(
+            "`{root}/` holds preserved source material and is not rewritten: {} already exists. \
+             Add a new file alongside it as an addendum, or compile the correction into a \
+             `wiki/` page instead.",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Write content to a wiki page or co-located text asset.
@@ -157,8 +185,9 @@ pub fn content_write(
 ) -> Result<WriteResult> {
     match resolve_write_target(uri, wiki_flag, &engine.config)? {
         WriteTarget::Page(entry, slug) => {
-            let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
-            let path = markdown::write_page(slug.as_str(), content, &wiki_root)?;
+            let roots = engine.space(&entry.name)?.roots.clone();
+            guard_external_overwrite(&roots, slug.as_str(), roots.resolve(&slug).ok())?;
+            let path = markdown::write_page(slug.as_str(), content, &roots)?;
             Ok(WriteResult {
                 bytes_written: content.len(),
                 path,
@@ -166,8 +195,14 @@ pub fn content_write(
             })
         }
         WriteTarget::Asset(entry, parent, filename) => {
-            let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
-            let dir = wiki_root.join(parent.as_str());
+            let roots = engine.space(&entry.name)?.roots.clone();
+            let dir = roots.base_for(parent.as_str()).join(parent.as_str());
+            let existing = dir.join(&filename);
+            guard_external_overwrite(
+                &roots,
+                parent.as_str(),
+                existing.is_file().then_some(existing),
+            )?;
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(&filename);
             std::fs::write(&path, content)?;
@@ -206,7 +241,9 @@ pub fn content_new(
 ) -> Result<ContentNewResult> {
     let (entry, slug) = WikiUri::resolve(uri, wiki_flag, &engine.config)?;
     let repo_root = PathBuf::from(&entry.path);
-    let wiki_root = engine.space(&entry.name)?.wiki_root.clone();
+    let space = engine.space(&entry.name)?;
+    let roots = space.roots.clone();
+    let wiki_root = space.wiki_root.clone();
 
     let type_name = if section {
         "section"
@@ -216,16 +253,9 @@ pub fn content_new(
     let body_template = resolve_body_template(&repo_root, type_name);
 
     let path = if section {
-        markdown::create_section(&slug, &wiki_root, body_template.as_deref())?
+        markdown::create_section(&slug, &roots, body_template.as_deref())?
     } else {
-        markdown::create_page(
-            &slug,
-            bundle,
-            &wiki_root,
-            name,
-            type_,
-            body_template.as_deref(),
-        )?
+        markdown::create_page(&slug, bundle, &roots, name, type_, body_template.as_deref())?
     };
 
     Ok(ContentNewResult {
@@ -271,7 +301,7 @@ pub fn content_commit(
     let mut paths = Vec::new();
     for s in slugs {
         let slug = Slug::try_from(s.as_str())?;
-        let resolved = slug.resolve(&space.wiki_root)?;
+        let resolved = space.roots.resolve(&slug)?;
         if resolved.file_name() == Some(std::ffi::OsStr::new("index.md")) {
             let bundle_dir = resolved.parent().unwrap();
             for entry in walkdir::WalkDir::new(bundle_dir)

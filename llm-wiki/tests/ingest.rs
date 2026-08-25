@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use llm_wiki::config::ValidationConfig;
+use llm_wiki::content_roots::ContentRoots;
 use llm_wiki::git;
 use llm_wiki::ingest::*;
 use llm_wiki::type_registry::SpaceTypeRegistry;
@@ -62,7 +63,7 @@ fn ingest_validates_valid_page_and_commits() {
     let report = ingest(
         Path::new("concepts/foo.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -87,7 +88,7 @@ fn ingest_rejects_page_with_no_title() {
     let result = ingest(
         Path::new("concepts/bad.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     );
@@ -109,7 +110,7 @@ fn ingest_warns_on_no_frontmatter() {
     let report = ingest(
         Path::new("concepts/bare.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -131,7 +132,7 @@ fn ingest_does_not_rewrite_file() {
     ingest(
         Path::new("concepts/foo.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -158,7 +159,7 @@ fn ingest_dry_run_does_not_commit() {
     let report = ingest(
         Path::new("concepts/foo.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -182,7 +183,7 @@ fn ingest_folder_validates_all_md_recursively() {
     let report = ingest(
         Path::new("concepts"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -202,7 +203,7 @@ fn ingest_folder_counts_assets() {
     let report = ingest(
         Path::new("concepts/foo"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -228,7 +229,7 @@ fn ingest_commit_matches_git_head() {
     let report = ingest(
         Path::new("concepts/foo.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -250,7 +251,7 @@ fn ingest_rejects_path_outside_wiki_root() {
     let result = ingest(
         Path::new("../outside.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     );
@@ -266,7 +267,7 @@ fn ingest_rejects_nonexistent_path() {
     let result = ingest(
         Path::new("concepts/nope.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     );
@@ -289,7 +290,7 @@ fn ingest_warns_on_unknown_type_loose() {
     let report = ingest(
         Path::new("concepts/alien.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -315,7 +316,7 @@ fn ingest_errors_on_unknown_type_strict() {
     let result = ingest(
         Path::new("concepts/alien.md"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &strict,
     );
@@ -334,10 +335,12 @@ fn changed_paths_skips_files_not_in_set() {
     write_page(&wiki_root, "concepts/d.md", VALID_PAGE);
     write_page(&wiki_root, "concepts/e.md", VALID_PAGE);
 
-    // Only a.md and b.md are "changed"
+    // Only a.md and b.md are "changed".
+    // Paths are repo-relative (as git reports them) so that files in external
+    // content roots are representable in the same set.
     let mut changed = HashSet::new();
-    changed.insert(std::path::PathBuf::from("concepts/a.md"));
-    changed.insert(std::path::PathBuf::from("concepts/b.md"));
+    changed.insert(std::path::PathBuf::from("wiki/concepts/a.md"));
+    changed.insert(std::path::PathBuf::from("wiki/concepts/b.md"));
 
     let opts = IngestOptions {
         changed_paths: Some(changed),
@@ -346,7 +349,7 @@ fn changed_paths_skips_files_not_in_set() {
     let report = ingest(
         Path::new("concepts"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -375,7 +378,7 @@ fn dry_run_changed_paths_validates_all_files() {
     let report = ingest(
         Path::new("concepts"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
@@ -403,7 +406,7 @@ fn no_changed_paths_validates_all_files() {
     let report = ingest(
         Path::new("concepts"),
         &opts,
-        &wiki_root,
+        &ContentRoots::single(&wiki_root),
         &registry(),
         &validation(),
     )
