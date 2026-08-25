@@ -478,6 +478,10 @@ services:
   # ChatGPT-account auth requires a concrete model id (gpt-5.5). This selects the provider only
   # — the credential is the device-code OAuth session in /opt/data/auth.json,
   # written once by a human (`hermes auth add openai-codex`), NOT by this merge.
+  # compression.codex_gpt55_autoraise = false disables the gpt-5.5 auto-compaction
+  # info notice that hermes (buggily) repeats on every turn in chat gateways like
+  # Slack (upstream NousResearch/hermes-agent#47241); trade-off is compaction
+  # triggers at the 50% default instead of 85%.
   # No secret is written here — the MCP bearer is a ${LLM_WIKI_MCP_BEARER_TOKEN}
   # placeholder resolved at connect-time, and the Slack tokens live only in the
   # gateway container env. Runs before the stack comes up (scripts/ec2-deploy.sh).
@@ -542,6 +546,7 @@ services:
         yq -i '
           .model.provider = "openai-codex"
           | .model.default = "gpt-5.5"
+          | .compression.codex_gpt55_autoraise = false
           | .mcp_servers."llm-wiki" = load("/tmp/llm-wiki.yaml")
           | .slack.require_mention = true
           | .slack.unauthorized_dm_behavior = "ignore"
@@ -550,7 +555,7 @@ services:
           | .platforms.slack.extra.reply_broadcast = false
         ' "$$CONFIG"
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
-        echo "hermes-config-init: merged model.provider=openai-codex + mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
+        echo "hermes-config-init: merged model.provider=openai-codex + model.default=gpt-5.5 + compression.codex_gpt55_autoraise=false + mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network
