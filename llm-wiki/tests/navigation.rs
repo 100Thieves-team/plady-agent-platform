@@ -42,6 +42,13 @@ fn setup(dir: &Path) -> (PathBuf, PathBuf) {
     fs::write(wiki_root.join("people/p-a.md"), page("Person A", "사람")).unwrap();
     fs::create_dir_all(wiki_path.join("raw/meetings")).unwrap();
     fs::write(wiki_path.join("raw/meetings/m1.md"), page("M1", "원문")).unwrap();
+    // A non-ASCII filename: git escapes these in `--name-only` output unless
+    // told not to, and this wiki's pages are almost all Korean.
+    fs::write(
+        wiki_path.join("raw/meetings/데일리스크럼-8-25.md"),
+        page("스크럼", "한글 파일명"),
+    )
+    .unwrap();
     llm_wiki::git::commit(&wiki_path, "seed pages").unwrap();
 
     // A second commit so the timeline has more than one entry.
@@ -179,6 +186,10 @@ fn recent_reports_slugs_across_content_roots() {
     assert!(
         all.contains(&"raw/meetings/m1"),
         "preserved sources belong in the timeline too: {all:?}"
+    );
+    assert!(
+        all.contains(&"raw/meetings/데일리스크럼-8-25"),
+        "a non-ASCII page name must survive git's path quoting: {all:?}"
     );
 }
 

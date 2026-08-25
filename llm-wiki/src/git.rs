@@ -251,6 +251,11 @@ pub fn recent_changes(
 ) -> Result<Vec<RecentEntry>> {
     let mut cmd = std::process::Command::new("git");
     cmd.current_dir(repo_root).args([
+        "-c",
+        "core.quotepath=false",
+        // Without this git quotes and octal-escapes any path outside ASCII —
+        // `"raw/meetings/\353\215\260…"` — and every page in a non-English
+        // wiki comes back unparseable.
         "log",
         "--name-only",
         "--no-renames",
