@@ -179,3 +179,45 @@ the **shared on-disk index**, so anything another writer had staged rode along i
 claims to be path-limited — and `index.write()` then overwrote their staging area. The tree is now
 built from HEAD plus the named paths, and the on-disk index is never written. A path that no longer
 exists is staged as a deletion instead of failing the call (`src/git.rs`).
+
+## Ingest as one transaction
+
+`wiki_ingest` takes one path. Karpathy's model says a single source touches ten to fifteen pages,
+so that call made the multi-page part the agent's bookkeeping — and the failure it produced was not
+an error but an ingest that stopped after the source summary and reported success.
+
+Two tools replace it (the old one stays for single-path use):
+
+* `wiki_ingest_plan({raw_path})` — read-only, no lock. Returns what a complete ingest must include,
+  existing topic and person pages the raw text points at, any source page already citing this raw
+  file, the ingest section of the rules, and the HEAD to pin an apply to.
+* `wiki_apply({mode, changes:[{path, content}], expected_head?, reason?, dry_run?})` — the single
+  authoritative mutation.
+
+Two properties carry the design:
+
+**Validation reads the diff, not the request.** A page listed in `changes` whose content equals
+what is on disk did not change, so listing a topic without editing it satisfies nothing. This is
+the workaround a naive check invites, and `tests/apply.rs` pins it shut.
+
+**Nothing is written until everything validates.** The whole set is checked in memory, so a
+rejected apply leaves no half-written pages and no window for the sync sidecar to commit a
+fragment. On success the commit covers exactly the paths that changed, with a message derived from
+the diff (`ingest(knowledge): sources/… — 1 raw, 1 source, 2 topics`) instead of the walk count
+that produced `+1 pages`.
+
+Modes are separate contracts rather than one strictness dial, which the first legitimate exception
+would have turned off permanently:
+
+| mode | requires | refuses |
+|---|---|---|
+| `knowledge` | raw preserved or present, a source page citing it, ≥1 topic/person actually updated | — |
+| `archive` | ≥1 preserved-source page | any compiled `sources/…` page |
+| `generated` | every page generated (`managed_by: harness` or a generated location) | anything else |
+| `deferred` | `knowledge` minus the topic, plus a `reason` | a missing reason |
+
+`expected_head` gives optimistic concurrency on top of the lock: a plan made against one HEAD is
+refused if the repository moved, rather than committing over whatever landed in between.
+
+- `src/ops/apply.rs`, `src/mcp/{tools,handlers}.rs`
+- `tests/apply.rs` — the incident itself is the first test

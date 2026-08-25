@@ -312,6 +312,44 @@ pub fn tool_list() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "wiki_ingest_plan",
+            "Plan a complete ingest of one preserved source. Read-only. Returns what a knowledge ingest must include, existing topic/person pages the raw text points at, any source page already covering it, and the HEAD to pass back as expected_head. Call this before wiki_apply — one source normally touches several pages, and this is where you find out which",
+            schema(
+                json!({
+                    "raw_path": str_prop("Slug of the preserved source, e.g. raw/meetings/scrum-8-24"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &["raw_path"],
+            ),
+        ),
+        Tool::new(
+            "wiki_apply",
+            "Apply one complete ingest: validate the whole change set, then write and commit exactly the pages that actually changed. Validation reads the resulting diff, not the request — listing a page without editing it satisfies nothing, and nothing is written unless everything passes. Modes: knowledge (raw + source + at least one topic/person actually updated), archive (preserved sources only, no compiled page), generated (harness output), deferred (source with no topic yet; requires reason)",
+            schema(
+                json!({
+                    "changes": {
+                        "type": "array",
+                        "description": "Every page this ingest writes. Pages left out are not written.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "Slug, e.g. topics/t-foo or raw/meetings/scrum-8-24"},
+                                "content": {"type": "string", "description": "Complete new file content"},
+                            },
+                            "required": ["path", "content"],
+                        },
+                    },
+                    "mode": opt_str("knowledge (default) | archive | generated | deferred"),
+                    "message": opt_str("Commit message. Derived from the diff when omitted"),
+                    "reason": opt_str("Why no topic applies — required by mode `deferred`"),
+                    "expected_head": opt_str("HEAD from wiki_ingest_plan; the apply is refused if the repository moved since"),
+                    "dry_run": opt_bool("Validate and report without writing"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &["changes"],
+            ),
+        ),
+        Tool::new(
             "wiki_rules",
             "Return this wiki's operating rules — the conventions governing how pages are written, linked, and ingested. Read these before creating or updating pages; they take precedence over patterns inferred from existing content. Omit `section` for the full document",
             schema(
@@ -380,6 +418,8 @@ pub fn call(server: &McpServer, name: &str, args: &Map<String, Value>) -> ToolRe
         "wiki_lint" => handlers::handle_lint(server, args),
         "wiki_resolve" => handlers::handle_resolve(server, args),
         "wiki_rules" => handlers::handle_rules(server, args),
+        "wiki_ingest_plan" => handlers::handle_ingest_plan(server, args),
+        "wiki_apply" => handlers::handle_apply(server, args),
         "wiki_suggest" => handlers::handle_suggest(server, args),
         "wiki_schema" => handlers::handle_schema(server, args),
         "wiki_export" => handlers::handle_export(server, args),

@@ -236,6 +236,63 @@ pub fn handle_content_new(server: &McpServer, args: &Map<String, Value>) -> Tool
     ok_text(s)
 }
 
+/// Handle `wiki_ingest_plan` — what a complete ingest of a raw source involves.
+pub fn handle_ingest_plan(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let raw_path = arg_str_req(args, "raw_path")?;
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+
+    let plan = ops::ingest_plan(&engine, &wiki_name, &raw_path).map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&plan).map_err(|e| format!("{e}"))?)
+}
+
+/// Handle `wiki_apply` — validate and commit a complete ingest change set.
+pub fn handle_apply(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+
+    let mode = ops::ApplyMode::parse(&arg_str(args, "mode").unwrap_or_else(|| "knowledge".into()))
+        .map_err(|e| format!("{e}"))?;
+
+    let raw_changes = args
+        .get("changes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "`changes` must be an array of {path, content} objects".to_string())?;
+    let mut changes = Vec::with_capacity(raw_changes.len());
+    for (i, item) in raw_changes.iter().enumerate() {
+        let obj = item
+            .as_object()
+            .ok_or_else(|| format!("changes[{i}] is not an object"))?;
+        let path = obj
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("changes[{i}] has no `path`"))?;
+        let content = obj
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("changes[{i}] ({path}) has no `content`"))?;
+        changes.push(ops::Change {
+            path: path.to_string(),
+            content: content.to_string(),
+        });
+    }
+
+    let req = ops::ApplyRequest {
+        mode,
+        changes,
+        message: arg_str(args, "message"),
+        reason: arg_str(args, "reason"),
+        expected_head: arg_str(args, "expected_head"),
+        dry_run: arg_bool(args, "dry_run"),
+    };
+
+    let report =
+        ops::apply(&engine, &server.manager, &wiki_name, &req).map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&report).map_err(|e| format!("{e}"))?)
+}
+
 /// Handle `wiki_rules` — return the wiki's operating rules, or one section.
 pub fn handle_rules(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
     let engine = server.engine();
