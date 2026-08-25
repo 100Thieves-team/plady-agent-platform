@@ -301,7 +301,7 @@ fn find_candidates(
             && top < median * DISTINCTIVENESS
         {
             notes.push(format!(
-                "no clearly relevant {kind} pages — every match scored about the same, so the                  text likely does not name any in a form this wiki indexes. Look yourself before                  concluding none apply."
+                "no clearly relevant {kind} pages — every match scored about the same, so the text likely does not name any in a form this wiki indexes. Look yourself before concluding none apply."
             ));
             continue;
         }
@@ -337,7 +337,7 @@ fn find_candidates(
     });
     if !out.is_empty() {
         notes.push(
-            "candidates are the strongest matches, not a complete list — search for anything the              source discusses that they do not cover"
+            "candidates are the strongest matches, not a complete list — search for anything the source discusses that they do not cover"
                 .into(),
         );
     }
