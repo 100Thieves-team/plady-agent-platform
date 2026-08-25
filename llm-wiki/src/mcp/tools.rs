@@ -312,6 +312,37 @@ pub fn tool_list() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "wiki_context",
+            "Answer a question with the wiki pages themselves — searched, ranked, and returned with their bodies, cited by slug, inside a character budget. Read-only. Prefer this over wiki_search when you intend to read what you find: search returns slugs you must then fetch one by one, this returns the pages in one call",
+            schema(
+                json!({
+                    "question": str_prop("The question to assemble context for — a question, not keywords"),
+                    "budget_chars": opt_int("Character budget for page bodies (default 12000)"),
+                    "types": opt_str("Comma-separated page kinds to draw from, e.g. \"topic,source\". Omit for all"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &["question"],
+            ),
+        ),
+        Tool::new(
+            "wiki_save_answer",
+            "Write a conclusion back into the wiki as a citable page, so it compounds instead of ending with the conversation. `sources` must name pages that exist — an answer citing nothing cannot be checked against evidence later. Re-saving the same question updates the same page rather than accumulating near-duplicates",
+            schema(
+                json!({
+                    "question": str_prop("The question this answers"),
+                    "answer": str_prop("The conclusion, as markdown"),
+                    "sources": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Slugs this was derived from — the ones wiki_context returned",
+                    },
+                    "slug": opt_str("Where to write it (default: answers/<derived from the question>)"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &["question", "answer", "sources"],
+            ),
+        ),
+        Tool::new(
             "wiki_catalog",
             "Describe what this wiki contains, grouped by page kind, with one-line summaries. Read-only. Start here when you do not yet know what is in the wiki — it is the catalogue this model calls index.md, answered from the live index so it is never stale. Omit `section` for an overview of every kind; name one to list it in depth",
             schema(
@@ -442,6 +473,8 @@ pub fn call(server: &McpServer, name: &str, args: &Map<String, Value>) -> ToolRe
         "wiki_resolve" => handlers::handle_resolve(server, args),
         "wiki_rules" => handlers::handle_rules(server, args),
         "wiki_catalog" => handlers::handle_catalog(server, args),
+        "wiki_context" => handlers::handle_context(server, args),
+        "wiki_save_answer" => handlers::handle_save_answer(server, args),
         "wiki_recent" => handlers::handle_recent(server, args),
         "wiki_ingest_plan" => handlers::handle_ingest_plan(server, args),
         "wiki_apply" => handlers::handle_apply(server, args),

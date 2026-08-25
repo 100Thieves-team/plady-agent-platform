@@ -292,3 +292,40 @@ went looking for this layer unprompted.
 
 - `src/ops/navigation.rs`, `src/git.rs` (`recent_changes`), `src/ops/content.rs`
 - `src/mcp/{tools,handlers}.rs`, `tests/navigation.rs`, `tests/rules.rs`
+
+## Query as an operation
+
+Karpathy lists query beside ingest and lint, with the part that makes a wiki compound rather than
+merely accumulate: *"valuable outputs become new wiki pages rather than disappearing into chat
+history."* Search alone gives neither half — ranked slugs are an index into work still to be done,
+and the synthesis built from them ends with the conversation.
+
+- `wiki_context({question, budget_chars?, types?})` returns the pages themselves, most relevant
+  first, bodies included and frontmatter stripped, inside a character budget. Pages that do not fit
+  are named rather than silently dropped. An agent whose next move after an excerpt is always to
+  read the page should not have to make that second call.
+- `wiki_save_answer({question, answer, sources, slug?})` writes a conclusion back as a citable page
+  under `answers/`. `sources` must name pages that exist — an answer citing nothing cannot be
+  checked against evidence later, and a wiki of unfalsifiable conclusions is worse than no wiki.
+  Re-saving the same question updates the same page, so asking twice does not leave two.
+
+- `src/ops/query.rs`, `src/mcp/{tools,handlers}.rs`, `tests/query.rs`
+- data repo: `answers` in `type_by_prefix`, `schemas/answer.json` with a `derived-from` edge
+
+### Freshly written pages were being deleted from the search index
+
+Found by a test that asked whether a saved answer could be found again. It could not — and neither
+could anything written by `wiki_apply`.
+
+`commit_paths` deliberately does not write git's staging area, so after a commit the on-disk index
+is stale. Change detection ran `diff_tree_to_workdir_with_index`, which routes HEAD → index →
+worktree; a file present in HEAD and on disk but absent from that stale index reads as a
+**deletion**. The incremental update then removed the just-written pages from the search index.
+
+The production log for the first real ingest shows it: `updated=3 deleted=2` for a five-page
+change set. The wiki looked correct only because the agent happened to run a full
+`wiki_index_rebuild` afterwards.
+
+Change detection now compares HEAD directly to the working tree (`diff_tree_to_workdir`). The
+staging area is a third state that answers neither question the search index asks (`src/git.rs`),
+and `tests/apply.rs::applied_pages_are_immediately_searchable` fails without the fix.

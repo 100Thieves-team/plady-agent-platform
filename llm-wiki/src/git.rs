@@ -128,7 +128,14 @@ pub fn changed_wiki_files(repo_root: &Path, roots: &ContentRoots) -> Result<Vec<
         .context("no HEAD commit")?;
     let mut opts = git2::DiffOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
-    let diff = repo.diff_tree_to_workdir_with_index(Some(&head_tree), Some(&mut opts))?;
+    // HEAD against the working tree, *not* through the staging area. The search
+    // index cares about what is on disk versus what is committed; the staging
+    // area is a third state that answers neither question. Routing through it
+    // reported a file that is in HEAD and on disk — but absent from a stale
+    // index, which `commit_paths` deliberately does not write — as a deletion,
+    // and the incremental update then dropped freshly written pages from the
+    // search index.
+    let diff = repo.diff_tree_to_workdir(Some(&head_tree), Some(&mut opts))?;
     Ok(collect_md_changes(&diff, &roots.repo_relative_prefixes()))
 }
 

@@ -676,3 +676,49 @@ fn a_conventional_new_page_passes() {
         report.warnings
     );
 }
+
+#[test]
+fn applied_pages_are_immediately_searchable() {
+    // `commit_paths` deliberately leaves git's staging area alone, which made
+    // the incremental index update read freshly written pages as deletions and
+    // drop them from the search index. The pages were on disk and in HEAD, and
+    // the wiki could not find them.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path());
+    let manager = engine_for(&config_path);
+
+    {
+        let engine = manager.state.read().unwrap();
+        let r = req(
+            ApplyMode::Knowledge,
+            vec![
+                ("raw/meetings/scrum-8-26", RAW.to_string()),
+                (
+                    "sources/scrum-8-26",
+                    source_page("raw/meetings/scrum-8-26", &[]),
+                ),
+                (
+                    "topics/t-면접-서비스-방향성",
+                    format!("{TOPIC}\n8/26 내용\n"),
+                ),
+            ],
+        );
+        ops::apply(&engine, &manager, "test", &r).unwrap();
+    }
+
+    let engine = manager.state.read().unwrap();
+    let found = ops::list(&engine, "test", Some("source"), None, 1, Some(50)).unwrap();
+    let slugs: Vec<&str> = found.pages.iter().map(|p| p.slug.as_str()).collect();
+    assert!(
+        slugs.contains(&"sources/scrum-8-26"),
+        "a just-applied page is missing from the index: {slugs:?}"
+    );
+
+    let raw = ops::list(&engine, "test", Some("raw"), None, 1, Some(50)).unwrap();
+    assert!(
+        raw.pages
+            .iter()
+            .any(|p| p.slug == "raw/meetings/scrum-8-26"),
+        "the preserved original is missing from the index too"
+    );
+}

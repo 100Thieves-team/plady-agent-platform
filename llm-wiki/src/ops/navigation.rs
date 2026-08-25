@@ -214,6 +214,9 @@ pub fn recent(
             date: e.date,
             message: e.message,
             author: e.author,
+            // A rename lands as a delete and an add, and both sides can map to
+            // the same slug when a page moves between content roots. Listing it
+            // twice would read as two changes.
             pages: e
                 .paths
                 .iter()
@@ -224,6 +227,8 @@ pub fn recent(
                         .ok()
                         .map(|s| s.as_str().to_string())
                 })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
                 .collect(),
         })
         .collect::<Vec<_>>();

@@ -293,6 +293,58 @@ pub fn handle_apply(server: &McpServer, args: &Map<String, Value>) -> ToolHandle
     ok_text(serde_json::to_string_pretty(&report).map_err(|e| format!("{e}"))?)
 }
 
+/// Handle `wiki_context` — assemble the pages that answer a question.
+pub fn handle_context(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let question = arg_str_req(args, "question")?;
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+    let types = arg_str(args, "types");
+
+    let bundle = ops::context(
+        &engine,
+        &wiki_name,
+        &question,
+        arg_usize(args, "budget_chars"),
+        types.as_deref(),
+    )
+    .map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&bundle).map_err(|e| format!("{e}"))?)
+}
+
+/// Handle `wiki_save_answer` — keep a conclusion as a citable page.
+pub fn handle_save_answer(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let question = arg_str_req(args, "question")?;
+    let answer = arg_str_req(args, "answer")?;
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+
+    let sources: Vec<String> = args
+        .get("sources")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let slug = arg_str(args, "slug");
+
+    let saved = ops::save_answer(
+        &engine,
+        &server.manager,
+        &wiki_name,
+        &question,
+        &answer,
+        &sources,
+        slug.as_deref(),
+    )
+    .map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&saved).map_err(|e| format!("{e}"))?)
+}
+
 /// Handle `wiki_catalog` — describe what the wiki contains.
 pub fn handle_catalog(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
     let engine = server.engine();

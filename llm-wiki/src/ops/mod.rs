@@ -12,6 +12,7 @@ mod lint;
 mod logs;
 mod navigation;
 /// Redaction pass — strip PII and confidential values from page bodies.
+pub mod query;
 pub mod redact;
 mod rules;
 mod schema;
@@ -32,6 +33,7 @@ pub use ingest::*;
 pub use lint::*;
 pub use logs::*;
 pub use navigation::*;
+pub use query::*;
 pub use redact::*;
 pub use rules::*;
 pub use schema::*;

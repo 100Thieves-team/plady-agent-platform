@@ -194,6 +194,39 @@ fn recent_reports_slugs_across_content_roots() {
 }
 
 #[test]
+fn a_page_moved_between_roots_is_listed_once() {
+    // `git mv` shows as a delete plus an add, and both sides resolve to the
+    // same slug when a page moves from `wiki/raw/` to `raw/`.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, wiki_path) = setup(dir.path());
+
+    fs::create_dir_all(wiki_path.join("wiki/raw/meetings")).unwrap();
+    fs::write(
+        wiki_path.join("wiki/raw/meetings/moved.md"),
+        page("Moved", "잘못 놓인 원문"),
+    )
+    .unwrap();
+    llm_wiki::git::commit(&wiki_path, "misplaced").unwrap();
+    fs::rename(
+        wiki_path.join("wiki/raw/meetings/moved.md"),
+        wiki_path.join("raw/meetings/moved.md"),
+    )
+    .unwrap();
+    llm_wiki::git::commit(&wiki_path, "move to raw root").unwrap();
+
+    let manager = engine_for(&config_path);
+    let engine = manager.state.read().unwrap();
+    let report = ops::recent(&engine, "test", Some(1), None).unwrap();
+
+    let pages = &report.changes[0].pages;
+    assert_eq!(
+        pages.iter().filter(|p| p.ends_with("moved")).count(),
+        1,
+        "a move should read as one change, not two: {pages:?}"
+    );
+}
+
+#[test]
 fn the_limit_is_honoured() {
     let dir = tempfile::tempdir().unwrap();
     let (config_path, _) = setup(dir.path());
