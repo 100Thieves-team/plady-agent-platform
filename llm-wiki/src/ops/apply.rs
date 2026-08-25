@@ -802,11 +802,16 @@ fn validate(
         }
     }
     if !convention_errors.is_empty() {
+        let pages: std::collections::BTreeSet<&str> = convention_errors
+            .iter()
+            .filter_map(|e| e.split(':').next())
+            .collect();
         bail!(
-            "{} new page(s) do not follow this wiki's conventions:\n  - {}\n\nThese apply to \
-             pages being created; existing pages report the same as warnings. `wiki_rules` has \
-             the full metadata and link rules.",
+            "{} convention violation(s) on {} new page(s):\n  - {}\n\nThese block pages being \
+             created; existing pages report the same as warnings. `wiki_rules` has the full \
+             metadata and link rules.",
             convention_errors.len(),
+            pages.len(),
             convention_errors.join("\n  - ")
         );
     }

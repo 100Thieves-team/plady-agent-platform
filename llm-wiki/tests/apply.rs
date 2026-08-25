@@ -572,8 +572,8 @@ fn a_new_page_tagged_with_both_singular_and_plural_is_refused() {
         "the duplicate facet was not caught: {err}"
     );
     assert!(
-        err.contains("conventions"),
-        "the error should say what kind of rule this is: {err}"
+        err.contains("convention violation(s) on 1 new page(s)"),
+        "the count should be violations and pages, not violations miscalled pages: {err}"
     );
 }
 
