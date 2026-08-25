@@ -219,5 +219,19 @@ would have turned off permanently:
 `expected_head` gives optimistic concurrency on top of the lock: a plan made against one HEAD is
 refused if the repository moved, rather than committing over whatever landed in between.
 
+**Candidates are ranked, not enumerated.** The first version searched the raw text term by term,
+which gave a URL fragment like `https` its own three top results and returned twelve "candidates"
+of which none were relevant. The body is now one BM25 query with transport noise (`https`, `slack`,
+`archives`, …) stripped, so terms are weighed against each other. A layer whose results are all
+scored about the same is reported as *undifferentiated* rather than mined for a lead — a meeting
+note that names people by Slack ID has no person signal, and inventing one is worse than saying so.
+
 - `src/ops/apply.rs`, `src/mcp/{tools,handlers}.rs`
 - `tests/apply.rs` — the incident itself is the first test
+
+### Lock staleness was second-boundary dependent
+
+`age_secs() > stale_after` with whole-second timestamps meant a `stale_after` of zero behaved as
+"after one second", and whether a break happened depended on which side of a second boundary two
+calls landed on — a test flaked two runs in four. The comparison is inclusive now, so the bound
+means "held for at least this long". The sidecar helpers use `-ge` to match.

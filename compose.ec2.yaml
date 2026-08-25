@@ -271,7 +271,7 @@ services:
             fi
             _ts="$$(sed -n 3p "$$LOCK/owner" 2>/dev/null || echo 0)"
             _age=$$(( $$(date -u +%s) - $${_ts:-0} ))
-            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -gt "$$LOCK_STALE_SECS" ]; then
+            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -ge "$$LOCK_STALE_SECS" ]; then
               echo "[wiki-data-sync] breaking stale lock ($$(sed -n 1p "$$LOCK/owner" 2>/dev/null), $${_age}s)"
               rm -rf "$$LOCK"; continue
             fi
@@ -426,7 +426,7 @@ services:
             fi
             _ts="$$(sed -n 3p "$$LOCK/owner" 2>/dev/null || echo 0)"
             _age=$$(( $$(date -u +%s) - $${_ts:-0} ))
-            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -gt 300 ]; then
+            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -ge 300 ]; then
               echo "[policy-renderer] breaking stale lock ($$(sed -n 1p "$$LOCK/owner" 2>/dev/null), $${_age}s)"
               rm -rf "$$LOCK"; continue
             fi

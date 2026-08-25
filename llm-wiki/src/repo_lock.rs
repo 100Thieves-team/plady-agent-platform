@@ -119,9 +119,14 @@ impl RepoLock {
 
     /// Take the lock with explicit waiting and staleness bounds.
     ///
-    /// A lock older than `stale_after` is broken and taken over: a holder that
-    /// died mid-write would otherwise wedge every later write, which is worse
-    /// than the interleaving the lock exists to prevent.
+    /// A lock held for at least `stale_after` is broken and taken over: a holder
+    /// that died mid-write would otherwise wedge every later write, which is
+    /// worse than the interleaving the lock exists to prevent.
+    ///
+    /// The comparison is inclusive because these timestamps have one-second
+    /// resolution: with `>`, a `stale_after` of zero would mean "after one
+    /// second" and would depend on which side of a second boundary the two
+    /// calls landed on.
     pub fn acquire_with(
         repo_root: &Path,
         holder: &str,
@@ -153,7 +158,7 @@ impl RepoLock {
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     if !broke_stale
                         && let Some(existing) = read_info(&path)
-                        && existing.age_secs() > stale_after.as_secs()
+                        && existing.age_secs() >= stale_after.as_secs()
                     {
                         tracing::warn!(
                             holder = %existing.holder,
@@ -323,6 +328,25 @@ mod tests {
         )
         .expect("a lock older than stale_after must be broken");
         assert_eq!(lock.info().holder, "recovering");
+    }
+
+    #[test]
+    fn a_zero_stale_window_breaks_immediately_regardless_of_second_boundaries() {
+        // Timestamps are whole seconds, so a `>` comparison would make this
+        // pass or fail depending on when in the second it ran.
+        let dir = tempfile::tempdir().unwrap();
+        let root = repo(dir.path());
+        let _held = RepoLock::acquire(&root, "crashed").unwrap();
+
+        for _ in 0..5 {
+            let taken = RepoLock::acquire_with(
+                &root,
+                "recovering",
+                Duration::from_millis(200),
+                Duration::from_secs(0),
+            );
+            assert!(taken.is_ok(), "a zero stale window must always break");
+        }
     }
 
     #[test]

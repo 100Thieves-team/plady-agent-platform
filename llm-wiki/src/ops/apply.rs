@@ -27,8 +27,6 @@
 //! checked in memory first, so a rejected apply leaves no half-written pages to
 //! clean up and no window for the sync sidecar to commit a fragment.
 
-use std::collections::BTreeMap;
-
 use anyhow::{Result, bail};
 use serde::Serialize;
 
@@ -166,6 +164,8 @@ pub struct Candidate {
     pub title: String,
     /// Layer it belongs to (`topic`, `person`, …).
     pub kind: String,
+    /// BM25 relevance against the raw text, for ranking within one plan.
+    pub score: f32,
     /// Why it surfaced — the search that matched it.
     pub why: String,
 }
@@ -185,6 +185,9 @@ pub struct IngestPlan {
     pub candidates: Vec<Candidate>,
     /// Source pages already citing this raw path.
     pub existing_sources: Vec<String>,
+    /// What the candidate search could not answer, so a gap is not read as an
+    /// absence of relevant pages.
+    pub notes: Vec<String>,
     /// The ingest section of the wiki's rules.
     pub rules_excerpt: Option<String>,
 }
@@ -207,7 +210,7 @@ pub fn ingest_plan(engine: &EngineState, wiki_name: &str, raw_path: &str) -> Res
         .map(|text| frontmatter::parse(&text).body)
         .unwrap_or_default();
 
-    let candidates = find_candidates(engine, wiki_name, &body)?;
+    let (candidates, notes) = find_candidates(engine, wiki_name, &body)?;
     let existing_sources = sources_citing(engine, wiki_name, raw_slug.as_str())?;
 
     let mut required = Vec::new();
@@ -233,66 +236,172 @@ pub fn ingest_plan(engine: &EngineState, wiki_name: &str, raw_path: &str) -> Res
         required,
         candidates,
         existing_sources,
+        notes,
         rules_excerpt: super::rules(engine, wiki_name, Some("ingest")).ok(),
     })
 }
 
-/// Search existing topic and person pages for the raw text's distinctive terms.
-fn find_candidates(engine: &EngineState, wiki_name: &str, body: &str) -> Result<Vec<Candidate>> {
-    let mut seen: BTreeMap<String, Candidate> = BTreeMap::new();
-    for term in salient_terms(body) {
-        for kind in ["topic", "person"] {
-            let result = super::search(
-                engine,
-                wiki_name,
-                &super::SearchParams {
-                    query: &term,
-                    type_filter: Some(kind),
-                    no_excerpt: true,
-                    top_k: Some(3),
-                    include_sections: false,
-                    cross_wiki: false,
-                },
-            );
-            let Ok(result) = result else { continue };
-            for page in result.results {
-                seen.entry(page.slug.clone()).or_insert_with(|| Candidate {
-                    slug: page.slug,
-                    title: page.title,
-                    kind: kind.to_string(),
-                    why: format!("raw text mentions \"{term}\""),
-                });
-            }
-        }
+/// Rank existing topic and person pages against the raw text.
+///
+/// The raw body becomes one BM25 query rather than a series of per-term
+/// searches. Searching term by term gives every term its own top results, so a
+/// URL fragment like `https` returns three people as confidently as a real
+/// subject word does. One query lets BM25 weigh the terms against each other,
+/// and only pages that match the text as a whole rise.
+///
+/// Returns candidates plus a note for any layer that produced nothing usable —
+/// silence and "I found nothing relevant" mean different things to the agent
+/// reading this.
+fn find_candidates(
+    engine: &EngineState,
+    wiki_name: &str,
+    body: &str,
+) -> Result<(Vec<Candidate>, Vec<String>)> {
+    let query = build_query(body);
+    if query.is_empty() {
+        return Ok((
+            Vec::new(),
+            vec!["the raw text has no searchable terms".into()],
+        ));
     }
-    Ok(seen.into_values().collect())
-}
 
-/// Pick query terms from raw text: the longest distinct words, which in both
-/// Korean and English carry more signal than the short connective ones.
-fn salient_terms(body: &str) -> Vec<String> {
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for word in body.split(|c: char| !c.is_alphanumeric()) {
-        let w = word.trim();
-        if w.chars().count() < 2 || w.chars().all(|c| c.is_ascii_digit()) {
+    let mut out = Vec::new();
+    let mut notes = Vec::new();
+
+    for kind in ["topic", "person"] {
+        let Ok(result) = super::search(
+            engine,
+            wiki_name,
+            &super::SearchParams {
+                query: &query,
+                type_filter: Some(kind),
+                no_excerpt: true,
+                top_k: Some(CANDIDATES_PER_KIND),
+                include_sections: false,
+                cross_wiki: false,
+            },
+        ) else {
+            continue;
+        };
+        let mut scores: Vec<f32> = result.results.iter().map(|p| p.score).collect();
+        if scores.is_empty() {
             continue;
         }
-        *counts.entry(w.to_lowercase()).or_default() += 1;
+        let top = scores[0];
+        scores.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = scores[scores.len() / 2];
+
+        // A ranking is only informative if something stands out. When every
+        // result scores about the same, they are all matching the corpus's
+        // common vocabulary — a meeting note that names people by opaque IDs
+        // produces exactly that. Presenting the top of a flat list as a
+        // "candidate" would be inventing a lead.
+        if scores.len() >= MIN_RESULTS_TO_JUDGE_SPREAD
+            && median > 0.0
+            && top < median * DISTINCTIVENESS
+        {
+            notes.push(format!(
+                "no clearly relevant {kind} pages — every match scored about the same, so the                  text likely does not name any in a form this wiki indexes. Look yourself before                  concluding none apply."
+            ));
+            continue;
+        }
+
+        // The median floor only applies once there is a distribution to speak
+        // of; with two results the median is one of them, and `median * 1.3`
+        // would exclude the top hit itself.
+        let floor = if scores.len() >= MIN_RESULTS_TO_JUDGE_SPREAD {
+            (top * RELEVANCE_FLOOR).max(median * MEDIAN_FLOOR)
+        } else {
+            top * RELEVANCE_FLOOR
+        };
+        for page in result.results {
+            if page.score < floor {
+                continue;
+            }
+            out.push(Candidate {
+                slug: page.slug,
+                title: page.title,
+                kind: kind.to_string(),
+                score: page.score,
+                why: format!(
+                    "matches the source text ({kind} relevance {:.1})",
+                    page.score
+                ),
+            });
+        }
     }
-    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
-    // Frequent first, then longer — a word used often and made of more
-    // characters is more likely to name the subject than to be scaffolding.
-    ranked.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then(b.0.chars().count().cmp(&a.0.chars().count()))
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
-    ranked
-        .into_iter()
-        .filter(|(w, _)| w.chars().count() >= 2)
-        .take(8)
-        .map(|(w, _)| w)
-        .collect()
+    if !out.is_empty() {
+        notes.push(
+            "candidates are the strongest matches, not a complete list — search for anything the              source discusses that they do not cover"
+                .into(),
+        );
+    }
+    Ok((out, notes))
 }
+
+/// How far the best match must stand above the median for the ranking to mean
+/// anything. Below this the results are undifferentiated noise.
+const DISTINCTIVENESS: f32 = 1.8;
+
+/// Fewest results needed before a spread is worth judging. A wiki with two
+/// topic pages has no distribution to be flat.
+const MIN_RESULTS_TO_JUDGE_SPREAD: usize = 4;
+
+/// Floor relative to the median, so a long flat tail is not all "relevant".
+/// Tuned against this wiki: it keeps the pages a meeting note genuinely bears
+/// on while cutting the ones matching only shared vocabulary.
+const MEDIAN_FLOOR: f32 = 1.2;
+
+/// Candidates returned per layer before the relevance floor is applied.
+const CANDIDATES_PER_KIND: usize = 8;
+
+/// Fraction of the top score a candidate must reach to be worth showing.
+const RELEVANCE_FLOOR: f32 = 0.45;
+
+/// Tokens the query never carries, because they describe how the text was
+/// transported rather than what it is about.
+///
+/// Slack and web exports are dense with these; left in, they match pages that
+/// merely contain a link.
+const TRANSPORT_NOISE: &[&str] = &[
+    "http", "https", "www", "com", "net", "org", "io", "md", "html", "png", "jpg", "amp", "utm",
+    "slack", "archives", "docs", "team", "thread", "ts", "cid", "gmt", "am", "pm",
+];
+
+/// Turn raw body text into one search query.
+///
+/// Deduplicated so a word repeated forty times does not dominate, capped so the
+/// query stays cheap to parse, and stripped of the characters tantivy's query
+/// parser treats as syntax.
+fn build_query(body: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut terms = Vec::new();
+    for word in body.split(|c: char| !c.is_alphanumeric()) {
+        let w = word.trim().to_lowercase();
+        if w.chars().count() < 2
+            || w.chars().all(|c| c.is_ascii_digit())
+            || TRANSPORT_NOISE.contains(&w.as_str())
+        {
+            continue;
+        }
+        if seen.insert(w.clone()) {
+            terms.push(w);
+        }
+        if terms.len() >= MAX_QUERY_TERMS {
+            break;
+        }
+    }
+    terms.join(" ")
+}
+
+/// Upper bound on query terms — enough to characterise a meeting note, few
+/// enough that parsing stays trivial.
+const MAX_QUERY_TERMS: usize = 60;
 
 /// Source pages whose `raw_source_path` names this raw slug.
 ///
@@ -771,16 +880,5 @@ mod tests {
         assert!(msg.contains("1 raw"));
         assert!(msg.contains("2 topics"));
         assert!(msg.contains("topics/t-b"), "body should list every path");
-    }
-
-    #[test]
-    fn salient_terms_skip_noise() {
-        let terms = salient_terms("면접 준비 면접 준비 면접 1 2 3 a");
-        assert!(terms.contains(&"면접".to_string()));
-        assert!(!terms.iter().any(|t| t == "1"), "digits are not terms");
-        assert!(
-            !terms.iter().any(|t| t == "a"),
-            "single chars are not terms"
-        );
     }
 }

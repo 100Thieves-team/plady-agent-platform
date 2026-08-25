@@ -125,23 +125,25 @@ fn a_crashed_holder_does_not_wedge_the_wiki_forever() {
     let dir = tempfile::tempdir().unwrap();
     let (config_path, wiki_path) = setup(dir.path());
 
-    // A lock left behind by a process that died mid-write.
-    let mut abandoned = RepoLock::acquire(&wiki_path, "crashed").unwrap();
-    std::mem::forget(std::mem::replace(&mut abandoned, {
-        // Take a second lock object pointing nowhere so the real one is leaked
-        // rather than released on drop.
-        RepoLock::acquire(dir.path(), "placeholder").unwrap()
-    }));
+    // A lock directory left behind by a process that died mid-write, dated far
+    // enough back that no clock boundary decides the outcome.
+    let lock = wiki_path.join(".git/llm-wiki.lock");
+    fs::create_dir_all(&lock).unwrap();
+    let long_ago = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - 10_000;
+    fs::write(lock.join("owner"), format!("crashed\n1\n{long_ago}\n")).unwrap();
 
     let manager = WikiEngine::build(&config_path).unwrap();
     let engine = manager.state.read().unwrap();
 
-    // With a stale window of zero the abandoned lock is broken immediately.
     let recovered = RepoLock::acquire_with(
         &wiki_path,
         "recovering",
         Duration::from_millis(500),
-        Duration::from_secs(0),
+        Duration::from_secs(60),
     );
     assert!(recovered.is_ok(), "an abandoned lock was never broken");
     drop(recovered);
