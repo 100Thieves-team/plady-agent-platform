@@ -293,6 +293,35 @@ pub fn handle_apply(server: &McpServer, args: &Map<String, Value>) -> ToolHandle
     ok_text(serde_json::to_string_pretty(&report).map_err(|e| format!("{e}"))?)
 }
 
+/// Handle `wiki_catalog` — describe what the wiki contains.
+pub fn handle_catalog(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+    let section = arg_str(args, "section");
+
+    let catalog =
+        ops::catalog(&engine, &wiki_name, section.as_deref()).map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&catalog).map_err(|e| format!("{e}"))?)
+}
+
+/// Handle `wiki_recent` — recent wiki activity, from git history.
+pub fn handle_recent(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
+    let engine = server.engine();
+    let wiki = arg_str(args, "wiki");
+    let wiki_name = engine.resolve_wiki_name(wiki.as_deref()).to_string();
+    let since = arg_str(args, "since");
+
+    let report = ops::recent(
+        &engine,
+        &wiki_name,
+        arg_usize(args, "limit"),
+        since.as_deref(),
+    )
+    .map_err(|e| format!("{e}"))?;
+    ok_text(serde_json::to_string_pretty(&report).map_err(|e| format!("{e}"))?)
+}
+
 /// Handle `wiki_rules` — return the wiki's operating rules, or one section.
 pub fn handle_rules(server: &McpServer, args: &Map<String, Value>) -> ToolHandlerResult {
     let engine = server.engine();

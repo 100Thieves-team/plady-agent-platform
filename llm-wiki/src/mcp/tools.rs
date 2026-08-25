@@ -312,6 +312,29 @@ pub fn tool_list() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "wiki_catalog",
+            "Describe what this wiki contains, grouped by page kind, with one-line summaries. Read-only. Start here when you do not yet know what is in the wiki — it is the catalogue this model calls index.md, answered from the live index so it is never stale. Omit `section` for an overview of every kind; name one to list it in depth",
+            schema(
+                json!({
+                    "section": opt_str("Page kind to list in depth — topic, person, source, policy, raw. Omit for an overview of all"),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "wiki_recent",
+            "Recent wiki activity — which pages changed, when, in what commit. Read-only, derived from git history rather than a maintained log, so it cannot drift. Use it for \"what changed while I was away\" before assuming a page is current",
+            schema(
+                json!({
+                    "limit": opt_int("Commits to return (default 20)"),
+                    "since": opt_str("Time window, as git accepts it — \"2 weeks ago\", \"2026-08-01\""),
+                    "wiki": opt_str("Target wiki name"),
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "wiki_ingest_plan",
             "Plan a complete ingest of one preserved source. Read-only. Returns what a knowledge ingest must include, existing topic/person pages the raw text points at, any source page already covering it, and the HEAD to pass back as expected_head. Call this before wiki_apply — one source normally touches several pages, and this is where you find out which",
             schema(
@@ -418,6 +441,8 @@ pub fn call(server: &McpServer, name: &str, args: &Map<String, Value>) -> ToolRe
         "wiki_lint" => handlers::handle_lint(server, args),
         "wiki_resolve" => handlers::handle_resolve(server, args),
         "wiki_rules" => handlers::handle_rules(server, args),
+        "wiki_catalog" => handlers::handle_catalog(server, args),
+        "wiki_recent" => handlers::handle_recent(server, args),
         "wiki_ingest_plan" => handlers::handle_ingest_plan(server, args),
         "wiki_apply" => handlers::handle_apply(server, args),
         "wiki_suggest" => handlers::handle_suggest(server, args),

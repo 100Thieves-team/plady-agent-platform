@@ -127,3 +127,42 @@ fn rules_file_cannot_point_outside_the_repo() {
         "a rules_file escaping the repo root must be refused"
     );
 }
+
+// ── Misdirected reads ─────────────────────────────────────────────────────────
+
+#[test]
+fn reading_index_md_points_at_the_catalog_tool() {
+    // The first agent to use the rebuilt wiki opened by trying to read
+    // SCHEMA.md, index.md, and log.md, and got three bare "page not found"s.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path(), Some(RULES));
+    let manager = WikiEngine::build(&config_path).unwrap();
+    let engine = manager.state.read().unwrap();
+
+    for (slug, expected) in [
+        ("index.md", "wiki_catalog"),
+        ("log.md", "wiki_recent"),
+        ("SCHEMA.md", "wiki_rules"),
+    ] {
+        let err = ops::content_read(&engine, slug, Some("test"), false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains(expected),
+            "reading {slug} should name {expected}: {err}"
+        );
+    }
+}
+
+#[test]
+fn an_ordinary_missing_page_gets_no_extra_advice() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path(), Some(RULES));
+    let manager = WikiEngine::build(&config_path).unwrap();
+    let engine = manager.state.read().unwrap();
+
+    let err = ops::content_read(&engine, "topics/t-nope", Some("test"), false, false)
+        .unwrap_err()
+        .to_string();
+    assert!(!err.contains("wiki_catalog"), "unexpected advice: {err}");
+}

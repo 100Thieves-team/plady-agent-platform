@@ -266,3 +266,29 @@ made `ops::Severity` ambiguous and meant nothing extra.
 
 - `src/ops/conventions.rs`, `src/ops/apply.rs`, `src/ops/lint.rs` (`Severity: Copy`)
 - `tests/apply.rs` — the page that actually slipped through is the fixture
+
+## Catalogue and timeline as tools, not files
+
+Karpathy's model names an `index.md` catalogue and an append-only `log.md`. Both are files there
+because that LLM reads the repository directly; here the agent has tools, and a tool answer is
+better on both counts. A catalogue file regenerated on every ingest is a hot file — in every
+commit, conflicting between concurrent writers, and stale between the write and the regeneration.
+A hand-maintained log duplicates what git already records perfectly, and the copy is the one that
+drifts.
+
+This was not a theoretical gap. The first agent to use the rebuilt wiki opened its session by
+trying to read `SCHEMA.md`, `index.md`, and `log.md`, and got three bare "page not found"s — it
+went looking for this layer unprompted.
+
+- `wiki_catalog({section?})` — what the wiki holds, grouped by kind, with one-line summaries.
+  Compiled layers are listed before `raw` because that is the order an agent should read them in.
+  Kinds come from the index facet rather than a fixed list, so a wiki with its own layers is
+  described in its own terms.
+- `wiki_recent({limit?, since?})` — recent activity from `git log`, with each commit's pages
+  resolved to slugs across every content root. `since` takes what git takes ("2 weeks ago"),
+  because the real question is "what changed while I was away".
+- A read for `index.md`, `log.md`, `SCHEMA.md` and their obvious variants now names the tool that
+  answers it instead of only saying the page does not exist.
+
+- `src/ops/navigation.rs`, `src/git.rs` (`recent_changes`), `src/ops/content.rs`
+- `src/mcp/{tools,handlers}.rs`, `tests/navigation.rs`, `tests/rules.rs`

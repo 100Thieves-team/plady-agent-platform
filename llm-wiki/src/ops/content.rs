@@ -82,6 +82,7 @@ pub fn backlinks_for(
 }
 
 /// Result of a content read — page text, asset list, or binary asset.
+#[derive(Debug)]
 pub enum ContentReadResult {
     /// Page markdown content (possibly with frontmatter stripped).
     Page(String),
@@ -115,7 +116,18 @@ pub fn content_read(
         return Ok(ContentReadResult::Assets(assets));
     }
 
-    match resolve_read_target(&rel, &roots)? {
+    // A read for `index.md` or `log.md` is an agent looking for the catalogue or
+    // the timeline by the names this model gives them. "Page not found" is
+    // correct and useless; the tool that answers costs one line to name.
+    let target =
+        resolve_read_target(&rel, &roots).map_err(|e| {
+            match super::suggestion_for_missing(&rel) {
+                Some(hint) => anyhow::anyhow!("{e} — {hint}"),
+                None => e,
+            }
+        })?;
+
+    match target {
         ReadTarget::Page(_) => {
             let slug = Slug::try_from(rel.as_str())?;
             let wiki_cfg = config::load_wiki(&PathBuf::from(&entry.path)).unwrap_or_default();

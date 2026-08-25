@@ -222,6 +222,90 @@ pub struct HistoryEntry {
     pub author: String,
 }
 
+/// One commit plus the repo-relative paths it touched.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentEntry {
+    /// Full commit SHA-1.
+    pub hash: String,
+    /// ISO-8601 author date.
+    pub date: String,
+    /// Commit subject.
+    pub message: String,
+    /// Author name.
+    pub author: String,
+    /// Repo-relative paths under the requested prefixes.
+    pub paths: Vec<String>,
+}
+
+/// Recent commits touching any of `prefixes`, newest first.
+///
+/// `since` is passed to `git log --since` verbatim, so callers can ask in the
+/// terms people actually use ("2 weeks ago") rather than counting commits.
+/// Commits that touched only files outside the prefixes are dropped, since a
+/// wiki's history should not be diluted by tooling changes in the same repo.
+pub fn recent_changes(
+    repo_root: &Path,
+    limit: usize,
+    since: Option<&str>,
+    prefixes: &[PathBuf],
+) -> Result<Vec<RecentEntry>> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.current_dir(repo_root).args([
+        "log",
+        "--name-only",
+        "--no-renames",
+        "--format=%x01%H%x00%aI%x00%s%x00%an",
+    ]);
+    if limit > 0 {
+        cmd.args(["-n", &limit.to_string()]);
+    }
+    if let Some(since) = since.map(str::trim).filter(|s| !s.is_empty()) {
+        cmd.arg(format!("--since={since}"));
+    }
+    if !prefixes.is_empty() {
+        cmd.arg("--");
+        for prefix in prefixes {
+            cmd.arg(prefix);
+        }
+    }
+
+    let output = cmd
+        .output()
+        .context("failed to run git log — is git installed?")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.is_empty() {
+            return Ok(Vec::new());
+        }
+        anyhow::bail!("git log failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entries = Vec::new();
+    // \x01 opens each record so the trailing path block is unambiguous.
+    for record in stdout.split('\u{1}').skip(1) {
+        let mut lines = record.lines();
+        let Some(header) = lines.next() else { continue };
+        let parts: Vec<&str> = header.split('\0').collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let paths: Vec<String> = lines
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect();
+        entries.push(RecentEntry {
+            hash: parts[0].to_string(),
+            date: parts[1].to_string(),
+            message: parts[2].to_string(),
+            author: parts[3].to_string(),
+            paths,
+        });
+    }
+    Ok(entries)
+}
+
 /// Return git commit history for a file path relative to repo root.
 /// Uses `git log` (shell) for simplicity and built-in `--follow` support.
 pub fn page_history(
