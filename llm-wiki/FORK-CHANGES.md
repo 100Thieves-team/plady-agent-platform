@@ -235,3 +235,34 @@ note that names people by Slack ID has no person signal, and inventing one is wo
 "after one second", and whether a break happened depended on which side of a second boundary two
 calls landed on — a test flaked two runs in four. The comparison is inclusive now, so the bound
 means "held for at least this long". The sidecar helpers use `-ge` to match.
+
+## Conventions enforced at write time
+
+The first real ingest through `wiki_apply` produced a page tagged both `source` and `sources` —
+which the rules document forbids in as many words, and which nothing checked. Rules an agent
+carries in context but nothing enforces are rules that leak.
+
+`src/ops/conventions.rs` checks each written page for duplicate singular/plural tag facets,
+non-lowercase-hyphenated tags, a `type` that contradicts the page's location, missing baseline
+frontmatter, and the two wikilink forms the extractor cannot resolve (`[[slug|label]]`, unprefixed
+`[[foo]]`). Preserved sources are exempt from the compiled-page fields: demanding a summary of a
+raw file would mean editing the original.
+
+Severity is a **ratchet, not a standard**. This corpus predates the rules — 191 of 251 pages
+declare a `type` that disagrees with where they live, and 40 carry the duplicate tag facet — so
+making those errors would block every edit until someone ran a migration. A page being **created**
+must comply; a page being **edited** reports the same finding as a warning, at the moment someone
+is already in that file. Conventions tighten as pages are touched, with no flag day.
+
+Two ordering choices matter:
+
+* Conventions run **after** the layer and mode rules. A change set missing its preserved original
+  has a bigger problem than a tag spelled two ways, and reporting the tag first would bury it.
+* Every violation in a pass is reported **together**. One finding per round-trip is how an agent
+  learns to stop calling the tool.
+
+`Severity` is now one type shared with lint — a second enum with the same two variants would have
+made `ops::Severity` ambiguous and meant nothing extra.
+
+- `src/ops/conventions.rs`, `src/ops/apply.rs`, `src/ops/lint.rs` (`Severity: Copy`)
+- `tests/apply.rs` — the page that actually slipped through is the fixture

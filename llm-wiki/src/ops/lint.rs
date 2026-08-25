@@ -17,8 +17,8 @@ use crate::graph::{GraphFilter, WikiGraph, get_or_build_graph};
 use crate::index_schema::IndexSchema;
 use crate::slug::Slug;
 
-/// Severity level of a lint finding.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// Severity level of a finding — shared by lint and the convention checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// A definite problem that should be fixed.

@@ -26,7 +26,9 @@ fn source_page(raw: &str, topics: &[&str]) -> String {
         format!("topics:\n{list}")
     };
     format!(
-        "---\ntitle: \"스크럼 8-24 요약\"\nraw_source_path: \"{raw}\"\n{topics_block}---\n\n요약 본문.\n"
+        "---\ntitle: \"스크럼 8-24 요약\"\ntype: source\nstatus: active\nsummary: \"S\"\n\
+         last_updated: \"2026-08-24\"\ntags:\n  - team-meeting\n\
+         raw_source_path: \"{raw}\"\n{topics_block}---\n\n요약 본문.\n"
     )
 }
 
@@ -525,5 +527,152 @@ fn the_plan_reports_a_source_that_already_covers_this_raw_page() {
         plan.existing_sources,
         ["sources/scrum-8-24"],
         "a duplicate ingest should be visible before it happens"
+    );
+}
+
+// ── Conventions ───────────────────────────────────────────────────────────────
+
+/// A source page with the tag duplication the 8/25 ingest actually produced.
+fn source_with_tags(raw: &str, tags: &[&str]) -> String {
+    let list: String = tags.iter().map(|t| format!("  - {t}\n")).collect();
+    format!(
+        "---\ntitle: \"요약\"\ntype: source\nstatus: active\nsummary: \"S\"\nlast_updated: \"2026-08-25\"\nraw_source_path: \"{raw}\"\ntags:\n{list}---\n\n본문.\n"
+    )
+}
+
+#[test]
+fn a_new_page_tagged_with_both_singular_and_plural_is_refused() {
+    // This is what the first real ingest through wiki_apply wrote: `source`
+    // and `sources` together, which AGENTS.md forbids in as many words and
+    // nothing caught.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path());
+    let manager = engine_for(&config_path);
+    let engine = manager.state.read().unwrap();
+
+    let r = req(
+        ApplyMode::Knowledge,
+        vec![
+            ("raw/meetings/scrum-8-25", RAW.to_string()),
+            (
+                "sources/scrum-8-25",
+                source_with_tags(
+                    "raw/meetings/scrum-8-25",
+                    &["source", "sources", "team-meeting"],
+                ),
+            ),
+            ("topics/t-면접-서비스-방향성", format!("{TOPIC}\nnew\n")),
+        ],
+    );
+    let err = ops::apply(&engine, &manager, "test", &r)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("`source` and `sources`"),
+        "the duplicate facet was not caught: {err}"
+    );
+    assert!(
+        err.contains("conventions"),
+        "the error should say what kind of rule this is: {err}"
+    );
+}
+
+#[test]
+fn the_same_violation_on_an_existing_page_only_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, wiki_path) = setup(dir.path());
+
+    // Seed a page that already carries the violation.
+    let bad = source_with_tags("raw/meetings/scrum-8-25", &["source", "sources"]);
+    fs::create_dir_all(wiki_path.join("wiki/sources")).unwrap();
+    fs::write(wiki_path.join("wiki/sources/scrum-8-25.md"), &bad).unwrap();
+    fs::write(wiki_path.join("raw/meetings/scrum-8-25.md"), RAW).unwrap();
+    llm_wiki::git::commit(&wiki_path, "seed existing violation").unwrap();
+
+    let manager = engine_for(&config_path);
+    let engine = manager.state.read().unwrap();
+
+    let r = req(
+        ApplyMode::Knowledge,
+        vec![
+            ("sources/scrum-8-25", format!("{bad}\n추가된 내용.\n")),
+            ("topics/t-면접-서비스-방향성", format!("{TOPIC}\nnew\n")),
+        ],
+    );
+    let report = ops::apply(&engine, &manager, "test", &r)
+        .expect("an existing page's inherited debt must not block the edit");
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("`source` and `sources`")),
+        "the debt should still be visible: {:?}",
+        report.warnings
+    );
+}
+
+#[test]
+fn every_convention_violation_is_reported_at_once() {
+    // One finding per round-trip is how an agent learns to stop calling the tool.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path());
+    let manager = engine_for(&config_path);
+    let engine = manager.state.read().unwrap();
+
+    let r = req(
+        ApplyMode::Knowledge,
+        vec![
+            ("raw/meetings/scrum-8-25", RAW.to_string()),
+            (
+                "sources/scrum-8-25",
+                "---\ntitle: \"요약\"\ntype: doc\nraw_source_path: \"raw/meetings/scrum-8-25\"\ntags:\n  - source\n  - sources\n---\n\n[[t-면접-서비스-방향성]] 참조.\n".to_string(),
+            ),
+            ("topics/t-면접-서비스-방향성", format!("{TOPIC}\nnew\n")),
+        ],
+    );
+    let err = ops::apply(&engine, &manager, "test", &r)
+        .unwrap_err()
+        .to_string();
+
+    for expected in [
+        "`source` and `sources`", // duplicate facet
+        "type: doc",              // type contradicts location
+        "collection prefix",      // unprefixed wikilink
+        "status",                 // missing baseline field
+    ] {
+        assert!(
+            err.contains(expected),
+            "{expected} not reported together: {err}"
+        );
+    }
+}
+
+#[test]
+fn a_conventional_new_page_passes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup(dir.path());
+    let manager = engine_for(&config_path);
+    let engine = manager.state.read().unwrap();
+
+    let r = req(
+        ApplyMode::Knowledge,
+        vec![
+            ("raw/meetings/scrum-8-25", RAW.to_string()),
+            (
+                "sources/scrum-8-25",
+                source_with_tags("raw/meetings/scrum-8-25", &["team-meeting"]),
+            ),
+            ("topics/t-면접-서비스-방향성", format!("{TOPIC}\nnew\n")),
+        ],
+    );
+    let report = ops::apply(&engine, &manager, "test", &r).unwrap();
+    assert!(!report.commit.is_empty());
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.contains("sources/scrum-8-25")),
+        "the new page should have nothing reported: {:?}",
+        report.warnings
     );
 }

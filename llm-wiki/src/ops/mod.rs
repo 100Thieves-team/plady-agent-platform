@@ -1,6 +1,7 @@
 mod apply;
 mod config;
 mod content;
+mod conventions;
 /// Wiki export operations — llms.txt, llms-full, and JSON export formats.
 pub mod export;
 mod graph;
@@ -21,6 +22,7 @@ mod suggest;
 pub use apply::*;
 pub use config::*;
 pub use content::*;
+pub use conventions::*;
 pub use export::*;
 pub use graph::*;
 pub use history::*;

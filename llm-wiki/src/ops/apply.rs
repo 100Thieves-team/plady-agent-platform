@@ -783,6 +783,34 @@ fn validate(
         }
     }
 
+    // Conventions run last, after the layer rules above. A change set missing
+    // its preserved original has a bigger problem than a tag spelled two ways,
+    // and hearing about the tag first would bury it. An agent fixing one
+    // finding per round-trip is an agent that gives up, so every violation
+    // within this pass is reported together.
+    let mut convention_errors = Vec::new();
+    for r in resolved.iter().filter(|r| r.changes_anything) {
+        for finding in super::conventions::check(&r.slug, &r.content, &space.roots, !r.existed) {
+            match finding.severity {
+                super::conventions::Severity::Error => {
+                    convention_errors.push(format!("{}: {}", finding.slug, finding.message))
+                }
+                super::conventions::Severity::Warning => {
+                    warnings.push(format!("{}: {}", finding.slug, finding.message))
+                }
+            }
+        }
+    }
+    if !convention_errors.is_empty() {
+        bail!(
+            "{} new page(s) do not follow this wiki's conventions:\n  - {}\n\nThese apply to \
+             pages being created; existing pages report the same as warnings. `wiki_rules` has \
+             the full metadata and link rules.",
+            convention_errors.len(),
+            convention_errors.join("\n  - ")
+        );
+    }
+
     Ok(warnings)
 }
 
