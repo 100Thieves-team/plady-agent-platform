@@ -14,6 +14,7 @@ use crate::engine::EngineState;
 use crate::git;
 use crate::index_schema::IndexSchema;
 use crate::markdown;
+use crate::repo_lock::RepoLock;
 use crate::slug::{
     ReadTarget, Slug, WikiUri, WriteTarget, resolve_entry_and_rel, resolve_read_target,
     resolve_write_target,
@@ -185,7 +186,9 @@ pub fn content_write(
 ) -> Result<WriteResult> {
     match resolve_write_target(uri, wiki_flag, &engine.config)? {
         WriteTarget::Page(entry, slug) => {
-            let roots = engine.space(&entry.name)?.roots.clone();
+            let space = engine.space(&entry.name)?;
+            let _lock = RepoLock::for_space(space, "mcp:content_write")?;
+            let roots = space.roots.clone();
             guard_external_overwrite(&roots, slug.as_str(), roots.resolve(&slug).ok())?;
             let path = markdown::write_page(slug.as_str(), content, &roots)?;
             Ok(WriteResult {
@@ -195,7 +198,9 @@ pub fn content_write(
             })
         }
         WriteTarget::Asset(entry, parent, filename) => {
-            let roots = engine.space(&entry.name)?.roots.clone();
+            let space = engine.space(&entry.name)?;
+            let _lock = RepoLock::for_space(space, "mcp:content_write")?;
+            let roots = space.roots.clone();
             let dir = roots.base_for(parent.as_str()).join(parent.as_str());
             let existing = dir.join(&filename);
             guard_external_overwrite(
@@ -242,6 +247,7 @@ pub fn content_new(
     let (entry, slug) = WikiUri::resolve(uri, wiki_flag, &engine.config)?;
     let repo_root = PathBuf::from(&entry.path);
     let space = engine.space(&entry.name)?;
+    let _lock = RepoLock::for_space(space, "mcp:content_new")?;
     let roots = space.roots.clone();
     let wiki_root = space.wiki_root.clone();
 
@@ -292,6 +298,10 @@ pub fn content_commit(
     if slugs.is_empty() && !all {
         bail!("specify slugs or --all");
     }
+
+    // Held across staging and commit so a sidecar cannot commit a partial page
+    // set out from under us, or stage files into the tree we are about to write.
+    let _lock = RepoLock::for_space(space, "mcp:content_commit")?;
 
     if all {
         let msg = message.unwrap_or("commit: all");

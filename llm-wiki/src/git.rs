@@ -46,22 +46,47 @@ pub fn commit(repo_root: &Path, message: &str) -> Result<String> {
     Ok(oid.to_string())
 }
 
-/// Stage specific paths and commit. Returns empty string if nothing to commit.
+/// Commit exactly `paths` and nothing else. Returns empty string if the result
+/// would be identical to HEAD.
+///
+/// The commit tree is built from **HEAD plus these paths**, not from whatever
+/// happens to be staged. This repository's working tree is shared with sidecar
+/// processes that run `git add -A`, so reusing the on-disk index would sweep
+/// their half-finished work into a commit that claims to be path-limited. For
+/// the same reason the on-disk index is never written back — only the tree
+/// objects are.
+///
+/// A path that no longer exists is staged as a deletion, so removing a page is
+/// expressible through the same call.
 pub fn commit_paths(repo_root: &Path, paths: &[&Path], message: &str) -> Result<String> {
     let repo = Repository::open(repo_root)
         .with_context(|| format!("failed to open repo at {}", repo_root.display()))?;
 
     let sig = make_signature(&repo)?;
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+
+    // Reset the in-memory index to HEAD so nothing another writer staged can
+    // ride along. `write_tree` persists tree objects only; `write` — which would
+    // overwrite the shared .git/index — is deliberately not called.
     let mut index = repo.index()?;
+    match parent.as_ref() {
+        Some(commit) => index.read_tree(&commit.tree()?)?,
+        None => index.clear()?,
+    }
+
     for path in paths {
         let rel = path.strip_prefix(repo_root).unwrap_or(path);
-        index.add_path(rel)?;
+        if path.exists() {
+            index.add_path(rel)?;
+        } else {
+            // Missing on disk means the caller deleted it; record the removal
+            // rather than failing the whole commit.
+            let _ = index.remove_path(rel);
+        }
     }
-    index.write()?;
+
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
-
-    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
 
     if let Some(ref p) = parent
         && p.tree_id() == tree_oid

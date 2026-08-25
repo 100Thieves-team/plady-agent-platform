@@ -527,6 +527,14 @@ pub struct WikiConfig {
     /// the whole document is served by `wiki_rules`. Default: `"AGENTS.md"`.
     #[serde(default = "default_rules_file")]
     pub rules_file: String,
+    /// Seconds a write waits for the shared repository lock before giving up.
+    /// Default: 30.
+    #[serde(default = "default_lock_timeout_secs")]
+    pub lock_timeout_secs: u64,
+    /// Seconds after which a held lock is presumed abandoned and broken, so a
+    /// crashed writer cannot wedge the wiki permanently. Default: 300.
+    #[serde(default = "default_lock_stale_after_secs")]
+    pub lock_stale_after_secs: u64,
     /// Slug-prefix → page-type mapping, e.g. `sources = "source"`. When set, the
     /// index derives each page's type from where it lives instead of trusting
     /// frontmatter, so `type` filters and graph edges work without rewriting
@@ -661,6 +669,14 @@ fn default_wiki_root() -> String {
 
 fn default_rules_file() -> String {
     "AGENTS.md".to_string()
+}
+
+fn default_lock_timeout_secs() -> u64 {
+    30
+}
+
+fn default_lock_stale_after_secs() -> u64 {
+    300
 }
 // ── Functions ─────────────────────────────────────────────────────────────────
 

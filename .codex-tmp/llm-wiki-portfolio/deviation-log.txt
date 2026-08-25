@@ -1,0 +1,7 @@
+- Output slides 1-15: no intentional deviation; exact source-slide preservation.
+- Output slide 16: source cover copy rewritten for the LLM Wiki Platform section; existing cover composition retained.
+- Output slide 17: source overview copy rewritten to explain ingest-time knowledge accumulation; existing four-step flow retained.
+- Output slide 18: source architecture labels rewritten for the agent knowledge platform; existing topology and connectors retained.
+- Output slide 19: source three-card SLO layout repurposed for allow/approve/deny policy tiers; existing card geometry retained.
+- Output slide 20: source closing synthesis updated to combine both portfolio projects; contact line and layout retained.
+

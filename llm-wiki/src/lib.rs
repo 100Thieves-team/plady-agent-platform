@@ -35,6 +35,8 @@ pub mod mcp;
 /// High-level operations called by CLI and server handlers.
 pub mod ops;
 /// Full-text BM25 search and paginated list operations.
+/// Advisory lock shared by every process that writes the wiki repository.
+pub mod repo_lock;
 pub mod search;
 /// HTTP and stdio server entry points.
 pub mod server;

@@ -1,0 +1,28 @@
+Communication job
+By the end, backend hiring reviewers should understand that Junseo Bae can turn both application bottlenecks and agent-platform risks into explicit, testable operating boundaries.
+
+Source deck structure
+- 16 slides, 1280x720, white canvas, Apple SD Gothic Neo primary typography.
+- Slides 1-15 form the Cluverse case study; slide 16 is the closing synthesis.
+- Reusable patterns: project cover (1), four-step overview (2), three-column policy/SLO cards (3), editable architecture topology (4), closing synthesis (16).
+- All source slides use slide-local elements on the Title Slide layout; imported master/layout layers contain no visible furniture.
+- Page markers are slide-local text shapes on content slides. No structural placeholders were detected in inspected slide/layout exports.
+
+Insertion contract
+- Preserve source slides 1-15 without edits.
+- Insert a four-slide LLM Wiki Platform case study by duplicating source slides 1, 2, 4, and 3.
+- Move the closing synthesis to the end by duplicating source slide 16 and rewriting only its synthesis copy.
+- Preserve typography, text geometry, fills, connector geometry, margins, footer/contact treatment, and all untouched source elements.
+- Keep claims grounded in repository files and git history; explicitly identify llm-wiki as an upstream open-source engine integrated into the platform.
+
+Content sources
+- README.md
+- llm-wiki/README.md
+- docs/agent-ingest-workflow.md
+- docs/wiki-data-repo.md
+- docs/mcp-registry.md
+- docs/otel-collector.md
+- config/mcp-registry.yaml
+- compose.ec2.yaml
+- infra/terraform/platform/
+

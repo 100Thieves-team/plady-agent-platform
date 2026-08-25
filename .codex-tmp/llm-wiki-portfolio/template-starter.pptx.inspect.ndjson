@@ -1,0 +1,353 @@
+{"kind":"deck","id":"pr/93jkhi","name":"Deck"}
+{"kind":"layout","layoutId":"/ppt/slideMasters/slideMaster1.xml","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"/ppt/slideLayouts/slideLayout1.xml","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/lh3dks","slide":1,"title":"BACKEND ENGINEER PORTFOLIO","textShapes":10}
+{"kind":"textbox","id":"sh/n2l8fid4","slide":1,"text":"BACKEND ENGINEER PORTFOLIO","textPreview":"BACKEND ENGINEER PORTFOLIO","textChars":26,"textLines":1,"bbox":[64,56,520,26]}
+{"kind":"textbox","id":"sh/2xs7u1k3","slide":1,"text":"Cluverse","textPreview":"Cluverse","textChars":8,"textLines":1,"bbox":[64,152,530,86]}
+{"kind":"textbox","id":"sh/3yl836l8","slide":1,"text":"트래픽과 실패 경계를\n측정 가능한 구조로 바꿨다","textPreview":"트래픽과 실패 경계를 | 측정 가능한 구조로 바꿨다","textChars":26,"textLines":2,"bbox":[64,252,520,150]}
+{"kind":"textbox","id":"sh/gbapsr2x","slide":1,"text":"배준서 · Junseo Bae\nJava / Spring / MySQL / Redis / AWS","textPreview":"배준서 · Junseo Bae | Java / Spring / MySQL / Redis / AWS","textChars":52,"textLines":2,"bbox":[64,500,520,88]}
+{"kind":"textbox","id":"sh/1cjq1w3i","slide":1,"text":"증상","textPreview":"증상","textChars":2,"textLines":1,"bbox":[700,128,180,100]}
+{"kind":"textbox","id":"sh/e9s7qhkr","slide":1,"text":"원인","textPreview":"원인","textChars":2,"textLines":1,"bbox":[950,128,180,100]}
+{"kind":"textbox","id":"sh/fa1ozmlc","slide":1,"text":"경계","textPreview":"경계","textChars":2,"textLines":1,"bbox":[700,322,180,100]}
+{"kind":"textbox","id":"sh/07ep4v21","slide":1,"text":"검증","textPreview":"검증","textChars":2,"textLines":1,"bbox":[950,322,180,100]}
+{"kind":"shape","id":"sh/l8nqd0jm","slide":1,"bbox":[790,274,250,0]}
+{"kind":"textbox","id":"sh/p43qhsva","slide":1,"text":"문제를 하나의 현상으로 보지 않는다","textPreview":"문제를 하나의 현상으로 보지 않는다","textChars":19,"textLines":1,"bbox":[700,486,430,56]}
+{"kind":"textbox","id":"sh/o3uponep","slide":1,"text":"2026","textPreview":"2026","textChars":4,"textLines":1,"bbox":[1110,674,106,20]}
+{"kind":"notes","id":"nt/lh3dks","slide":1,"text":"[Sources]\n- User-provided resume text: /Users/luna/.codex/attachments/a79e3c1a-46ab-4cac-93d8-d9598d50b1c2/pasted-text.txt"}
+{"kind":"slide","id":"sl/3ct1mk","slide":2,"title":"PROJECT · CLUVERSE","textShapes":11}
+{"kind":"textbox","id":"sh/7u5cfq14","slide":2,"text":"PROJECT · CLUVERSE","textPreview":"PROJECT · CLUVERSE","textChars":18,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/q5sbudkr","slide":2,"text":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textPreview":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textChars":24,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/b61c3ilc","slide":2,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/ojats32l","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/p4ju1836","slide":2,"text":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textPreview":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textChars":45,"textLines":1,"bbox":[64,164,760,46]}
+{"kind":"textbox","id":"sh/2h8bqtkv","slide":2,"text":"관심사·학과\n보드","textPreview":"관심사·학과 | 보드","textChars":9,"textLines":2,"bbox":[76,280,240,132]}
+{"kind":"textbox","id":"sh/3ihczyl0","slide":2,"text":"모집·지원","textPreview":"모집·지원","textChars":5,"textLines":1,"bbox":[402,280,240,132]}
+{"kind":"textbox","id":"sh/8fud4725","slide":2,"text":"그룹 운영","textPreview":"그룹 운영","textChars":5,"textLines":1,"bbox":[728,280,240,132]}
+{"kind":"textbox","id":"sh/903uds3a","slide":2,"text":"스파이크에서도\n읽기 흐름 보호","textPreview":"스파이크에서도 | 읽기 흐름 보호","textChars":16,"textLines":2,"bbox":[1010,264,206,164]}
+{"kind":"shape","id":"sh/psfe1ore","slide":2,"bbox":[316,346,86,0]}
+{"kind":"shape","id":"sh/2povq983","slide":2,"bbox":[642,346,86,0]}
+{"kind":"shape","id":"sh/3qxwze9o","slide":2,"bbox":[968,346,42,0]}
+{"kind":"textbox","id":"sh/uhgbqlkv","slide":2,"text":"기술 목표","textPreview":"기술 목표","textChars":5,"textLines":1,"bbox":[76,496,180,28]}
+{"kind":"textbox","id":"sh/9gnuh0ja","slide":2,"text":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textPreview":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textChars":47,"textLines":1,"bbox":[76,532,1000,50]}
+{"kind":"textbox","id":"sh/8fetov2p","slide":2,"text":"개인 프로젝트 · 2026.01–2026.07","textPreview":"개인 프로젝트 · 2026.01–2026.07","textChars":25,"textLines":1,"bbox":[76,618,480,24]}
+{"kind":"notes","id":"nt/3ct1mk","slide":2,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/01-cluverse-소개-배경-목표.md\n- https://velog.io/@bebeis/cluvserse-start"}
+{"kind":"slide","id":"sl/hrffgd","slide":3,"title":"METHOD · SLO","textShapes":18}
+{"kind":"textbox","id":"sh/4zapovqd","slide":3,"text":"METHOD · SLO","textPreview":"METHOD · SLO","textChars":12,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/elwnyxsj","slide":3,"text":"최대 TPS보다 먼저 ‘통과 조건’을 고정했다","textPreview":"최대 TPS보다 먼저 ‘통과 조건’을 고정했다","textChars":25,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/fm5472to","slide":3,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/szu5wnad","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/t03m5sby","slide":3,"text":"숫자가 커져도 느리거나 실패하면 제공한 처리량이 아니다.","textPreview":"숫자가 커져도 느리거나 실패하면 제공한 처리량이 아니다.","textChars":31,"textLines":1,"bbox":[64,164,720,40]}
+{"kind":"shape","id":"sh/6xcnuds7","slide":3,"bbox":[64,242,350,230]}
+{"kind":"shape","id":"sh/ryl43its","slide":3,"bbox":[465,242,350,230]}
+{"kind":"shape","id":"sh/4vuls3a1","slide":3,"bbox":[866,242,350,230]}
+{"kind":"textbox","id":"sh/5w3m18bm","slide":3,"text":"99.9%","textPreview":"99.9%","textChars":5,"textLines":1,"bbox":[92,274,290,70]}
+{"kind":"textbox","id":"sh/xcj6tkzm","slide":3,"text":"핵심 API 성공률","textPreview":"핵심 API 성공률","textChars":10,"textLines":1,"bbox":[92,348,290,34]}
+{"kind":"textbox","id":"sh/wbapkzi1","slide":3,"text":"요청 유실과 dropped iteration까지 확인","textPreview":"요청 유실과 dropped iteration까지 확인","textChars":29,"textLines":1,"bbox":[92,386,290,50]}
+{"kind":"textbox","id":"sh/va1oruhg","slide":3,"text":"800ms","textPreview":"800ms","textChars":5,"textLines":1,"bbox":[493,274,290,70]}
+{"kind":"textbox","id":"sh/a9s7ip0v","slide":3,"text":"핵심 조회 p99","textPreview":"핵심 조회 p99","textChars":9,"textLines":1,"bbox":[493,348,290,34]}
+{"kind":"textbox","id":"sh/98z6pkza","slide":3,"text":"탐색 흐름의 꼬리 지연 상한","textPreview":"탐색 흐름의 꼬리 지연 상한","textChars":15,"textLines":1,"bbox":[493,386,290,50]}
+{"kind":"textbox","id":"sh/87qpgfip","slide":3,"text":"1.5s","textPreview":"1.5s","textChars":4,"textLines":1,"bbox":[894,274,290,70]}
+{"kind":"textbox","id":"sh/n6honahk","slide":3,"text":"핵심 쓰기 p99","textPreview":"핵심 쓰기 p99","textChars":9,"textLines":1,"bbox":[894,348,290,34]}
+{"kind":"textbox","id":"sh/ml87e50z","slide":3,"text":"트랜잭션과 후속 처리 비용 반영","textPreview":"트랜잭션과 후속 처리 비용 반영","textChars":17,"textLines":1,"bbox":[894,386,290,50]}
+{"kind":"shape","id":"sh/lkz6l0ze","slide":3,"bbox":[64,526,1152,0]}
+{"kind":"textbox","id":"sh/0jq5cfit","slide":3,"text":"10분 이상 지속","textPreview":"10분 이상 지속","textChars":9,"textLines":1,"bbox":[72,558,250,40]}
+{"kind":"textbox","id":"sh/snupsfqp","slide":3,"text":"동일 인프라·데이터","textPreview":"동일 인프라·데이터","textChars":10,"textLines":1,"bbox":[364,558,270,40]}
+{"kind":"textbox","id":"sh/do361k7a","slide":3,"text":"개방형 도착률","textPreview":"개방형 도착률","textChars":7,"textLines":1,"bbox":[688,558,230,40]}
+{"kind":"textbox","id":"sh/q1s7q58j","slide":3,"text":"회복 시간 30초","textPreview":"회복 시간 30초","textChars":9,"textLines":1,"bbox":[970,558,220,40]}
+{"kind":"textbox","id":"sh/rmlozap4","slide":3,"text":"부하 종료 후 오류율과 p99가 30초 연속 SLO를 만족할 때 회복으로 판정","textPreview":"부하 종료 후 오류율과 p99가 30초 연속 SLO를 만족할 때 회복으로 판정","textChars":43,"textLines":1,"bbox":[72,620,1060,28]}
+{"kind":"notes","id":"nt/hrffgd","slide":3,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-10-전반적인 성능 개선.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-8-대학생-현지인-로컬맵.md"}
+{"kind":"slide","id":"sl/hoigvb","slide":4,"title":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textShapes":15}
+{"kind":"textbox","id":"sh/cr210fup","slide":4,"text":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textPreview":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textChars":36,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/2xkrqhcj","slide":4,"text":"비용을 고정해 구조 변경의 효과만 비교했다","textPreview":"비용을 고정해 구조 변경의 효과만 비교했다","textChars":23,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/3ytszmto","slide":4,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/c3mtwbul","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/d4va5wb6","slide":4,"text":"Terraform base/test 스택을 분리해 같은 조건으로 생성·폐기하는 검증 인프라","textPreview":"Terraform base/test 스택을 분리해 같은 조건으로 생성·폐기하는 검증 인프라","textChars":50,"textLines":1,"bbox":[64,158,920,38]}
+{"kind":"textbox","id":"sh/q14bu1cf","slide":4,"text":"검증 인프라","textPreview":"검증 인프라","textChars":6,"textLines":1,"bbox":[1040,154,176,38]}
+{"kind":"textbox","id":"sh/b2ds36t0","slide":4,"text":"k6\nLoad Generator","textPreview":"k6 | Load Generator","textChars":17,"textLines":2,"bbox":[74,302,170,100]}
+{"kind":"textbox","id":"sh/0rmt0buh","slide":4,"text":"AWS ALB\nHTTPS","textPreview":"AWS ALB | HTTPS","textChars":13,"textLines":2,"bbox":[292,302,156,100]}
+{"kind":"textbox","id":"sh/lsva9gb2","slide":4,"text":"ECS on EC2\napp 1 · t3.small","textPreview":"ECS on EC2 | app 1 · t3.small","textChars":27,"textLines":2,"bbox":[500,230,205,100]}
+{"kind":"textbox","id":"sh/l87idk3e","slide":4,"text":"ECS on EC2\napp 2 · t3.small","textPreview":"ECS on EC2 | app 2 · t3.small","textChars":27,"textLines":2,"bbox":[500,386,205,100]}
+{"kind":"textbox","id":"sh/k7y1kfmt","slide":4,"text":"MySQL 8\nt3.small","textPreview":"MySQL 8 | t3.small","textChars":16,"textLines":2,"bbox":[780,210,170,100]}
+{"kind":"textbox","id":"sh/zmp0balo","slide":4,"text":"Redis\nt3.micro","textPreview":"Redis | t3.micro","textChars":14,"textLines":2,"bbox":[780,405,170,100]}
+{"kind":"textbox","id":"sh/ylgji543","slide":4,"text":"S3 + Lambda\nimage path","textPreview":"S3 + Lambda | image path","textChars":22,"textLines":2,"bbox":[1010,210,180,100]}
+{"kind":"textbox","id":"sh/9crihk3q","slide":4,"text":"Prometheus\n+ Grafana","textPreview":"Prometheus | + Grafana","textChars":20,"textLines":2,"bbox":[1010,405,180,100]}
+{"kind":"shape","id":"sh/s36ponap","slide":4,"bbox":[244,352,48,0]}
+{"kind":"shape","id":"sh/d4fqxsru","slide":4,"bbox":[448,280,52,72]}
+{"kind":"shape","id":"sh/ix47ids7","slide":4,"bbox":[448,352,52,84]}
+{"kind":"shape","id":"sh/jydorits","slide":4,"bbox":[705,260,75,20]}
+{"kind":"shape","id":"sh/4zmpknad","slide":4,"bbox":[705,280,75,175]}
+{"kind":"shape","id":"sh/50vqtsby","slide":4,"bbox":[705,260,305,62]}
+{"kind":"shape","id":"sh/2to7uhsr","slide":4,"bbox":[705,280,305,175]}
+{"kind":"shape","id":"sh/nuh8329c","slide":4,"bbox":[705,260,75,176]}
+{"kind":"shape","id":"sh/xojatgbe","slide":4,"bbox":[705,436,75,19]}
+{"kind":"shape","id":"sh/cnatkbut","slide":4,"bbox":[705,260,305,176]}
+{"kind":"shape","id":"sh/bm1sr6t8","slide":4,"bbox":[705,393,305,62]}
+{"kind":"textbox","id":"sh/210ju5cn","slide":4,"text":"애플리케이션 2대 · DB 1대 · Redis 1대 · 측정 노드 분리","textPreview":"애플리케이션 2대 · DB 1대 · Redis 1대 · 측정 노드 분리","textChars":39,"textLines":1,"bbox":[74,570,760,32]}
+{"kind":"textbox","id":"sh/3290nqt8","slide":4,"text":"사양을 늘려 얻은 TPS와 구조 변경으로 얻은 TPS를 섞지 않았다.","textPreview":"사양을 늘려 얻은 TPS와 구조 변경으로 얻은 TPS를 섞지 않았다.","textChars":38,"textLines":1,"bbox":[74,612,850,30]}
+{"kind":"notes","id":"nt/hoigvb","slide":4,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/README.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/ecs.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/mysql.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/redis.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/monitoring.tf"}
+{"kind":"slide","id":"sl/ctc4qo","slide":5,"title":"CASE 01 · TRANSACTION BOUNDARY","textShapes":10}
+{"kind":"textbox","id":"sh/ulg3idcr","slide":5,"text":"CASE 01 · TRANSACTION BOUNDARY","textPreview":"CASE 01 · TRANSACTION BOUNDARY","textChars":30,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/lgnmpgvi","slide":5,"text":"외부 300ms가 DB 커넥션의 서비스 시간이 됐다","textPreview":"외부 300ms가 DB 커넥션의 서비스 시간이 됐다","textChars":28,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/0fe5gbux","slide":5,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/ral4j6dg","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/q9c3a1wv","slide":5,"text":"기존 설계","textPreview":"기존 설계","textChars":5,"textLines":1,"bbox":[64,164,220,28]}
+{"kind":"textbox","id":"sh/dc3mlwv6","slide":5,"text":"게시글·장소를 함께 롤백하려고 외부 검증을 트랜잭션 안에 포함했다.","textPreview":"게시글·장소를 함께 롤백하려고 외부 검증을 트랜잭션 안에 포함했다.","textChars":37,"textLines":1,"bbox":[64,200,500,74]}
+{"kind":"shape","id":"sh/cbu5cbul","slide":5,"bbox":[64,318,10,10]}
+{"kind":"textbox","id":"sh/v6p4vqdk","slide":5,"text":"장소 첨부 시 p95·p99가 외부 응답만큼 증가","textPreview":"장소 첨부 시 p95·p99가 외부 응답만큼 증가","textChars":27,"textLines":1,"bbox":[88,310,476,48]}
+{"kind":"shape","id":"sh/a5gnmlcz","slide":5,"bbox":[64,386,10,10]}
+{"kind":"textbox","id":"sh/4bilonat","slide":5,"text":"16 RPS에서 p99 1.77초·dropped 8건","textPreview":"16 RPS에서 p99 1.77초·dropped 8건","textChars":29,"textLines":1,"bbox":[88,378,476,48]}
+{"kind":"shape","id":"sh/pcrmxsbe","slide":5,"bbox":[64,454,10,10]}
+{"kind":"textbox","id":"sh/29g3mdsn","slide":5,"text":"외부 timeout이 게시글 전체 롤백으로 전파","textPreview":"외부 timeout이 게시글 전체 롤백으로 전파","textChars":26,"textLines":1,"bbox":[88,446,476,48]}
+{"kind":"textbox","id":"sh/3ap4vit8","slide":5,"text":"Hikari 5 ÷ 0.3초 ≈ 16.7 RPS","textPreview":"Hikari 5 ÷ 0.3초 ≈ 16.7 RPS","textChars":26,"textLines":1,"bbox":[64,548,486,70]}
+{"kind":"textbox","id":"sh/gnylk3uh","slide":5,"text":"Little’s Law: 도착률이 처리율에 가까워지자 대기열이 비선형 증가","textPreview":"Little’s Law: 도착률이 처리율에 가까워지자 대기열이 비선형 증가","textChars":41,"textLines":1,"bbox":[64,630,560,30]}
+{"kind":"image","id":"im/g3m5gra5","slide":5,"name":"","bbox":[613.82,158,588.35,500]}
+{"kind":"notes","id":"nt/ctc4qo","slide":5,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-8-대학생-현지인-로컬맵.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-8/place-save-before.drawio.png"}
+{"kind":"slide","id":"sl/g3manl","slide":6,"title":"CASE 01 · COMMIT BOUNDARY","textShapes":11}
+{"kind":"textbox","id":"sh/6tk3i9s3","slide":6,"text":"CASE 01 · COMMIT BOUNDARY","textPreview":"CASE 01 · COMMIT BOUNDARY","textChars":25,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/v2947i5w","slide":6,"text":"롤백 범위가 아니라 실패 후 남을 상태로 경계를 나눴다","textPreview":"롤백 범위가 아니라 실패 후 남을 상태로 경계를 나눴다","textChars":30,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/a10nyx4b","slide":6,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/5sbmdc3y","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/4r2547md","slide":6,"text":"해결 전략","textPreview":"해결 전략","textChars":5,"textLines":1,"bbox":[64,160,220,28]}
+{"kind":"textbox","id":"sh/jqt4b25s","slide":6,"text":"Post를 먼저 커밋하고 장소 검증은 AFTER_COMMIT 이후 별도 경로에서 수행했다.","textPreview":"Post를 먼저 커밋하고 장소 검증은 AFTER_COMMIT 이후 별도 경로에서 수행했다.","textChars":50,"textLines":1,"bbox":[64,196,520,76]}
+{"kind":"textbox","id":"sh/lw7m18nu","slide":6,"text":"15 → 103 RPS","textPreview":"15 → 103 RPS","textChars":12,"textLines":1,"bbox":[64,326,230,100]}
+{"kind":"textbox","id":"sh/0vyls3m9","slide":6,"text":"359.2 → 28.1ms\nAPI 평균","textPreview":"359.2 → 28.1ms | API 평균","textChars":21,"textLines":2,"bbox":[320,326,230,100]}
+{"kind":"textbox","id":"sh/ip03eps7","slide":6,"text":"338.4 → 16.4ms\nTX 평균","textPreview":"338.4 → 16.4ms | TX 평균","textChars":20,"textLines":2,"bbox":[64,448,230,100]}
+{"kind":"textbox","id":"sh/jq9k7u9s","slide":6,"text":"100% / dropped 0","textPreview":"100% / dropped 0","textChars":16,"textLines":1,"bbox":[320,448,230,100]}
+{"kind":"textbox","id":"sh/4rilgzad","slide":6,"text":"한계","textPreview":"한계","textChars":2,"textLines":1,"bbox":[600,596,90,36]}
+{"kind":"textbox","id":"sh/5sbm94ri","slide":6,"text":"@Async는 유실 없는 전달을 보장하지 않는다. 104 RPS에서 13건이 제한 시간 안에 provider에 도달하지 못해 103 RPS만 채택했다.","textPreview":"@Async는 유실 없는 전달을 보장하지 않는다. 104 RPS에서 13건이 제한 시간 안에 provider에 도달하지 못해 103 RPS만 채택했다.","textChars":84,"textLines":1,"bbox":[710,586,506,62]}
+{"kind":"image","id":"im/kjadof6l","slide":6,"name":"","bbox":[615.81,154,582.38,420]}
+{"kind":"notes","id":"nt/g3manl","slide":6,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-8-대학생-현지인-로컬맵.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-8/place-save-after.drawio.png"}
+{"kind":"slide","id":"sl/9v57r7","slide":7,"title":"07","textShapes":1}
+{"kind":"textbox","id":"sh/tgny1gju","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"image","id":"im/pwzih0by","slide":7,"name":"","bbox":[17.46,0,1245.07,720]}
+{"kind":"notes","id":"nt/9v57r7","slide":7,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-11-이미지 업로드.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-11/image-upload-sync-lambda-architecture.png"}
+{"kind":"slide","id":"sl/3eta61","slide":8,"title":"CASE 02 · IMAGE PIPELINE","textShapes":8}
+{"kind":"textbox","id":"sh/kbe90nmd","slide":8,"text":"CASE 02 · IMAGE PIPELINE","textPreview":"CASE 02 · IMAGE PIPELINE","textChars":24,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/fqdsnaxs","slide":8,"text":"병렬화는 지연을 줄였고, bulkhead가 자원 전파를 제한했다","textPreview":"병렬화는 지연을 줄였고, bulkhead가 자원 전파를 제한했다","textChars":35,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/ep4re5gn","slide":8,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/toval0f2","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/snm9cvyh","slide":8,"text":"동시 작업 상한 64 · 이미지 3장 · ECS app 2대","textPreview":"동시 작업 상한 64 · 이미지 3장 · ECS app 2대","textChars":33,"textLines":1,"bbox":[64,158,680,30]}
+{"kind":"textbox","id":"sh/5kvqhgfq","slide":8,"text":"처리량","textPreview":"처리량","textChars":3,"textLines":1,"bbox":[64,198,220,24]}
+{"kind":"textbox","id":"sh/4j298by5","slide":8,"text":"OS thread","textPreview":"OS thread","textChars":9,"textLines":1,"bbox":[652,198,220,24]}
+{"kind":"textbox","id":"sh/y9w7yd47","slide":8,"text":"p99 8.12s → 3.36s","textPreview":"p99 8.12s → 3.36s","textChars":17,"textLines":1,"bbox":[64,584,320,64]}
+{"kind":"textbox","id":"sh/ja587ils","slide":8,"text":"Virtual Thread는 외부 작업을 빠르게 하지 않았다. 같은 처리량에서 기다림을 더 적은 OS thread로 감당했다.","textPreview":"Virtual Thread는 외부 작업을 빠르게 하지 않았다. 같은 처리량에서 기다림을 더 적은 OS thread로 감당했다.","textChars":70,"textLines":1,"bbox":[420,580,752,70]}
+{"kind":"chart","id":"ch/50netwzy","slide":8,"name":"Chart","chartType":"bar","bbox":[64,226,520,330]}
+{"kind":"chart","id":"ch/u9cfuhgb","slide":8,"name":"Chart","chartType":"bar","bbox":[652,226,520,330]}
+{"kind":"notes","id":"nt/3eta61","slide":8,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-11-이미지 업로드.md\n- Measured table: V1 16.09 req/s, V2 32.71 req/s, V3 33.24 req/s; platform thread max 75/151/87; p99 8,120.7/3,581.1/3,358.1ms."}
+{"kind":"slide","id":"sl/ft1q67","slide":9,"title":"CASE 02 · PARTIAL FAILURE","textShapes":5}
+{"kind":"textbox","id":"sh/6103ihkz","slide":9,"text":"CASE 02 · PARTIAL FAILURE","textPreview":"CASE 02 · PARTIAL FAILURE","textChars":25,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/4v2lsbix","slide":9,"text":"DB–S3 원자성 대신 복구 가능한 프로토콜을 설계했다","textPreview":"DB–S3 원자성 대신 복구 가능한 프로토콜을 설계했다","textChars":30,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/5wb21gji","slide":9,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/qxk3ul03","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/sz2lwbi9","slide":9,"text":"결과","textPreview":"결과","textChars":2,"textLines":1,"bbox":[64,618,84,34]}
+{"kind":"textbox","id":"sh/d0vm5gju","slide":9,"text":"실패 주입 후 잘못된 COMPLETED 참조 0건 · 고아 객체 0건 · 오래된 PENDING 0건으로 수렴","textPreview":"실패 주입 후 잘못된 COMPLETED 참조 0건 · 고아 객체 0건 · 오래된 PENDING 0건으로 수렴","textChars":60,"textLines":1,"bbox":[166,614,990,42]}
+{"kind":"image","id":"im/a58z6t4j","slide":9,"name":"","bbox":[217.95,148,844.11,462]}
+{"kind":"notes","id":"nt/ft1q67","slide":9,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-11-이미지 업로드.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-11/db-s3-compensation-flow.drawio.png"}
+{"kind":"slide","id":"sl/q4wam9","slide":10,"title":"CASE 03 · VIEW COUNT","textShapes":13}
+{"kind":"textbox","id":"sh/pgzqls7a","slide":10,"text":"CASE 03 · VIEW COUNT","textPreview":"CASE 03 · VIEW COUNT","textChars":20,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/sb25gryd","slide":10,"text":"핫 row의 상한은 커넥션 수가 아니라 3.5ms commit이었다","textPreview":"핫 row의 상한은 커넥션 수가 아니라 3.5ms commit이었다","textChars":37,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/tcbm9wfi","slide":10,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/il03ahgv","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/47i5c7y1","slide":10,"text":"원인 분리","textPreview":"원인 분리","textChars":5,"textLines":1,"bbox":[850,170,250,28]}
+{"kind":"textbox","id":"sh/58rm5cfm","slide":10,"text":"285","textPreview":"285","textChars":3,"textLines":1,"bbox":[850,220,320,70]}
+{"kind":"textbox","id":"sh/2hknm1gf","slide":10,"text":"1 connection · same row","textPreview":"1 connection · same row","textChars":23,"textLines":1,"bbox":[850,294,320,34]}
+{"kind":"textbox","id":"sh/32d4f6x0","slide":10,"text":"경합이 없어도 한 건당 약 3.5ms","textPreview":"경합이 없어도 한 건당 약 3.5ms","textChars":20,"textLines":1,"bbox":[850,332,320,50]}
+{"kind":"textbox","id":"sh/fah8fi98","slide":10,"text":"288","textPreview":"288","textChars":3,"textLines":1,"bbox":[850,380,320,70]}
+{"kind":"textbox","id":"sh/u9o76d8n","slide":10,"text":"20 connections · same row","textPreview":"20 connections · same row","textChars":25,"textLines":1,"bbox":[850,454,320,34]}
+{"kind":"textbox","id":"sh/hczqh87e","slide":10,"text":"줄만 길어지고 처리율은 유지","textPreview":"줄만 길어지고 처리율은 유지","textChars":15,"textLines":1,"bbox":[850,492,320,50]}
+{"kind":"textbox","id":"sh/gbqp83qt","slide":10,"text":"3,128","textPreview":"3,128","textChars":5,"textLines":1,"bbox":[850,540,320,70]}
+{"kind":"textbox","id":"sh/3eh8jipk","slide":10,"text":"20 connections · different rows","textPreview":"20 connections · different rows","textChars":31,"textLines":1,"bbox":[850,614,320,34]}
+{"kind":"textbox","id":"sh/2d87ad8z","slide":10,"text":"group commit으로 fsync 비용 공유","textPreview":"group commit으로 fsync 비용 공유","textChars":26,"textLines":1,"bbox":[850,652,320,50]}
+{"kind":"image","id":"im/zex432x0","slide":10,"name":"","bbox":[64,191.38,730,373.23]}
+{"kind":"notes","id":"nt/q4wam9","slide":10,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-4-게시글-조회수-설계-V3.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-4/hot-row-connection-queue.drawio.png"}
+{"kind":"slide","id":"sl/bbju3v","slide":11,"title":"11","textShapes":1}
+{"kind":"textbox","id":"sh/x4j6lkzy","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"image","id":"im/5gbmhwvm","slide":11,"name":"","bbox":[155.22,0,969.56,720]}
+{"kind":"notes","id":"nt/bbju3v","slide":11,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-5-조회수 어뷰징 방지와 Redis Write-back.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-5/full-counter-redis-coordination.png"}
+{"kind":"slide","id":"sl/4qrgqh","slide":12,"title":"CASE 03 · SOURCE OF TRUTH","textShapes":16}
+{"kind":"textbox","id":"sh/983ih8vy","slide":12,"text":"CASE 03 · SOURCE OF TRUTH","textPreview":"CASE 03 · SOURCE OF TRUTH","textChars":25,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/atgzitsb","slide":12,"text":"근사값은 허용해도 표시값의 역행은 허용하지 않았다","textPreview":"근사값은 허용해도 표시값의 역행은 허용하지 않았다","textChars":27,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/bupgry9w","slide":12,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/orehgja5","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/9s7ypobq","slide":12,"text":"Redis 전체 카운터를 화면의 단일 원천으로 고정하고 MySQL은 GREATEST 체크포인트로 바꿨다.","textPreview":"Redis 전체 카운터를 화면의 단일 원천으로 고정하고 MySQL은 GREATEST 체크포인트로 바꿨다.","textChars":58,"textLines":1,"bbox":[64,160,1050,48]}
+{"kind":"shape","id":"sh/m5wze9sz","slide":12,"bbox":[64,250,330,250]}
+{"kind":"shape","id":"sh/nq5gnetk","slide":12,"bbox":[475,250,330,250]}
+{"kind":"shape","id":"sh/03ehcza9","slide":12,"bbox":[886,250,330,250]}
+{"kind":"textbox","id":"sh/14nyl4bu","slide":12,"text":"1,000","textPreview":"1,000","textChars":5,"textLines":1,"bbox":[92,286,274,70]}
+{"kind":"textbox","id":"sh/dwji98na","slide":12,"text":"RPS","textPreview":"RPS","textChars":3,"textLines":1,"bbox":[92,360,274,34]}
+{"kind":"textbox","id":"sh/cvahg3m5","slide":12,"text":"distributed profile · 120,001 requests","textPreview":"distributed profile · 120,001 requests","textChars":38,"textLines":1,"bbox":[92,398,274,50]}
+{"kind":"textbox","id":"sh/ru107i5k","slide":12,"text":"57.3ms","textPreview":"57.3ms","textChars":6,"textLines":1,"bbox":[503,286,274,70]}
+{"kind":"textbox","id":"sh/qtszed4z","slide":12,"text":"평균","textPreview":"평균","textChars":2,"textLines":1,"bbox":[503,360,274,34]}
+{"kind":"textbox","id":"sh/5szi58ne","slide":12,"text":"p95 197.1ms","textPreview":"p95 197.1ms","textChars":11,"textLines":1,"bbox":[503,398,274,50]}
+{"kind":"textbox","id":"sh/4rqhc3mt","slide":12,"text":"686.8ms","textPreview":"686.8ms","textChars":7,"textLines":1,"bbox":[914,286,274,70]}
+{"kind":"textbox","id":"sh/3qh03y58","slide":12,"text":"p99","textPreview":"p99","textChars":3,"textLines":1,"bbox":[914,360,274,34]}
+{"kind":"textbox","id":"sh/ip8zat4n","slide":12,"text":"오류율 약 0.10%","textPreview":"오류율 약 0.10%","textChars":11,"textLines":1,"bbox":[914,398,274,50]}
+{"kind":"textbox","id":"sh/hozi1oni","slide":12,"text":"남는 위험","textPreview":"남는 위험","textChars":5,"textLines":1,"bbox":[64,552,200,28]}
+{"kind":"textbox","id":"sh/g3qh8jmx","slide":12,"text":"Redis 손실 시 마지막 체크포인트 이후 역행 가능 · 전체 순회와 Evictor 운영 비용 · 단일 핫 키 한계","textPreview":"Redis 손실 시 마지막 체크포인트 이후 역행 가능 · 전체 순회와 Evictor 운영 비용 · 단일 핫 키 한계","textChars":64,"textLines":1,"bbox":[64,590,1040,38]}
+{"kind":"textbox","id":"sh/87u1o3ut","slide":12,"text":"dirty + generation과 striped counter는 실제 임계치가 확인될 때만 도입한다.","textPreview":"dirty + generation과 striped counter는 실제 임계치가 확인될 때만 도입한다.","textChars":57,"textLines":1,"bbox":[64,640,980,28]}
+{"kind":"notes","id":"nt/4qrgqh","slide":12,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/script/view-count/results/raw/20260806-112406-bench-v4-distributed-summary.json\n- /Users/luna/Desktop_nonsync/project/cluverse-api/script/view-count/results/metrics.csv\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-5-조회수 어뷰징 방지와 Redis Write-back.md"}
+{"kind":"slide","id":"sl/zbh0dy","slide":13,"title":"CASE 04 · POST LIST","textShapes":7}
+{"kind":"textbox","id":"sh/vehgrit8","slide":13,"text":"CASE 04 · POST LIST","textPreview":"CASE 04 · POST LIST","textChars":19,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/8r61gri9","slide":13,"text":"인덱스를 타도 OFFSET까지 읽고 버리는 비용은 남았다","textPreview":"인덱스를 타도 OFFSET까지 읽고 버리는 비용은 남았다","textChars":31,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/9sz29wze","slide":13,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/ylojah0r","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/0n61crix","slide":13,"text":"0.48s","textPreview":"0.48s","textChars":5,"textLines":1,"bbox":[126,616,160,52]}
+{"kind":"textbox","id":"sh/lof25czi","slide":13,"text":"page 1","textPreview":"page 1","textChars":6,"textLines":1,"bbox":[300,626,130,28]}
+{"kind":"textbox","id":"sh/ih83m1gb","slide":13,"text":"32s","textPreview":"32s","textChars":3,"textLines":1,"bbox":[814,616,160,52]}
+{"kind":"textbox","id":"sh/jihkf6hw","slide":13,"text":"page 20,000","textPreview":"page 20,000","textChars":11,"textLines":1,"bbox":[988,626,170,28]}
+{"kind":"image","id":"im/x0zapc3u","slide":13,"name":"","bbox":[195.95,148,888.1,480]}
+{"kind":"notes","id":"nt/zbh0dy","slide":13,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-3-게시글-목록-조회.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-3/offset-vs-late-join.drawio.png"}
+{"kind":"slide","id":"sl/8oug1a","slide":14,"title":"CASE 04 · LAYERED SOLUTION","textShapes":17}
+{"kind":"textbox","id":"sh/ud4by50v","slide":14,"text":"CASE 04 · LAYERED SOLUTION","textPreview":"CASE 04 · LAYERED SOLUTION","textChars":26,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/grmtkbid","slide":14,"text":"페이지 번호 UX를 유지하되 탐색 비용에 상한을 뒀다","textPreview":"페이지 번호 UX를 유지하되 탐색 비용에 상한을 뒀다","textChars":29,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/1svudgzy","slide":14,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/2t4bm1gj","slide":14,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/3uxcf6h4","slide":14,"text":"한 기술로 덮지 않고 반복 비용과 깊은 탐색을 서로 다른 경로로 분리했다.","textPreview":"한 기술로 덮지 않고 반복 비용과 깊은 탐색을 서로 다른 경로로 분리했다.","textChars":41,"textLines":1,"bbox":[64,158,860,36]}
+{"kind":"shape","id":"sh/ov6tobyp","slide":14,"bbox":[120,350,1020,0]}
+{"kind":"shape","id":"sh/pwfuhgzu","slide":14,"bbox":[113,343,14,14]}
+{"kind":"shape","id":"sh/axobqlgf","slide":14,"bbox":[385,343,14,14]}
+{"kind":"shape","id":"sh/byxcjqh0","slide":14,"bbox":[657,343,14,14]}
+{"kind":"shape","id":"sh/zmp8n2xo","slide":14,"bbox":[929,343,14,14]}
+{"kind":"textbox","id":"sh/elg7uhg3","slide":14,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[120,286,80,28]}
+{"kind":"textbox","id":"sh/1orqpcfu","slide":14,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[392,286,80,28]}
+{"kind":"textbox","id":"sh/0nipw7y9","slide":14,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[664,286,80,28]}
+{"kind":"textbox","id":"sh/ripoj2xs","slide":14,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[936,286,80,28]}
+{"kind":"textbox","id":"sh/qhg7qxg7","slide":14,"text":"커버링 인덱스\n+ 지연 조인","textPreview":"커버링 인덱스 | + 지연 조인","textChars":15,"textLines":2,"bbox":[92,390,220,74]}
+{"kind":"textbox","id":"sh/dk76lcfi","slide":14,"text":"페이지 블록만\n상한 COUNT","textPreview":"페이지 블록만 | 상한 COUNT","textChars":16,"textLines":2,"bbox":[364,390,220,74]}
+{"kind":"textbox","id":"sh/cjyps7yd","slide":14,"text":"상위 201 ID\nRedis Sorted Set","textPreview":"상위 201 ID | Redis Sorted Set","textChars":26,"textLines":2,"bbox":[636,390,220,74]}
+{"kind":"textbox","id":"sh/be98vmxw","slide":14,"text":"201페이지 이후\n날짜 + cursor","textPreview":"201페이지 이후 | 날짜 + cursor","textChars":21,"textLines":2,"bbox":[908,390,230,74]}
+{"kind":"textbox","id":"sh/ad0721gb","slide":14,"text":"OFFSET 이동은 ID 상태로","textPreview":"OFFSET 이동은 ID 상태로","textChars":17,"textLines":1,"bbox":[92,490,220,52]}
+{"kind":"textbox","id":"sh/694rul0j","slide":14,"text":"최대 4,001건에서 중단","textPreview":"최대 4,001건에서 중단","textChars":14,"textLines":1,"bbox":[364,490,220,52]}
+{"kind":"textbox","id":"sh/7adsnqh4","slide":14,"text":"약 80% 반복 구간 흡수","textPreview":"약 80% 반복 구간 흡수","textChars":14,"textLines":1,"bbox":[636,490,220,52]}
+{"kind":"textbox","id":"sh/8bmtwvip","slide":14,"text":"O(offset) 경로를 제거","textPreview":"O(offset) 경로를 제거","textChars":16,"textLines":1,"bbox":[908,490,220,52]}
+{"kind":"textbox","id":"sh/tcvap0za","slide":14,"text":"Redis 실패 → 기존 DB 경로 폴백","textPreview":"Redis 실패 → 기존 DB 경로 폴백","textChars":22,"textLines":1,"bbox":[340,584,600,60]}
+{"kind":"notes","id":"nt/8oug1a","slide":14,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-3-게시글-목록-조회.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/assets/devlog-3/date-anchor-cursor.drawio.png"}
+{"kind":"slide","id":"sl/1bcbks","slide":15,"title":"CASE 04 · EVIDENCE AND LIMIT","textShapes":8}
+{"kind":"textbox","id":"sh/itkje5gn","slide":15,"text":"CASE 04 · EVIDENCE AND LIMIT","textPreview":"CASE 04 · EVIDENCE AND LIMIT","textChars":28,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/lobapgre","slide":15,"text":"500 TPS는 검증 상한, 운영 목표는 400 TPS로 남겼다","textPreview":"500 TPS는 검증 상한, 운영 목표는 400 TPS로 남겼다","textChars":35,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/kn2tgbqt","slide":15,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/bitsj69c","slide":15,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/ah0ra1sr","slide":15,"text":"V3 95% + 날짜 cursor V4 5% 혼합 부하 · cache hit 약 80%","textPreview":"V3 95% + 날짜 cursor V4 5% 혼합 부하 · cache hit 약 80%","textChars":48,"textLines":1,"bbox":[64,158,760,30]}
+{"kind":"textbox","id":"sh/ne9sfm90","slide":15,"text":"tail latency","textPreview":"tail latency","textChars":12,"textLines":1,"bbox":[64,198,240,24]}
+{"kind":"textbox","id":"sh/mt0r6hsf","slide":15,"text":"capacity headroom","textPreview":"capacity headroom","textChars":17,"textLines":1,"bbox":[652,198,260,24]}
+{"kind":"textbox","id":"sh/kv21gvyt","slide":15,"text":"p99 173ms · 오류 0%","textPreview":"p99 173ms · 오류 0%","textChars":17,"textLines":1,"bbox":[64,590,330,58]}
+{"kind":"textbox","id":"sh/5wb290fe","slide":15,"text":"500 TPS에서도 통과했지만 DB CPU가 80%를 넘어 운영 여유가 작다. 400 TPS를 목표로 두고 500 TPS는 검증된 상한으로만 기록했다.","textPreview":"500 TPS에서도 통과했지만 DB CPU가 80%를 넘어 운영 여유가 작다. 400 TPS를 목표로 두고 500 TPS는 검증된 상한으로만 기록했다.","textChars":84,"textLines":1,"bbox":[430,584,742,72]}
+{"kind":"chart","id":"ch/ze9o3y1o","slide":15,"name":"Chart","chartType":"bar","bbox":[64,226,520,340]}
+{"kind":"chart","id":"ch/cby58j2x","slide":15,"name":"Chart","chartType":"bar","bbox":[652,226,520,340]}
+{"kind":"notes","id":"nt/1bcbks","slide":15,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-3-게시글-목록-조회.md\n- Measured table: 300/400/500 RPS, p99 62.92/195.58/173.00ms, DB CPU avg 47.64/64.09/80.53%, cache hit 79.94/80.11/79.91%."}
+{"kind":"slide","id":"sl/txkjbp","slide":16,"title":"BACKEND ENGINEER PORTFOLIO","textShapes":10}
+{"kind":"textbox","id":"sh/lkz2dov6","slide":16,"text":"BACKEND ENGINEER PORTFOLIO","textPreview":"BACKEND ENGINEER PORTFOLIO","textChars":26,"textLines":1,"bbox":[64,56,520,26]}
+{"kind":"textbox","id":"sh/wje5wrq5","slide":16,"text":"Cluverse","textPreview":"Cluverse","textChars":8,"textLines":1,"bbox":[64,152,530,86]}
+{"kind":"textbox","id":"sh/hkn65w7q","slide":16,"text":"트래픽과 실패 경계를\n측정 가능한 구조로 바꿨다","textPreview":"트래픽과 실패 경계를 | 측정 가능한 구조로 바꿨다","textChars":26,"textLines":2,"bbox":[64,252,520,150]}
+{"kind":"textbox","id":"sh/ilw7y18b","slide":16,"text":"배준서 · Junseo Bae\nJava / Spring / MySQL / Redis / AWS","textPreview":"배준서 · Junseo Bae | Java / Spring / MySQL / Redis / AWS","textChars":52,"textLines":2,"bbox":[64,500,520,88]}
+{"kind":"textbox","id":"sh/jm5o76pg","slide":16,"text":"증상","textPreview":"증상","textChars":2,"textLines":1,"bbox":[700,128,180,100]}
+{"kind":"textbox","id":"sh/4nyp0bq1","slide":16,"text":"원인","textPreview":"원인","textChars":2,"textLines":1,"bbox":[950,128,180,100]}
+{"kind":"textbox","id":"sh/5o769w7m","slide":16,"text":"경계","textPreview":"경계","textChars":2,"textLines":1,"bbox":[700,322,180,100]}
+{"kind":"textbox","id":"sh/69g72187","slide":16,"text":"검증","textPreview":"검증","textChars":2,"textLines":1,"bbox":[950,322,180,100]}
+{"kind":"shape","id":"sh/rapob6ps","slide":16,"bbox":[790,274,250,0]}
+{"kind":"textbox","id":"sh/jixkbed0","slide":16,"text":"문제를 하나의 현상으로 보지 않는다","textPreview":"문제를 하나의 현상으로 보지 않는다","textChars":19,"textLines":1,"bbox":[700,486,430,56]}
+{"kind":"textbox","id":"sh/yho3itwf","slide":16,"text":"2026","textPreview":"2026","textChars":4,"textLines":1,"bbox":[1110,674,106,20]}
+{"kind":"notes","id":"nt/txkjbp","slide":16,"text":"[Sources]\n- User-provided resume text: /Users/luna/.codex/attachments/a79e3c1a-46ab-4cac-93d8-d9598d50b1c2/pasted-text.txt"}
+{"kind":"slide","id":"sl/8vk91o","slide":17,"title":"PROJECT · CLUVERSE","textShapes":11}
+{"kind":"textbox","id":"sh/8budczqh","slide":17,"text":"PROJECT · CLUVERSE","textPreview":"PROJECT · CLUVERSE","textChars":18,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/va9cr65c","slide":17,"text":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textPreview":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textChars":24,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/ap0vilor","slide":17,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/5gbux0ne","slide":17,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/kf2dov6t","slide":17,"text":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textPreview":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textChars":45,"textLines":1,"bbox":[64,164,760,46]}
+{"kind":"textbox","id":"sh/jetcvq5o","slide":17,"text":"관심사·학과\n보드","textPreview":"관심사·학과 | 보드","textChars":9,"textLines":2,"bbox":[76,280,240,132]}
+{"kind":"textbox","id":"sh/idkvmlo3","slide":17,"text":"모집·지원","textPreview":"모집·지원","textChars":5,"textLines":1,"bbox":[402,280,240,132]}
+{"kind":"textbox","id":"sh/lk7ulwna","slide":17,"text":"그룹 운영","textPreview":"그룹 운영","textChars":5,"textLines":1,"bbox":[728,280,240,132]}
+{"kind":"textbox","id":"sh/0jytcr6p","slide":17,"text":"스파이크에서도\n읽기 흐름 보호","textPreview":"스파이크에서도 | 읽기 흐름 보호","textChars":16,"textLines":2,"bbox":[1010,264,206,164]}
+{"kind":"shape","id":"sh/idcvy94j","slide":17,"bbox":[316,346,86,0]}
+{"kind":"shape","id":"sh/5gnu9onu","slide":17,"bbox":[642,346,86,0]}
+{"kind":"shape","id":"sh/kfed0jm9","slide":17,"bbox":[968,346,42,0]}
+{"kind":"textbox","id":"sh/l83eh47q","slide":17,"text":"기술 목표","textPreview":"기술 목표","textChars":5,"textLines":1,"bbox":[76,496,180,28]}
+{"kind":"textbox","id":"sh/m9cva98b","slide":17,"text":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textPreview":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textChars":47,"textLines":1,"bbox":[76,532,1000,50]}
+{"kind":"textbox","id":"sh/nalwjepw","slide":17,"text":"개인 프로젝트 · 2026.01–2026.07","textPreview":"개인 프로젝트 · 2026.01–2026.07","textChars":25,"textLines":1,"bbox":[76,618,480,24]}
+{"kind":"notes","id":"nt/8vk91o","slide":17,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/01-cluverse-소개-배경-목표.md\n- https://velog.io/@bebeis/cluvserse-start"}
+{"kind":"slide","id":"sl/vpza0i","slide":18,"title":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textShapes":15}
+{"kind":"textbox","id":"sh/50rqtgni","slide":18,"text":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textPreview":"ARCHITECTURE · LOAD-TEST ENVIRONMENT","textChars":36,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/1gbalc7e","slide":18,"text":"비용을 고정해 구조 변경의 효과만 비교했다","textPreview":"비용을 고정해 구조 변경의 효과만 비교했다","textChars":23,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/0fitc76t","slide":18,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/rq9sfipc","slide":18,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/qp0b6dor","slide":18,"text":"Terraform base/test 스택을 분리해 같은 조건으로 생성·폐기하는 검증 인프라","textPreview":"Terraform base/test 스택을 분리해 같은 조건으로 생성·폐기하는 검증 인프라","textChars":50,"textLines":1,"bbox":[64,158,920,38]}
+{"kind":"textbox","id":"sh/dcrahs72","slide":18,"text":"검증 인프라","textPreview":"검증 인프라","textChars":6,"textLines":1,"bbox":[1040,154,176,38]}
+{"kind":"textbox","id":"sh/crit8n6x","slide":18,"text":"k6\nLoad Generator","textPreview":"k6 | Load Generator","textChars":17,"textLines":2,"bbox":[74,302,170,100]}
+{"kind":"textbox","id":"sh/bmtcrmpg","slide":18,"text":"AWS ALB\nHTTPS","textPreview":"AWS ALB | HTTPS","textChars":13,"textLines":2,"bbox":[292,302,156,100]}
+{"kind":"textbox","id":"sh/alkbihov","slide":18,"text":"ECS on EC2\napp 1 · t3.small","textPreview":"ECS on EC2 | app 1 · t3.small","textChars":27,"textLines":2,"bbox":[500,230,205,100]}
+{"kind":"textbox","id":"sh/ofa1cji5","slide":18,"text":"ECS on EC2\napp 2 · t3.small","textPreview":"ECS on EC2 | app 2 · t3.small","textChars":27,"textLines":2,"bbox":[500,386,205,100]}
+{"kind":"textbox","id":"sh/pgjilozq","slide":18,"text":"MySQL 8\nt3.small","textPreview":"MySQL 8 | t3.small","textChars":16,"textLines":2,"bbox":[780,210,170,100]}
+{"kind":"textbox","id":"sh/2tsja90f","slide":18,"text":"Redis\nt3.micro","textPreview":"Redis | t3.micro","textChars":14,"textLines":2,"bbox":[780,405,170,100]}
+{"kind":"textbox","id":"sh/3u10jeh0","slide":18,"text":"S3 + Lambda\nimage path","textPreview":"S3 + Lambda | image path","textChars":22,"textLines":2,"bbox":[1010,210,180,100]}
+{"kind":"textbox","id":"sh/grq18zi9","slide":18,"text":"Prometheus\n+ Grafana","textPreview":"Prometheus | + Grafana","textChars":20,"textLines":2,"bbox":[1010,405,180,100]}
+{"kind":"shape","id":"sh/583it47e","slide":18,"bbox":[244,352,48,0]}
+{"kind":"shape","id":"sh/k7u10zqt","slide":18,"bbox":[448,280,52,72]}
+{"kind":"shape","id":"sh/v210nupc","slide":18,"bbox":[448,352,52,84]}
+{"kind":"shape","id":"sh/a1sjup8r","slide":18,"bbox":[705,260,75,20]}
+{"kind":"shape","id":"sh/x4jipk7i","slide":18,"bbox":[705,280,75,175]}
+{"kind":"shape","id":"sh/w3a1wzqx","slide":18,"bbox":[705,260,305,62]}
+{"kind":"shape","id":"sh/fy5kzepg","slide":18,"bbox":[705,280,305,175]}
+{"kind":"shape","id":"sh/uxcj698b","slide":18,"bbox":[705,260,75,176]}
+{"kind":"shape","id":"sh/cj6xkb6d","slide":18,"bbox":[705,436,75,19]}
+{"kind":"shape","id":"sh/dkfytgny","slide":18,"bbox":[705,260,305,176]}
+{"kind":"shape","id":"sh/qhofi1on","slide":18,"bbox":[705,393,305,62]}
+{"kind":"textbox","id":"sh/z25ofmp8","slide":18,"text":"애플리케이션 2대 · DB 1대 · Redis 1대 · 측정 노드 분리","textPreview":"애플리케이션 2대 · DB 1대 · Redis 1대 · 측정 노드 분리","textChars":39,"textLines":1,"bbox":[74,570,760,32]}
+{"kind":"textbox","id":"sh/y1w7mhon","slide":18,"text":"사양을 늘려 얻은 TPS와 구조 변경으로 얻은 TPS를 섞지 않았다.","textPreview":"사양을 늘려 얻은 TPS와 구조 변경으로 얻은 TPS를 섞지 않았다.","textChars":38,"textLines":1,"bbox":[74,612,850,30]}
+{"kind":"notes","id":"nt/vpza0i","slide":18,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/README.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/ecs.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/mysql.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/redis.tf\n- /Users/luna/Desktop_nonsync/project/cluverse-api/terraform/test/monitoring.tf"}
+{"kind":"slide","id":"sl/deofo6","slide":19,"title":"METHOD · SLO","textShapes":18}
+{"kind":"textbox","id":"sh/2ps3ilo3","slide":19,"text":"METHOD · SLO","textPreview":"METHOD · SLO","textChars":12,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/kze90vah","slide":19,"text":"최대 TPS보다 먼저 ‘통과 조건’을 고정했다","textPreview":"최대 TPS보다 먼저 ‘통과 조건’을 고정했다","textChars":25,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/50nat0r2","slide":19,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/61gb2lsn","slide":19,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/72psvq9s","slide":19,"text":"숫자가 커져도 느리거나 실패하면 제공한 처리량이 아니다.","textPreview":"숫자가 커져도 느리거나 실패하면 제공한 처리량이 아니다.","textChars":31,"textLines":1,"bbox":[64,164,720,40]}
+{"kind":"shape","id":"sh/s3yt4vad","slide":19,"bbox":[64,242,350,230]}
+{"kind":"shape","id":"sh/t47ax0ry","slide":19,"bbox":[465,242,350,230]}
+{"kind":"shape","id":"sh/upgb658j","slide":19,"bbox":[866,242,350,230]}
+{"kind":"textbox","id":"sh/fqpsza94","slide":19,"text":"99.9%","textPreview":"99.9%","textChars":5,"textLines":1,"bbox":[92,274,290,70]}
+{"kind":"textbox","id":"sh/nmt8ry1k","slide":19,"text":"핵심 API 성공률","textPreview":"핵심 API 성공률","textChars":10,"textLines":1,"bbox":[92,348,290,34]}
+{"kind":"textbox","id":"sh/mlk7yt0z","slide":19,"text":"요청 유실과 dropped iteration까지 확인","textPreview":"요청 유실과 dropped iteration까지 확인","textChars":29,"textLines":1,"bbox":[92,386,290,50]}
+{"kind":"textbox","id":"sh/9obqt8jq","slide":19,"text":"800ms","textPreview":"800ms","textChars":5,"textLines":1,"bbox":[493,274,290,70]}
+{"kind":"textbox","id":"sh/8n2p03i5","slide":19,"text":"핵심 조회 p99","textPreview":"핵심 조회 p99","textChars":9,"textLines":1,"bbox":[493,348,290,34]}
+{"kind":"textbox","id":"sh/zit8ny1o","slide":19,"text":"탐색 흐름의 꼬리 지연 상한","textPreview":"탐색 흐름의 꼬리 지연 상한","textChars":15,"textLines":1,"bbox":[493,386,290,50]}
+{"kind":"textbox","id":"sh/yh07ut03","slide":19,"text":"1.5s","textPreview":"1.5s","textChars":4,"textLines":1,"bbox":[894,274,290,70]}
+{"kind":"textbox","id":"sh/lkbqp8ju","slide":19,"text":"핵심 쓰기 p99","textPreview":"핵심 쓰기 p99","textChars":9,"textLines":1,"bbox":[894,348,290,34]}
+{"kind":"textbox","id":"sh/0j2pw3i9","slide":19,"text":"트랜잭션과 후속 처리 비용 반영","textPreview":"트랜잭션과 후속 처리 비용 반영","textChars":17,"textLines":1,"bbox":[894,386,290,50]}
+{"kind":"shape","id":"sh/jed8zihs","slide":19,"bbox":[64,526,1152,0]}
+{"kind":"textbox","id":"sh/id4r6d07","slide":19,"text":"10분 이상 지속","textPreview":"10분 이상 지속","textChars":9,"textLines":1,"bbox":[72,558,250,40]}
+{"kind":"textbox","id":"sh/el8jelor","slide":19,"text":"동일 인프라·데이터","textPreview":"동일 인프라·데이터","textChars":10,"textLines":1,"bbox":[364,558,270,40]}
+{"kind":"textbox","id":"sh/fm1knqpc","slide":19,"text":"개방형 도착률","textPreview":"개방형 도착률","textChars":7,"textLines":1,"bbox":[688,558,230,40]}
+{"kind":"textbox","id":"sh/gna1gv6x","slide":19,"text":"회복 시간 30초","textPreview":"회복 시간 30초","textChars":9,"textLines":1,"bbox":[970,558,220,40]}
+{"kind":"textbox","id":"sh/1oj2p07i","slide":19,"text":"부하 종료 후 오류율과 p99가 30초 연속 SLO를 만족할 때 회복으로 판정","textPreview":"부하 종료 후 오류율과 p99가 30초 연속 SLO를 만족할 때 회복으로 판정","textChars":43,"textLines":1,"bbox":[72,620,1060,28]}
+{"kind":"notes","id":"nt/deofo6","slide":19,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-10-전반적인 성능 개선.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-8-대학생-현지인-로컬맵.md"}
+{"kind":"slide","id":"sl/v5aatu","slide":20,"title":"PROJECT · CLUVERSE","textShapes":11}
+{"kind":"textbox","id":"sh/yxgfy1kr","slide":20,"text":"PROJECT · CLUVERSE","textPreview":"PROJECT · CLUVERSE","textChars":18,"textLines":1,"bbox":[64,34,620,24]}
+{"kind":"textbox","id":"sh/h0vq1s7i","slide":20,"text":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textPreview":"학교의 벽보다 관심사의 연결을 먼저 설계했다","textChars":24,"textLines":1,"bbox":[64,66,1152,62]}
+{"kind":"shape","id":"sh/wzm9sn6x","slide":20,"bbox":[64,132,1152,0]}
+{"kind":"textbox","id":"sh/7ad8vypg","slide":20,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,674,46,20]}
+{"kind":"textbox","id":"sh/m9k7mdov","slide":20,"text":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textPreview":"전국 대학생이 학과·관심사로 모이고, 모집에서 실제 협업까지 이어지는 커뮤니티다.","textChars":45,"textLines":1,"bbox":[64,164,760,46]}
+{"kind":"textbox","id":"sh/9cvqx876","slide":20,"text":"관심사·학과\n보드","textPreview":"관심사·학과 | 보드","textChars":9,"textLines":2,"bbox":[76,280,240,132]}
+{"kind":"textbox","id":"sh/8bmpo361","slide":20,"text":"모집·지원","textPreview":"모집·지원","textChars":5,"textLines":1,"bbox":[402,280,240,132]}
+{"kind":"textbox","id":"sh/r6x872pk","slide":20,"text":"그룹 운영","textPreview":"그룹 운영","textChars":5,"textLines":1,"bbox":[728,280,240,132]}
+{"kind":"textbox","id":"sh/65oryxoz","slide":20,"text":"스파이크에서도\n읽기 흐름 보호","textPreview":"스파이크에서도 | 읽기 흐름 보호","textChars":16,"textLines":2,"bbox":[1010,264,206,164]}
+{"kind":"shape","id":"sh/4nqtwned","slide":20,"bbox":[316,346,86,0]}
+{"kind":"shape","id":"sh/3mhc3ids","slide":20,"bbox":[642,346,86,0]}
+{"kind":"shape","id":"sh/21obudw7","slide":20,"bbox":[968,346,42,0]}
+{"kind":"textbox","id":"sh/729wbql8","slide":20,"text":"기술 목표","textPreview":"기술 목표","textChars":5,"textLines":1,"bbox":[76,496,180,28]}
+{"kind":"textbox","id":"sh/kzix0b2x","slide":20,"text":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textPreview":"사람이 몰려도 핵심 조회·쓰기의 성공률과 tail latency가 무너지지 않는 구조","textChars":47,"textLines":1,"bbox":[76,532,1000,50]}
+{"kind":"textbox","id":"sh/l0re9g32","slide":20,"text":"개인 프로젝트 · 2026.01–2026.07","textPreview":"개인 프로젝트 · 2026.01–2026.07","textChars":25,"textLines":1,"bbox":[76,618,480,24]}
+{"kind":"notes","id":"nt/v5aatu","slide":20,"text":"[Sources]\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/01-cluverse-소개-배경-목표.md\n- https://velog.io/@bebeis/cluvserse-start"}
+{"kind":"slide","id":"sl/ze03fs","slide":21,"title":"BACKEND ENGINEER","textShapes":12}
+{"kind":"textbox","id":"sh/fip03apw","slide":21,"text":"BACKEND ENGINEER","textPreview":"BACKEND ENGINEER","textChars":16,"textLines":1,"bbox":[64,50,300,24]}
+{"kind":"textbox","id":"sh/4vipwr2x","slide":21,"text":"경계를 바꾸고,\n남는 위험을 측정한다","textPreview":"경계를 바꾸고, | 남는 위험을 측정한다","textChars":20,"textLines":2,"bbox":[64,120,560,150]}
+{"kind":"textbox","id":"sh/5wr6pwji","slide":21,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[690,118,72,48]}
+{"kind":"textbox","id":"sh/upgnqhkv","slide":21,"text":"증상과 성공 기준을 먼저 고정","textPreview":"증상과 성공 기준을 먼저 고정","textChars":16,"textLines":1,"bbox":[790,118,410,48]}
+{"kind":"textbox","id":"sh/vq9ojm1g","slide":21,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[690,230,72,48]}
+{"kind":"textbox","id":"sh/wri5s721","slide":21,"text":"대기·경합·내구성 비용을 분리","textPreview":"대기·경합·내구성 비용을 분리","textChars":16,"textLines":1,"bbox":[790,230,410,48]}
+{"kind":"textbox","id":"sh/hsr6lcjm","slide":21,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[690,342,72,48]}
+{"kind":"textbox","id":"sh/m1gnmxkz","slide":21,"text":"격벽·보상·폴백의 대가까지 검증","textPreview":"격벽·보상·폴백의 대가까지 검증","textChars":17,"textLines":1,"bbox":[790,342,420,48]}
+{"kind":"shape","id":"sh/7mpof2l4","slide":21,"bbox":[64,450,1152,0]}
+{"kind":"textbox","id":"sh/7e50zap0","slide":21,"text":"남은 과제","textPreview":"남은 과제","textChars":5,"textLines":1,"bbox":[64,486,160,28]}
+{"kind":"textbox","id":"sh/6dwzq58f","slide":21,"text":"외부 보강 작업의 Outbox 전환 · Redis 내구성/체크포인트 운영 · 업로드 규모 증가 시 비동기 접수와 backpressure 비교","textPreview":"외부 보강 작업의 Outbox 전환 · Redis 내구성/체크포인트 운영 · 업로드 규모 증가 시 비동기 접수와 backpressure 비교","textChars":78,"textLines":1,"bbox":[64,524,1090,54]}
+{"kind":"textbox","id":"sh/tgni1k7q","slide":21,"text":"배준서 Junseo Bae","textPreview":"배준서 Junseo Bae","textChars":14,"textLines":1,"bbox":[64,624,320,30]}
+{"kind":"textbox","id":"sh/sfehsfql","slide":21,"text":"bjs7378@naver.com  ·  github.com/bebeis  ·  velog.io/@bebeis/posts","textPreview":"bjs7378@naver.com  ·  github.com/bebeis  ·  velog.io/@bebeis/posts","textChars":66,"textLines":1,"bbox":[420,626,790,28]}
+{"kind":"notes","id":"nt/ze03fs","slide":21,"text":"[Sources]\n- User-provided resume text: /Users/luna/.codex/attachments/a79e3c1a-46ab-4cac-93d8-d9598d50b1c2/pasted-text.txt\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-8-대학생-현지인-로컬맵.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-11-이미지 업로드.md\n- /Users/luna/Desktop_nonsync/project/cluverse-api/docs/blog/cluverse-devlog-5-조회수 어뷰징 방지와 Redis Write-back.md"}

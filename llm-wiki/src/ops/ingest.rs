@@ -6,6 +6,7 @@ use anyhow::Result;
 use crate::engine::{EngineState, WikiEngine};
 use crate::git;
 use crate::ingest;
+use crate::repo_lock::RepoLock;
 
 /// Ingest a path without redaction; delegates to `ingest_with_redact`.
 pub fn ingest(
@@ -29,6 +30,16 @@ pub fn ingest_with_redact(
 ) -> Result<ingest::IngestReport> {
     let space = engine.space(wiki_name)?;
     let resolved = space.resolved_config(&engine.config);
+
+    // A dry run only reads, so it must not block — and must not be blocked by —
+    // the writers. Everything else holds the lock from the first read of the
+    // change set through validation and commit, so the tree cannot shift
+    // underneath and a sidecar cannot commit half of what is being ingested.
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(RepoLock::for_space(space, "mcp:ingest")?)
+    };
 
     // Build changed-paths set from git diff (normal ingest only; dry_run validates all).
     // Paths from collect_changed_files are relative to repo_root and are kept that

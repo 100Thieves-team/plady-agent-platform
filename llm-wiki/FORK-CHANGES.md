@@ -143,3 +143,39 @@ These are fixes to pre-existing behaviour, not consequences of the changes above
   `meetings/`. A slug is relative and never ends in a separator, so leading- and trailing-slash
   destinations are no longer extracted as links (`src/links.rs`). On this wiki these three link
   fixes took lint from 121 errors to 1.
+
+## A lock shared by every writer
+
+Three processes write this repository's working tree: the MCP server commits pages, a sync sidecar
+runs `git add -A` and `git pull --rebase` on a loop, and a renderer rewrites a directory of
+generated pages at once. Each is correct alone; together they interleave. The sync loop can commit
+a page set an agent is halfway through writing — which is how a multi-page ingest ends up as
+several commits with the sidecar's message on them.
+
+`src/repo_lock.rs` adds an advisory lock at `<repo>/.git/llm-wiki.lock`. It is a **directory**,
+created with `mkdir`, because that is the one atomic primitive all three languages share: a lock
+file written with `>` is not atomic in shell, and `flock(1)` is absent from some of these images.
+The owner file records holder, pid, and acquisition time, so a blocked writer names who is holding
+it instead of timing out anonymously. A lock older than `lock_stale_after_secs` is broken — a
+crashed holder must not wedge the wiki permanently.
+
+Taken by `content_write`, `content_new`, `content_commit`, and non-dry-run `ingest`. A dry run does
+not take it: validation only reads, and making the cheap safety check the slow one would train
+agents out of using it.
+
+The sidecars in `compose.ec2.yaml` take the same lock with inline `sh` helpers using the identical
+directory name and owner-file format. `tests/lock_integration.rs` covers the Rust side and
+`repo_lock::cross_language_tests` pins the file format both directions.
+
+- `src/repo_lock.rs`, `src/lib.rs`
+- `src/config.rs` — `lock_timeout_secs` (30), `lock_stale_after_secs` (300)
+- `src/ops/{content,ingest}.rs` — acquisition points
+- `compose.ec2.yaml` — `wiki-data-sync` and `policy-renderer` helpers
+
+### `commit_paths` built a tree from whatever was staged
+
+An upstream bug the lock does not cover. `commit_paths` called `repo.index()` and added its paths to
+the **shared on-disk index**, so anything another writer had staged rode along in a commit that
+claims to be path-limited — and `index.write()` then overwrote their staging area. The tree is now
+built from HEAD plus the named paths, and the on-disk index is never written. A path that no longer
+exists is staged as a deletion instead of failing the call (`src/git.rs`).

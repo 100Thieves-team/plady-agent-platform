@@ -256,6 +256,35 @@ services:
         git config --global --add safe.directory "$$WS"
         cd "$$WS"
 
+        # Advisory lock shared with llm-wiki (RepoLock) and policy-renderer.
+        # `mkdir` is the one atomic primitive all three languages have; a lock
+        # FILE written with `>` would not be atomic here. Same directory name and
+        # owner-file format as llm-wiki/src/repo_lock.rs — keep them in step.
+        LOCK="$$WS/.git/llm-wiki.lock"
+        LOCK_STALE_SECS=300
+        lock_acquire() {
+          _timeout="$${1:-20}"; _waited=0
+          while [ "$$_waited" -lt "$$_timeout" ]; do
+            if mkdir "$$LOCK" 2>/dev/null; then
+              printf 'wiki-data-sync\n%s\n%s\n' "$$$$" "$$(date -u +%s)" > "$$LOCK/owner" 2>/dev/null || true
+              return 0
+            fi
+            _ts="$$(sed -n 3p "$$LOCK/owner" 2>/dev/null || echo 0)"
+            _age=$$(( $$(date -u +%s) - $${_ts:-0} ))
+            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -gt "$$LOCK_STALE_SECS" ]; then
+              echo "[wiki-data-sync] breaking stale lock ($$(sed -n 1p "$$LOCK/owner" 2>/dev/null), $${_age}s)"
+              rm -rf "$$LOCK"; continue
+            fi
+            sleep 1; _waited=$$(( _waited + 1 ))
+          done
+          echo "[wiki-data-sync] lock busy (held by $$(sed -n 1p "$$LOCK/owner" 2>/dev/null || echo unknown)); skipping"
+          return 1
+        }
+        lock_release() { rm -rf "$$LOCK"; }
+        # A crash between mkdir and release would otherwise strand the lock for a
+        # full stale window on every restart.
+        rm -rf "$$LOCK"
+
         # /workspace may already be a git repo: llm-wiki initializes the workspace
         # with its own "create:" commit before this sidecar runs, so we can assume
         # NEITHER a fresh dir NOR an existing `origin`. Make the wiring idempotent —
@@ -271,6 +300,7 @@ services:
           git remote add origin "$${TEAM_WIKI_V2_REPO_SSH}"
         fi
         git fetch origin "$$BRANCH"
+        lock_acquire 60 || echo "[wiki-data-sync] proceeding with boot sync without the lock"
         # Keep any uncommitted local changes before aligning with origin.
         if [ -n "$$(git status --porcelain)" ]; then
           git add -A
@@ -287,6 +317,7 @@ services:
           echo "[wiki-data-sync] no shared history with origin/$$BRANCH; checking out origin"
           git checkout -f -B "$$BRANCH" "origin/$$BRANCH"
         fi
+        lock_release
 
         echo "[wiki-data-sync] backing ENABLED -> sync loop every $${INTERVAL}s on $$BRANCH"
         while true; do
@@ -300,6 +331,10 @@ services:
           fi
           # HEAD before this cycle touches anything: local runtime/MCP commits and
           # pulled origin commits both land in OLD..HEAD for the Slack summary.
+          # Everything below mutates the shared working tree: take the lock so a
+          # `git add -A` cannot scoop up a page set an agent or the renderer is
+          # halfway through writing. A busy lock just skips the cycle.
+          lock_acquire 20 || continue
           OLD="$$(git rev-parse HEAD 2>/dev/null || true)"
           git add -A
           # Commit working-tree changes. If the tree is clean but we still have
@@ -316,13 +351,13 @@ services:
           # local-behind. Fetch first, then check both directions.
           git fetch origin "$$BRANCH" >/dev/null 2>&1 || true
           if [ -z "$$(git rev-list HEAD..origin/$$BRANCH 2>/dev/null)" ] && [ -z "$$(git cherry origin/$$BRANCH 2>/dev/null)" ]; then
-            continue
+            lock_release; continue
           fi
           # Pull-then-push; a write landing between the two is caught next cycle.
           if ! git pull --rebase --autostash origin "$$BRANCH"; then
             echo "[wiki-data-sync] pull --rebase failed; aborting rebase, skipping push this cycle"
             git rebase --abort 2>/dev/null || true
-            continue
+            lock_release; continue
           fi
           # Content is live on the volume right here (wiki-ui's HEAD watcher
           # rebuilds within ~30s) — THIS is the moment to notify Slack, not the
@@ -346,6 +381,7 @@ services:
           else
             echo "[wiki-data-sync] push failed; will retry next cycle"
           fi
+          lock_release
         done
     volumes:
       - wiki-data:/workspace
@@ -377,6 +413,28 @@ services:
         if [ -f "$$OUT/sync-manifest.json" ]; then
           LAST="$$(python3 -c "import json;print(json.load(open('$$OUT/sync-manifest.json')).get('source_hash',''))" 2>/dev/null || true)"
         fi
+        # Same advisory lock as llm-wiki (RepoLock) and wiki-data-sync: a render
+        # rewrites eight pages at once, and the sync loop committing between the
+        # first and the last would publish a half-rendered policy spec.
+        LOCK=/workspace/.git/llm-wiki.lock
+        lock_acquire() {
+          _timeout="$${1:-60}"; _waited=0
+          while [ "$$_waited" -lt "$$_timeout" ]; do
+            if mkdir "$$LOCK" 2>/dev/null; then
+              printf 'policy-renderer\n%s\n%s\n' "$$$$" "$$(date -u +%s)" > "$$LOCK/owner" 2>/dev/null || true
+              return 0
+            fi
+            _ts="$$(sed -n 3p "$$LOCK/owner" 2>/dev/null || echo 0)"
+            _age=$$(( $$(date -u +%s) - $${_ts:-0} ))
+            if [ "$${_ts:-0}" -gt 0 ] && [ "$$_age" -gt 300 ]; then
+              echo "[policy-renderer] breaking stale lock ($$(sed -n 1p "$$LOCK/owner" 2>/dev/null), $${_age}s)"
+              rm -rf "$$LOCK"; continue
+            fi
+            sleep 1; _waited=$$(( _waited + 1 ))
+          done
+          return 1
+        }
+        lock_release() { rm -rf "$$LOCK"; }
         echo "[policy-renderer] watching $$SRC every $${POLICY_RENDER_INTERVAL}s (last=$${LAST:-none})"
         while :; do
           sleep "$$POLICY_RENDER_INTERVAL"
@@ -385,6 +443,13 @@ services:
           CUR="$$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:12])" "$$SRC")"
           [ "$$CUR" = "$$LAST" ] && continue
           echo "[policy-renderer] source changed ($${LAST:-none} -> $$CUR); rendering"
+          # Hold the lock across the whole multi-file rewrite. Do NOT consume the
+          # hash on a lock timeout: the source really did change, and skipping it
+          # would leave the rendered pages stale until the next edit.
+          if ! lock_acquire 60; then
+            echo "[policy-renderer] lock busy (held by $$(sed -n 1p "$$LOCK/owner" 2>/dev/null || echo unknown)); retrying next cycle"
+            continue
+          fi
           if python3 "$$TOOLS/render_wiki.py" -i "$$SRC" -o "$$OUT" --prd-dir /workspace/raw/product; then
             echo "[policy-renderer] rendered @$$CUR; wiki-data-sync will commit+push, wiki-ui will rebuild"
             python3 "$$TOOLS/rebuild_index.py" || echo "[policy-renderer] index rebuild failed (ignored)"
@@ -396,6 +461,7 @@ services:
                 "$${WIKI_SLACK_WEBHOOK_URL}" || true
             fi
           fi
+          lock_release
           LAST="$$CUR"
         done
     volumes:

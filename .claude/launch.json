@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wiki-preview",
+      "runtimeExecutable": "hugo",
+      "runtimeArgs": ["server", "--source", "/private/tmp/claude-501/-Users-luna-Desktop-nonsync-teams-100-thieves-100Thieves-wiki-mcp/6cf4a61b-679d-412e-bb88-ce4cd67eed3c/scratchpad/preview/site", "--port", "1441", "--buildDrafts", "--noBuildLock"],
+      "port": 1441
+    }
+  ]
+}

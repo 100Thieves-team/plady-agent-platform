@@ -1,0 +1,15 @@
+No web research or externally downloaded visual assets were used.
+
+New LLM Wiki slides are grounded in repository-authored sources:
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/README.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/llm-wiki/README.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/docs/agent-ingest-workflow.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/docs/wiki-data-repo.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/docs/mcp-registry.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/docs/otel-collector.md
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/config/mcp-registry.yaml
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/compose.ec2.yaml
+- /Users/luna/Desktop_nonsync/teams/100-thieves/100Thieves-wiki-mcp/infra/terraform/platform/
+
+The portfolio copy distinguishes the upstream llm-wiki engine from Junseo Bae's platform integration and operational boundary work.
+

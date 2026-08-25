@@ -1,0 +1,62 @@
+{
+  "outputSlides": [
+    {"outputSlide": 1, "sourceSlide": 1, "narrativeRole": "Cluverse project cover", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 2, "sourceSlide": 2, "narrativeRole": "Cluverse context", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 3, "sourceSlide": 3, "narrativeRole": "Cluverse method", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 4, "sourceSlide": 4, "narrativeRole": "Cluverse test architecture", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 5, "sourceSlide": 5, "narrativeRole": "Cluverse case 1 problem", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 6, "sourceSlide": 6, "narrativeRole": "Cluverse case 1 solution", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 7, "sourceSlide": 7, "narrativeRole": "Cluverse image pipeline", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 8, "sourceSlide": 8, "narrativeRole": "preserve original source slide", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 9, "sourceSlide": 9, "narrativeRole": "Cluverse recovery protocol", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 10, "sourceSlide": 10, "narrativeRole": "Cluverse view-count finding", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 11, "sourceSlide": 11, "narrativeRole": "Cluverse source-of-truth architecture", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 12, "sourceSlide": 12, "narrativeRole": "preserve original source slide", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 13, "sourceSlide": 13, "narrativeRole": "Cluverse pagination cost", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 14, "sourceSlide": 14, "narrativeRole": "Cluverse layered solution", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 15, "sourceSlide": 15, "narrativeRole": "preserve original source slide", "reuseMode": "duplicate-slide", "editTargets": []},
+    {
+      "outputSlide": 16,
+      "sourceSlide": 1,
+      "narrativeRole": "LLM Wiki project cover",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/ul4vaxgb", "sh/547294r6", "sh/k3yl0zql", "sh/7qp4be9c", "sh/65g3298r", "sh/ts7md4r2", "sh/sryl4zqx", "sh/fu94fe98", "sh/wn6dc7eh", "sh/hofulsf2"], "action": "rewrite"}]
+    },
+    {
+      "outputSlide": 17,
+      "sourceSlide": 2,
+      "narrativeRole": "LLM Wiki ingest model",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/ahwrqhgj", "sh/9072xkry", "sh/b29kza94", "sh/a10jqpsj", "sh/x4r21kru", "sh/w3i1sfa9", "sh/r65knqtk", "sh/q5wjelsz", "sh/nu58f2hs", "sh/wjy9sry9", "sh/xk7qlczu"], "action": "rewrite"}]
+    },
+    {
+      "outputSlide": 18,
+      "sourceSlide": 4,
+      "narrativeRole": "LLM Wiki platform architecture",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/tsrqlc7u", "sh/1cj2d8b6", "sh/rm1k7yt4", "sh/ql8jytsj", "sh/doj29oba", "sh/sna103ap", "sh/3ihk3et8", "sh/ih8ju9sn", "sh/kbm987y5", "sh/5cva1cfq", "sh/i94r6xgz", "sh/jadsz2xk", "sh/w72947yt", "sh/fu9sn2p0", "sh/et0reh8f"], "action": "rewrite"}]
+    },
+    {
+      "outputSlide": 19,
+      "sourceSlide": 3,
+      "narrativeRole": "LLM Wiki MCP authorization boundary",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/6d0fytg3", "sh/cza94vmx", "sh/298ryl4v", "sh/3ah8rqlg", "sh/n6ls3alk", "sh/n2l4fq98", "sh/m1c3mlsn", "sh/943mhgre", "sh/83ulovat", "sh/v6l4jq94", "sh/a5c3ql8z", "sh/x8nml0ra", "sh/w7ulsvqp", "sh/i9w3u58v", "sh/e10f2twf", "sh/f29gbyx0", "sh/03ix43e5", "sh/14ryd8fq"], "action": "rewrite"}]
+    },
+    {
+      "outputSlide": 20,
+      "sourceSlide": 2,
+      "narrativeRole": "LLM Wiki git durability boundary",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/ahwrqhgj", "sh/9072xkry", "sh/b29kza94", "sh/a10jqpsj", "sh/x4r21kru", "sh/w3i1sfa9", "sh/r65knqtk", "sh/q5wjelsz", "sh/nu58f2hs", "sh/wjy9sry9", "sh/xk7qlczu"], "action": "rewrite"}]
+    },
+    {
+      "outputSlide": 21,
+      "sourceSlide": 16,
+      "narrativeRole": "portfolio synthesis",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [{"sourceElementIds": ["sh/8z2h8bq1", "sh/ytkf2h8j", "sh/kv2h4rqp", "sh/ip4zel83", "sh/fm1gzq5o", "sh/e1sf65o3"], "action": "rewrite"}]
+    }
+  ],
+  "omittedSourceSlides": []
+}
