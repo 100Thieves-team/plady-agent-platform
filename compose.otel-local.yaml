@@ -1,0 +1,28 @@
+# Personal LOCAL collector — standalone compose file (does not include
+# compose.yaml on purpose: the platform stack needs MCP_BEARER_TOKEN etc. and
+# this collector must come up with none of that). Prompt-preserving config +
+# loopback-only host publish so Claude Code / Codex on this laptop reach it at
+# http://localhost:4318. Laptop only — never used on EC2.
+#
+#   docker compose -f compose.otel-local.yaml up -d
+#   docker compose -f compose.otel-local.yaml logs -f
+#   docker compose -f compose.otel-local.yaml down
+#
+# Shares the `otel-data` named volume with the platform profile (same compose
+# project = this directory) but writes its own file, otel-local.json.
+# Rationale and privacy boundary: docs/otel-collector.md § "개인 로컬 collector 예외".
+services:
+  otel-collector-local:
+    image: ${OTEL_IMAGE:-otel/opentelemetry-collector-contrib:0.154.0}
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    user: "0:0"
+    volumes:
+      - ./otel/collector-config.local.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - otel-data:/var/lib/otel
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    restart: unless-stopped
+
+volumes:
+  otel-data:

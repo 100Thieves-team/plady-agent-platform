@@ -1,0 +1,102 @@
+# PERSONAL LOCAL collector config — prompt-PRESERVING. NOT the platform contract.
+#
+# The platform collector (collector-config.yaml, PLA-251) deletes every prompt
+# and completion before anything is written, because team telemetry flows into
+# a shared EC2 box. This file is the documented exception for a developer's OWN
+# workstation (docs/otel-collector.md § "개인 로컬 collector 예외"):
+#   - runs only on the laptop, bound to 127.0.0.1 (compose.otel-local.yaml)
+#   - receives only that developer's own Claude Code / Codex telemetry
+#   - keeps prompt text and tool details so the developer can analyse their own
+#     prompting habits and workflow with scripts/otel-report.py
+#   - STILL deletes credential-bearing keys and masks secret/PII-looking values
+#   - writes to a separate file (otel-local.json) so it is never confused with
+#     the sanitized platform export
+# Never ship this config to EC2 and never point a teammate's CLI at it.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  # Credentials only. Prompt/completion/content keys are kept on purpose, and
+  # "token" is NOT in this list so token-usage attributes survive.
+  attributes/credentials:
+    actions:
+      - action: delete
+        pattern: '(?i).*(api[_.-]?key|secret|password|passwd|authorization|auth[_.-]?header|credential|cookie|session[_.-]?key|private[_.-]?key|access[_.-]?key).*'
+
+  # Same masks as the platform config, applied to attribute values, span-event
+  # attribute values and log bodies. A secret pasted into a prompt is masked,
+  # the rest of the prompt stays.
+  transform/mask:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(api[_.-]?key|secret|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key).*")
+    metric_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(api[_.-]?key|secret|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key).*")
+    log_statements:
+      - context: resource
+        statements:
+          - delete_matching_keys(attributes, "(?i).*(api[_.-]?key|secret|password|passwd|authorization|credential|cookie|private[_.-]?key|access[_.-]?key).*")
+      - context: log
+        statements:
+          - replace_all_patterns(attributes, "value", "(?i)bearer\\s+[a-z0-9._\\-]{8,}", "****")
+          - replace_all_patterns(attributes, "value", "sk-[A-Za-z0-9_\\-]{16,}", "****")
+          - replace_all_patterns(attributes, "value", "ctx7sk-[A-Za-z0-9\\-]{16,}", "****")
+          - replace_all_patterns(attributes, "value", "AKIA[0-9A-Z]{16}", "****")
+          - replace_all_patterns(attributes, "value", "gh[pousr]_[A-Za-z0-9]{20,}", "****")
+          - replace_all_patterns(attributes, "value", "xox[abp]-[A-Za-z0-9\\-]{10,}", "****")
+          - replace_all_patterns(attributes, "value", "eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}", "****")
+          - replace_pattern(body, "(?i)bearer\\s+[a-z0-9._\\-]{8,}", "****")
+          - replace_pattern(body, "sk-[A-Za-z0-9_\\-]{16,}", "****")
+          - replace_pattern(body, "AKIA[0-9A-Z]{16}", "****")
+          - replace_pattern(body, "gh[pousr]_[A-Za-z0-9]{20,}", "****")
+          - replace_pattern(body, "eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}", "****")
+
+  batch: {}
+
+exporters:
+  file:
+    path: /var/lib/otel/otel-local.json
+    rotation:
+      max_megabytes: 100
+      max_days: 90
+      max_backups: 6
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/credentials, transform/mask, batch]
+      exporters: [file, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/credentials, transform/mask, batch]
+      exporters: [file, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/credentials, transform/mask, batch]
+      exporters: [file, debug]
+  telemetry:
+    metrics:
+      level: none

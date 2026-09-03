@@ -87,6 +87,25 @@ docker run --rm -v <project>_otel-data:/data busybox ls -la /data
 
 OTLP HTTP로 prompt/secret/email을 일부러 담은 샘플 trace를 `http://otel-collector:4318/v1/traces`로 보낸 뒤 `/var/lib/otel/otel-data.json`에 해당 값이 **남지 않는지** 육안 확인합니다(같은 compose 네트워크의 컨테이너에서 `curl` 사용).
 
+## 개인 로컬 collector 예외 (2026-09-03 계약 개정)
+
+위 privacy 정책은 **팀 텔레메트리가 공유 EC2로 흐르는** 플랫폼 collector에 대한 것이다. 개발자가 **자기 노트북에서 자기 텔레메트리만** 받아 프롬프트 습관·워크플로를 분석하는 용도는 별개의 인스턴스로 허용한다. 경계는 다음과 같다.
+
+| 항목 | 플랫폼 collector (계약) | 개인 로컬 collector (예외) |
+| --- | --- | --- |
+| config | `otel/collector-config.yaml` | `otel/collector-config.local.yaml` |
+| 기동 | `--profile otel` | `docker compose -f compose.otel-local.yaml up -d` (독립 compose, 서비스 `otel-collector-local`) |
+| 수신 | compose 네트워크만, host publish 없음 | **`127.0.0.1:4317/4318` 만** publish (LAN/EC2 노출 없음) |
+| 데이터 주체 | 팀 전원 | 그 노트북 사용자 본인 |
+| 프롬프트·툴 상세 | **삭제** | **보존** (분석 목적) |
+| 자격증명 키 / secret·PII 값 | 삭제 + 마스킹 | 삭제 + 마스킹 (동일 패턴, `token` 키는 usage 지표 보존 위해 제외) |
+| 산출물 | `otel-data.json` | `otel-local.json` (같은 볼륨, 다른 파일) |
+
+- 이 예외 config 를 EC2 에 올리거나, 다른 팀원의 CLI 를 내 collector 로 향하게 하는 것은 계약 위반이다.
+- 보내는 쪽 설정: Claude Code 는 `~/.claude/settings.json` 의 `env` 에 `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_*_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, `OTEL_LOG_USER_PROMPTS=1`, `OTEL_LOG_TOOL_DETAILS=1`. Codex 는 `~/.codex/config.toml` `[otel]` 에 `log_user_prompt = true` + `exporter`/`trace_exporter`/`metrics_exporter` 를 `http://localhost:4318/v1/{logs,traces,metrics}` 로. collector 가 꺼져 있으면 CLI 는 export 를 조용히 버린다 — 동작에는 영향 없다.
+- 분석: `scripts/otel-report.py` (파일 export 를 읽어 자주 쓰는 프롬프트, 시간대별 활동, 툴 사용, 토큰/비용을 낸다).
+- `otel-local.json` 은 내 프롬프트 원문이 들어 있는 파일이다. 노트북 밖으로 옮기지 않는다.
+
 ## 보안 주의사항
 
 - host publish(`ports`) 금지 — local·EC2 모두. 공개 노출/TLS 종단은 PLA-247 ingress 뒤에서만 하며, **OTEL은 ingress 대상이 아닙니다.**
