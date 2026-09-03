@@ -4,13 +4,13 @@
 
 ## 이 저장소에 배선된 것
 
-- [`.github/workflows/review-swarm.yml`](../.github/workflows/review-swarm.yml): PR opened/synchronize/reopened 에서 `100Thieves-team/review-swarm@main` 액션 실행. **repository variable `REVIEW_SWARM_ENABLED=true` 일 때만 잡이 뜬다** — 러너가 없는 상태에서 잡이 무기한 queued 로 남는 것을 막는 게이트.
+- [`.github/workflows/review-swarm.yml`](../.github/workflows/review-swarm.yml): PR opened/synchronize/reopened 에서 `100Thieves-team/review-swarm@<커밋 SHA>` 액션 실행(self-hosted 러너에서 `pull-requests: write` 로 도는 코드라 SHA 고정; 올릴 때는 review-swarm 새 커밋을 확인한 뒤 SHA 를 바꾼다). **repository variable `REVIEW_SWARM_ENABLED=true` 일 때만 잡이 뜬다** — 러너가 없는 상태에서 잡이 무기한 queued 로 남는 것을 막는 게이트.
 - [`.review-swarm.yaml`](../.review-swarm.yaml): 시작 설정. `publish.mode: single`(워크플로 `GITHUB_TOKEN` 단일 계정 게시)로 배선을 검증한 뒤 App 자격 등록 후 `apps`로 전환한다.
 - `.gitignore`에 실행 산출물 디렉터리 `.review-swarm/` 추가.
 
 ## 🙋 사람이 직접 해야 하는 일 (활성화 체크리스트)
 
-1. **러너 준비**: `[self-hosted, review-swarm]` 라벨의 러너 등록. Node.js ≥ 20.19 + git 필요. 러너 실행 사용자 계정으로 `claude setup-token` 또는 `codex login` 완료(서비스로 돌리면 `HOME`/`CLAUDE_CONFIG_DIR`/`CODEX_HOME` 정합 확인). 호스트 결정 필요: 기존 EC2(무인 배포 호스트라 CLI 로그인 세션 유지가 관건) vs 별도 머신.
+1. **러너 준비**: 플랫폼 EC2 에 org 레벨 러너 `agent-platform-ec2` (`[self-hosted, review-swarm, linux, ec2]`). 설치·등록·엔진 인증(SSM `claude-code-oauth-token` → 러너 `.env`)은 [`self-hosted-runner.md`](self-hosted-runner.md) 절차와 `scripts/ec2-runner-setup.sh` 로 한다. 호스트가 t3.small 이라 `.review-swarm.yaml` 의 `engine.concurrency` 는 2.
 2. **배선 검증**: repository variable `REVIEW_SWARM_ENABLED=true` 설정 후 테스트 PR로 `publish.mode: single` 동작 확인. (러너에서 `node dist/cli.js doctor`로 사전 점검 가능.)
 3. **GitHub App 등록**: 에이전트별 App 7개 생성(권한: Pull requests RW, Contents RO, webhook 비활성) → 이 저장소에 설치 → Actions secrets에 `SWARM_<AGENT>_APP_ID`/`SWARM_<AGENT>_PRIVATE_KEY` 등록 → `.review-swarm.yaml`의 `publish.mode`를 `apps`로 변경. 상세 절차는 review-swarm README.
 4. **머지 차단(선택)**: 브랜치 보호 `Require approvals` 또는 워크플로 `fail-on: request_changes` + required check.

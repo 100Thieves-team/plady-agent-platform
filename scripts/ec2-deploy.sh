@@ -261,3 +261,12 @@ done
 [ "$ok" = 1 ] && echo "  hermes /health: OK" || { echo "  hermes /health: FAIL"; fail=1; }
 
 [ "$fail" = 0 ] && log "DEPLOY OK" || { log "DEPLOY DEGRADED — see above"; exit 1; }
+
+# --- 6. Image hygiene ------------------------------------------------------
+# Every deploy pulls two ~200 MB images tagged by commit; nothing removed the
+# old ones and the 30 GB root disk hit 92% after two weeks (62 stale tags).
+# Keep the last three days for a quick rollback, drop the rest. Only images no
+# container references are touched, so the running stack is unaffected.
+log "Pruning images older than 72h"
+docker image prune -af --filter "until=72h" --format '{{.Size}}' 2>/dev/null | tail -1 || true
+df -h / | tail -1

@@ -25,9 +25,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      # 러너 서비스의 PATH 에 node 가 없을 수 있어 명시적으로 깐다 (moimyeon-backend 와 동일).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Run review swarm
-        uses: 100Thieves-team/review-swarm@main
+        # 커밋 SHA 고정: pull-requests:write 권한으로 self-hosted 러너에서 도는 액션이라
+        # @main 같은 mutable 참조는 그 브랜치에 들어간 코드가 다음 PR 에서 그대로 돈다.
+        uses: 100Thieves-team/review-swarm@76bbe3edbe5616c7a71ce418f46b40fdd2f57fd6
         with:
           upload-artifacts: 'true'
         env:

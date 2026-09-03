@@ -2,6 +2,9 @@
 # https://github.com/100Thieves-team/review-swarm/blob/main/review-swarm.example.yaml
 engine:
   default: claude
+  # 러너가 t3.small(2 GB) 한 대라 동시 claude 프로세스를 제한한다. 러너 스펙을
+  # 올리면 router.maxAgents 까지 올려도 된다 (docs/self-hosted-runner.md).
+  concurrency: 2
 
 router:
   always: [security, pragmatist]
