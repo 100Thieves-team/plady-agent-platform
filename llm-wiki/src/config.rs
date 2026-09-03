@@ -527,6 +527,13 @@ pub struct WikiConfig {
     /// the whole document is served by `wiki_rules`. Default: `"AGENTS.md"`.
     #[serde(default = "default_rules_file")]
     pub rules_file: String,
+    /// Paths inside an external root that are living documents — revised as
+    /// what they describe changes — rather than captured events. Pages here may
+    /// be rewritten in place; everything else under an external root is
+    /// create-only. Example: `["raw/product"]` for specifications kept beside
+    /// meeting transcripts.
+    #[serde(default)]
+    pub revisable: Vec<String>,
     /// Seconds a write waits for the shared repository lock before giving up.
     /// Default: 30.
     #[serde(default = "default_lock_timeout_secs")]

@@ -282,7 +282,8 @@ fn mount_space(entry: &WikiEntry, state_dir: &Path, config: &GlobalConfig) -> Re
     let wiki_cfg = config::load_wiki(&repo_root).unwrap_or_default();
     let wiki_root = repo_root.join(&wiki_cfg.wiki_root);
     let roots = ContentRoots::new(&wiki_root, wiki_cfg.external_roots.iter())
-        .with_type_by_prefix(wiki_cfg.type_by_prefix.iter());
+        .with_type_by_prefix(wiki_cfg.type_by_prefix.iter())
+        .with_revisable(wiki_cfg.revisable.iter());
     let index_path = state_dir.join("indexes").join(&entry.name);
 
     let (type_registry, index_schema) =

@@ -607,7 +607,7 @@ fn validate(
 
     // Preserved sources are create-only wherever they are written from.
     for r in resolved {
-        if space.roots.is_external(&r.slug) && r.existed && r.changes_anything {
+        if space.roots.is_write_once(&r.slug) && r.existed && r.changes_anything {
             bail!(
                 "`{}` is preserved source material and is not rewritten. Add an addendum beside \
                  it, or compile the correction into a `wiki/` page.",

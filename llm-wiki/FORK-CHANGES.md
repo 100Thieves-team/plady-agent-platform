@@ -329,3 +329,25 @@ change set. The wiki looked correct only because the agent happened to run a ful
 Change detection now compares HEAD directly to the working tree (`diff_tree_to_workdir`). The
 staging area is a third state that answers neither question the search index asks (`src/git.rs`),
 and `tests/apply.rs::applied_pages_are_immediately_searchable` fails without the fix.
+
+## Living documents inside a preserved root
+
+The create-only rule for external roots was too coarse. It exists because a captured event must not
+be rewritten — a meeting happened the way it happened — but this wiki keeps its specifications in
+the same tree, and a specification is revised as the product changes: the revision *is* the record.
+Freezing `raw/` wholesale froze the PRDs that the policy layer is compiled from, and an agent asked
+to update one was refused by the rule meant to protect transcripts.
+
+`revisable` in `wiki.toml` names the paths inside an external root that are living documents:
+
+```toml
+external_roots = ["raw"]
+revisable      = ["raw/product"]
+```
+
+`ContentRoots::is_write_once` replaces the bare `is_external` check at both guards, so the
+distinction is made in one place and both `content_write` and `apply` inherit it. Matching is by
+whole segments, so declaring `raw/product` revisable does not unfreeze `raw/product-archive`.
+
+- `src/content_roots.rs` (`with_revisable`, `is_revisable`, `is_write_once`), `src/config.rs`,
+  `src/engine.rs`, `src/ops/{content,apply}.rs`, `tests/external_roots.rs`

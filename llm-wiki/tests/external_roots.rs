@@ -227,3 +227,89 @@ fn wikis_without_external_roots_are_unaffected() {
         "raw/ should be invisible to a wiki that has not opted in"
     );
 }
+
+// ── Living documents inside a preserved root ──────────────────────────────────
+
+/// A wiki that keeps specifications beside transcripts and says which is which.
+fn setup_with_revisable(dir: &Path) -> (PathBuf, PathBuf) {
+    let (config_path, wiki_path) = setup(dir);
+    let wiki_toml = wiki_path.join("wiki.toml");
+    let mut cfg = fs::read_to_string(&wiki_toml).unwrap();
+    cfg.push_str("\nrevisable = [\"raw/product\"]\n");
+    fs::write(&wiki_toml, cfg).unwrap();
+
+    fs::create_dir_all(wiki_path.join("raw/product")).unwrap();
+    fs::write(wiki_path.join("raw/product/spec.md"), PAGE).unwrap();
+    llm_wiki::git::commit(&wiki_path, "add a spec").unwrap();
+    (config_path, wiki_path)
+}
+
+#[test]
+fn a_declared_living_document_can_be_revised_in_place() {
+    // A specification is revised as the product changes, and the revision is
+    // the record. Freezing it would freeze the thing the wiki compiles from.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, wiki_path) = setup_with_revisable(dir.path());
+    let manager = WikiEngine::build(&config_path).unwrap();
+    let engine = manager.state.read().unwrap();
+
+    let revised = "---\ntitle: \"Spec\"\ntype: doc\nstatus: active\n---\n\n개정된 내용.\n";
+    ops::content_write(&engine, "raw/product/spec", Some("test"), revised)
+        .expect("a declared living document must be writable");
+
+    let on_disk = fs::read_to_string(wiki_path.join("raw/product/spec.md")).unwrap();
+    assert!(on_disk.contains("개정된 내용."));
+}
+
+#[test]
+fn a_transcript_beside_it_is_still_write_once() {
+    // The declaration is per path, not per root: declaring specs revisable must
+    // not unfreeze the meeting notes they sit next to.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, wiki_path) = setup_with_revisable(dir.path());
+    let manager = WikiEngine::build(&config_path).unwrap();
+    let engine = manager.state.read().unwrap();
+
+    let err = ops::content_write(
+        &engine,
+        "raw/meetings/scrum-8-24",
+        Some("test"),
+        "---\ntitle: X\n---\n\n덮어쓰기.\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("preserved source material"), "{err}");
+    assert_eq!(
+        fs::read_to_string(wiki_path.join("raw/meetings/scrum-8-24.md")).unwrap(),
+        PAGE
+    );
+}
+
+#[test]
+fn apply_honours_the_same_distinction() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, _) = setup_with_revisable(dir.path());
+    let manager = WikiEngine::build(&config_path).unwrap();
+    let engine = manager.state.read().unwrap();
+
+    let req = |path: &str| llm_wiki::ops::ApplyRequest {
+        mode: llm_wiki::ops::ApplyMode::Archive,
+        changes: vec![llm_wiki::ops::Change {
+            path: path.to_string(),
+            content: "---\ntitle: X\ntype: doc\n---\n\n개정.\n".to_string(),
+        }],
+        message: None,
+        reason: None,
+        expected_head: None,
+        dry_run: true,
+    };
+
+    assert!(
+        ops::apply(&engine, &manager, "test", &req("raw/product/spec")).is_ok(),
+        "a living document should pass"
+    );
+    assert!(
+        ops::apply(&engine, &manager, "test", &req("raw/meetings/scrum-8-24")).is_err(),
+        "a transcript should not"
+    );
+}

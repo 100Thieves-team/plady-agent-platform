@@ -36,6 +36,7 @@ pub struct ContentRoots {
     primary: PathBuf,
     repo_root: PathBuf,
     external: Vec<String>,
+    revisable: Vec<String>,
     type_by_prefix: BTreeMap<String, String>,
 }
 
@@ -71,6 +72,7 @@ impl ContentRoots {
             primary,
             repo_root,
             external: names,
+            revisable: Vec::new(),
             type_by_prefix: BTreeMap::new(),
         }
     }
@@ -94,6 +96,55 @@ impl ContentRoots {
             })
             .collect();
         self
+    }
+
+    /// Declare paths inside an external root that are living documents.
+    ///
+    /// The create-only rule exists because a captured event must not be
+    /// rewritten — a meeting happened the way it happened. A specification in
+    /// the same tree is a different thing: it is revised as the product
+    /// changes, and the revision *is* the record. Without this distinction the
+    /// rule that protects transcripts also freezes the specs that the wiki is
+    /// compiled from.
+    pub fn with_revisable<I, S>(mut self, prefixes: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.revisable = prefixes
+            .into_iter()
+            .filter_map(|p| {
+                let v = p.as_ref().trim().trim_matches('/').to_string();
+                (!v.is_empty() && !v.contains("..")).then_some(v)
+            })
+            .collect();
+        self
+    }
+
+    /// Whether this slug names a living document that may be rewritten in place.
+    ///
+    /// Matching is by whole segments, so `raw/product` covers
+    /// `raw/product/rooms` but not `raw/product-archive/x`.
+    pub fn is_revisable(&self, slug: &str) -> bool {
+        self.revisable.iter().any(|prefix| {
+            slug == prefix
+                || slug
+                    .strip_prefix(prefix.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+
+    /// Whether overwriting this slug destroys a record.
+    ///
+    /// True for preserved source material, false for the living documents
+    /// declared revisable and for everything in the compiled layer.
+    pub fn is_write_once(&self, slug: &str) -> bool {
+        self.is_external(slug) && !self.is_revisable(slug)
+    }
+
+    /// Declared revisable prefixes.
+    pub fn revisable_prefixes(&self) -> &[String] {
+        &self.revisable
     }
 
     /// The page type this slug's location implies, if the wiki declares one.
@@ -345,6 +396,37 @@ mod tests {
                 .as_str(),
             "raw/product/prd"
         );
+    }
+
+    #[test]
+    fn a_revisable_prefix_lifts_the_write_once_rule() {
+        let r = roots().with_revisable(["raw/product"]);
+        // A specification is revised as the product changes.
+        assert!(!r.is_write_once("raw/product/rooms"));
+        assert!(r.is_revisable("raw/product/rooms"));
+        // A meeting happened the way it happened.
+        assert!(r.is_write_once("raw/meetings/scrum-8-24"));
+    }
+
+    #[test]
+    fn revisable_matches_whole_segments_only() {
+        let r = roots().with_revisable(["raw/product"]);
+        assert!(!r.is_revisable("raw/product-archive/x"));
+        assert!(r.is_revisable("raw/product"));
+    }
+
+    #[test]
+    fn compiled_pages_are_never_write_once() {
+        let r = roots().with_revisable(["raw/product"]);
+        assert!(!r.is_write_once("topics/t-a"));
+        assert!(!r.is_write_once("sources/s-a"));
+    }
+
+    #[test]
+    fn without_a_declaration_every_external_page_stays_write_once() {
+        let r = roots();
+        assert!(r.is_write_once("raw/product/rooms"));
+        assert!(r.revisable_prefixes().is_empty());
     }
 
     #[test]

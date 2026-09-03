@@ -170,6 +170,9 @@ fn guard_external_overwrite(
     slug: &str,
     existing: Option<PathBuf>,
 ) -> Result<()> {
+    if !roots.is_write_once(slug) {
+        return Ok(());
+    }
     let Some(root) = roots.external_prefix(slug) else {
         return Ok(());
     };
