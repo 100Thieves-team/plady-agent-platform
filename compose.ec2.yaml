@@ -318,6 +318,11 @@ services:
           git checkout -f -B "$$BRANCH" "origin/$$BRANCH"
         fi
         lock_release
+        # Last HEAD announced to Slack. Lives in .git/ so it is never committed
+        # and survives restarts. Seeded here so a fresh deploy does not replay
+        # the whole history as one giant notification.
+        NOTIFIED="$$WS/.git/llm-wiki-notified"
+        [ -s "$$NOTIFIED" ] || git rev-parse HEAD > "$$NOTIFIED" 2>/dev/null || true
 
         echo "[wiki-data-sync] backing ENABLED -> sync loop every $${INTERVAL}s on $$BRANCH"
         while true; do
@@ -365,16 +370,25 @@ services:
           # no webhook -> skip silently; notify errors never break the sync loop.
           # Never print the webhook URL.
           NEW="$$(git rev-parse HEAD 2>/dev/null || true)"
-          if [ -n "$${WIKI_SLACK_WEBHOOK_URL}" ] && [ -n "$$OLD" ] && [ -n "$$NEW" ] && [ "$$NEW" != "$$OLD" ]; then
-            COUNT="$$(git rev-list --count "$$OLD..$$NEW" 2>/dev/null || echo '?')"
-            SUMMARY="$$(git log --oneline --no-decorate "$$OLD..$$NEW" 2>/dev/null | head -10 | sed 's/\\/\\\\/g;s/"/\\"/g' | awk '{printf "%s\\n", $$0}')"
+          # Announce everything that went live since the LAST announcement, not
+          # just what this cycle pulled. An MCP commit (wiki_apply, save_answer)
+          # lands on the volume before the cycle starts, so it is already inside
+          # OLD and an OLD..NEW range never contains it — that is why agent
+          # ingests were silent while laptop pushes were announced.
+          LAST="$$(cat "$$NOTIFIED" 2>/dev/null || true)"
+          if [ -n "$${WIKI_SLACK_WEBHOOK_URL}" ] && [ -n "$$LAST" ] && [ -n "$$NEW" ] && [ "$$NEW" != "$$LAST" ]; then
+            COUNT="$$(git rev-list --count "$$LAST..$$NEW" 2>/dev/null || echo '?')"
+            SUMMARY="$$(git log --oneline --no-decorate "$$LAST..$$NEW" 2>/dev/null | head -10 | sed 's/\\/\\\\/g;s/"/\\"/g' | awk '{printf "%s\\n", $$0}')"
             if wget -q -O /dev/null --header='Content-Type: application/json' \
                 --post-data="{\"text\":\":books: *wiki.agent.plady.io 반영 완료* — 커밋 $${COUNT}건\\n$${SUMMARY}\"}" \
                 "$${WIKI_SLACK_WEBHOOK_URL}"; then
               echo "[wiki-data-sync] slack notified ($${COUNT} commits)"
+              printf '%s\n' "$$NEW" > "$$NOTIFIED"
             else
               echo "[wiki-data-sync] slack notify failed (ignored)"
             fi
+          elif [ -z "$$LAST" ] && [ -n "$$NEW" ]; then
+            printf '%s\n' "$$NEW" > "$$NOTIFIED"
           fi
           if git push origin "HEAD:$$BRANCH"; then
             echo "[wiki-data-sync] pushed to origin/$$BRANCH"
