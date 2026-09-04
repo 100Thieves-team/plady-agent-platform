@@ -14,6 +14,7 @@ services:
       MCP_PUBLIC_HOST: ${MCP_PUBLIC_HOST:-mcp.agent.plady.io}
       HERMES_PUBLIC_HOST: ${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}
       WIKI_PUBLIC_HOST: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
+      N8N_PUBLIC_HOST: ${N8N_PUBLIC_HOST:-n8n.agent.plady.io}
     command:
       - /bin/sh
       - -ec
@@ -30,6 +31,7 @@ services:
           @mcp host {$$MCP_PUBLIC_HOST}
           @hermes host {$$HERMES_PUBLIC_HOST}
           @wiki host {$$WIKI_PUBLIC_HOST}
+          @n8n host {$$N8N_PUBLIC_HOST}
 
           handle @mcp {
             reverse_proxy mcp-proxy:18765
@@ -52,6 +54,26 @@ services:
                 uri /auth/verify-browser
               }
               reverse_proxy wiki-ui:1313
+            }
+          }
+
+          # n8n (docs/webex-ingest.md): /webhook/* 는 Webex 가 호출하므로 공개하되
+          # 워크플로가 X-Spark-Signature(HMAC) 를 검증한다. 편집기·REST 등 나머지는
+          # wiki 와 같은 팀 비밀번호 세션(wiki-auth forward_auth) 뒤에만 노출한다 —
+          # n8n 자체 owner 로그인은 그 안쪽의 2번째 문이다. 세션 쿠키는 host 단위라
+          # /auth/* 를 이 host 에서도 wiki-auth 로 보내 로그인/발급이 되게 한다.
+          handle @n8n {
+            handle /webhook/* {
+              reverse_proxy n8n:5678
+            }
+            handle /auth/* {
+              reverse_proxy wiki-auth:8790
+            }
+            handle {
+              forward_auth wiki-auth:8790 {
+                uri /auth/verify-browser
+              }
+              reverse_proxy n8n:5678
             }
           }
 
@@ -616,6 +638,11 @@ services:
             - wiki_graph
             - wiki_index_status
             - wiki_spaces_list
+            - wiki_rules
+            - wiki_catalog
+            - wiki_recent
+            - wiki_context
+            - wiki_ingest_plan
           resources: false
           prompts: false
         YAML
@@ -657,31 +684,65 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # n8n — RESERVED PLACEHOLDER, INTENTIONALLY DISABLED (PLA-251).
+  # n8n — Webex 회의 transcript → wiki 자동 ingest 런타임 (docs/webex-ingest.md).
   #
-  # n8n.agent.plady.io is a reserved hostname only; the public ALB returns 503
-  # for it (infra/terraform/platform/alb.tf reserved_unavailable rule) until a
-  # real runtime exists. PLA-251 explicitly forbids a live n8n runtime, so this
-  # block is COMMENTED OUT and cannot start. A future teammate owns enabling it;
-  # the block is the reserved slot + internal-target convention (n8n:5678).
-  # Public exposure happens only behind the PLA-247 ingress (Caddy/ALB), never
-  # via a host `ports:` mapping. Enable checklist: docs/n8n-placeholder.md.
+  # PLA-251 의 "live n8n 금지" 계약은 2026-09-04 에 해제됐다(docs/n8n-placeholder.md
+  # 이력). 남는 계약: host publish 금지(expose 만), 공개는 Caddy/ALB 뒤에서만,
+  # secret 은 SSM → .env.ec2 로만 주입(N8N_ENCRYPTION_KEY 는 필수 — 없으면 이
+  # 서비스가 뜨지 않도록 :? 로 막는다; scripts/ec2-deploy.sh 는 키가 있을 때만
+  # `--profile n8n` 을 붙인다). 워크플로 정의는 이 레포 n8n/workflows/ 가 SSOT 이고
+  # 배포 때마다 import 로 덮어쓴다(credential 은 DB 에만 있어 덮어쓰지 않는다).
   #
-  # n8n:
-  #   image: ${N8N_IMAGE:-n8nio/n8n:<pin>}
-  #   profiles:
-  #     - n8n
-  #   environment:
-  #     N8N_PORT: "5678"
-  #     # Secrets (DB creds, N8N_ENCRYPTION_KEY) come from SSM at enable time,
-  #     # e.g. /plady/agent-platform/<env>/n8n-encryption-key. Never commit values.
-  #   expose:
-  #     - "5678"          # internal target n8n:5678; public via PLA-247 ingress only
-  #   restart: unless-stopped
+  # 워크플로가 $env 로 읽는 값들(N8N_BLOCK_ENV_ACCESS_IN_NODE=false 필요):
+  #   LLM_WIKI_MCP_URL/BEARER, HERMES_API_URL/KEY, WEBEX_*, WIKI_SLACK_WEBHOOK_URL.
+  #   편집기 접근자는 표현식으로 이 값을 읽을 수 있다 — 편집기는 wiki-auth 세션 +
+  #   n8n owner 로그인 뒤에만 열리고, 접근자는 이미 같은 값을 SSM 에서 보는 팀이다.
+  n8n:
+    image: ${N8N_IMAGE:-n8nio/n8n:2.37.9}
+    profiles:
+      - n8n
+    environment:
+      N8N_HOST: ${N8N_PUBLIC_HOST:-n8n.agent.plady.io}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      N8N_EDITOR_BASE_URL: https://${N8N_PUBLIC_HOST:-n8n.agent.plady.io}/
+      N8N_WEBHOOK_URL: https://${N8N_PUBLIC_HOST:-n8n.agent.plady.io}/
+      N8N_PROXY_HOPS: "2"                     # ALB → Caddy → n8n
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY (SSM n8n-encryption-key)}
+      GENERIC_TIMEZONE: Asia/Seoul
+      TZ: Asia/Seoul
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_PUBLIC_API_DISABLED: "true"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_TASK_TIMEOUT: "1200"       # Code 노드 상한(초). Hermes 컴파일은 최대 15분
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto     # 웹훅 HMAC 검증
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"          # 14d — 실행 로그에 transcript 가 남는다
+      # --- 워크플로 입력 ---
+      LLM_WIKI_MCP_URL: http://mcp-proxy:18765/mcp
+      LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN}
+      HERMES_API_URL: http://hermes-gateway:8642
+      HERMES_API_KEY: ${HERMES_API_SERVER_KEY}
+      HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
+      WEBEX_API_BASE: https://webexapis.com
+      WEBEX_WEBHOOK_SECRET: ${WEBEX_WEBHOOK_SECRET:-}
+      WEBEX_WEBHOOK_OWNED_BY: ${WEBEX_WEBHOOK_OWNED_BY:-creator}
+      WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    expose:
+      - "5678"          # public only via Caddy (@n8n) behind the ALB
+    restart: unless-stopped
   # ---------------------------------------------------------------------------
 
 volumes:
   wiki-data:
+  n8n-data:
   llm-wiki-config:
   hermes-home:
   otel-data:

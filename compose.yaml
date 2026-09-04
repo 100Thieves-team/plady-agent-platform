@@ -165,29 +165,50 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # n8n — RESERVED PLACEHOLDER, INTENTIONALLY DISABLED (PLA-251).
-  #
-  # n8n.agent.plady.io is a reserved hostname only; the public ALB returns 503
-  # for it (infra/terraform/platform/alb.tf reserved_unavailable rule) until a
-  # real runtime exists. PLA-251 explicitly forbids a live n8n runtime, so this
-  # block is COMMENTED OUT and cannot start. A future teammate owns enabling it;
-  # the block is the reserved slot + internal-target convention (n8n:5678).
-  # Enable checklist: docs/n8n-placeholder.md.
-  #
-  # n8n:
-  #   image: ${N8N_IMAGE:-n8nio/n8n:<pin>}
-  #   profiles:
-  #     - n8n
-  #   environment:
-  #     N8N_PORT: "5678"
-  #     # Secrets (DB creds, N8N_ENCRYPTION_KEY) come from SSM at enable time,
-  #     # e.g. /plady/agent-platform/<env>/n8n-encryption-key. Never commit values.
-  #   expose:
-  #     - "5678"          # internal target n8n:5678; public via PLA-247 ingress only
-  #   restart: unless-stopped
+  # n8n — local run of the Webex ingest workflow (docs/webex-ingest.md).
+  # Loopback publish so the editor is reachable at http://localhost:5678 and
+  # scripts/webex-ingest-stub.py can hit the webhook; production (compose.ec2.yaml)
+  # publishes nothing and sits behind Caddy/ALB. $WEBEX_API_BASE / $HERMES_API_URL
+  # can point at the stub (host.docker.internal:18790) for an end-to-end test
+  # with no Webex account and no model.
+  n8n:
+    image: ${N8N_IMAGE:-n8nio/n8n:2.37.9}
+    profiles:
+      - n8n
+    environment:
+      N8N_PORT: "5678"
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-local-dev-only-not-a-secret}
+      GENERIC_TIMEZONE: Asia/Seoul
+      TZ: Asia/Seoul
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_PUBLIC_API_DISABLED: "true"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_TASK_TIMEOUT: "1200"       # Code 노드 상한(초). Hermes 컴파일은 최대 15분
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      N8N_SECURE_COOKIE: "false"             # plain http on localhost
+      LLM_WIKI_MCP_URL: http://mcp-proxy:18765/mcp
+      LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN}
+      HERMES_API_URL: ${HERMES_API_URL:-http://hermes-gateway:8642}
+      HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
+      HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
+      WEBEX_API_BASE: ${WEBEX_API_BASE:-https://webexapis.com}
+      WEBEX_WEBHOOK_SECRET: ${WEBEX_WEBHOOK_SECRET:-}
+      WEBEX_WEBHOOK_OWNED_BY: ${WEBEX_WEBHOOK_OWNED_BY:-creator}
+      WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    ports:
+      - "127.0.0.1:5678:5678"
+    restart: unless-stopped
   # ---------------------------------------------------------------------------
 
 volumes:
   llm-wiki-config:
+  n8n-data:
   hermes-home:
   otel-data:

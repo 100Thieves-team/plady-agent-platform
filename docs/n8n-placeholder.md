@@ -1,4 +1,21 @@
-# n8n Reserved Placeholder (PLA-251)
+# n8n Runtime (구 PLA-251 Reserved Placeholder)
+
+> **상태 변경 (2026-09-04)**: PLA-251 의 "live n8n 금지" 계약은 해제됐다. `n8n.agent.plady.io` 는 이제 **live** 이며 Webex 회의 transcript → 위키 자동 ingest 런타임을 돌린다. 현행 SSOT 는 [`webex-ingest.md`](webex-ingest.md). 아래는 예약 계약의 이력과, 활성화하면서 지킨 항목의 대조표다.
+
+## 활성화 대조표 (2026-09-04)
+
+| 예약 체크리스트 | 결과 |
+| --- | --- |
+| 1. compose 주석 블록 해제 + 이미지 핀 | `n8nio/n8n:2.37.9`, `compose.ec2.yaml` / `compose.yaml` |
+| 2. `profiles: [n8n]` 유지 | 유지. `scripts/ec2-deploy.sh` 가 SSM 키가 있을 때만 프로필을 켠다 |
+| 3. secret 은 SSM 이름 계약으로 | `n8n-encryption-key`, `webex-webhook-secret` — [`platform-contract.md`](platform-contract.md) 표에 추가 |
+| 4. `expose` 만, host publish 없음 | 유지 |
+| 5. ingress: reserved 503 제거, host rule 추가 | Caddy `@n8n` 추가. ALB 503 룰(priority 100)은 삭제, terraform 기본값 `reserved_subdomains=[]`, `service_subdomains+=n8n` |
+| 6. 인증/접근 경계 | `/webhook/*` 만 공개(HMAC 검증), 나머지는 wiki-auth 팀 세션 + n8n owner 로그인 |
+
+---
+
+## 이력: 예약 계약 원문 (2026-06, PLA-251)
 
 이 문서는 `n8n.agent.plady.io`의 **예약/비활성 placeholder 계약**의 SSOT runbook입니다. endpoint **이름 계약**은 [`platform-contract.md`](platform-contract.md)가 SSOT입니다.
 

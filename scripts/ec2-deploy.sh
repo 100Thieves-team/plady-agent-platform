@@ -55,6 +55,8 @@ SLACK_ALLOWED_USERS_PARAM="${SLACK_ALLOWED_USERS_PARAM:-/plady/agent-platform/${
 WIKI_TOKEN_PASSWORD_HASH_PARAM="${WIKI_TOKEN_PASSWORD_HASH_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-password-hash}"
 WIKI_TOKEN_JWT_SECRET_PARAM="${WIKI_TOKEN_JWT_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-token-jwt-secret}"
 WIKI_SLACK_WEBHOOK_URL_PARAM="${WIKI_SLACK_WEBHOOK_URL_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-slack-webhook-url}"
+N8N_ENCRYPTION_KEY_PARAM="${N8N_ENCRYPTION_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/n8n-encryption-key}"
+WEBEX_WEBHOOK_SECRET_PARAM="${WEBEX_WEBHOOK_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/webex-webhook-secret}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -99,6 +101,18 @@ WIKI_TOKEN_JWT_SECRET="$(ssm_get "$WIKI_TOKEN_JWT_SECRET_PARAM")"
 # itself is the secret — NEVER echo it; report presence only.
 WIKI_SLACK_WEBHOOK_URL="$(ssm_get "$WIKI_SLACK_WEBHOOK_URL_PARAM")"
 [ "$WIKI_SLACK_WEBHOOK_URL" = "None" ] && WIKI_SLACK_WEBHOOK_URL=""
+# n8n (Webex transcript ingest, docs/webex-ingest.md). Both optional: without the
+# encryption key the n8n profile is simply not started. Presence only is logged.
+N8N_ENCRYPTION_KEY="$(ssm_get "$N8N_ENCRYPTION_KEY_PARAM")"
+[ "$N8N_ENCRYPTION_KEY" = "None" ] && N8N_ENCRYPTION_KEY=""
+WEBEX_WEBHOOK_SECRET="$(ssm_get "$WEBEX_WEBHOOK_SECRET_PARAM")"
+[ "$WEBEX_WEBHOOK_SECRET" = "None" ] && WEBEX_WEBHOOK_SECRET=""
+if [ -n "$N8N_ENCRYPTION_KEY" ]; then
+  DC+=(--profile n8n)
+  echo "  n8n: on (encryption key present; webex secret $([ -n "$WEBEX_WEBHOOK_SECRET" ] && echo present || echo ABSENT))"
+else
+  echo "  n8n: off (${N8N_ENCRYPTION_KEY_PARAM} absent)"
+fi
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
 else
@@ -182,6 +196,8 @@ SLACK_ALLOWED_USERS=${SLACK_ALLOWED_USERS}
 WIKI_TOKEN_PASSWORD_HASH=${WIKI_TOKEN_PASSWORD_HASH}
 WIKI_TOKEN_JWT_SECRET=${WIKI_TOKEN_JWT_SECRET}
 WIKI_SLACK_WEBHOOK_URL=${WIKI_SLACK_WEBHOOK_URL}
+N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+WEBEX_WEBHOOK_SECRET=${WEBEX_WEBHOOK_SECRET}
 ENV
 chmod 600 "$ENV_FILE"
 
@@ -212,6 +228,17 @@ log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki) 
 
 log "Bringing the stack up"
 "${DC[@]}" up -d --remove-orphans
+
+# --- 4c. n8n workflows: repo n8n/workflows/ is the SSOT ---------------------
+# Import overwrites workflows by id (credentials live only in the DB and are
+# untouched), then the ingest workflow is (re)activated and n8n restarted so the
+# webhook is registered. Skipped when the n8n profile is off.
+if printf '%s\n' "${DC[@]}" | grep -qx 'n8n'; then
+  log "Importing n8n workflows from n8n/workflows/"
+  "${DC[@]}" run -T --rm n8n import:workflow --separate --input=/workflows
+  "${DC[@]}" run -T --rm n8n update:workflow --id=webex-transcript-ingest --active=true
+  "${DC[@]}" restart n8n
+fi
 
 # wiki-auth bind-mounts docker/wiki-auth/app.py (shipped by the workflow next to
 # compose.ec2.yaml). A content-only change to that file does NOT change the

@@ -43,11 +43,19 @@ servers:
         - wiki_graph
         - wiki_index_status
         - wiki_spaces_list
+        # 2026-09 llm-wiki fork 추가분(FORK-CHANGES.md): 전부 read-only
+        - wiki_rules        # AGENTS.md 규칙 반환
+        - wiki_catalog      # 종류별 페이지 목록
+        - wiki_recent       # git 이력 기반 최근 변경
+        - wiki_context      # 질문에 맞는 페이지 본문 묶음
+        - wiki_ingest_plan  # ingest 계획(읽기 전용, expected_head 반환)
       approve:
         - wiki_content_write
         - wiki_content_new
         - wiki_content_commit
         - wiki_ingest
+        - wiki_apply        # 트랜잭션 ingest (raw/source/topic 한 번에 커밋)
+        - wiki_save_answer  # answers/ 페이지 커밋
         - wiki_export       # llms.txt/JSON 파일을 디스크에 씀(임의 path 가능) → write
       deny:
         - wiki_spaces_create

@@ -1,0 +1,59 @@
+{
+  "id": "webex-register-webhook",
+  "name": "webex-register-webhook",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "description": "1회 실행: Webex 에 meetingTranscripts/created 웹훅을 등록한다 (secret 은 컨테이너 env 에서). docs/webex-ingest.md" },
+  "nodes": [
+    { "id": "manual", "name": "Run once", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {} },
+    {
+      "id": "list",
+      "name": "List existing webhooks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "url": "={{ ($env.WEBEX_API_BASE || 'https://webexapis.com') + '/v1/webhooks' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": { "parameters": [ { "name": "max", "value": "100" } ] },
+        "options": { "timeout": 30000 }
+      }
+    },
+    {
+      "id": "decide",
+      "name": "Already registered?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "jsCode": "const base = String($env.N8N_WEBHOOK_URL || '').replace(/\\/$/, '');\nif (!base) throw new Error('N8N_WEBHOOK_URL not set');\nif (!$env.WEBEX_WEBHOOK_SECRET) throw new Error('WEBEX_WEBHOOK_SECRET not set');\nconst target = `${base}/webhook/webex-transcript`;\nconst items = ($input.first().json.items || []);\nconst mine = items.filter(w => w.targetUrl === target && w.resource === 'meetingTranscripts' && w.event === 'created');\nif (mine.length) return [{ json: { skip: true, existing: mine.map(w => ({ id: w.id, name: w.name, status: w.status })) } }];\nreturn [{ json: { skip: false, body: { name: 'plady-wiki-webex-transcripts', targetUrl: target, resource: 'meetingTranscripts', event: 'created', secret: $env.WEBEX_WEBHOOK_SECRET, ownedBy: $env.WEBEX_WEBHOOK_OWNED_BY || 'creator' } } }];"
+      }
+    },
+    { "id": "if", "name": "Need to create", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [660, 0], "parameters": { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" }, "conditions": [ { "id": "c1", "leftValue": "={{ $json.skip }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } } ], "combinator": "and" }, "options": {} } },
+    {
+      "id": "create",
+      "name": "Create webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, -80],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.WEBEX_API_BASE || 'https://webexapis.com') + '/v1/webhooks' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": { "timeout": 30000 }
+      }
+    }
+  ],
+  "connections": {
+    "Run once": { "main": [[{ "node": "List existing webhooks", "type": "main", "index": 0 }]] },
+    "List existing webhooks": { "main": [[{ "node": "Already registered?", "type": "main", "index": 0 }]] },
+    "Already registered?": { "main": [[{ "node": "Need to create", "type": "main", "index": 0 }]] },
+    "Need to create": { "main": [[{ "node": "Create webhook", "type": "main", "index": 0 }], []] }
+  }
+}

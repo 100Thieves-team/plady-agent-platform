@@ -25,3 +25,6 @@ crash.*.log
 
 # review-swarm 실행 산출물
 .review-swarm/
+
+# python bytecode from scripts/*.py
+__pycache__/

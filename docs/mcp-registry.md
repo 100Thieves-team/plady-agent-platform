@@ -57,7 +57,7 @@
 
 ## llm-wiki MCP 도구 분류 (23개)
 
-dispatch table 기준(`llm-wiki/src/mcp/tools.rs`) 정확히 23개. 합계: allow 11 + approve 5 + deny 7 = 23 (중복·누락 없음). `wiki_export`는 read처럼 보이지만 결과를 디스크에 쓰므로(`ops/export.rs`의 `fs::write`) approve로 둡니다.
+dispatch table 기준(`llm-wiki/src/mcp/tools.rs`) 정확히 30개. 합계: allow 16 + approve 7 + deny 7 = 30 (중복·누락 없음). 2026-09 fork 추가분 7개(`llm-wiki/FORK-CHANGES.md`)는 아래 표 끝에 있다. `wiki_export`는 read처럼 보이지만 결과를 디스크에 쓰므로(`ops/export.rs`의 `fs::write`) approve로 둡니다.
 
 | 도구 | R/W | tier | 목적 |
 | --- | --- | --- | --- |
@@ -77,6 +77,13 @@ dispatch table 기준(`llm-wiki/src/mcp/tools.rs`) 정확히 23개. 합계: allo
 | `wiki_content_commit` | W | **approve** | 변경 git 커밋 |
 | `wiki_ingest` | W | **approve** | 검증·(선택 redact)·커밋·인덱싱 |
 | `wiki_export` | W | **approve** | llms.txt/JSON 등 내보내기 — **파일을 디스크에 씀**(기본 `llms.txt`, 임의 path 가능) |
+| `wiki_rules` | R | allow | AGENTS.md 운영 규칙 반환 |
+| `wiki_catalog` | R | allow | 종류(topic/source/…)별 페이지 목록 |
+| `wiki_recent` | R | allow | git 이력에서 최근 변경 |
+| `wiki_context` | R | allow | 질문에 맞는 페이지 본문 묶음(예산 내) |
+| `wiki_ingest_plan` | R | allow | ingest 계획 — 필요한 페이지·후보·expected_head. 쓰지 않음 |
+| `wiki_apply` | W | **approve** | 트랜잭션 ingest — raw/source/topic 한 번에 검증·커밋 |
+| `wiki_save_answer` | W | **approve** | 질의 답변을 `answers/` 페이지로 커밋 |
 | `wiki_spaces_create` | W | **deny** | 새 wiki repo 초기화/등록 |
 | `wiki_spaces_register` | W | **deny** | 기존 repo 레지스트리 등록 |
 | `wiki_spaces_remove` | W | **deny** | space 제거(디스크 삭제 가능) |

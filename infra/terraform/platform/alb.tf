@@ -120,7 +120,10 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Reserved hostnames resolve to the ALB but are not live yet (e.g. n8n -> PLA-251).
+# Reserved hostnames resolve to the ALB but are not live yet. Empty by default
+# since n8n went live (2026-09-04, docs/webex-ingest.md): the live rule 100 was
+# deleted with the AWS CLI at that time because this module had no local state
+# to apply from; the defaults here describe the live listener.
 resource "aws_lb_listener_rule" "reserved_unavailable" {
   count = length(var.reserved_subdomains) > 0 ? 1 : 0
 

@@ -60,15 +60,15 @@ variable "manage_dns" {
 }
 
 variable "service_subdomains" {
-  description = "Service hostnames (left labels under agent_zone_name) that resolve to the ALB. Reserved names are still created as alias records."
+  description = "Service hostnames (left labels under agent_zone_name) that resolve to the ALB. Reserved names are still created as alias records. n8n went live 2026-09-04 (docs/webex-ingest.md)."
   type        = list(string)
-  default     = ["wiki", "mcp", "hermes"]
+  default     = ["wiki", "mcp", "hermes", "n8n"]
 }
 
 variable "reserved_subdomains" {
-  description = "Reserved service hostnames that resolve to the ALB but return 503 until their runtime is enabled (e.g. n8n by PLA-251)."
+  description = "Reserved service hostnames that resolve to the ALB but return 503 until their runtime is enabled. Empty since n8n went live (2026-09-04); the 503 rule is then not created."
   type        = list(string)
-  default     = ["n8n"]
+  default     = []
 }
 
 # ---------------------------------------------------------------------------
