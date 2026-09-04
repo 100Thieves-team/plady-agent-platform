@@ -17,6 +17,7 @@ on:
       - scripts/ec2-deploy.sh
       - compose.ec2.yaml
       - docker/**
+      - n8n/workflows/**
       - llm-wiki/**
       - llm-wiki-hugo-cms/**
   workflow_dispatch:
@@ -98,6 +99,10 @@ jobs:
           COMPOSE_B64="$(base64 -w0 compose.ec2.yaml)"
           DEPLOY_B64="$(base64 -w0 scripts/ec2-deploy.sh)"
           WIKI_AUTH_B64="$(base64 -w0 docker/wiki-auth/app.py)"
+          # n8n workflow definitions (bind-mounted read-only, imported on every
+          # deploy — docs/webex-ingest.md). Shipped as a tarball like the rest;
+          # the box has no checkout, so without this the mount is an empty dir.
+          N8N_WF_TGZ_B64="$(tar -czf - -C n8n workflows | base64 -w0)"
 
           REMOTE=$(cat <<EOF
           set -euo pipefail
@@ -108,6 +113,9 @@ jobs:
           rm -rf /opt/plady-agent-platform/docker/wiki-auth/app.py
           echo "${WIKI_AUTH_B64}" | base64 -d > /opt/plady-agent-platform/docker/wiki-auth/app.py
           echo "${DEPLOY_B64}" | base64 -d > /tmp/ec2-deploy.sh
+          rm -rf /opt/plady-agent-platform/n8n/workflows
+          mkdir -p /opt/plady-agent-platform/n8n
+          echo "${N8N_WF_TGZ_B64}" | base64 -d | tar -xzf - -C /opt/plady-agent-platform/n8n
           export AWS_REGION="${AWS_REGION}"
           export ECR_REGISTRY="${ECR_REGISTRY}"
           export LLM_WIKI_REPO="${ECR_LLM_WIKI_REPOSITORY}"
