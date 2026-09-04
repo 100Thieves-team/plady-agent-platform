@@ -226,19 +226,22 @@ log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki) 
 # Matches the `exec -T` smoke checks below.
 "${DC[@]}" run -T --rm hermes-config-init
 
-log "Bringing the stack up"
-"${DC[@]}" up -d --remove-orphans
-
 # --- 4c. n8n workflows: repo n8n/workflows/ is the SSOT ---------------------
 # Import overwrites workflows by id (credentials live only in the DB and are
-# untouched), then the ingest workflow is (re)activated and n8n restarted so the
-# webhook is registered. Skipped when the n8n profile is off.
+# untouched) and marks the ingest workflow active; the `up` below then starts
+# n8n, which registers the webhook. This runs BEFORE the stack comes up and with
+# n8n stopped: the import CLI and the server share one SQLite file, and running
+# both at once (first deploy did) fails on the database lock. Skipped when the
+# n8n profile is off.
 if printf '%s\n' "${DC[@]}" | grep -qx 'n8n'; then
-  log "Importing n8n workflows from n8n/workflows/"
+  log "Importing n8n workflows from n8n/workflows/ (n8n stopped meanwhile)"
+  "${DC[@]}" stop n8n >/dev/null 2>&1 || true
   "${DC[@]}" run -T --rm n8n import:workflow --separate --input=/workflows
   "${DC[@]}" run -T --rm n8n update:workflow --id=webex-transcript-ingest --active=true
-  "${DC[@]}" restart n8n
 fi
+
+log "Bringing the stack up"
+"${DC[@]}" up -d --remove-orphans
 
 # wiki-auth bind-mounts docker/wiki-auth/app.py (shipped by the workflow next to
 # compose.ec2.yaml). A content-only change to that file does NOT change the
