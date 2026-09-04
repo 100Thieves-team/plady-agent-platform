@@ -96,26 +96,27 @@ jobs:
           # Build the remote bootstrap: write compose + deploy script + the
           # wiki-auth sidecar source (bind-mounted by compose.ec2.yaml), export the
           # image/env coordinates, then run the deploy. The box needs no repo checkout.
-          COMPOSE_B64="$(base64 -w0 compose.ec2.yaml)"
-          DEPLOY_B64="$(base64 -w0 scripts/ec2-deploy.sh)"
-          WIKI_AUTH_B64="$(base64 -w0 docker/wiki-auth/app.py)"
-          # n8n workflow definitions (bind-mounted read-only, imported on every
-          # deploy — docs/webex-ingest.md). Shipped as a tarball like the rest;
-          # the box has no checkout, so without this the mount is an empty dir.
-          N8N_WF_TGZ_B64="$(tar -czf - -C n8n workflows | base64 -w0)"
+          # One gzip tarball for everything the box needs (compose, deploy script,
+          # wiki-auth sidecar source, n8n workflow definitions — docs/webex-ingest.md).
+          # SSM SendCommand caps the whole document at 97 KB; shipping files as
+          # separate plain base64 blobs blew past it once n8n/workflows joined.
+          PAYLOAD_B64="$(tar -czf - compose.ec2.yaml scripts/ec2-deploy.sh docker/wiki-auth/app.py n8n/workflows | base64 -w0)"
+          echo "payload: $(( ${#PAYLOAD_B64} / 1024 )) KB base64"
 
           REMOTE=$(cat <<EOF
           set -euo pipefail
-          mkdir -p /opt/plady-agent-platform/docker/wiki-auth
-          echo "${COMPOSE_B64}" | base64 -d > /opt/plady-agent-platform/compose.ec2.yaml
+          P=\$(mktemp -d)
+          echo "${PAYLOAD_B64}" | base64 -d | tar -xzf - -C "\$P"
+          mkdir -p /opt/plady-agent-platform/docker/wiki-auth /opt/plady-agent-platform/n8n
+          cp "\$P/compose.ec2.yaml" /opt/plady-agent-platform/compose.ec2.yaml
           # If a deploy ever ran while app.py was missing, docker created a
           # DIRECTORY at the bind-mount source path; clear it before writing the file.
           rm -rf /opt/plady-agent-platform/docker/wiki-auth/app.py
-          echo "${WIKI_AUTH_B64}" | base64 -d > /opt/plady-agent-platform/docker/wiki-auth/app.py
-          echo "${DEPLOY_B64}" | base64 -d > /tmp/ec2-deploy.sh
+          cp "\$P/docker/wiki-auth/app.py" /opt/plady-agent-platform/docker/wiki-auth/app.py
           rm -rf /opt/plady-agent-platform/n8n/workflows
-          mkdir -p /opt/plady-agent-platform/n8n
-          echo "${N8N_WF_TGZ_B64}" | base64 -d | tar -xzf - -C /opt/plady-agent-platform/n8n
+          cp -r "\$P/n8n/workflows" /opt/plady-agent-platform/n8n/workflows
+          cp "\$P/scripts/ec2-deploy.sh" /tmp/ec2-deploy.sh
+          rm -rf "\$P"
           export AWS_REGION="${AWS_REGION}"
           export ECR_REGISTRY="${ECR_REGISTRY}"
           export LLM_WIKI_REPO="${ECR_LLM_WIKI_REPOSITORY}"
