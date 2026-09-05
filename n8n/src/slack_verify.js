@@ -32,11 +32,22 @@ const canvas = files.find(f => f && (f.filetype === 'quip' || f.mode === 'quip' 
 if (ev.type !== 'message' || !canvas) {
   return [{ json: { respond: '', ignore: true, why: `event ${ev.type}/${ev.subtype || '-'} without a canvas`, event_summary: { type: ev.type, subtype: ev.subtype, files: files.map(f => f && f.filetype) } } }];
 }
-// Only Slack-generated huddle notes, not any canvas a person shares. Title is
-// the signal we have ("Huddle notes ..."/"허들 노트 ..."); keep a manual override
-// via the SLACK_INGEST_ANY_CANVAS env for teams that title notes themselves.
-const titleOk = /huddle|허들/i.test(String(canvas.title || canvas.name || '')) || (msg.subtype === 'huddle_thread') || $env.SLACK_INGEST_ANY_CANVAS === 'true';
+// Only Slack-generated huddle notes, not any canvas a person shares. Observed
+// shape (2026-09-05, #proj-moimyeon): the huddle-thread root message
+// (subtype huddle_thread, user USLACKBOT) carries the canvas; its title reads
+// ":headphones: Huddle notes: 9/5/26 in <#C…>" or "허들 메모: 26/9/4 채널: …".
+// files.info later confirms with `is_huddle_canvas`. People also re-share the
+// same canvas by hand ("@Hermes Ingest 해줘 F0…") — accepted too, the raw path is
+// keyed by file id so it stays one page.
+const titleOk = /huddle|허들/i.test(String(canvas.title || canvas.name || '')) || (msg.subtype === 'huddle_thread') || canvas.is_huddle_canvas === true || $env.SLACK_INGEST_ANY_CANVAS === 'true';
 if (!titleOk) return [{ json: { respond: '', ignore: true, why: `canvas "${canvas.title || canvas.name}" is not huddle notes` } }];
+// The huddle_thread root exists from the moment the huddle starts; the notes
+// canvas is attached (message_changed) when it ends. Only proceed once the room
+// has actually ended, otherwise the canvas is still being written.
+const room = msg.room || ev.room || null;
+if (msg.subtype === 'huddle_thread' && room && !room.date_end) {
+  return [{ json: { respond: '', ignore: true, why: 'huddle still running (room.date_end empty)' } }];
+}
 
 return [{ json: {
   respond: '', ignore: false,

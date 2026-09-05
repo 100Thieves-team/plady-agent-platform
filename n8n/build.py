@@ -95,11 +95,16 @@ workflows = [
          "parameters": {"conditions": {"options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict"},
                                        "conditions": [{"id": "c1", "leftValue": "={{ $json.ignore }}", "rightValue": False, "operator": {"type": "boolean", "operation": "equals"}}],
                                        "combinator": "and"}, "options": {}}},
-        code("fetch", "Fetch canvas", 880, -80, "slack_fetch.js"),
-        call_ingest("ingest", 1100, -80)],
+        # Slack attaches the canvas as soon as the huddle ends and keeps writing
+        # the AI notes into it for a while; fetching immediately would preserve
+        # a half-written page (and raw pages are create-only). Give it a moment.
+        {"id": "wait", "name": "Let Slack finish the notes", "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [880, -80], "webhookId": "slack-notes-wait",
+         "parameters": {"amount": 3, "unit": "minutes"}},
+        code("fetch", "Fetch canvas", 1100, -80, "slack_fetch.js"),
+        call_ingest("ingest", 1320, -80)],
        {**chain("Slack events", "Verify & classify", "Respond 200", "Is huddle notes"),
-        "Is huddle notes": {"main": [[{"node": "Fetch canvas", "type": "main", "index": 0}], []]},
-        **chain("Fetch canvas", "wiki-ingest-raw")}, True),
+        "Is huddle notes": {"main": [[{"node": "Let Slack finish the notes", "type": "main", "index": 0}], []]},
+        **chain("Let Slack finish the notes", "Fetch canvas", "wiki-ingest-raw")}, True),
 ]
 
 if __name__ == "__main__":

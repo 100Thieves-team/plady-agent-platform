@@ -92,9 +92,16 @@ Slack  ──(Events API POST, X-Slack-Signature)──▶  n8n  https://n8n.age
 5. **재배포** — `gh workflow run deploy-agent-platform.yml` (Actions 탭 → Deploy → Run workflow 도 같다). 배포 로그에 `slack ingest app present` 가 보여야 한다.
 6. **Event Subscriptions** → Enable → Request URL `https://n8n.agent.plady.io/webhook/slack-events` → Slack 이 challenge 를 보내고 워크플로가 서명을 검증해 응답하면 ✅ Verified. (5번 전에 하면 서명 secret 이 없어 실패한다.) → Subscribe to bot events: `message.channels`, `message.groups` → Save Changes → 앱 재설치 요청이 뜨면 Reinstall.
 7. **채널 초대** — 허들을 하는 채널마다 `/invite @plady-wiki-ingest`. 초대된 채널의 메시지만 이벤트로 온다.
-8. **확인** — 허들을 하나 하고 끝낸다. Slack 이 노트 캔버스를 올리면 n8n Executions 에 `slack-huddle-notes-ingest` 가 생기고, `_wiki-alert` 에 `archive(slack-huddle): …` 알림이 온다. 캔버스 제목이 "Huddle notes"/"허들 노트" 가 아닌 워크스페이스면 `.env.ec2` 에 `SLACK_INGEST_ANY_CANVAS=true` 를 두고(compose 의 n8n env 에 추가) 재배포하면 채널에 공유되는 모든 캔버스를 받는다 — 첫 실행의 `Verify & classify` 출력에 `why` 로 왜 걸렀는지 남는다.
+8. **확인** — 허들을 하나 하고 끝낸다. Slack 이 노트 캔버스를 올리면 n8n Executions 에 `slack-huddle-notes-ingest` 가 생기고(3분 대기 포함), `_wiki-alert` 에 `archive(slack-huddle): …` 알림이 온다. **실행이 아예 안 생기면** Event Subscriptions 에 bot events 가 저장되지 않은 것이다 — 봇이 채널에 있어도 `message.groups`/`message.channels` 구독이 없으면 Slack 은 아무것도 보내지 않는다(2026-09-05 첫 시도가 이 경우였다: URL 검증 이벤트만 도착). 캔버스 제목이 "Huddle notes"/"허들 노트" 가 아닌 워크스페이스면 `.env.ec2` 에 `SLACK_INGEST_ANY_CANVAS=true` 를 두고(compose 의 n8n env 에 추가) 재배포하면 채널에 공유되는 모든 캔버스를 받는다 — 첫 실행의 `Verify & classify` 출력에 `why` 로 왜 걸렀는지 남는다.
 
-⚠️ 아직 실제 Slack 허들 노트 이벤트로 검증하지 못한 부분: 노트 캔버스가 붙는 이벤트의 정확한 모양(새 message 인지 message_changed 인지)과 캔버스 다운로드 응답 형식(HTML/텍스트). 워크플로는 둘 다 받도록 넓게 잡았고, 첫 실제 이벤트의 실행 기록으로 좁힌다.
+### 실제로 관찰된 모양 (2026-09-05, #proj-moimyeon, 봇 토큰으로 conversations.history 조회)
+
+- 허들이 시작되면 Slack 이 채널에 **`subtype: huddle_thread`, `user: USLACKBOT`** 메시지를 하나 만든다(허들 스레드 루트). `room.date_end` 가 비어 있으면 진행 중.
+- 끝나면 그 메시지에 캔버스 파일이 붙는다: `files[0].filetype = "quip"`, 제목 `":headphones: Huddle notes: 9/5/26 in <#C…>"` (한국어 워크스페이스 표기: `"허들 메모: 26/9/4 채널: …"`). `files.info` 에는 `is_huddle_canvas: true`, `huddle_transcript_file_id` 가 있다.
+- 캔버스 다운로드(`url_private_download`, Bearer 봇 토큰)는 **HTML**(`<div class="quip-canvas-content">…`) → 워크플로가 태그를 벗겨 텍스트로 만든다. 내용: 참석자, Summary(짧은 허들이면 "Not enough to summarize"), transcript 파일 링크.
+- **transcript 파일**(`filetype: huddle_transcript`, mimetype `application/vnd.slack-huddle-transcript`)은 봇 토큰으로 다운로드하면 302 → **403**. 즉 현재 원문은 Slack AI 가 쓴 노트(요약·액션 아이템)이고 발화 전문은 아니다. 워크플로는 transcript 를 받을 수 있으면 `## Transcript` 로 덧붙이고, 못 받으면 조용히 넘어간다. (사람 토큰이나 다른 스코프로 열리는지는 후속 조사.)
+- 그래서 워크플로는 `Is huddle notes` 뒤에 **3분 Wait** 를 둔다: 캔버스는 허들 종료 직후 붙지만 AI 노트는 그 뒤로도 채워진다. raw 는 create-only 라 반쯤 쓰인 캔버스를 보관하면 되돌릴 수 없다.
+- 팀원이 같은 캔버스를 다시 공유하는 메시지(예: `@Hermes Ingest 해줘 F0…`)도 같은 캔버스 id 로 들어오므로 `already archived` 로 끝난다.
 
 ## 로컬 검증 (Webex 계정·모델 없이)
 
