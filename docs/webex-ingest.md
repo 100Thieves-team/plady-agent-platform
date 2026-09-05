@@ -48,7 +48,8 @@ Webex  ──(webhook meetingTranscripts/created, X-Spark-Signature)──▶  n
    - `spark:kms` 는 포털 목록에 **없다**. Webex 가 모든 Integration 에 자동으로 붙이는 스코프라 체크할 수 없고, 저장 뒤 상세 페이지의 예시 OAuth URL 에 들어 있다. 다음 단계의 n8n Scope 문자열에만 직접 넣는다.
    - Client ID / Client Secret 은 다음 단계에서 n8n 에만 넣는다. 레포·Linear·Slack 에 남기지 않는다.
 2. **n8n 첫 로그인** — `https://n8n.agent.plady.io` → 팀 비밀번호(wiki 와 동일) → n8n owner 계정 생성(강한 비밀번호, 팀 비밀번호 관리자에 보관).
-3. **OAuth2 credential** — Credentials → New → *OAuth2 API* (generic), 이름 `Webex OAuth2`:
+3. **OAuth2 credential** — Credentials → Create → 검색 `OAuth2 API` → **generic "OAuth2 API"** 선택, 이름 `Webex OAuth2`.
+   ⚠️ n8n 내장 **"Cisco Webex OAuth2 API"** 는 쓰지 않는다: 스코프가 숨겨진 고정값(messaging 11개)이라 Integration 과 안 맞아 `invalid_scope` 가 나고, 맞춰도 `meeting:transcripts_read` 가 없어 transcript 를 못 받는다.
    - Grant Type `Authorization Code`, Authorization URL `https://webexapis.com/v1/authorize`, Access Token URL `https://webexapis.com/v1/access_token`, Authentication `Body`.
    - Scope(공백 구분): 1번에서 체크한 것 + `spark:kms`. 예: `spark:kms meeting:transcripts_read meeting:schedules_read` (admin 스코프를 켰다면 그것도). 포털 상세 페이지의 예시 OAuth URL 에 있는 `scope=` 값을 그대로 옮기면 정확하다.
    - Client ID/Secret 입력 → **Connect my account** → Webex 동의. (토큰 갱신은 n8n 이 한다.)
