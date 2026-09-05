@@ -11,8 +11,14 @@ const slack = async (method, params) => {
 
 const info = await slack('files.info', { file: it.fileId });
 const file = info.file || {};
-if (file.is_huddle_canvas === false && $env.SLACK_INGEST_ANY_CANVAS !== 'true') {
-  throw new Error(`canvas ${it.fileId} is not a huddle notes canvas (is_huddle_canvas=false)`);
+// file_shared delivers every file in the channel (screenshots included); only
+// Slack's own huddle notes canvas goes further.
+const looksLikeNotes = file.is_huddle_canvas === true || /huddle|허들/i.test(String(file.title || file.name || ''));
+if (!looksLikeNotes && $env.SLACK_INGEST_ANY_CANVAS !== 'true') {
+  return [{ json: { skipped: 'not a huddle notes canvas', fileId: it.fileId, filetype: file.filetype, title: file.title || file.name || '' } }];
+}
+if (file.filetype !== 'quip' && file.mode !== 'quip') {
+  return [{ json: { skipped: 'not a canvas', fileId: it.fileId, filetype: file.filetype } }];
 }
 let channelName = it.channel;
 try { const ci = await slack('conversations.info', { channel: it.channel }); channelName = (ci.channel && ci.channel.name) || it.channel; } catch (e) { /* keep id */ }
@@ -77,7 +83,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const when = kst(it.messageTs || file.created || Date.now() / 1000);
 const date = `${when.getUTCFullYear()}-${pad(when.getUTCMonth() + 1)}-${pad(when.getUTCDate())}`;
 const heldAt = `${date}T${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())}:00+09:00`;
-const title = String(it.fileTitle || `#${channelName} 허들 ${date}`).trim();
+const title = String(it.fileTitle || file.title || `#${channelName} 허들 ${date}`).replace(/:[a-z_]+:\s*/g, '').replace(/&lt;#[^&]*&gt;|<#[^>]*>/g, `#${channelName}`).trim();
 const t = `${title} ${channelName}`.toLowerCase();
 const meetingType = /스크럼|scrum|데일리|daily|standup/.test(t) ? 'daily-scrum' : /멘토|mentor/.test(t) ? 'mentoring' : 'planning';
 const chanSlug = String(channelName).replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 30) || 'channel';

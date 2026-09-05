@@ -101,10 +101,15 @@ workflows = [
         {"id": "wait", "name": "Let Slack finish the notes", "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [880, -80], "webhookId": "slack-notes-wait",
          "parameters": {"amount": 3, "unit": "minutes"}},
         code("fetch", "Fetch canvas", 1100, -80, "slack_fetch.js"),
-        call_ingest("ingest", 1320, -80)],
+        {"id": "if2", "name": "Has body", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [1320, -80],
+         "parameters": {"conditions": {"options": {"caseSensitive": True, "leftValue": "", "typeValidation": "loose"},
+                                       "conditions": [{"id": "c2", "leftValue": "={{ $json.body || '' }}", "rightValue": "", "operator": {"type": "string", "operation": "notEmpty", "singleValue": True}}],
+                                       "combinator": "and"}, "options": {}}},
+        call_ingest("ingest", 1540, -160)],
        {**chain("Slack events", "Verify & classify", "Respond 200", "Is huddle notes"),
         "Is huddle notes": {"main": [[{"node": "Let Slack finish the notes", "type": "main", "index": 0}], []]},
-        **chain("Let Slack finish the notes", "Fetch canvas", "wiki-ingest-raw")}, True),
+        **chain("Let Slack finish the notes", "Fetch canvas", "Has body"),
+        "Has body": {"main": [[{"node": "wiki-ingest-raw", "type": "main", "index": 0}], []]}}, True),
 ]
 
 if __name__ == "__main__":

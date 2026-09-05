@@ -70,7 +70,7 @@ class H(BaseHTTPRequestHandler):
         # --- Slack stand-ins (Web API is GET-able with a Bearer token) ---
         if p == "/api/files.info":
             fid = (self.path.split("file=")[1].split("&")[0]) if "file=" in self.path else "F0"
-            return self._send(200, {"ok": True, "file": {"id": fid, "title": STATE["title"], "filetype": "quip", "created": 1788600000,
+            return self._send(200, {"ok": True, "file": {"id": fid, "title": ":headphones: Huddle notes: 9/5/26 in &lt;#C0STUB&gt;", "filetype": "quip", "mode": "quip", "is_huddle_canvas": True, "created": 1788600000,
                                                           "permalink": f"https://example.slack.com/files/{fid}",
                                                           "url_private_download": f"http://{self.headers.get('Host')}/canvas/{fid}"}})
         if p == "/api/conversations.info":
@@ -105,14 +105,16 @@ def fire(url, secret, transcript_id="tr-stub-1", meeting_id="m-stub-1"):
         print("webhook ->", r.status, r.read()[:200])
 
 
-def fire_slack(url, signing_secret, file_id="F0STUB01", channel="C0STUB", changed=False):
+def fire_slack(url, signing_secret, file_id="F0STUB01", channel="C0STUB", changed=False, file_shared=False):
     """Send a Slack Events API `message` carrying a canvas file, signed like Slack does."""
     import time
     canvas = {"id": file_id, "title": "Huddle notes: #dev-scrum", "filetype": "quip", "mode": "quip"}
     msg = {"type": "message", "user": "U0STUB", "ts": str(int(time.time())) + ".000100", "channel": channel, "files": [canvas], "text": ""}
     event = {**msg, "channel": channel, "event_ts": msg["ts"]}
     if changed:
-        event = {"type": "message", "subtype": "message_changed", "channel": channel, "message": {**msg, "subtype": "huddle_thread"}, "event_ts": msg["ts"]}
+        event = {"type": "message", "subtype": "message_changed", "channel": channel, "message": {**msg, "subtype": "huddle_thread", "room": {"id": "R0STUB", "date_end": 1788600000}}, "event_ts": msg["ts"]}
+    if file_shared:
+        event = {"type": "file_shared", "file_id": file_id, "channel_id": channel, "user_id": "USLACKBOT", "file": {"id": file_id}, "event_ts": msg["ts"]}
     body = json.dumps({"type": "event_callback", "team_id": "T0STUB", "event_id": "Ev" + file_id, "event": event}).encode()
     ts = str(int(time.time()))
     sig = "v0=" + hmac.new(signing_secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256).hexdigest()
@@ -135,12 +137,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--port", type=int, default=18790); ap.add_argument("--transcript"); ap.add_argument("--title")
     ap.add_argument("--fire"); ap.add_argument("--secret"); ap.add_argument("--bad-signature", action="store_true")
     ap.add_argument("--transcript-id", default="tr-stub-1"); ap.add_argument("--meeting-id", default="m-stub-1")
-    ap.add_argument("--fire-slack"); ap.add_argument("--fire-slack-challenge"); ap.add_argument("--signing-secret"); ap.add_argument("--file-id", default="F0STUB01"); ap.add_argument("--changed", action="store_true")
+    ap.add_argument("--fire-slack"); ap.add_argument("--fire-slack-challenge"); ap.add_argument("--signing-secret"); ap.add_argument("--file-id", default="F0STUB01"); ap.add_argument("--changed", action="store_true"); ap.add_argument("--file-shared", action="store_true")
     a = ap.parse_args()
     if a.fire_slack_challenge:
         fire_slack_challenge(a.fire_slack_challenge, a.signing_secret or ""); sys.exit(0)
     if a.fire_slack:
-        fire_slack(a.fire_slack, ("wrong-" + (a.signing_secret or "")) if a.bad_signature else (a.signing_secret or ""), a.file_id, changed=a.changed); sys.exit(0)
+        fire_slack(a.fire_slack, ("wrong-" + (a.signing_secret or "")) if a.bad_signature else (a.signing_secret or ""), a.file_id, changed=a.changed, file_shared=a.file_shared); sys.exit(0)
     if a.fire:
         fire(a.fire, ("wrong-" + (a.secret or "")) if a.bad_signature else a.secret, a.transcript_id, a.meeting_id); sys.exit(0)
     if a.transcript: STATE["transcript"] = open(a.transcript, encoding="utf-8").read()

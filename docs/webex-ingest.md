@@ -90,7 +90,7 @@ Slack  ──(Events API POST, X-Slack-Signature)──▶  n8n  https://n8n.age
      --name /plady/agent-platform/dev/slack-ingest-bot-token --value '<xoxb-…>'
    ```
 5. **재배포** — `gh workflow run deploy-agent-platform.yml` (Actions 탭 → Deploy → Run workflow 도 같다). 배포 로그에 `slack ingest app present` 가 보여야 한다.
-6. **Event Subscriptions** → Enable → Request URL `https://n8n.agent.plady.io/webhook/slack-events` → Slack 이 challenge 를 보내고 워크플로가 서명을 검증해 응답하면 ✅ Verified. (5번 전에 하면 서명 secret 이 없어 실패한다.) → Subscribe to bot events: `message.channels`, `message.groups` → Save Changes → 앱 재설치 요청이 뜨면 Reinstall.
+6. **Event Subscriptions** → Enable → Request URL `https://n8n.agent.plady.io/webhook/slack-events` → Slack 이 challenge 를 보내고 워크플로가 서명을 검증해 응답하면 ✅ Verified. (5번 전에 하면 서명 secret 이 없어 실패한다.) → Subscribe to bot events: **`file_shared`**, `message.channels`, `message.groups` → Save Changes → 앱 재설치 요청이 뜨면 Reinstall. `file_shared` 가 주 트리거다(캔버스가 채널에 공유되는 순간, 메시지 subtype 과 무관). message.* 는 사람이 캔버스를 다시 공유하는 경우와 진단용.
 7. **채널 초대** — 허들을 하는 채널마다 `/invite @plady-wiki-ingest`. 초대된 채널의 메시지만 이벤트로 온다.
 8. **확인** — 허들을 하나 하고 끝낸다. Slack 이 노트 캔버스를 올리면 n8n Executions 에 `slack-huddle-notes-ingest` 가 생기고(3분 대기 포함), `_wiki-alert` 에 `archive(slack-huddle): …` 알림이 온다. **실행이 아예 안 생기면** Event Subscriptions 에 bot events 가 저장되지 않은 것이다 — 봇이 채널에 있어도 `message.groups`/`message.channels` 구독이 없으면 Slack 은 아무것도 보내지 않는다(2026-09-05 첫 시도가 이 경우였다: URL 검증 이벤트만 도착). 캔버스 제목이 "Huddle notes"/"허들 노트" 가 아닌 워크스페이스면 `.env.ec2` 에 `SLACK_INGEST_ANY_CANVAS=true` 를 두고(compose 의 n8n env 에 추가) 재배포하면 채널에 공유되는 모든 캔버스를 받는다 — 첫 실행의 `Verify & classify` 출력에 `why` 로 왜 걸렀는지 남는다.
 

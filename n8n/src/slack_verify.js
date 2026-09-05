@@ -22,10 +22,19 @@ const body = JSON.parse(raw.toString('utf8'));
 if (body.type === 'url_verification') return [{ json: { respond: String(body.challenge || ''), ignore: true, why: 'url_verification' } }];
 if (body.type !== 'event_callback' || !body.event) return [{ json: { respond: '', ignore: true, why: 'not an event_callback' } }];
 
-// Huddle AI notes arrive as a canvas file on a message in the channel/thread —
-// either on a fresh message or added to the huddle-thread root via
-// message_changed. Canvases are file objects with filetype "quip".
 const ev = body.event;
+
+// Path A — `file_shared`: fires when a file (the notes canvas included) is shared
+// into a channel, independent of message subtypes Slack may hide from bots.
+// Only ids arrive; the fetch step confirms `is_huddle_canvas` via files.info.
+if (ev.type === 'file_shared') {
+  if (!ev.file_id || !ev.channel_id) return [{ json: { respond: '', ignore: true, why: 'file_shared without file_id/channel_id' } }];
+  return [{ json: { respond: '', ignore: false, via: 'file_shared', fileId: ev.file_id, fileTitle: '', channel: ev.channel_id, messageTs: '', threadTs: '', eventTs: ev.event_ts || '', team: body.team_id || '' } }];
+}
+
+// Path B — a `message` carrying the canvas: either a fresh message or the
+// huddle-thread root updated via message_changed. Canvases are file objects
+// with filetype "quip".
 const msg = ev.subtype === 'message_changed' ? (ev.message || {}) : ev;
 const files = Array.isArray(msg.files) ? msg.files : [];
 const canvas = files.find(f => f && (f.filetype === 'quip' || f.mode === 'quip' || f.filetype === 'canvas'));
@@ -50,7 +59,7 @@ if (msg.subtype === 'huddle_thread' && room && !room.date_end) {
 }
 
 return [{ json: {
-  respond: '', ignore: false,
+  respond: '', ignore: false, via: 'message',
   fileId: canvas.id, fileTitle: canvas.title || canvas.name || '',
   channel: ev.channel || msg.channel || '',
   messageTs: msg.ts || ev.ts || '',
