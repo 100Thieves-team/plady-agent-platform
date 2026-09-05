@@ -5,7 +5,7 @@
 ## 결정 사항
 
 - **공개 수집 API는 지금 만들지 않는다.** 새 public endpoint는 PLA-247 ingress(DNS/ACM/ALB) 계약 변경이 선행되어야 하므로 별도 이슈로 미룬다. Hermes path 확장 vs 별도 서비스(`api.agent.plady.io`) 결정도 그 이슈에서 한다.
-- ~~**n8n은 켜지 않는다.**~~ 2026-09-04 해제. Webex 경로는 n8n 이 자동 수집한다 — [`webex-ingest.md`](webex-ingest.md). notion/Slack 은 여전히 아래 v0(사람) 경로와 Hermes Slack 앱이 맡는다.
+- ~~**n8n은 켜지 않는다.**~~ 2026-09-04 해제. Webex transcript 와 Slack 허들 AI 노트는 n8n 이 자동 수집한다 — [`webex-ingest.md`](webex-ingest.md). notion 은 여전히 아래 v0(사람) 경로.
 - **v0는 로컬 운영자 경로로 시작한다.** 회의록은 notion에 남기고(레지스트리의 notion MCP read 계약), 운영자가 로컬에서 `scripts/mcp-call.py`로 llm-wiki MCP `wiki_ingest`(approve tier)를 호출해 위키에 반영한다. 사람이 호출 자체를 수행하므로 "write는 사람 승인 뒤에만" 기준을 자연 충족한다.
 
 ## v0 흐름

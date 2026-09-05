@@ -66,6 +66,8 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `/plady/agent-platform/<env>/wiki-token-jwt-secret` | 단기 토큰/세션 쿠키 HS256 서명 시크릿 | wiki-auth 사이드카 | 예: `openssl rand -hex 32`. 회전하면 발급된 토큰/세션 전체 무효화. |
 | `/plady/agent-platform/<env>/n8n-encryption-key` | n8n credential 암호화 키 | n8n 런타임 | 배포 스크립트가 없으면 n8n 프로필을 켜지 않는다. 회전 불가(저장된 credential 무효화). |
 | `/plady/agent-platform/<env>/webex-webhook-secret` | Webex 웹훅 HMAC-SHA1 secret | n8n 워크플로(등록·검증) | 회전 시 Webex 웹훅 재등록. 런북 [`webex-ingest.md`](webex-ingest.md). |
+| `/plady/agent-platform/<env>/slack-ingest-signing-secret` | Slack 수집 앱 Signing Secret | n8n 워크플로(Events API 서명 검증) | Hermes Slack 앱과 별개 앱. 런북 [`webex-ingest.md`](webex-ingest.md). |
+| `/plady/agent-platform/<env>/slack-ingest-bot-token` | Slack 수집 앱 Bot token (`xoxb-`) | n8n 워크플로(files.info·캔버스 다운로드) | 스코프 channels:history, groups:history, channels:read, groups:read, files:read. |
 
 ### `<env>` 규칙
 

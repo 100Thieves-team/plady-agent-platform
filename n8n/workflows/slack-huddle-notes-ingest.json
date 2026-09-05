@@ -1,0 +1,190 @@
+{
+  "id": "slack-huddle-notes-ingest",
+  "name": "slack-huddle-notes-ingest",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Asia/Seoul"
+  },
+  "meta": {
+    "description": "Slack Events API → 서명 검증·URL challenge → 허들 AI 노트 캔버스가 붙은 메시지만 → 캔버스 내용 수집 → wiki-ingest-raw. docs/webex-ingest.md"
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Slack events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "slack-events",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-events",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "verify",
+      "name": "Verify & classify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ── slack front-end: verify the Events API request, answer challenges, and\n//    pick out the message that carries a huddle AI-notes canvas ──────────────\n// Slack signs every request: X-Slack-Signature = \"v0=\" + HMAC-SHA256(signing\n// secret, \"v0:\" + X-Slack-Request-Timestamp + \":\" + raw body). We verify on the\n// raw bytes and reject anything older than 5 minutes (replay).\nconst crypto = require('crypto');\nconst item = $input.first();\nconst secret = $env.SLACK_INGEST_SIGNING_SECRET;\nif (!secret) throw new Error('SLACK_INGEST_SIGNING_SECRET is not set on the n8n container');\nconst raw = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst h = item.json.headers || {};\nconst ts = String(h['x-slack-request-timestamp'] || '');\nconst given = String(h['x-slack-signature'] || '');\nif (!/^\\d+$/.test(ts) || Math.abs(Date.now() / 1000 - Number(ts)) > 300) throw new Error('Slack request timestamp missing or stale');\nconst expected = 'v0=' + crypto.createHmac('sha256', secret).update(`v0:${ts}:`).update(raw).digest('hex');\nif (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {\n  throw new Error('X-Slack-Signature mismatch — request rejected');\n}\nconst body = JSON.parse(raw.toString('utf8'));\n\n// Slack verifies the Request URL once with a challenge; echo it back.\nif (body.type === 'url_verification') return [{ json: { respond: String(body.challenge || ''), ignore: true, why: 'url_verification' } }];\nif (body.type !== 'event_callback' || !body.event) return [{ json: { respond: '', ignore: true, why: 'not an event_callback' } }];\n\n// Huddle AI notes arrive as a canvas file on a message in the channel/thread —\n// either on a fresh message or added to the huddle-thread root via\n// message_changed. Canvases are file objects with filetype \"quip\".\nconst ev = body.event;\nconst msg = ev.subtype === 'message_changed' ? (ev.message || {}) : ev;\nconst files = Array.isArray(msg.files) ? msg.files : [];\nconst canvas = files.find(f => f && (f.filetype === 'quip' || f.mode === 'quip' || f.filetype === 'canvas'));\nif (ev.type !== 'message' || !canvas) {\n  return [{ json: { respond: '', ignore: true, why: `event ${ev.type}/${ev.subtype || '-'} without a canvas`, event_summary: { type: ev.type, subtype: ev.subtype, files: files.map(f => f && f.filetype) } } }];\n}\n// Only Slack-generated huddle notes, not any canvas a person shares. Title is\n// the signal we have (\"Huddle notes ...\"/\"허들 노트 ...\"); keep a manual override\n// via the SLACK_INGEST_ANY_CANVAS env for teams that title notes themselves.\nconst titleOk = /huddle|허들/i.test(String(canvas.title || canvas.name || '')) || (msg.subtype === 'huddle_thread') || $env.SLACK_INGEST_ANY_CANVAS === 'true';\nif (!titleOk) return [{ json: { respond: '', ignore: true, why: `canvas \"${canvas.title || canvas.name}\" is not huddle notes` } }];\n\nreturn [{ json: {\n  respond: '', ignore: false,\n  fileId: canvas.id, fileTitle: canvas.title || canvas.name || '',\n  channel: ev.channel || msg.channel || '',\n  messageTs: msg.ts || ev.ts || '',\n  threadTs: msg.thread_ts || '',\n  eventTs: ev.event_ts || '',\n  team: body.team_id || '',\n} }];\n"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.respond }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "if",
+      "name": "Is huddle notes",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ignore }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fetch",
+      "name": "Fetch canvas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "// ── slack front-end: fetch the notes canvas and normalise into the ingest input\nconst it = $input.first().json;\nconst token = $env.SLACK_INGEST_BOT_TOKEN;\nif (!token) throw new Error('SLACK_INGEST_BOT_TOKEN is not set on the n8n container');\nconst api = ($env.SLACK_API_BASE || 'https://slack.com/api').replace(/\\/$/, '');\nconst slack = async (method, params) => {\n  const res = await this.helpers.httpRequest({ method: 'GET', url: `${api}/${method}`, qs: params, headers: { Authorization: `Bearer ${token}` }, json: true, timeout: 30000 });\n  if (!res || res.ok !== true) throw new Error(`${method}: ${res && res.error ? res.error : 'unexpected response'}`);\n  return res;\n};\n\nconst info = await slack('files.info', { file: it.fileId });\nconst file = info.file || {};\nlet channelName = it.channel;\ntry { const ci = await slack('conversations.info', { channel: it.channel }); channelName = (ci.channel && ci.channel.name) || it.channel; } catch (e) { /* keep id */ }\nlet permalink = file.permalink || '';\nif (!permalink && it.messageTs) { try { const pl = await slack('chat.getPermalink', { channel: it.channel, message_ts: it.messageTs }); permalink = pl.permalink || ''; } catch (e) { /* optional */ } }\n\n// Canvas text: Slack serves the canvas document at url_private(_download);\n// depending on the workspace it is HTML or Markdown-ish text. Strip HTML if\n// present; fall back to files.info's own preview/content fields.\nlet body = '';\nconst dl = file.url_private_download || file.url_private;\nif (dl) {\n  try {\n    const res = await this.helpers.httpRequest({ method: 'GET', url: dl, headers: { Authorization: `Bearer ${token}` }, returnFullResponse: true, encoding: 'text', timeout: 60000 });\n    const ct = String(res.headers['content-type'] || '');\n    let text = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);\n    if (/html/i.test(ct) || /^\\s*<(!doctype|html)/i.test(text)) {\n      text = text.replace(/<script[\\s\\S]*?<\\/script>|<style[\\s\\S]*?<\\/style>/gi, '')\n        .replace(/<\\/(p|div|li|h[1-6]|tr|br)>/gi, '\\n').replace(/<li[^>]*>/gi, '- ').replace(/<[^>]+>/g, '')\n        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\")\n        .replace(/\\n{3,}/g, '\\n\\n').trim();\n    }\n    body = text.trim();\n  } catch (e) { body = ''; }\n}\nif (!body) body = String(file.plain_text || file.preview || file.content || '').trim();\nif (!body) throw new Error(`canvas ${it.fileId} has no readable content (files.info fields: ${Object.keys(file).join(',')})`);\n\nconst kst = (sec) => new Date(Number(sec) * 1000 + 9 * 3600 * 1000);\nconst pad = (n) => String(n).padStart(2, '0');\nconst when = kst(it.messageTs || file.created || Date.now() / 1000);\nconst date = `${when.getUTCFullYear()}-${pad(when.getUTCMonth() + 1)}-${pad(when.getUTCDate())}`;\nconst heldAt = `${date}T${pad(when.getUTCHours())}:${pad(when.getUTCMinutes())}:00+09:00`;\nconst title = String(it.fileTitle || `#${channelName} 허들 ${date}`).trim();\nconst t = `${title} ${channelName}`.toLowerCase();\nconst meetingType = /스크럼|scrum|데일리|daily|standup/.test(t) ? 'daily-scrum' : /멘토|mentor/.test(t) ? 'mentoring' : 'planning';\nconst chanSlug = String(channelName).replace(/[^\\p{L}\\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 30) || 'channel';\n\nreturn [{ json: {\n  rawPath: `raw/meetings/slack-huddle-${date}-${chanSlug}-${String(it.fileId).slice(-6).toLowerCase()}`,\n  title, date, heldAt, meetingType,\n  source: 'slack-huddle',\n  sourceRef: permalink,\n  frontmatter: { slack_channel: `#${channelName}`, slack_canvas_id: it.fileId },\n  note: `Slack AI 허들 노트 (#${channelName}, ${heldAt}). Slack 이 생성한 요약·transcript 를 그대로 보관한다 — 정정은 wiki/ 페이지에서.`,\n  body,\n} }];\n"
+      }
+    },
+    {
+      "id": "ingest",
+      "name": "wiki-ingest-raw",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        -80
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "wiki-ingest-raw",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "passthrough"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Slack events": {
+      "main": [
+        [
+          {
+            "node": "Verify & classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify & classify": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond 200": {
+      "main": [
+        [
+          {
+            "node": "Is huddle notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is huddle notes": {
+      "main": [
+        [
+          {
+            "node": "Fetch canvas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Fetch canvas": {
+      "main": [
+        [
+          {
+            "node": "wiki-ingest-raw",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,6 +1,13 @@
-# Webex 회의 → 위키 자동 ingest (n8n)
+# 회의 → 위키 자동 ingest (n8n: Webex transcript · Slack 허들 AI 노트)
 
-Webex 회의가 끝나고 transcript 가 만들어지면 n8n 이 원문을 위키에 **보관**하고, Hermes 가 만든 초안으로 **컴파일**까지 시도한다. [`meeting-ingest.md`](meeting-ingest.md) 의 v1 경로이자 [`n8n-placeholder.md`](n8n-placeholder.md) 가 예약해 두던 자리의 실제 런타임이다. Slack 허들은 Hermes Slack 앱이 이미 맡고 있어 여기 범위가 아니다.
+회의가 끝나면 n8n 이 원문을 위키에 **보관**하고, Hermes 가 만든 초안으로 **컴파일**까지 시도한다. 앞단(수집)은 소스별 워크플로, 뒤단(보관→계획→초안→커밋)은 공용 서브워크플로 `wiki-ingest-raw` 하나다. [`meeting-ingest.md`](meeting-ingest.md) 의 v1 경로이자 [`n8n-placeholder.md`](n8n-placeholder.md) 가 예약해 두던 자리의 실제 런타임이다.
+
+| 소스 | 앞단 워크플로 | 트리거 | 원문 |
+| --- | --- | --- | --- |
+| Webex | `webex-transcript-ingest` | Webex 웹훅 `meetingTranscripts/created` | transcript(txt) |
+| Slack 허들 | `slack-huddle-notes-ingest` | Slack Events API `message` (허들 AI 노트 캔버스가 붙은 메시지) | 캔버스 본문(요약+transcript) |
+
+워크플로 JSON 은 손으로 고치지 않는다: 노드 코드는 [`n8n/src/*.js`](../n8n/src/), `python3 n8n/build.py` 가 [`n8n/workflows/*.json`](../n8n/workflows/) 을 생성한다. 둘 다 커밋.
 
 ## 흐름
 
@@ -9,14 +16,22 @@ Webex  ──(webhook meetingTranscripts/created, X-Spark-Signature)──▶  n
                                                                      │
         1. HMAC-SHA1 검증 (raw body, WEBEX_WEBHOOK_SECRET)          │
         2. GET /v1/meetings/{id}, GET /v1/meetingTranscripts/{id}/download?format=txt   (Webex OAuth2 credential)
+        ── 여기까지 앞단. 아래는 wiki-ingest-raw (Execute Workflow) ──
         3. wiki_apply mode=archive → raw/meetings/webex-<날짜>-<제목>          (결정적, 항상)
         4. wiki_ingest_plan + wiki_rules + 후보 페이지 읽기 → Hermes /v1/chat/completions 에 초안 요청
         5. 초안(JSON: sources/ 1개 + topics/people 수정본)을 wiki_apply mode=knowledge, expected_head 로 커밋   (best effort)
         6. 실패 시 _wiki-alert 에 "원문은 보관됨, ingest 마무리 요청" 알림 (성공 알림은 wiki-data-sync 가 커밋 기준으로 보냄)
+
+Slack  ──(Events API POST, X-Slack-Signature)──▶  n8n  https://n8n.agent.plady.io/webhook/slack-events
+        1. HMAC-SHA256 검증(raw body + timestamp, 5분 replay 창), url_verification challenge 즉시 응답
+        2. `message`(또는 message_changed) 에 filetype quip(캔버스) 파일이 있고 제목이 "Huddle notes/허들 노트" 인 것만 통과
+        3. files.info + conversations.info + 캔버스 다운로드(HTML → 텍스트) → raw/meetings/slack-huddle-<날짜>-<채널>-<id>
+        4~6. 위와 같은 wiki-ingest-raw
 ```
 
 - **쓰기는 n8n 만 한다.** Hermes 는 여전히 읽기 도구만 가진다(레지스트리 `approve` tier 미노출). 모델은 초안만 내고, 검증·커밋은 `wiki_apply` 트랜잭션이 한다. "쓰기는 승인된 경로 뒤에서만" 이라는 계약을 코드가 지킨다.
-- **멱등**: Webex 가 같은 이벤트를 재전송하거나 컴파일 실패 후 다시 돌려도, 이미 보관된 원문은 건너뛰고(`already archived`) 이미 source 페이지가 있으면 컴파일도 건너뛴다(`already compiled`).
+- **멱등**: Webex 재전송, Slack 의 message_changed 연타, 컴파일 실패 후 재실행 — 이미 보관된 원문은 건너뛰고(`already archived`) 이미 source 페이지가 있으면 컴파일도 건너뛴다(`already compiled`).
+- **n8n 2.x 주의**: 서브워크플로 `wiki-ingest-raw` 도 **활성(published)** 이어야 호출된다("Workflow is not active and cannot be executed"). 배포 스크립트가 셋 다 활성화한다.
 - 워크플로 정의는 [`n8n/workflows/`](../n8n/workflows/) 가 SSOT. 배포마다 `n8n import:workflow` 로 덮어쓴다. 편집기에서 고쳤다면 export 해서 레포에 넣어야 살아남는다.
 
 ## 런타임 (EC2)
@@ -37,8 +52,10 @@ Webex  ──(webhook meetingTranscripts/created, X-Spark-Signature)──▶  n
 | --- | --- |
 | `/plady/agent-platform/<env>/n8n-encryption-key` | n8n credential 암호화 키. 없으면 배포 스크립트가 n8n 프로필을 켜지 않는다. **분실 시 저장된 credential 전부 무효** |
 | `/plady/agent-platform/<env>/webex-webhook-secret` | Webex 웹훅 HMAC secret. 등록 워크플로가 Webex 에 보내고, ingest 워크플로가 검증에 쓴다 |
+| `/plady/agent-platform/<env>/slack-ingest-signing-secret` | Slack 수집 앱의 Signing Secret. Events API 요청 서명 검증 |
+| `/plady/agent-platform/<env>/slack-ingest-bot-token` | Slack 수집 앱의 Bot User OAuth Token(`xoxb-…`). files.info·캔버스 다운로드·conversations.info |
 
-`scripts/ec2-deploy.sh` 가 둘을 읽어 `.env.ec2` 에 `N8N_ENCRYPTION_KEY` / `WEBEX_WEBHOOK_SECRET` 로 쓴다. 워크플로가 읽는 나머지 값(`LLM_WIKI_MCP_BEARER_TOKEN`, `HERMES_API_KEY`, `WIKI_SLACK_WEBHOOK_URL`)은 이미 `.env.ec2` 에 있는 값을 컨테이너 env 로 넘긴 것이다.
+`scripts/ec2-deploy.sh` 가 넷을 읽어 `.env.ec2` 에 `N8N_ENCRYPTION_KEY` / `WEBEX_WEBHOOK_SECRET` / `SLACK_INGEST_SIGNING_SECRET` / `SLACK_INGEST_BOT_TOKEN` 으로 쓴다. 워크플로가 읽는 나머지 값(`LLM_WIKI_MCP_BEARER_TOKEN`, `HERMES_API_KEY`, `WIKI_SLACK_WEBHOOK_URL`)은 이미 `.env.ec2` 에 있는 값을 컨테이너 env 로 넘긴 것이다.
 
 ## 🙋 사람이 한 번 해야 하는 일
 
@@ -57,6 +74,28 @@ Webex  ──(webhook meetingTranscripts/created, X-Spark-Signature)──▶  n
 5. **웹훅 등록** — `webex-register-webhook` 을 한 번 실행(Execute workflow). 이미 같은 targetUrl 이 있으면 건너뛴다. Webex 쪽 결과는 `List existing webhooks` 노드 출력에서 확인.
 6. **확인** — 녹화+Webex Assistant(또는 자막)를 켠 짧은 회의를 하나 끝낸다(transcript 는 녹화가 켜져 있어야 생긴다). 몇 분 뒤 `_wiki-alert` 에 archive 커밋 알림, 이어서 knowledge 커밋 알림(또는 실패 알림)이 온다. n8n Executions 에서 각 노드 출력을 볼 수 있다.
 
+
+## 🙋 Slack 허들 노트 — 사람이 한 번 해야 하는 일
+
+전제: 워크스페이스에 Slack AI 가 있어 허들이 끝나면 "Huddle notes" 캔버스가 채널 스레드에 자동으로 올라온다. Hermes Slack 앱은 Socket Mode 라 Events API Request URL 을 쓸 수 없으므로 **수집 전용 앱을 하나 더** 만든다.
+
+1. **Slack 앱 생성** — [api.slack.com/apps](https://api.slack.com/apps) → Create New App → From scratch → 이름 `plady-wiki-ingest`, 워크스페이스 선택.
+2. **OAuth & Permissions** → Bot Token Scopes: `channels:history`, `groups:history`, `channels:read`, `groups:read`, `files:read`. → **Install to Workspace** → `Bot User OAuth Token`(`xoxb-…`) 확인.
+3. **Basic Information** → App Credentials → `Signing Secret` 확인.
+4. **SSM 에 넣기**(값은 본인 터미널에서만; 여기 붙이지 않는다):
+   ```bash
+   aws ssm put-parameter --profile plady-service --region ap-northeast-2 --type SecureString \
+     --name /plady/agent-platform/dev/slack-ingest-signing-secret --value '<Signing Secret>'
+   aws ssm put-parameter --profile plady-service --region ap-northeast-2 --type SecureString \
+     --name /plady/agent-platform/dev/slack-ingest-bot-token --value '<xoxb-…>'
+   ```
+5. **재배포** — `gh workflow run deploy-agent-platform.yml` (Actions 탭 → Deploy → Run workflow 도 같다). 배포 로그에 `slack ingest app present` 가 보여야 한다.
+6. **Event Subscriptions** → Enable → Request URL `https://n8n.agent.plady.io/webhook/slack-events` → Slack 이 challenge 를 보내고 워크플로가 서명을 검증해 응답하면 ✅ Verified. (5번 전에 하면 서명 secret 이 없어 실패한다.) → Subscribe to bot events: `message.channels`, `message.groups` → Save Changes → 앱 재설치 요청이 뜨면 Reinstall.
+7. **채널 초대** — 허들을 하는 채널마다 `/invite @plady-wiki-ingest`. 초대된 채널의 메시지만 이벤트로 온다.
+8. **확인** — 허들을 하나 하고 끝낸다. Slack 이 노트 캔버스를 올리면 n8n Executions 에 `slack-huddle-notes-ingest` 가 생기고, `_wiki-alert` 에 `archive(slack-huddle): …` 알림이 온다. 캔버스 제목이 "Huddle notes"/"허들 노트" 가 아닌 워크스페이스면 `.env.ec2` 에 `SLACK_INGEST_ANY_CANVAS=true` 를 두고(compose 의 n8n env 에 추가) 재배포하면 채널에 공유되는 모든 캔버스를 받는다 — 첫 실행의 `Verify & classify` 출력에 `why` 로 왜 걸렀는지 남는다.
+
+⚠️ 아직 실제 Slack 허들 노트 이벤트로 검증하지 못한 부분: 노트 캔버스가 붙는 이벤트의 정확한 모양(새 message 인지 message_changed 인지)과 캔버스 다운로드 응답 형식(HTML/텍스트). 워크플로는 둘 다 받도록 넓게 잡았고, 첫 실제 이벤트의 실행 기록으로 좁힌다.
+
 ## 로컬 검증 (Webex 계정·모델 없이)
 
 ```bash
@@ -71,9 +110,12 @@ docker compose --profile n8n up -d llm-wiki wiki-auth mcp-proxy n8n
 docker compose --profile n8n run --rm -v "$PWD/n8n/workflows:/w:ro" n8n import:workflow --separate --input=/w
 docker compose --profile n8n run --rm n8n update:workflow --id=webex-transcript-ingest --active=true && docker compose restart n8n
 
-# 3) 서명된 가짜 이벤트
+# 3) 서명된 가짜 이벤트 (Webex / Slack)
 scripts/webex-ingest-stub.py --fire http://localhost:5678/webhook/webex-transcript --secret s
 scripts/webex-ingest-stub.py --fire http://localhost:5678/webhook/webex-transcript --secret s --bad-signature   # 거부돼야 한다
+SLACK_INGEST_SIGNING_SECRET=k SLACK_API_BASE=http://host.docker.internal:18790/api   # n8n env 에 추가해 띄운 경우
+scripts/webex-ingest-stub.py --fire-slack-challenge http://localhost:5678/webhook/slack-events --signing-secret k   # challenge 에코
+scripts/webex-ingest-stub.py --fire-slack http://localhost:5678/webhook/slack-events --signing-secret k              # archive(slack-huddle)
 git -C wiki-workspace log --oneline -3   # archive(webex) + ingest(knowledge) 커밋
 ```
 

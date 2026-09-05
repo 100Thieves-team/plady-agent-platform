@@ -8,7 +8,7 @@
     "timezone": "Asia/Seoul"
   },
   "meta": {
-    "description": "Webex 회의 transcript 생성 → raw 보관(wiki_apply archive) → Hermes 컴파일 초안 → wiki_apply knowledge. 절차/계약: docs/webex-ingest.md"
+    "description": "Webex 회의 transcript 생성 웹훅 → 서명 검증 → 회의·transcript 수집 → wiki-ingest-raw. docs/webex-ingest.md"
   },
   "nodes": [
     {
@@ -40,7 +40,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Webex signs the raw JSON body with HMAC-SHA1(secret) → X-Spark-Signature.\n// Verify against the RAW bytes (never a re-serialised object) with a\n// constant-time compare, then hand only the identifiers downstream.\nconst crypto = require('crypto');\nconst item = $input.first();\nconst secret = $env.WEBEX_WEBHOOK_SECRET;\nif (!secret) throw new Error('WEBEX_WEBHOOK_SECRET is not set on the n8n container');\nconst raw = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst given = String((item.json.headers || {})['x-spark-signature'] || '');\nconst expected = crypto.createHmac('sha1', secret).update(raw).digest('hex');\nif (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {\n  throw new Error('X-Spark-Signature mismatch — request rejected');\n}\nconst body = JSON.parse(raw.toString('utf8'));\nif (body.resource !== 'meetingTranscripts' || body.event !== 'created') {\n  return []; // not for us; the webhook already answered 200\n}\nconst d = body.data || {};\nif (!d.id || !d.meetingId) throw new Error('webhook payload lacks data.id / data.meetingId');\nreturn [{ json: { transcriptId: d.id, meetingId: d.meetingId, webhookName: body.name || '', createdAt: body.created || '' } }];"
+        "jsCode": "// Webex signs the raw JSON body with HMAC-SHA1(secret) → X-Spark-Signature.\n// Verify against the RAW bytes (never a re-serialised object) with a\n// constant-time compare, then hand only the identifiers downstream.\nconst crypto = require('crypto');\nconst item = $input.first();\nconst secret = $env.WEBEX_WEBHOOK_SECRET;\nif (!secret) throw new Error('WEBEX_WEBHOOK_SECRET is not set on the n8n container');\nconst raw = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst given = String((item.json.headers || {})['x-spark-signature'] || '');\nconst expected = crypto.createHmac('sha1', secret).update(raw).digest('hex');\nif (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {\n  throw new Error('X-Spark-Signature mismatch — request rejected');\n}\nconst body = JSON.parse(raw.toString('utf8'));\nif (body.resource !== 'meetingTranscripts' || body.event !== 'created') {\n  return []; // not for us; the webhook already answered 200\n}\nconst d = body.data || {};\nif (!d.id || !d.meetingId) throw new Error('webhook payload lacks data.id / data.meetingId');\nreturn [{ json: { transcriptId: d.id, meetingId: d.meetingId, webhookName: body.name || '', createdAt: body.created || '' } }];\n"
       }
     },
     {
@@ -74,15 +74,6 @@
         "url": "={{ ($env.WEBEX_API_BASE || 'https://webexapis.com') + '/v1/meetingTranscripts/' + $('Verify signature').item.json.transcriptId + '/download' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "format",
-              "value": "txt"
-            }
-          ]
-        },
         "options": {
           "timeout": 120000,
           "response": {
@@ -91,12 +82,21 @@
               "outputPropertyName": "transcript"
             }
           }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "format",
+              "value": "txt"
+            }
+          ]
         }
       }
     },
     {
-      "id": "archive",
-      "name": "Archive raw (wiki_apply)",
+      "id": "normalize",
+      "name": "Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -104,20 +104,30 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Build the preserved-source page and commit it with wiki_apply mode `archive`.\n// This step is deterministic and must succeed; compilation is best-effort later.\nconst meeting = $('Get meeting').first().json;\nconst transcript = String($input.first().json.transcript || '').trim();\nconst ids = $('Verify signature').first().json;\nif (!transcript) throw new Error('empty transcript for ' + ids.transcriptId);\n\nconst kst = (iso) => new Date(new Date(iso).getTime() + 9 * 3600 * 1000);\nconst pad = (n) => String(n).padStart(2, '0');\nconst start = kst(meeting.start || ids.createdAt || Date.now());\nconst date = `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}`;\nconst heldAt = `${date}T${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}:00+09:00`;\nconst durationMin = meeting.start && meeting.end ? Math.round((new Date(meeting.end) - new Date(meeting.start)) / 60000) : null;\nconst title = String(meeting.title || meeting.meetingTopic || `Webex 회의 ${date}`).trim();\n\nconst t = title.toLowerCase();\nconst meetingType = /스크럼|scrum|데일리|daily/.test(t) ? 'daily-scrum' : /멘토|mentor/.test(t) ? 'mentoring' : 'planning';\nconst slugPart = title.replace(/[^\\p{L}\\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 40) || 'meeting';\nconst rawPath = `raw/meetings/webex-${date}-${slugPart}`;\nconst q = (s) => JSON.stringify(String(s));\n\nconst fm = [\n  '---',\n  `title: ${q(title)}`,\n  'type: raw',\n  'source_type: meetings',\n  `date: ${date}`,\n  `held_at: ${q(heldAt)}`,\n  `meeting_type: ${meetingType}`,\n  'source: webex',\n  `source_ref: ${q(meeting.webLink || '')}`,\n  `host: ${q(meeting.hostDisplayName || '')}`,\n  durationMin != null ? `duration_min: ${durationMin}` : null,\n  `webex_meeting_id: ${q(ids.meetingId)}`,\n  'managed_by: n8n-webex-ingest',\n  '---',\n].filter(Boolean).join('\\n');\nconst content = `${fm}\\n\\n# ${title}\\n\\n> Webex 자동 녹취록 (${heldAt}). 원문은 수정하지 않는다 — 정정은 wiki/ 페이지에서.\\n\\n${transcript}\\n`;\n\n// --- MCP (Streamable HTTP) ---\nconst mcpUrl = $env.LLM_WIKI_MCP_URL;\nconst bearer = $env.LLM_WIKI_MCP_BEARER_TOKEN;\nif (!mcpUrl || !bearer) throw new Error('LLM_WIKI_MCP_URL / LLM_WIKI_MCP_BEARER_TOKEN not set');\nlet sessionId = null; let rpcId = 0;\nconst parse = (res) => {\n  const ct = String(res.headers['content-type'] || '');\n  const text = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);\n  if (ct.includes('text/event-stream')) {\n    for (const line of text.split('\\n')) if (line.startsWith('data:')) { const d = line.slice(5).trim(); if (d) return JSON.parse(d); }\n    throw new Error('SSE without data');\n  }\n  return text.trim() ? JSON.parse(text) : null;\n};\nconst post = async (payload, expectBody = true) => {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream', 'Authorization': `Bearer ${bearer}` };\n  if (sessionId) headers['Mcp-Session-Id'] = sessionId;\n  const res = await this.helpers.httpRequest({ method: 'POST', url: mcpUrl, headers, body: JSON.stringify(payload), returnFullResponse: true, timeout: 120000 });\n  const sid = res.headers['mcp-session-id']; if (sid) sessionId = sid;\n  if (!expectBody) return null;\n  const msg = parse(res);\n  if (msg && msg.error) throw new Error(`${payload.method}: ${JSON.stringify(msg.error)}`);\n  return msg ? msg.result : null;\n};\nconst call = async (name, args) => {\n  const r = await post({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name, arguments: args } });\n  const text = (r.content || []).filter(c => c.type === 'text').map(c => c.text).join('\\n');\n  if (r.isError) throw new Error(`${name} failed: ${text}`);\n  try { return JSON.parse(text); } catch { return { text }; }\n};\nawait post({ jsonrpc: '2.0', id: ++rpcId, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'n8n-webex-ingest', version: '1' } } });\nawait post({ jsonrpc: '2.0', method: 'notifications/initialized' }, false);\n\n// Webex may deliver the same event more than once, and a rerun after a compile\n// failure must not fail here: an already-preserved original is success, not a\n// conflict. Preserved sources are create-only, so we never rewrite it either.\nlet archive; let alreadyArchived = false;\ntry { await call('wiki_content_read', { uri: rawPath }); alreadyArchived = true; archive = { skipped: 'already archived' }; } catch (e) { /* not there yet */ }\nif (!alreadyArchived) {\n  archive = await call('wiki_apply', { mode: 'archive', changes: [{ path: rawPath, content }], message: `archive(webex): ${title} ${date}` });\n}\nreturn [{ json: { rawPath, title, date, heldAt, meetingType, sourceRef: meeting.webLink || '', alreadyArchived, archive, transcriptChars: transcript.length } }];"
+        "jsCode": "// ── webex front-end: normalise meeting + transcript into the ingest input ────\nconst meeting = $('Get meeting').first().json;\nconst transcript = String($input.first().json.transcript || '').trim();\nconst ids = $('Verify signature').first().json;\nif (!transcript) throw new Error('empty transcript for ' + ids.transcriptId);\n\nconst kst = (iso) => new Date(new Date(iso).getTime() + 9 * 3600 * 1000);\nconst pad = (n) => String(n).padStart(2, '0');\nconst start = kst(meeting.start || ids.createdAt || Date.now());\nconst date = `${start.getUTCFullYear()}-${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}`;\nconst heldAt = `${date}T${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}:00+09:00`;\nconst durationMin = meeting.start && meeting.end ? Math.round((new Date(meeting.end) - new Date(meeting.start)) / 60000) : null;\nconst title = String(meeting.title || meeting.meetingTopic || `Webex 회의 ${date}`).trim();\nconst t = title.toLowerCase();\nconst meetingType = /스크럼|scrum|데일리|daily/.test(t) ? 'daily-scrum' : /멘토|mentor/.test(t) ? 'mentoring' : 'planning';\nconst slugPart = title.replace(/[^\\p{L}\\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 40) || 'meeting';\n\nreturn [{ json: {\n  rawPath: `raw/meetings/webex-${date}-${slugPart}`,\n  title, date, heldAt, meetingType,\n  source: 'webex',\n  sourceRef: meeting.webLink || '',\n  frontmatter: { host: meeting.hostDisplayName || '', duration_min: durationMin, webex_meeting_id: ids.meetingId },\n  note: `Webex 자동 녹취록 (${heldAt}). 원문은 수정하지 않는다 — 정정은 wiki/ 페이지에서.`,\n  body: transcript,\n} }];\n"
       }
     },
     {
-      "id": "compile",
-      "name": "Compile (Hermes → wiki_apply)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "ingest",
+      "name": "wiki-ingest-raw",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [
         1100,
         0
       ],
       "parameters": {
-        "jsCode": "// Best-effort compilation. The raw page is already committed; if anything here\n// fails the team is told where the raw sits so a person or agent can finish.\nconst prev = $input.first().json;\nconst { rawPath, title, date } = prev;\nconst mcpUrl = $env.LLM_WIKI_MCP_URL; const bearer = $env.LLM_WIKI_MCP_BEARER_TOKEN;\nconst hermesUrl = $env.HERMES_API_URL; const hermesKey = $env.HERMES_API_KEY;\nconst slack = $env.WIKI_SLACK_WEBHOOK_URL || '';\n\nlet sessionId = null; let rpcId = 0;\nconst parse = (res) => {\n  const ct = String(res.headers['content-type'] || '');\n  const text = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);\n  if (ct.includes('text/event-stream')) { for (const line of text.split('\\n')) if (line.startsWith('data:')) { const d = line.slice(5).trim(); if (d) return JSON.parse(d); } throw new Error('SSE without data'); }\n  return text.trim() ? JSON.parse(text) : null;\n};\nconst post = async (payload, expectBody = true) => {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream', 'Authorization': `Bearer ${bearer}` };\n  if (sessionId) headers['Mcp-Session-Id'] = sessionId;\n  const res = await this.helpers.httpRequest({ method: 'POST', url: mcpUrl, headers, body: JSON.stringify(payload), returnFullResponse: true, timeout: 120000 });\n  const sid = res.headers['mcp-session-id']; if (sid) sessionId = sid;\n  if (!expectBody) return null;\n  const msg = parse(res); if (msg && msg.error) throw new Error(`${payload.method}: ${JSON.stringify(msg.error)}`); return msg ? msg.result : null;\n};\nconst call = async (name, args) => {\n  const r = await post({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name, arguments: args } });\n  const text = (r.content || []).filter(c => c.type === 'text').map(c => c.text).join('\\n');\n  if (r.isError) throw new Error(`${name} failed: ${text}`);\n  try { return JSON.parse(text); } catch { return { text }; }\n};\nconst notify = async (msg) => {\n  if (!slack) return;\n  try { await this.helpers.httpRequest({ method: 'POST', url: slack, body: JSON.stringify({ text: msg }), headers: { 'Content-Type': 'application/json' }, timeout: 10000 }); } catch (e) { /* fail-open */ }\n};\n\ntry {\n  if (!hermesUrl || !hermesKey) throw new Error('HERMES_API_URL / HERMES_API_KEY not set');\n  await post({ jsonrpc: '2.0', id: ++rpcId, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'n8n-webex-ingest', version: '1' } } });\n  await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, false);\n\n  const plan = await call('wiki_ingest_plan', { raw_path: rawPath });\n  if ((plan.existing_sources || []).length) {\n    return [{ json: { ok: true, rawPath, skipped: 'already compiled', existing_sources: plan.existing_sources } }];\n  }\n  const rules = await call('wiki_rules', {});\n  const rawPage = await call('wiki_content_read', { uri: rawPath });\n  const rawText = rawPage.content || rawPage.text || JSON.stringify(rawPage);\n  const candidates = (plan.candidates || []).slice(0, 6);\n  const existing = [];\n  for (const c of candidates) {\n    try { const p = await call('wiki_content_read', { uri: c.slug }); existing.push({ slug: c.slug, content: p.content || p.text || '' }); } catch (e) { existing.push({ slug: c.slug, error: String(e.message || e) }); }\n  }\n\n  const system = `너는 팀 LLM 위키의 ingest 컴파일러다. 아래 규칙(AGENTS.md)을 따른다. 출력은 오직 하나의 \\`\\`\\`json 코드블록이며 그 안은 {\"message\": string, \"changes\": [{\"path\": string, \"content\": string}]} 형식이다. 설명 문장은 코드블록 밖에 두지 마라.\\n\\n요구사항:\\n- changes 에는 (1) wiki/sources/ 아래 새 source 페이지 1개 — frontmatter 에 raw_source_path: \"${rawPath}\" 를 반드시 포함, (2) 이 회의에서 무언가를 배운 기존 topics/·people/ 페이지의 **전체 새 내용**(수정본) 1개 이상. 후보 페이지의 현재 내용이 아래에 있으니 그것을 바탕으로 고쳐 써라. 바꿀 것이 없는 페이지는 넣지 마라.\\n- raw 페이지(${rawPath})는 이미 커밋돼 있으니 changes 에 넣지 마라.\\n- 링크는 [label](topics/t-foo) 또는 [[topics/t-foo]] 형식만. 태그는 소문자-하이픈. 새 페이지 frontmatter 는 title/type/status/summary/last_updated/tags 를 갖춘다 (last_updated: ${date}).\\n- 회의 내용을 요약해 source 페이지에 담고, topic 페이지에는 결정·변경·새 사실만 반영하며 source 페이지를 가리켜라.\\n- 비밀값·개인정보(이메일·전화)는 쓰지 마라.`;\n  const user = `## 위키 규칙 (wiki_rules)\\n${typeof rules === 'string' ? rules : (rules.text || rules.rules || JSON.stringify(rules))}\\n\\n## ingest 계획 (wiki_ingest_plan)\\n${JSON.stringify({ required: plan.required, candidates, existing_sources: plan.existing_sources, notes: plan.notes }, null, 1)}\\n\\n## 후보 페이지 현재 내용\\n${existing.map(e => `### ${e.slug}\\n${e.content || ('(읽기 실패: ' + e.error + ')')}`).join('\\n\\n')}\\n\\n## 원문 (${rawPath})\\n${rawText}`;\n\n  const res = await this.helpers.httpRequest({\n    method: 'POST', url: `${hermesUrl.replace(/\\/$/, '')}/v1/chat/completions`,\n    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hermesKey}`, 'X-Hermes-Session-Key': `webex-ingest-${date}-${Math.random().toString(36).slice(2, 8)}` },\n    body: JSON.stringify({ model: $env.HERMES_MODEL || 'gpt-5.5', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], stream: false }),\n    json: false, timeout: 900000,\n  });\n  const data = typeof res === 'string' ? JSON.parse(res) : res;\n  const text = String(((data.choices || [])[0] || {}).message?.content || '');\n  const m = text.match(/```json\\s*([\\s\\S]*?)```/);\n  if (!m) throw new Error('Hermes 응답에 json 코드블록이 없음: ' + text.slice(0, 300));\n  const draft = JSON.parse(m[1]);\n  const changes = (draft.changes || []).filter(c => c && c.path && typeof c.content === 'string' && !c.path.startsWith('raw/'));\n  if (!changes.some(c => c.path.startsWith('sources/'))) throw new Error('초안에 sources/ 페이지가 없음');\n  // A model that returns a truncated topic page would have wiki_apply commit the\n  // deletion faithfully. A rewrite that loses more than 40% of an existing page is\n  // not an update we accept unattended — refuse and let a person look.\n  for (const ch of changes) {\n    const before = existing.find(e => e.slug === ch.path && e.content);\n    if (before && ch.content.length < before.content.length * 0.6) {\n      throw new Error(`초안이 기존 페이지 ${ch.path} 를 ${before.content.length}→${ch.content.length}자로 줄임 — 자동 반영 거부`);\n    }\n  }\n\n  const applied = await call('wiki_apply', { mode: 'knowledge', changes, message: draft.message || `ingest(knowledge): ${title} — webex ${date}`, expected_head: plan.head });\n  return [{ json: { ok: true, rawPath, compiled: changes.map(c => c.path), apply: applied } }];\n} catch (e) {\n  const reason = String(e.message || e).slice(0, 600);\n  await notify(`⚠️ Webex 회의 자동 ingest — 컴파일 실패. 원문은 보관됨: \\`${rawPath}\\`\\n사유: ${reason}\\n→ 에이전트에게 \"${rawPath} 를 ingest 해줘\" 라고 요청하면 마무리됩니다.`);\n  return [{ json: { ok: false, rawPath, error: reason } }];\n}"
+        "workflowId": {
+          "__rl": true,
+          "value": "wiki-ingest-raw",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "passthrough"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
       }
     }
   ],
@@ -159,18 +169,18 @@
       "main": [
         [
           {
-            "node": "Archive raw (wiki_apply)",
+            "node": "Normalize",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Archive raw (wiki_apply)": {
+    "Normalize": {
       "main": [
         [
           {
-            "node": "Compile (Hermes → wiki_apply)",
+            "node": "wiki-ingest-raw",
             "type": "main",
             "index": 0
           }

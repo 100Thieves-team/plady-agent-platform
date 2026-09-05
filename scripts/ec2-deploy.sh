@@ -57,6 +57,8 @@ WIKI_TOKEN_JWT_SECRET_PARAM="${WIKI_TOKEN_JWT_SECRET_PARAM:-/plady/agent-platfor
 WIKI_SLACK_WEBHOOK_URL_PARAM="${WIKI_SLACK_WEBHOOK_URL_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/wiki-slack-webhook-url}"
 N8N_ENCRYPTION_KEY_PARAM="${N8N_ENCRYPTION_KEY_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/n8n-encryption-key}"
 WEBEX_WEBHOOK_SECRET_PARAM="${WEBEX_WEBHOOK_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/webex-webhook-secret}"
+SLACK_INGEST_BOT_TOKEN_PARAM="${SLACK_INGEST_BOT_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-ingest-bot-token}"
+SLACK_INGEST_SIGNING_SECRET_PARAM="${SLACK_INGEST_SIGNING_SECRET_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/slack-ingest-signing-secret}"
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
@@ -107,9 +109,14 @@ N8N_ENCRYPTION_KEY="$(ssm_get "$N8N_ENCRYPTION_KEY_PARAM")"
 [ "$N8N_ENCRYPTION_KEY" = "None" ] && N8N_ENCRYPTION_KEY=""
 WEBEX_WEBHOOK_SECRET="$(ssm_get "$WEBEX_WEBHOOK_SECRET_PARAM")"
 [ "$WEBEX_WEBHOOK_SECRET" = "None" ] && WEBEX_WEBHOOK_SECRET=""
+# Slack huddle AI-notes ingest app (optional; the workflow refuses events until both exist)
+SLACK_INGEST_BOT_TOKEN="$(ssm_get "$SLACK_INGEST_BOT_TOKEN_PARAM")"
+[ "$SLACK_INGEST_BOT_TOKEN" = "None" ] && SLACK_INGEST_BOT_TOKEN=""
+SLACK_INGEST_SIGNING_SECRET="$(ssm_get "$SLACK_INGEST_SIGNING_SECRET_PARAM")"
+[ "$SLACK_INGEST_SIGNING_SECRET" = "None" ] && SLACK_INGEST_SIGNING_SECRET=""
 if [ -n "$N8N_ENCRYPTION_KEY" ]; then
   DC+=(--profile n8n)
-  echo "  n8n: on (encryption key present; webex secret $([ -n "$WEBEX_WEBHOOK_SECRET" ] && echo present || echo ABSENT))"
+  echo "  n8n: on (encryption key present; webex secret $([ -n "$WEBEX_WEBHOOK_SECRET" ] && echo present || echo ABSENT); slack ingest app $([ -n "$SLACK_INGEST_BOT_TOKEN" ] && [ -n "$SLACK_INGEST_SIGNING_SECRET" ] && echo present || echo ABSENT))"
 else
   echo "  n8n: off (${N8N_ENCRYPTION_KEY_PARAM} absent)"
 fi
@@ -198,6 +205,8 @@ WIKI_TOKEN_JWT_SECRET=${WIKI_TOKEN_JWT_SECRET}
 WIKI_SLACK_WEBHOOK_URL=${WIKI_SLACK_WEBHOOK_URL}
 N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
 WEBEX_WEBHOOK_SECRET=${WEBEX_WEBHOOK_SECRET}
+SLACK_INGEST_BOT_TOKEN=${SLACK_INGEST_BOT_TOKEN}
+SLACK_INGEST_SIGNING_SECRET=${SLACK_INGEST_SIGNING_SECRET}
 ENV
 chmod 600 "$ENV_FILE"
 
@@ -237,7 +246,11 @@ if printf '%s\n' "${DC[@]}" | grep -qx 'n8n'; then
   log "Importing n8n workflows from n8n/workflows/ (n8n stopped meanwhile)"
   "${DC[@]}" stop n8n >/dev/null 2>&1 || true
   "${DC[@]}" run -T --rm n8n import:workflow --separate --input=/workflows
+  # The shared back-end must be published too — n8n 2.x refuses to execute an
+  # inactive sub-workflow ("Workflow is not active and cannot be executed").
+  "${DC[@]}" run -T --rm n8n update:workflow --id=wiki-ingest-raw --active=true
   "${DC[@]}" run -T --rm n8n update:workflow --id=webex-transcript-ingest --active=true
+  "${DC[@]}" run -T --rm n8n update:workflow --id=slack-huddle-notes-ingest --active=true
 fi
 
 log "Bringing the stack up"

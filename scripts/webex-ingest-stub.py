@@ -6,6 +6,7 @@ Serves, on one port (default 18790):
   GET  /v1/meetingTranscripts/<id>/download  -> transcript text (format=txt)
   GET  /v1/webhooks / POST /v1/webhooks      -> webhook list/create (register workflow)
   POST /v1/chat/completions                  -> Hermes-shaped answer with a ```json draft
+  GET  /api/files.info|conversations.info|chat.getPermalink, GET /canvas/<id>  -> Slack stand-ins
 
 The draft it returns is derived from the prompt (it echoes the raw path it is
 asked to compile) so the whole chain — webhook signature, Webex fetch, raw
@@ -66,6 +67,19 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, STATE["transcript"].encode("utf-8"), "text/plain; charset=utf-8")
         if p == "/v1/webhooks":
             return self._send(200, {"items": STATE["webhooks"]})
+        # --- Slack stand-ins (Web API is GET-able with a Bearer token) ---
+        if p == "/api/files.info":
+            fid = (self.path.split("file=")[1].split("&")[0]) if "file=" in self.path else "F0"
+            return self._send(200, {"ok": True, "file": {"id": fid, "title": STATE["title"], "filetype": "quip", "created": 1788600000,
+                                                          "permalink": f"https://example.slack.com/files/{fid}",
+                                                          "url_private_download": f"http://{self.headers.get('Host')}/canvas/{fid}"}})
+        if p == "/api/conversations.info":
+            return self._send(200, {"ok": True, "channel": {"id": "C0STUB", "name": "dev-scrum"}})
+        if p == "/api/chat.getPermalink":
+            return self._send(200, {"ok": True, "permalink": "https://example.slack.com/archives/C0STUB/p1788600000"})
+        if p.startswith("/canvas/"):
+            html = "<html><body><h1>" + STATE["title"] + "</h1><h2>Summary</h2><p>" + STATE["transcript"].replace("\n", "</p><p>") + "</p></body></html>"
+            return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
         self._send(404, {"error": "stub: unknown " + p})
 
     def do_POST(self):
@@ -91,11 +105,42 @@ def fire(url, secret, transcript_id="tr-stub-1", meeting_id="m-stub-1"):
         print("webhook ->", r.status, r.read()[:200])
 
 
+def fire_slack(url, signing_secret, file_id="F0STUB01", channel="C0STUB", changed=False):
+    """Send a Slack Events API `message` carrying a canvas file, signed like Slack does."""
+    import time
+    canvas = {"id": file_id, "title": "Huddle notes: #dev-scrum", "filetype": "quip", "mode": "quip"}
+    msg = {"type": "message", "user": "U0STUB", "ts": str(int(time.time())) + ".000100", "channel": channel, "files": [canvas], "text": ""}
+    event = {**msg, "channel": channel, "event_ts": msg["ts"]}
+    if changed:
+        event = {"type": "message", "subtype": "message_changed", "channel": channel, "message": {**msg, "subtype": "huddle_thread"}, "event_ts": msg["ts"]}
+    body = json.dumps({"type": "event_callback", "team_id": "T0STUB", "event_id": "Ev" + file_id, "event": event}).encode()
+    ts = str(int(time.time()))
+    sig = "v0=" + hmac.new(signing_secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        print("slack event ->", r.status, r.read()[:200])
+
+
+def fire_slack_challenge(url, signing_secret):
+    import time
+    body = json.dumps({"type": "url_verification", "token": "x", "challenge": "stub-challenge-123"}).encode()
+    ts = str(int(time.time()))
+    sig = "v0=" + hmac.new(signing_secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "X-Slack-Request-Timestamp": ts, "X-Slack-Signature": sig})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        print("challenge ->", r.status, r.read()[:200])
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--port", type=int, default=18790); ap.add_argument("--transcript"); ap.add_argument("--title")
     ap.add_argument("--fire"); ap.add_argument("--secret"); ap.add_argument("--bad-signature", action="store_true")
     ap.add_argument("--transcript-id", default="tr-stub-1"); ap.add_argument("--meeting-id", default="m-stub-1")
+    ap.add_argument("--fire-slack"); ap.add_argument("--fire-slack-challenge"); ap.add_argument("--signing-secret"); ap.add_argument("--file-id", default="F0STUB01"); ap.add_argument("--changed", action="store_true")
     a = ap.parse_args()
+    if a.fire_slack_challenge:
+        fire_slack_challenge(a.fire_slack_challenge, a.signing_secret or ""); sys.exit(0)
+    if a.fire_slack:
+        fire_slack(a.fire_slack, ("wrong-" + (a.signing_secret or "")) if a.bad_signature else (a.signing_secret or ""), a.file_id, changed=a.changed); sys.exit(0)
     if a.fire:
         fire(a.fire, ("wrong-" + (a.secret or "")) if a.bad_signature else a.secret, a.transcript_id, a.meeting_id); sys.exit(0)
     if a.transcript: STATE["transcript"] = open(a.transcript, encoding="utf-8").read()

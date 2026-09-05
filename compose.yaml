@@ -199,6 +199,9 @@ services:
       WEBEX_WEBHOOK_SECRET: ${WEBEX_WEBHOOK_SECRET:-}
       WEBEX_WEBHOOK_OWNED_BY: ${WEBEX_WEBHOOK_OWNED_BY:-creator}
       WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+      SLACK_INGEST_BOT_TOKEN: ${SLACK_INGEST_BOT_TOKEN:-}
+      SLACK_INGEST_SIGNING_SECRET: ${SLACK_INGEST_SIGNING_SECRET:-}
+      SLACK_API_BASE: ${SLACK_API_BASE:-https://slack.com/api}
     volumes:
       - n8n-data:/home/node/.n8n
       - ./n8n/workflows:/workflows:ro
