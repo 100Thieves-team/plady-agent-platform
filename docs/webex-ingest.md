@@ -44,11 +44,13 @@ Webex  ──(webhook meetingTranscripts/created, X-Spark-Signature)──▶  n
 
 1. **Webex Integration 만들기** — [developer.webex.com](https://developer.webex.com/my-apps) → Create a New App → Integration.
    - Redirect URI: `https://n8n.agent.plady.io/rest/oauth2-credential/callback`
-   - Scopes: `meeting:transcripts_read`, `meeting:schedules_read`, `spark:kms`. 조직 전체 회의를 받으려면(권장) 관리자 계정으로 `spark-admin:meeting_transcripts_read`, `spark-admin:meeting_schedules_read` 도 추가하고 `.env.ec2` 의 `WEBEX_WEBHOOK_OWNED_BY=org` 로 둔다(기본 `creator` = 인증한 사람이 호스트인 회의만).
+   - Scopes(포털에서 체크): `meeting:transcripts_read`, `meeting:schedules_read`. 조직 전체 회의를 받으려면(권장) 관리자 계정으로 `spark-admin:meeting_transcripts_read`, `spark-admin:meeting_schedules_read` 도 추가하고 `.env.ec2` 의 `WEBEX_WEBHOOK_OWNED_BY=org` 로 둔다(기본 `creator` = 인증한 사람이 호스트인 회의만).
+   - `spark:kms` 는 포털 목록에 **없다**. Webex 가 모든 Integration 에 자동으로 붙이는 스코프라 체크할 수 없고, 저장 뒤 상세 페이지의 예시 OAuth URL 에 들어 있다. 다음 단계의 n8n Scope 문자열에만 직접 넣는다.
    - Client ID / Client Secret 은 다음 단계에서 n8n 에만 넣는다. 레포·Linear·Slack 에 남기지 않는다.
 2. **n8n 첫 로그인** — `https://n8n.agent.plady.io` → 팀 비밀번호(wiki 와 동일) → n8n owner 계정 생성(강한 비밀번호, 팀 비밀번호 관리자에 보관).
 3. **OAuth2 credential** — Credentials → New → *OAuth2 API* (generic), 이름 `Webex OAuth2`:
-   - Grant Type `Authorization Code`, Authorization URL `https://webexapis.com/v1/authorize`, Access Token URL `https://webexapis.com/v1/access_token`, Scope 는 1번과 동일(공백 구분), Authentication `Body`.
+   - Grant Type `Authorization Code`, Authorization URL `https://webexapis.com/v1/authorize`, Access Token URL `https://webexapis.com/v1/access_token`, Authentication `Body`.
+   - Scope(공백 구분): 1번에서 체크한 것 + `spark:kms`. 예: `spark:kms meeting:transcripts_read meeting:schedules_read` (admin 스코프를 켰다면 그것도). 포털 상세 페이지의 예시 OAuth URL 에 있는 `scope=` 값을 그대로 옮기면 정확하다.
    - Client ID/Secret 입력 → **Connect my account** → Webex 동의. (토큰 갱신은 n8n 이 한다.)
 4. **credential 연결** — 워크플로 `webex-transcript-ingest` 의 HTTP 노드 2개(`Get meeting`, `Download transcript`) 와 `webex-register-webhook` 의 HTTP 노드 2개에 `Webex OAuth2` 선택 → Save. (import 는 credential 을 연결하지 못한다. 이후 재배포 import 로 정의가 덮여도 DB 의 연결은 유지된다 — 안 되면 다시 선택.)
 5. **웹훅 등록** — `webex-register-webhook` 을 한 번 실행(Execute workflow). 이미 같은 targetUrl 이 있으면 건너뛴다. Webex 쪽 결과는 `List existing webhooks` 노드 출력에서 확인.
