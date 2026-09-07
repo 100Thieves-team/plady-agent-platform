@@ -99,7 +99,10 @@ workflows = [
         # the AI notes into it for a while; fetching immediately would preserve
         # a half-written page (and raw pages are create-only). Give it a moment.
         {"id": "wait", "name": "Let Slack finish the notes", "type": "n8n-nodes-base.wait", "typeVersion": 1.1, "position": [880, -80], "webhookId": "slack-notes-wait",
-         "parameters": {"amount": 3, "unit": "minutes"}},
+         # file_shared and message fire together for one canvas; staggering the
+         # wait guarantees one execution finishes archive/compile before the
+         # other looks, so the second cleanly ends in "already archived".
+         "parameters": {"amount": "={{ $json.via === 'file_shared' ? 3 : 5 }}", "unit": "minutes"}},
         code("fetch", "Fetch canvas", 1100, -80, "slack_fetch.js"),
         {"id": "if2", "name": "Has body", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [1320, -80],
          "parameters": {"conditions": {"options": {"caseSensitive": True, "leftValue": "", "typeValidation": "loose"},

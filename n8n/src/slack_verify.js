@@ -50,6 +50,12 @@ if (ev.type !== 'message' || !canvas) {
 // keyed by file id so it stays one page.
 const titleOk = /huddle|허들/i.test(String(canvas.title || canvas.name || '')) || (msg.subtype === 'huddle_thread') || canvas.is_huddle_canvas === true || $env.SLACK_INGEST_ANY_CANVAS === 'true';
 if (!titleOk) return [{ json: { respond: '', ignore: true, why: `canvas "${canvas.title || canvas.name}" is not huddle notes` } }];
+// A person re-sharing the canvas into the channel also produces file_shared,
+// which Path A handles; taking it here too would run the ingest twice. Only
+// Slack's own huddle-thread root goes through the message path.
+if (msg.subtype !== 'huddle_thread' && ev.subtype !== 'message_changed') {
+  return [{ json: { respond: '', ignore: true, why: 'canvas shared by a person — file_shared handles it' } }];
+}
 // The huddle_thread root exists from the moment the huddle starts; the notes
 // canvas is attached (message_changed) when it ends. Only proceed once the room
 // has actually ended, otherwise the canvas is still being written.

@@ -25,7 +25,7 @@ try {
   const system = `너는 팀 LLM 위키의 ingest 컴파일러다. 아래 규칙(AGENTS.md)을 따른다. 출력은 오직 하나의 \`\`\`json 코드블록이며 그 안은 {"message": string, "changes": [{"path": string, "content": string}]} 형식이다. 설명 문장은 코드블록 밖에 두지 마라.
 
 요구사항:
-- changes 에는 (1) wiki/sources/ 아래 새 source 페이지 1개 — frontmatter 에 raw_source_path: "${rawPath}" 를 반드시 포함, (2) 이 회의에서 무언가를 배운 기존 topics/·people/ 페이지의 **전체 새 내용**(수정본) 1개 이상. 후보 페이지의 현재 내용이 아래에 있으니 그것을 바탕으로 고쳐 써라. 바꿀 것이 없는 페이지는 넣지 마라.
+- changes 의 path 는 슬러그다 (예: "sources/s-…", "topics/t-…", "people/…"; "wiki/" 접두·".md" 없이). changes 에는 (1) 새 source 페이지 1개 — path 는 "sources/s-<날짜>-<제목>", frontmatter 에 raw_source_path: "${rawPath}" 를 반드시 포함, (2) 이 회의에서 무언가를 배운 기존 topics/·people/ 페이지의 **전체 새 내용**(수정본) 1개 이상. 후보 페이지의 현재 내용이 아래에 있으니 그것을 바탕으로 고쳐 써라. 바꿀 것이 없는 페이지는 넣지 마라.
 - raw 페이지(${rawPath})는 이미 커밋돼 있으니 changes 에 넣지 마라.
 - 링크는 [label](topics/t-foo) 또는 [[topics/t-foo]] 형식만. 태그는 소문자-하이픈. 새 페이지 frontmatter 는 title/type/status/summary/last_updated/tags 를 갖춘다 (last_updated: ${date}).
 - 회의 내용을 요약해 source 페이지에 담고, topic 페이지에는 결정·변경·새 사실만 반영하며 source 페이지를 가리켜라.
@@ -53,8 +53,16 @@ ${rawText}`;
   const m = text.match(/```json\s*([\s\S]*?)```/);
   if (!m) throw new Error('Hermes 응답에 json 코드블록이 없음: ' + text.slice(0, 300));
   const draft = JSON.parse(m[1]);
-  const changes = (draft.changes || []).filter(c => c && c.path && typeof c.content === 'string' && !c.path.startsWith('raw/'));
-  if (!changes.some(c => c.path.startsWith('sources/'))) throw new Error('초안에 sources/ 페이지가 없음');
+  // Models write slugs in several spellings — "wiki/sources/x", "sources/x.md",
+  // "/sources/x". wiki_apply wants "sources/x"; normalise before judging.
+  const norm = (p) => String(p || '').trim().replace(/^\/+/, '').replace(/^wiki\//, '').replace(/\.md$/i, '');
+  const changes = (draft.changes || [])
+    .filter(c => c && c.path && typeof c.content === 'string')
+    .map(c => ({ path: norm(c.path), content: c.content }))
+    .filter(c => c.path && !c.path.startsWith('raw/'));
+  if (!changes.some(c => c.path.startsWith('sources/'))) {
+    throw new Error('초안에 sources/ 페이지가 없음 — 초안 경로: ' + JSON.stringify((draft.changes || []).map(c => c && c.path)));
+  }
   // A model that returns a truncated topic page would have wiki_apply commit the
   // deletion faithfully. A rewrite that loses more than 40% of an existing page is
   // not an update we accept unattended — refuse and let a person look.
