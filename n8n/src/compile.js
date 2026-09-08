@@ -42,38 +42,73 @@ ${existing.map(e => `### ${e.slug}\n${e.content || ('(읽기 실패: ' + e.error
 ## 원문 (${rawPath})
 ${rawText}`;
 
-  const res = await this.helpers.httpRequest({
-    method: 'POST', url: `${hermesUrl.replace(/\/$/, '')}/v1/chat/completions`,
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hermesKey}`, 'X-Hermes-Session-Key': `wiki-ingest-${date}-${Math.random().toString(36).slice(2, 8)}` },
-    body: JSON.stringify({ model: $env.HERMES_MODEL || 'gpt-5.5', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], stream: false }),
-    json: false, timeout: 900000,
-  });
-  const data = typeof res === 'string' ? JSON.parse(res) : res;
-  const text = String(((data.choices || [])[0] || {}).message?.content || '');
-  const m = text.match(/```json\s*([\s\S]*?)```/);
-  if (!m) throw new Error('Hermes 응답에 json 코드블록이 없음: ' + text.slice(0, 300));
-  const draft = JSON.parse(m[1]);
+  const session = `wiki-ingest-${date}-${Math.random().toString(36).slice(2, 8)}`;
+  const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
+  const askHermes = async () => {
+    const res = await this.helpers.httpRequest({
+      method: 'POST', url: `${hermesUrl.replace(/\/$/, '')}/v1/chat/completions`,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hermesKey}`, 'X-Hermes-Session-Key': session },
+      body: JSON.stringify({ model: $env.HERMES_MODEL || 'gpt-5.5', messages, stream: false }),
+      json: false, timeout: 900000,
+    });
+    const data = typeof res === 'string' ? JSON.parse(res) : res;
+    const text = String(((data.choices || [])[0] || {}).message?.content || '');
+    messages.push({ role: 'assistant', content: text });
+    const m = text.match(/```json\s*([\s\S]*?)```/);
+    if (!m) throw new Error('Hermes 응답에 json 코드블록이 없음: ' + text.slice(0, 300));
+    return JSON.parse(m[1]);
+  };
   // Models write slugs in several spellings — "wiki/sources/x", "sources/x.md",
   // "/sources/x". wiki_apply wants "sources/x"; normalise before judging.
   const norm = (p) => String(p || '').trim().replace(/^\/+/, '').replace(/^wiki\//, '').replace(/\.md$/i, '');
-  const changes = (draft.changes || [])
-    .filter(c => c && c.path && typeof c.content === 'string')
-    .map(c => ({ path: norm(c.path), content: c.content }))
-    .filter(c => c.path && !c.path.startsWith('raw/'));
-  if (!changes.some(c => c.path.startsWith('sources/'))) {
-    throw new Error('초안에 sources/ 페이지가 없음 — 초안 경로: ' + JSON.stringify((draft.changes || []).map(c => c && c.path)));
-  }
-  // A model that returns a truncated topic page would have wiki_apply commit the
-  // deletion faithfully. A rewrite that loses more than 40% of an existing page is
-  // not an update we accept unattended — refuse and let a person look.
-  for (const ch of changes) {
-    const before = existing.find(e => e.slug === ch.path && e.content);
-    if (before && ch.content.length < before.content.length * 0.6) {
-      throw new Error(`초안이 기존 페이지 ${ch.path} 를 ${before.content.length}→${ch.content.length}자로 줄임 — 자동 반영 거부`);
+  // `type` is derived from the location in this wiki; a page that declares
+  // another value (models copy `type: doc` from legacy pages) is refused as a
+  // convention violation. Deterministic, so fix it here rather than asking twice.
+  const kindOf = (p) => ({ sources: 'source', topics: 'topic', people: 'person', answers: 'answer' })[p.split('/')[0]];
+  const fixType = (path, content) => {
+    const kind = kindOf(path); if (!kind) return content;
+    const m = content.match(/^---\n([\s\S]*?)\n---/); if (!m) return content;
+    let fm = m[1];
+    if (/^type:.*$/m.test(fm)) fm = fm.replace(/^type:.*$/m, `type: ${kind}`);
+    else fm = fm.replace(/^(title:.*)$/m, `$1\ntype: ${kind}`);
+    return content.replace(m[0], `---\n${fm}\n---`);
+  };
+  const prepare = (draft) => {
+    const changes = (draft.changes || [])
+      .filter(c => c && c.path && typeof c.content === 'string')
+      .map(c => ({ path: norm(c.path), content: c.content }))
+      .filter(c => c.path && !c.path.startsWith('raw/'))
+      .map(c => ({ path: c.path, content: fixType(c.path, c.content) }));
+    if (!changes.some(c => c.path.startsWith('sources/'))) {
+      throw new Error('초안에 sources/ 페이지가 없음 — 초안 경로: ' + JSON.stringify((draft.changes || []).map(c => c && c.path)));
     }
+    // A model that returns a truncated topic page would have wiki_apply commit the
+    // deletion faithfully. A rewrite that loses more than 40% of an existing page is
+    // not an update we accept unattended — refuse and let a person look.
+    for (const ch of changes) {
+      const before = existing.find(e => e.slug === ch.path && e.content);
+      if (before && ch.content.length < before.content.length * 0.6) {
+        throw new Error(`초안이 기존 페이지 ${ch.path} 를 ${before.content.length}→${ch.content.length}자로 줄임 — 자동 반영 거부`);
+      }
+    }
+    return changes;
+  };
+
+  let draft = await askHermes();
+  let changes = prepare(draft);
+  const apply = (dry) => call('wiki_apply', { mode: 'knowledge', changes, message: draft.message || `ingest(knowledge): ${title} — ${prev.source} ${date}`, expected_head: plan.head, dry_run: dry });
+  // Validate without writing; if the wiki refuses (conventions, missing topic
+  // change, links), hand the verdict back to Hermes once and re-validate.
+  let verdict = null;
+  try { await apply(true); } catch (e) { verdict = String(e.message || e); }
+  if (verdict) {
+    messages.push({ role: 'user', content: `wiki_apply 검증 결과 거부됐다. 아래 오류를 모두 고쳐서, 같은 JSON 형식({"message", "changes"})으로 전체 changes 를 다시 출력해라. path 는 슬러그(예: sources/s-…), 새 페이지의 type 은 위치에 맞게(sources→source, topics→topic, people→person).\n\n오류:\n${verdict}` });
+    draft = await askHermes();
+    changes = prepare(draft);
+    await apply(true); // throws with the remaining verdict if still refused
   }
-  const applied = await call('wiki_apply', { mode: 'knowledge', changes, message: draft.message || `ingest(knowledge): ${title} — ${prev.source} ${date}`, expected_head: plan.head });
-  return [{ json: { ok: true, rawPath, compiled: changes.map(c => c.path), apply: applied } }];
+  const applied = await apply(false);
+  return [{ json: { ok: true, rawPath, compiled: changes.map(c => c.path), retried: !!verdict, apply: applied } }];
 } catch (e) {
   const reason = String(e.message || e).slice(0, 600);
   await notify(`⚠️ ${prev.source} 회의 자동 ingest — 컴파일 실패. 원문은 보관됨: \`${rawPath}\`\n사유: ${reason}\n→ 에이전트에게 "${rawPath} 를 ingest 해줘" 라고 요청하면 마무리됩니다.`);
