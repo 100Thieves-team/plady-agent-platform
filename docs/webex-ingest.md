@@ -103,6 +103,7 @@ Slack  ──(Events API POST, X-Slack-Signature)──▶  n8n  https://n8n.age
 - 그래서 워크플로는 `Is huddle notes` 뒤에 **3분 Wait** 를 둔다: 캔버스는 허들 종료 직후 붙지만 AI 노트는 그 뒤로도 채워진다. raw 는 create-only 라 반쯤 쓰인 캔버스를 보관하면 되돌릴 수 없다.
 - 팀원이 같은 캔버스를 다시 공유하는 메시지(예: `@Hermes Ingest 해줘 F0…`)도 같은 캔버스 id 로 들어오므로 `already archived` 로 끝난다.
 - **Socket Mode 는 반드시 Off.** 켜져 있으면 URL 검증(challenge)은 통과하는데 이벤트는 WebSocket 으로만 가서 Request URL 에 아무것도 오지 않는다(2026-09-07 원인). Hermes 앱은 Socket Mode 를 쓰지만 이 수집 앱과는 별개다.
+- Slack 은 같은 캔버스에 `file_shared` 를 **두 번**(초 단위 간격) 보내기도 한다. `X-Slack-Retry-Num` 이 있으면 무시하고, 그래도 둘이 동시에 컴파일해 뒤의 것이 `expected_head` 로 거부되면 다시 plan 해서 source 가 생겼는지 보고 조용히 끝낸다(2026-09-09: 첫 완전 자동 성공 `629eca9` 와 함께 관찰).
 - 캔버스 하나에 `file_shared` 와 `message` 두 이벤트가 온다. 대기 시간을 경로별로 벌려(3분/5분) 뒤의 실행은 `already archived`/`already compiled` 로 끝난다. 첫 프로덕션 ingest(2026-09-07, `59019b0`)가 이 경로로 raw 를 보관했다.
 
 ## 로컬 검증 (Webex 계정·모델 없이)

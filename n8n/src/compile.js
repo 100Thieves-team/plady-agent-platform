@@ -96,7 +96,8 @@ ${rawText}`;
 
   let draft = await askHermes();
   let changes = prepare(draft);
-  const apply = (dry) => call('wiki_apply', { mode: 'knowledge', changes, message: draft.message || `ingest(knowledge): ${title} — ${prev.source} ${date}`, expected_head: plan.head, dry_run: dry });
+  const commitMessage = () => { const m = String(draft.message || '').trim(); return /^ingest\(/.test(m) ? m : `ingest(knowledge): ${m || `${title} — ${prev.source} ${date}`}`; };
+  const apply = (dry) => call('wiki_apply', { mode: 'knowledge', changes, message: commitMessage(), expected_head: plan.head, dry_run: dry });
   // Validate without writing; if the wiki refuses (conventions, missing topic
   // change, links), hand the verdict back to Hermes once and re-validate.
   let verdict = null;
@@ -111,6 +112,18 @@ ${rawText}`;
   return [{ json: { ok: true, rawPath, compiled: changes.map(c => c.path), retried: !!verdict, apply: applied } }];
 } catch (e) {
   const reason = String(e.message || e).slice(0, 600);
+  // Two executions for one canvas (Slack sends file_shared more than once) both
+  // plan against the same HEAD; the slower one is refused when the faster one
+  // has committed. If a source page for this raw now exists, that is the other
+  // execution's success, not a failure worth an alert.
+  if (/repository moved since/.test(reason)) {
+    try {
+      const again = await call('wiki_ingest_plan', { raw_path: rawPath });
+      if ((again.existing_sources || []).length) {
+        return [{ json: { ok: true, rawPath, skipped: 'compiled by a concurrent execution', existing_sources: again.existing_sources } }];
+      }
+    } catch (e2) { /* fall through to the alert */ }
+  }
   await notify(`⚠️ ${prev.source} 회의 자동 ingest — 컴파일 실패. 원문은 보관됨: \`${rawPath}\`\n사유: ${reason}\n→ 에이전트에게 "${rawPath} 를 ingest 해줘" 라고 요청하면 마무리됩니다.`);
   return [{ json: { ok: false, rawPath, error: reason } }];
 }

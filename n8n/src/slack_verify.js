@@ -17,6 +17,9 @@ if (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(give
   throw new Error('X-Slack-Signature mismatch — request rejected');
 }
 const body = JSON.parse(raw.toString('utf8'));
+// Slack re-sends an event when it did not get a 200 within 3 s; the original
+// already started an execution, so a retry is a duplicate by definition.
+if (h['x-slack-retry-num']) return [{ json: { respond: '', ignore: true, why: `slack retry #${h['x-slack-retry-num']} (${h['x-slack-retry-reason'] || ''}) — original already handled` } }];
 
 // Slack verifies the Request URL once with a challenge; echo it back.
 if (body.type === 'url_verification') return [{ json: { respond: String(body.challenge || ''), ignore: true, why: 'url_verification' } }];
