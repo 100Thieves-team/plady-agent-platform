@@ -226,8 +226,17 @@ of which none were relevant. The body is now one BM25 query with transport noise
 scored about the same is reported as *undifferentiated* rather than mined for a lead — a meeting
 note that names people by Slack ID has no person signal, and inventing one is worse than saying so.
 
-- `src/ops/apply.rs`, `src/mcp/{tools,handlers}.rs`
-- `tests/apply.rs` — the incident itself is the first test
+**A person page is a candidate only when the text names the person.** Four team huddles in a row
+(2026-09-07 → 09-11) were compiled into a mentor's page that none of them mentioned. The first one
+matched on "멘토링" vocabulary; the agent, required to update at least one topic or person page and
+offered only that candidate, appended the huddle summary to it; from then on the page carried the
+huddles' own vocabulary (모니터링, Grafana, ECS, 채용 …) and out-scored every topic for every later
+huddle. Ranking by overlap is self-reinforcing for pages that accumulate summaries. The rule now: a
+person candidate must be *mentioned* — some word of the page title (≥ 2 chars, case-insensitive)
+occurs in the raw body. Dropped pages are named in the plan's notes so the exclusion is visible.
+
+- `src/ops/apply.rs` (`mentions`, `find_candidates`)
+- `tests/apply.rs` — `a_person_page_is_a_candidate_only_when_the_text_names_the_person`
 
 ### Lock staleness was second-boundary dependent
 

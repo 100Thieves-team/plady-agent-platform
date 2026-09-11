@@ -15,7 +15,18 @@ try {
   const rules = await call('wiki_rules', {});
   const rawPage = await call('wiki_content_read', { uri: rawPath });
   const rawText = rawPage.content || rawPage.text || JSON.stringify(rawPage);
-  const candidates = (plan.candidates || []).slice(0, 6);
+  const rawLower = rawText.toLowerCase();
+  // A person page is only fair game when the person is actually in the text.
+  // Ranking by vocabulary once sent four huddles in a row into a mentor's page
+  // that none of them mentioned; the server now filters this too, this is the
+  // belt to its braces.
+  const namedIn = (title) => String(title || '').split(/[\s(),]+/).filter(t => t.length >= 2).some(t => rawLower.includes(t.toLowerCase()));
+  const candidates = (plan.candidates || []).filter(c => c.kind !== 'person' || namedIn(c.title)).slice(0, 6);
+  // The catalogue of topic pages, so a meeting can land on the subject it is
+  // about even when BM25 found nothing distinctive — and so a new topic is
+  // created only when none of these fits.
+  let topicCatalog = [];
+  try { const cat = await call('wiki_catalog', { section: 'topic' }); topicCatalog = ((cat.sections || [])[0] || {}).entries || []; } catch (e) { topicCatalog = []; }
   const existing = [];
   for (const c of candidates) {
     try { const p = await call('wiki_content_read', { uri: c.slug }); existing.push({ slug: c.slug, content: p.content || p.text || '' }); }
@@ -25,7 +36,9 @@ try {
   const system = `너는 팀 LLM 위키의 ingest 컴파일러다. 아래 규칙(AGENTS.md)을 따른다. 출력은 오직 하나의 \`\`\`json 코드블록이며 그 안은 {"message": string, "changes": [{"path": string, "content": string}]} 형식이다. 설명 문장은 코드블록 밖에 두지 마라.
 
 요구사항:
-- changes 의 path 는 슬러그다 (예: "sources/s-…", "topics/t-…", "people/…"; "wiki/" 접두·".md" 없이). changes 에는 (1) 새 source 페이지 1개 — path 는 "sources/s-<날짜>-<제목>", frontmatter 에 raw_source_path: "${rawPath}" 를 반드시 포함, (2) 이 회의에서 무언가를 배운 기존 topics/·people/ 페이지의 **전체 새 내용**(수정본) 1개 이상. 후보 페이지의 현재 내용이 아래에 있으니 그것을 바탕으로 고쳐 써라. 바꿀 것이 없는 페이지는 넣지 마라.
+- changes 의 path 는 슬러그다 (예: "sources/s-…", "topics/t-…", "people/…"; "wiki/" 접두·".md" 없이). changes 에는 (1) 새 source 페이지 1개 — path 는 "sources/s-<날짜>-<제목>", frontmatter 에 raw_source_path: "${rawPath}" 를 반드시 포함, (2) 이 회의가 다루는 **주제(topic) 페이지** 1개 이상 — 아래 "존재하는 topic 목록"에서 맞는 페이지를 골라 **전체 새 내용**(수정본)으로 주고, 정말 맞는 페이지가 없으면 새 "topics/t-<주제>" 페이지를 만들어라(새 페이지도 변경으로 인정된다). 한 회의가 여러 주제를 다루면 주제별로 나눠 각 topic 에 반영하라.
+- people/ 페이지는 **그 사람이 원문에 이름으로 등장할 때만** 고친다. 회의 참석자가 아닌 멘토·팀원의 페이지에 회의 내용을 쌓지 마라. 후보에 사람 페이지가 있어도 원문에 이름이 없으면 무시하라.
+- 후보 페이지의 현재 내용이 아래에 있으니 그것을 바탕으로 고쳐 써라. 바꿀 것이 없는 페이지는 넣지 마라.
 - raw 페이지(${rawPath})는 이미 커밋돼 있으니 changes 에 넣지 마라.
 - 링크는 [label](topics/t-foo) 또는 [[topics/t-foo]] 형식만. 태그는 소문자-하이픈. 새 페이지 frontmatter 는 title/type/status/summary/last_updated/tags 를 갖춘다 (last_updated: ${date}).
 - 회의 내용을 요약해 source 페이지에 담고, topic 페이지에는 결정·변경·새 사실만 반영하며 source 페이지를 가리켜라.
@@ -35,6 +48,9 @@ ${typeof rules === 'string' ? rules : (rules.text || rules.rules || JSON.stringi
 
 ## ingest 계획 (wiki_ingest_plan)
 ${JSON.stringify({ required: plan.required, candidates, existing_sources: plan.existing_sources, notes: plan.notes }, null, 1)}
+
+## 존재하는 topic 목록 (wiki_catalog)
+${topicCatalog.map(t => `- ${t.slug} — ${t.title}: ${String(t.summary || '').slice(0, 140)}`).join('\n') || '(없음)'}
 
 ## 후보 페이지 현재 내용
 ${existing.map(e => `### ${e.slug}\n${e.content || ('(읽기 실패: ' + e.error + ')')}`).join('\n\n')}
@@ -78,6 +94,8 @@ ${rawText}`;
       .filter(c => c && c.path && typeof c.content === 'string')
       .map(c => ({ path: norm(c.path), content: c.content }))
       .filter(c => c.path && !c.path.startsWith('raw/'))
+      // people/<name>: keep only when the name is in the source text.
+      .filter(c => !c.path.startsWith('people/') || namedIn(c.path.slice('people/'.length).replace(/^p-/, '')))
       .map(c => ({ path: c.path, content: fixType(c.path, c.content) }));
     if (!changes.some(c => c.path.startsWith('sources/'))) {
       throw new Error('초안에 sources/ 페이지가 없음 — 초안 경로: ' + JSON.stringify((draft.changes || []).map(c => c && c.path)));
@@ -103,7 +121,7 @@ ${rawText}`;
   let verdict = null;
   try { await apply(true); } catch (e) { verdict = String(e.message || e); }
   if (verdict) {
-    messages.push({ role: 'user', content: `wiki_apply 검증 결과 거부됐다. 아래 오류를 모두 고쳐서, 같은 JSON 형식({"message", "changes"})으로 전체 changes 를 다시 출력해라. path 는 슬러그(예: sources/s-…), 새 페이지의 type 은 위치에 맞게(sources→source, topics→topic, people→person).\n\n오류:\n${verdict}` });
+    messages.push({ role: 'user', content: `wiki_apply 검증 결과 거부됐다. 아래 오류를 모두 고쳐서, 같은 JSON 형식({"message", "changes"})으로 전체 changes 를 다시 출력해라. path 는 슬러그(예: sources/s-…), 새 페이지의 type 은 위치에 맞게(sources→source, topics→topic, people→person). 원문에 이름이 없는 사람 페이지는 제외되니, topic 페이지(기존 또는 새로 생성)에 반영해라.\n\n오류:\n${verdict}` });
     draft = await askHermes();
     changes = prepare(draft);
     await apply(true); // throws with the remaining verdict if still refused

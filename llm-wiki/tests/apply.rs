@@ -722,3 +722,62 @@ fn applied_pages_are_immediately_searchable() {
         "the preserved original is missing from the index too"
     );
 }
+
+#[test]
+fn a_person_page_is_a_candidate_only_when_the_text_names_the_person() {
+    // A mentor page that has absorbed meeting summaries shares every meeting's
+    // vocabulary; ranking alone kept sending later meetings into it.
+    let dir = tempfile::tempdir().unwrap();
+    let (config_path, wiki_path) = setup(dir.path());
+    fs::write(
+        wiki_path.join("wiki/people/p-이상철.md"),
+        "---\ntitle: \"이상철\"\n---\n\n면접 준비 기능 방향 재정의를 논의했다. 배포 파이프라인 개선도 다뤘다.\n",
+    )
+    .unwrap();
+    llm_wiki::git::commit(&wiki_path, "mentor page full of meeting vocabulary").unwrap();
+    let manager = engine_for(&config_path);
+
+    {
+        let engine = manager.state.read().unwrap();
+        ops::apply(
+            &engine,
+            &manager,
+            "test",
+            &req(
+                ApplyMode::Archive,
+                vec![
+                    ("raw/meetings/scrum-8-24", RAW.to_string()),
+                    (
+                        "raw/meetings/mentoring-8-25",
+                        "---\ntitle: \"Mentoring 8-25\"\n---\n\n이상철 멘토님과 면접 준비 기능 방향, 배포 파이프라인 개선을 논의.\n"
+                            .to_string(),
+                    ),
+                ],
+            ),
+        )
+        .unwrap();
+    }
+    let engine = manager.state.read().unwrap();
+
+    let unnamed = ops::ingest_plan(&engine, "test", "raw/meetings/scrum-8-24").unwrap();
+    assert!(
+        !unnamed.candidates.iter().any(|c| c.slug.contains("이상철")),
+        "a person the text never names must not be a candidate: {:?}",
+        unnamed.candidates
+    );
+    assert!(
+        unnamed
+            .notes
+            .iter()
+            .any(|n| n.contains("does not name them")),
+        "the exclusion should be explained, not silent: {:?}",
+        unnamed.notes
+    );
+
+    let named = ops::ingest_plan(&engine, "test", "raw/meetings/mentoring-8-25").unwrap();
+    assert!(
+        named.candidates.iter().any(|c| c.slug.contains("이상철")),
+        "a person the text names is a candidate: {:?}",
+        named.candidates
+    );
+}

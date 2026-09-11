@@ -267,6 +267,7 @@ fn find_candidates(
 
     let mut out = Vec::new();
     let mut notes = Vec::new();
+    let mut dropped_people_all: Vec<String> = Vec::new();
 
     for kind in ["topic", "person"] {
         let Ok(result) = super::search(
@@ -314,8 +315,18 @@ fn find_candidates(
         } else {
             top * RELEVANCE_FLOOR
         };
+        let mut dropped_people = Vec::new();
         for page in result.results {
             if page.score < floor {
+                continue;
+            }
+            // A person page is about one person, and a source bears on it only
+            // if that person is in the text. Vocabulary overlap is not that:
+            // once a person page has absorbed a few meeting summaries it
+            // matches every later meeting about the same subjects, each ingest
+            // feeds it more of them, and the loop closes. The name is the test.
+            if kind == "person" && !mentions(body, &page.title) {
+                dropped_people.push(page.title.clone());
                 continue;
             }
             out.push(Candidate {
@@ -329,12 +340,19 @@ fn find_candidates(
                 ),
             });
         }
+        dropped_people_all.extend(dropped_people);
     }
     out.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    if !dropped_people_all.is_empty() {
+        notes.push(format!(
+            "person pages that match only by vocabulary were left out because the text does not name them: {} — a person page is updated when the person took part, not when the subjects overlap",
+            dropped_people_all.join(", ")
+        ));
+    }
     if !out.is_empty() {
         notes.push(
             "candidates are the strongest matches, not a complete list — search for anything the source discusses that they do not cover"
@@ -342,6 +360,21 @@ fn find_candidates(
         );
     }
     Ok((out, notes))
+}
+
+/// Whether the text names a person, by any word of the page title.
+///
+/// Titles are names ("이상철", "박정두 멘토", "Jane Doe"); a source that says
+/// "이상철 멘토님" or "Jane" is about them, one that shares their subjects is
+/// not. Case-insensitive, and short tokens (particles, initials) are ignored so
+/// a one-letter match cannot pass.
+fn mentions(body: &str, title: &str) -> bool {
+    let text = body.to_lowercase();
+    title
+        .split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == ',')
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| t.chars().count() >= 2)
+        .any(|t| text.contains(&t))
 }
 
 /// How far the best match must stand above the median for the ranking to mean
@@ -890,6 +923,21 @@ fn derive_message(report: &ApplyReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_person_is_mentioned_by_any_word_of_the_title() {
+        assert!(mentions("오늘 이상철 멘토님과 얘기했다", "이상철"));
+        assert!(mentions("jane said hi", "Jane Doe"));
+        assert!(mentions("배준서(팀장) 발언", "배준서 (백엔드)"));
+    }
+
+    #[test]
+    fn shared_vocabulary_is_not_a_mention() {
+        // The failure this guards: a mentor page that absorbed meeting
+        // summaries matched every later meeting about the same subjects.
+        assert!(!mentions("모니터링은 Grafana 로, 배포는 ECS 로", "이상철"));
+        assert!(!mentions("a b c", "X"), "one-letter titles never match");
+    }
 
     #[test]
     fn mode_names_parse_and_unknown_names_list_the_alternatives() {
