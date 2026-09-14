@@ -45,6 +45,15 @@ pluralizeListTitles = false
     source = "../wiki/policy/viewer"
     target = "static/policy/viewer"
 
+  # raw/attachments/ 의 이미지(PNG 등)는 콘텐츠 마운트에서 제외되므로(아래
+  # excludeFiles) 별도 static 마운트로 /attachments/<파일> 에 원본 그대로 서빙.
+  # 페이지에서는 `![설명](/attachments/<파일>.png)` 로 참조한다. 디렉토리는
+  # wiki-ui 시작 커맨드가 mkdir 로 보장한다(정책 뷰어 마운트와 같은 제약).
+  [[module.mounts]]
+    source = "../raw/attachments"
+    target = "static/attachments"
+    excludeFiles = ["*.md"]   # 폴더 설명 _index.md 는 정적 파일로 내보내지 않는다
+
   [[module.mounts]]
     source = "../raw"
     target = "content/raw"
