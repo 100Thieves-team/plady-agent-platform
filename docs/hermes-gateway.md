@@ -135,16 +135,20 @@ Hermes 에이전트가 llm-wiki MCP 도구를 호출하려면 `~/.hermes/config.
 
 > Hermes `mcp_servers` HTTP 항목 스키마는 평면형(`url`/`headers`/`timeout`/`tools.include`)이며 `transport:` 중첩이 아니다. 출처: [hermes-agent MCP config reference](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/mcp-config-reference.md), [use-mcp-with-hermes](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/use-mcp-with-hermes.md).
 
-### 등록되는 도구 (현재: read-only `allow` tier만)
+### 등록되는 도구 (`allow` tier 16개 + `wiki_apply`)
 
-`config/mcp-registry.yaml`의 llm-wiki `allow` tier 11개만 `tools.include`에 넣는다(`include`는 화이트리스트 — 나머지는 자동 제외 = default-deny):
+`config/mcp-registry.yaml`의 llm-wiki `allow` tier 16개와 `approve` tier 중 `wiki_apply` 하나를 `tools.include`에 넣는다(`include`는 화이트리스트 — 나머지는 자동 제외 = default-deny):
 
 ```
 wiki_search, wiki_list, wiki_content_read, wiki_resolve, wiki_stats, wiki_lint,
-wiki_history, wiki_suggest, wiki_graph, wiki_index_status, wiki_spaces_list
+wiki_history, wiki_suggest, wiki_graph, wiki_index_status, wiki_spaces_list,
+wiki_rules, wiki_catalog, wiki_recent, wiki_context, wiki_ingest_plan,
+wiki_apply   # approve tier, 운영자 opt-in
 ```
 
-⚠️ **write(`approve`) tier는 의도적으로 제외**: `wiki_content_write`/`wiki_content_new`/`wiki_content_commit`/`wiki_ingest`/`wiki_export`는 [MCP 레지스트리의 Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier)을 강제하는 Slack interactive 승인 게이트(**PLA-244-B**)가 떠야 안전하게 노출할 수 있다. 그 게이트가 없는 현재 단계에서 include하면 `/v1` 경유 요청이 승인 없이 위키를 쓸 수 있으므로(완료 기준 "write는 명시적 승인 뒤에만" 위반), 244-B에서 승인 게이트와 함께 `hermes-config-init`의 include 목록에 추가한다. `deny` tier(`wiki_spaces_*`/`wiki_config`/`wiki_schema`/`wiki_index_rebuild`)는 운영자 opt-in 전까지 항상 제외.
+⚠️ **나머지 write(`approve`) tier는 제외**: `wiki_content_write`/`wiki_content_new`/`wiki_content_commit`/`wiki_ingest`/`wiki_export`/`wiki_save_answer`는 [MCP 레지스트리의 Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier)을 강제하는 승인 게이트가 떠야 노출한다. `wiki_apply`만 예외로 둔 이유는 아래 "write 도구 정책". `deny` tier(`wiki_spaces_*`/`wiki_config`/`wiki_schema`/`wiki_index_rebuild`)는 운영자 opt-in 전까지 항상 제외.
+
+> **include 목록의 SSOT는 `compose.ec2.yaml`의 `hermes-config-init`이다.** 배포마다 `mcp_servers.llm-wiki` 블록을 통째로 교체하므로(`yq … = load(...)`), 볼륨의 `/opt/data/config.yaml`을 손으로 고친 도구 목록은 다음 배포에서 사라진다. 2026-08-25~09-03 사이 손으로 넣었던 `wiki_apply`가 9/3 배포에서 그렇게 지워져 "ingest 해줘"가 멈췄다. 도구를 더하거나 빼려면 compose를 고치고 배포한다.
 
 ### 검증
 
@@ -172,9 +176,16 @@ Slack은 hermes의 **네이티브 메시징 플랫폼**이다. 별도 서비스/
 - **동작 설정**: `hermes-config-init`이 config.yaml에 Slack 동작 키를 merge한다. hermes(v0.17) 스키마상 키가 **두 곳으로 분리**됨(소스 `gateway/config.py`·`messaging/slack.md`로 검증): 최상위 `slack:`에 `require_mention: true` + `unauthorized_dm_behavior: ignore`, `platforms.slack:`에 `reply_to_mode: first` + `extra.reply_in_thread/reply_broadcast`. 플랫폼 활성화는 토큰이 하고, 이 키들은 동작만 튜닝한다. (leaf 단위로 set 해서 사람이 둔 다른 키는 보존.)
 - **접근 제어(allowlist) = `SLACK_ALLOWED_USERS`** (Slack Member ID `U…`, 쉼표 구분). **fail-closed**: 비어 있으면 모든 Slack 사용자 거부(이관 #2 충족). 미인가 DM은 `unauthorized_dm_behavior: ignore`로 조용히 무시(원하면 `pair`로 바꿔 1회용 페어링 코드 발급 가능).
 
-### write 도구 정책 (현재 read-only)
+### write 도구 정책 (read 도구 + `wiki_apply`)
 
-Slack을 통한 에이전트의 도구는 `mcp_servers`가 제공하는 것뿐이고, 현재는 **llm-wiki read 도구만**(11개) 노출된다. write(`wiki_content_*`/`wiki_ingest`/`wiki_export`)는 **의도적으로 비활성**: hermes에는 MCP 도구 호출을 막는 승인 게이트가 없어(`approvals.mode`는 셸 명령만, [#16462](https://github.com/NousResearch/hermes-agent/issues/16462)은 제안 단계) write를 켜면 allowlist된 사용자가 승인 없이 위키를 변경하게 된다. 따라서 "write는 승인 뒤에만" 기준을 **노출하지 않음**으로 충족한다. 상세는 [`mcp-registry.md` Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier).
+Slack을 통한 에이전트의 도구는 `mcp_servers`가 제공하는 것뿐이고, llm-wiki read 도구 16개와 write 도구 **`wiki_apply` 하나**가 노출된다. hermes에는 MCP 도구 호출을 막는 승인 게이트가 없어(`approvals.mode`는 셸 명령만, [#16462](https://github.com/NousResearch/hermes-agent/issues/16462)은 제안 단계) write를 켜면 allowlist된 사용자가 호출 단위 승인 없이 위키를 변경하게 된다. 그럼에도 `wiki_apply`를 여는 결정을 2026-09-20에 운영자가 내렸다(8/31까지 실제로 이 경로로 ingest해 왔고, 그것이 팀의 운영 방식이었다). 근거와 경계:
+
+- **게이트는 사람 allowlist다.** `SLACK_ALLOWED_USERS`(fail-closed)에 든 팀원만 봇에게 말할 수 있다. 호출 단위 승인 대신 "누가 요청할 수 있는가"로 승인을 앞당긴 셈이다.
+- **`wiki_apply`는 검증하는 트랜잭션이다.** 변경 집합 전체를 규칙(AGENTS.md)·링크·frontmatter로 검증하고, `expected_head`가 어긋나면 거부하며, raw 계층은 create-only다. 임의 파일을 쓰는 `wiki_content_write`나 디스크에 내보내는 `wiki_export`와 위험 성격이 다르다.
+- **되돌릴 수 있다.** 모든 커밋이 git 이력이고 `_wiki-alert`에 알림이 간다. 잘못된 ingest는 revert로 처리한다.
+- **나머지 write 도구는 여전히 미노출.** `wiki_content_*`/`wiki_ingest`/`wiki_export`/`wiki_save_answer`는 승인 게이트가 생기기 전까지 include하지 않는다.
+
+상세는 [`mcp-registry.md` Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier).
 
 ### 장애 시 동작
 

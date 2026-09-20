@@ -29,7 +29,7 @@ Slack  ──(Events API POST, X-Slack-Signature)──▶  n8n  https://n8n.age
         4~6. 위와 같은 wiki-ingest-raw
 ```
 
-- **쓰기는 n8n 만 한다.** Hermes 는 여전히 읽기 도구만 가진다(레지스트리 `approve` tier 미노출). 모델은 초안만 내고, 검증·커밋은 `wiki_apply` 트랜잭션이 한다. "쓰기는 승인된 경로 뒤에서만" 이라는 계약을 코드가 지킨다.
+- **자동 경로의 쓰기는 n8n 이 한다.** 이 파이프라인에서 모델은 초안만 내고, 검증·커밋은 n8n 이 부르는 `wiki_apply` 트랜잭션이 한다. Hermes 자체도 `wiki_apply` 를 가진다(2026-09-20 운영자 opt-in, [`hermes-gateway.md`](hermes-gateway.md) "write 도구 정책") — 컴파일이 실패했을 때 사람이 봇에게 "`raw/...` 를 ingest 해줘" 라고 하면 그 경로로 마무리된다. 자동 경로는 n8n, 사람이 요청한 마무리는 Hermes.
 - **멱등**: Webex 재전송, Slack 의 message_changed 연타, 컴파일 실패 후 재실행 — 이미 보관된 원문은 건너뛰고(`already archived`) 이미 source 페이지가 있으면 컴파일도 건너뛴다(`already compiled`).
 - **n8n 2.x 주의**: 서브워크플로 `wiki-ingest-raw` 도 **활성(published)** 이어야 호출된다("Workflow is not active and cannot be executed"). 배포 스크립트가 셋 다 활성화한다.
 - 워크플로 정의는 [`n8n/workflows/`](../n8n/workflows/) 가 SSOT. 배포마다 `n8n import:workflow` 로 덮어쓴다. 편집기에서 고쳤다면 export 해서 레포에 넣어야 살아남는다.
@@ -136,4 +136,4 @@ git -C wiki-workspace log --oneline -3   # archive(webex) + ingest(knowledge) �
 - **사이징**: n8n + 태스크 러너 ≈ 400 MB. t3.small 에 hermes·hugo·GHA 러너까지 얹혀 있어 스왑에 기대게 된다. 컴파일이 자주 실패하거나 느리면 t3.medium 으로 (terraform `instance_type` 도 같이).
 - **컴파일 품질**: 초안은 `wiki_apply` 가 검증한다(source 페이지의 `raw_source_path`, topic 실제 변경, 규칙 위반). 실패는 Slack 알림으로 사람/에이전트에게 넘어가고 원문은 이미 보관돼 있어 잃는 것이 없다.
 - **비밀값 회전**: `webex-webhook-secret` 을 바꾸면 Webex 웹훅을 삭제하고 등록 워크플로를 다시 실행한다. `n8n-encryption-key` 는 회전하지 않는다(credential 재입력 필요).
-- **Hermes 도구 목록**: 이 작업에서 읽기 전용 도구 5개(`wiki_rules`, `wiki_catalog`, `wiki_recent`, `wiki_context`, `wiki_ingest_plan`)를 Hermes include 에 추가했다(레지스트리 `allow`). 쓰기 도구는 여전히 미노출.
+- **Hermes 도구 목록**: 이 작업에서 읽기 전용 도구 5개(`wiki_rules`, `wiki_catalog`, `wiki_recent`, `wiki_context`, `wiki_ingest_plan`)를 Hermes include 에 추가했다(레지스트리 `allow`). 쓰기 도구는 `wiki_apply` 하나만 노출(2026-09-20 opt-in), 나머지는 미노출.

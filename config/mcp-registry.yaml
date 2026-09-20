@@ -54,7 +54,9 @@ servers:
         - wiki_content_new
         - wiki_content_commit
         - wiki_ingest
-        - wiki_apply        # 트랜잭션 ingest (raw/source/topic 한 번에 커밋)
+        - wiki_apply        # 트랜잭션 ingest (raw/source/topic 한 번에 커밋). approve tier 중 유일하게
+                            # Hermes include 에 노출(운영자 opt-in 2026-09-20, compose.ec2.yaml hermes-config-init).
+                            # 게이트 = Slack 사용자 allowlist(fail-closed) + wiki_apply 자체 검증/expected_head + git revert.
         - wiki_save_answer  # answers/ 페이지 커밋
         - wiki_export       # llms.txt/JSON 파일을 디스크에 씀(임의 path 가능) → write
       deny:

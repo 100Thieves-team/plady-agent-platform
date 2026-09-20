@@ -585,13 +585,18 @@ services:
   # gateway container env. Runs before the stack comes up (scripts/ec2-deploy.sh).
   # Gated behind the `hermes` profile. PLA-244, PLA-277.
   #
-  # Tool policy (config/mcp-registry.yaml, PLA-250): only the read-only `allow`
-  # tier is whitelisted. The write-capable `approve` tier (wiki_content_*,
-  # wiki_ingest, wiki_export) is intentionally left out: hermes has NO approval
-  # gate for MCP tool calls (its approvals.mode covers shell commands only), so
-  # including write tools would let any allowlisted Slack user mutate the wiki
-  # without confirmation — violating "writes only behind explicit approval".
-  # Re-enabling writes needs a real approval mechanism (separate issue).
+  # Tool policy (config/mcp-registry.yaml, PLA-250): the read-only `allow` tier
+  # plus ONE `approve`-tier tool, wiki_apply. hermes has no approval gate for
+  # MCP tool calls (its approvals.mode covers shell commands only), so the
+  # remaining write tools (wiki_content_*, wiki_ingest, wiki_export,
+  # wiki_save_answer) stay out. wiki_apply is the operator opt-in decided on
+  # 2026-09-20: it is the transactional ingest the wiki's AGENTS.md tells agents
+  # to use, it validates the whole change set and refuses on expected_head
+  # drift, every commit is revertable git history, and the Slack user allowlist
+  # (fail-closed) is the gate on who can ask. Until 2026-09-03 it had been
+  # exposed by a hand edit of /opt/data/config.yaml; the deploy that day
+  # replaced this block wholesale and silently removed it — so it lives here
+  # now, not in the volume. docs/hermes-gateway.md "write 도구 정책".
   #
   # Slack behavior keys live in TWO places (hermes v0.17 schema, verified against
   # gateway/config.py + messaging/slack.md): top-level `slack:` holds
@@ -643,6 +648,8 @@ services:
             - wiki_recent
             - wiki_context
             - wiki_ingest_plan
+            # approve tier, operator opt-in (see the tool-policy note above)
+            - wiki_apply
           resources: false
           prompts: false
         YAML
@@ -657,7 +664,7 @@ services:
           | .platforms.slack.extra.reply_broadcast = false
         ' "$$CONFIG"
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
-        echo "hermes-config-init: merged model.provider=openai-codex + mcp_servers.llm-wiki (read-only) + slack settings into $$CONFIG"
+        echo "hermes-config-init: merged model.provider=openai-codex + mcp_servers.llm-wiki (allow tier + wiki_apply) + slack settings into $$CONFIG"
 
   # Internal-only OpenTelemetry Collector (contrib distribution — needs the
   # redaction processor + file exporter). Receives OTLP on the compose network

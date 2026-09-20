@@ -54,6 +54,8 @@
 `deny` tier 도구는 위 흐름으로 풀리지 않으며, 운영자가 config에서 명시적으로 tier를 올려야만 활성화됩니다.
 
 > ⚠️ **구현 현실 (PLA-244-B 확인)**: 위 흐름은 *설계 계약*이지만, 현재 hermes-agent(`v2026.4.3`)에는 **MCP 도구 호출을 가로채는 승인 게이트가 없습니다**. `approvals.mode`(manual/smart/off)는 셸 명령만 게이트하며, MCP first-invoke 승인은 업스트림 제안 단계([#16462](https://github.com/NousResearch/hermes-agent/issues/16462))입니다. 따라서 1~4단계를 강제할 런타임 수단이 없어, PLA-244는 `approve` tier(write) 도구를 **아예 노출하지 않음**(default-deny by omission)으로 "write는 승인 뒤에만" 기준을 충족합니다. write를 실제로 켜려면 별도 승인 메커니즘(자체 프록시/게이트)이 선행되어야 합니다 — 후속 이슈.
+>
+> **예외 — `wiki_apply` (운영자 opt-in, 2026-09-20)**: `approve` tier 중 `wiki_apply` 하나만 Hermes include에 노출합니다. 게이트는 Slack 사용자 allowlist(fail-closed)이고, 도구 자체가 변경 집합을 검증하는 트랜잭션(`expected_head` 거부, raw create-only)이며 모든 커밋이 git 이력이라 revert 가능하기 때문입니다. 8/31까지 이 경로로 ingest해 오던 실제 운영을 코드로 고정한 것입니다. 나머지 `approve` 도구는 그대로 미노출. 상세는 [`hermes-gateway.md` write 도구 정책](hermes-gateway.md#write-도구-정책-read-도구--wiki_apply).
 
 ## llm-wiki MCP 도구 분류 (23개)
 
