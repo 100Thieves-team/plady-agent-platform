@@ -98,6 +98,11 @@ output "ecr_wiki_ui_repository" {
   value       = aws_ecr_repository.wiki_ui.name
 }
 
+output "ecr_qa_platform_repository" {
+  description = "ECR repository name for the wiki UI image."
+  value       = aws_ecr_repository.qa_platform.name
+}
+
 output "github_actions_ecr_role_arn" {
   description = "IAM role ARN for GitHub Actions OIDC ECR push."
   value       = aws_iam_role.github_actions_ecr.arn

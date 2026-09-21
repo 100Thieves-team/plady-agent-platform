@@ -84,6 +84,7 @@ data "aws_iam_policy_document" "ecr_pull" {
     resources = [
       aws_ecr_repository.llm_wiki.arn,
       aws_ecr_repository.wiki_ui.arn,
+      aws_ecr_repository.qa_platform.arn,
     ]
   }
 }

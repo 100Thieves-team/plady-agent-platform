@@ -392,7 +392,23 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 
 ### 14.3 사람이 해야 하는 일 (배포 순서)
 
-1. **Cloudflare** `agent.plady.io` 존에 `qa` CNAME → ALB DNS (기존 `n8n` 과 동일하게). ALB 리스너 규칙은 host 무관 단일 Caddy origin 이라 추가 없음. terraform `service_subdomains` 는 이미 갱신.
+0. **ECR 저장소 + push/pull 권한 (push 전, 차단 항목).** 저장소 `plady-agent-platform/qa-platform` 이 없고, GHA push 정책(`plady-agent-platform-ecr-push`)과 EC2 pull 정책(`plady-agent-platform-ecr-pull`)이 기존 두 저장소 ARN 에만 묶여 있어 그대로 push 하면 이미지 push 단계에서 배포가 실패한다. terraform 에는 codify 돼 있다(`main.tf` `aws_ecr_repository.qa_platform`, `iam.tf`·`compute.tf` ARN 추가). `terraform apply` 가 가능하면 그걸로, 아니면 아래 CLI 로 같은 상태를 만든다(`AWS_PROFILE=plady-service`, 멱등):
+
+   ```bash
+   export AWS_PROFILE=plady-service AWS_REGION=ap-northeast-2
+   aws ecr create-repository --repository-name plady-agent-platform/qa-platform --image-scanning-configuration scanOnPush=true
+   aws ecr put-lifecycle-policy --repository-name plady-agent-platform/qa-platform --lifecycle-policy-text \
+     '{"rules":[{"rulePriority":1,"description":"Keep last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+   ARN=arn:aws:ecr:ap-northeast-2:781897847312:repository/plady-agent-platform/qa-platform
+   for spec in "plady-agent-platform-github-actions-ecr plady-agent-platform-ecr-push" "plady-agent-platform-ec2-role plady-agent-platform-ecr-pull"; do
+     set -- $spec
+     aws iam get-role-policy --role-name "$1" --policy-name "$2" --query PolicyDocument --output json \
+       | jq --arg arn "$ARN" '.Statement |= map(if (.Resource|type)=="array" and ((.Resource|index($arn))==null) then .Resource += [$arn] else . end)' \
+       | aws iam put-role-policy --role-name "$1" --policy-name "$2" --policy-document file:///dev/stdin
+   done
+   ```
+
+1. **Cloudflare** `agent.plady.io` 존에 `qa` CNAME → `plady-agent-platform-alb-1366645660.ap-northeast-2.elb.amazonaws.com` (기존 `n8n` 레코드와 같은 프록시 설정으로). ACM 은 `*.agent.plady.io` 와일드카드라 인증서 작업은 없다. ALB 리스너 규칙은 host 무관 단일 Caddy origin 이라 추가 없음. terraform `service_subdomains` 는 이미 갱신.
 2. **SSM** (`/plady/agent-platform/dev/`):
    - `qa-actors` (SecureString) — `{"qa-host": "<dev 목데이터 회원 UUID>", "qa-guest": "<다른 회원 UUID>"}`. 후보: dev 룸 상세에 보이는 `목데이터 판다 01`·`목데이터 수달 02` 계열. 전용 회원을 만들어 주면 그 UUID.
    - `qa-fixtures` (String) — `{"postingId": <dev 공고 id>, "jobRoleId": 2, "qa-host.resumeId": "<qa-host 의 보관 이력서 UUID>", "qa-guest.resumeId": "<qa-guest 의 이력서 UUID>"}`. 이력서는 `GET /v1/members/me/resumes` 를 각 배우 토큰으로 호출해 얻는다.

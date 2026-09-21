@@ -97,6 +97,17 @@ resource "aws_ecr_repository" "wiki_ui" {
   }
 }
 
+# qa-platform (docs/qa-platform.md, MOI-483). Third image built by the deploy workflow.
+resource "aws_ecr_repository" "qa_platform" {
+  name                 = "${var.project_name}/qa-platform"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "llm_wiki" {
   repository = aws_ecr_repository.llm_wiki.name
 
@@ -120,6 +131,27 @@ resource "aws_ecr_lifecycle_policy" "llm_wiki" {
 
 resource "aws_ecr_lifecycle_policy" "wiki_ui" {
   repository = aws_ecr_repository.wiki_ui.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "qa_platform" {
+  repository = aws_ecr_repository.qa_platform.name
 
   policy = jsonencode({
     rules = [
