@@ -85,6 +85,11 @@ services:
             handle /health {
               reverse_proxy qa-platform:8800
             }
+            # QA MCP (docs/qa-platform-hermes.md §3.1) 는 내부 전용 — hermes-gateway 가
+            # compose 네트워크로 qa-platform:8800/mcp 를 부른다. 밖에서는 팀 세션이 있어도 403.
+            handle /mcp {
+              respond 403
+            }
             handle /auth/* {
               reverse_proxy wiki-auth:8790
             }
@@ -570,6 +575,11 @@ services:
       # (MCP_BEARER_TOKEN, from /plady/agent-platform/<env>/llm-wiki-mcp-bearer-token)
       # because the agent calls mcp-proxy internally. PLA-244. See docs/hermes-gateway.md.
       LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
+      # Bearer for the qa-platform MCP server (docs/qa-platform-hermes.md §3.1):
+      # same placeholder pattern — config.yaml carries ${QA_MCP_TOKEN}, resolved
+      # here at connect-time. From SSM /plady/agent-platform/<env>/qa-mcp-token.
+      # Absent → hermes-config-init leaves mcp_servers.qa-platform out entirely.
+      QA_MCP_TOKEN: ${QA_MCP_TOKEN:-}
       # Slack messaging platform (PLA-244-B). The single `gateway run` process
       # serves Slack alongside the OpenAI API; the platform auto-enables when the
       # bot+app tokens are present (Socket Mode — no public webhook/ALB route).
@@ -632,6 +642,8 @@ services:
     environment:
       HERMES_UID: ${HERMES_UID:-10000}
       HERMES_GID: ${HERMES_GID:-10000}
+      # presence flag only (never the token): "1" when QA_MCP_TOKEN is set, else empty
+      QA_MCP_ENABLED: ${QA_MCP_TOKEN:+1}
     volumes:
       - hermes-home:/opt/data
     entrypoint:
@@ -682,6 +694,41 @@ services:
           | .platforms.slack.extra.reply_in_thread = true
           | .platforms.slack.extra.reply_broadcast = false
         ' "$$CONFIG"
+        # QA 플랫폼 MCP (docs/qa-platform-hermes.md §3.1): 읽기 10 + 제안 3. 실행·발행·승인 도구는
+        # 서버에 아예 없다(사람 버튼 원칙). include 가 SSOT 인 것은 llm-wiki 와 같다.
+        # 토큰(SSM qa-mcp-token)이 없으면 항목을 지운다 — 연결 실패로 gateway 부팅을 늦추지 않게.
+        if [ -n "$${QA_MCP_ENABLED:-}" ]; then
+          cat > /tmp/qa-platform.yaml <<'YAML'
+        url: http://qa-platform:8800/mcp
+        headers:
+          Authorization: "Bearer $${QA_MCP_TOKEN}"
+        timeout: 60
+        connect_timeout: 15
+        tools:
+          include:
+            - qa_catalog_search
+            - qa_tc_get
+            - qa_coverage
+            - qa_changes
+            - qa_case_list
+            - qa_case_get
+            - qa_run_list
+            - qa_run_get
+            - qa_spec_op
+            - qa_prd_section
+            # 제안 — 케이스 초안(drafts)까지만. 승인은 사람이 화면에서
+            - qa_draft_create
+            - qa_draft_update
+            - qa_manual_tc_propose
+          resources: false
+          prompts: false
+        YAML
+          yq -i '.mcp_servers."qa-platform" = load("/tmp/qa-platform.yaml")' "$$CONFIG"
+          echo "hermes-config-init: merged mcp_servers.qa-platform (13 QA tools: read + draft proposals)"
+        else
+          yq -i 'del(.mcp_servers."qa-platform")' "$$CONFIG"
+          echo "hermes-config-init: QA_MCP_TOKEN absent — mcp_servers.qa-platform not configured"
+        fi
         chown "$${HERMES_UID:-10000}:$${HERMES_GID:-10000}" "$$CONFIG"
         echo "hermes-config-init: merged model.provider=openai-codex + mcp_servers.llm-wiki (allow tier + wiki_apply) + slack settings into $$CONFIG"
 
@@ -800,6 +847,9 @@ services:
       # 보고서 발행(사람이 [위키에 발행] 을 누를 때만): 내부 mcp-proxy 로 wiki_apply(mode generated). 기존 정적 bearer 재사용
       LLM_WIKI_MCP_URL: http://mcp-proxy:18765/mcp
       LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
+      # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 내부 전용,
+      # Caddy 는 /mcp 를 403. SSM qa-mcp-token (ec2-deploy.sh). 비어 있으면 /mcp 는 503 이고 Hermes 에 등록되지 않는다
+      QA_MCP_TOKEN: ${QA_MCP_TOKEN:-}
       TZ: Asia/Seoul
     volumes:
       - qa-data:/data

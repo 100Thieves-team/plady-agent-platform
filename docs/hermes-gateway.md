@@ -148,6 +148,8 @@ wiki_apply   # approve tier, 운영자 opt-in
 
 ⚠️ **나머지 write(`approve`) tier는 제외**: `wiki_content_write`/`wiki_content_new`/`wiki_content_commit`/`wiki_ingest`/`wiki_export`/`wiki_save_answer`는 [MCP 레지스트리의 Write 승인 흐름](mcp-registry.md#write-승인-흐름-approve-tier)을 강제하는 승인 게이트가 떠야 노출한다. `wiki_apply`만 예외로 둔 이유는 아래 "write 도구 정책". `deny` tier(`wiki_spaces_*`/`wiki_config`/`wiki_schema`/`wiki_index_rebuild`)는 운영자 opt-in 전까지 항상 제외.
 
+> **QA 플랫폼 도구 (2026-09-21, MOI-483 P4a):** 같은 `hermes-config-init` 이 `mcp_servers.qa-platform`(`http://qa-platform:8800/mcp`, bearer 플레이스홀더 `${QA_MCP_TOKEN}`, SSM `qa-mcp-token`) 도 병합한다 — 읽기 10 + 케이스 초안 제안 3, 실행·발행·승인 도구는 서버에 없다. 토큰이 SSM 에 없으면 항목을 지운다. 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) §3.1.
+
 > **include 목록의 SSOT는 `compose.ec2.yaml`의 `hermes-config-init`이다.** 배포마다 `mcp_servers.llm-wiki` 블록을 통째로 교체하므로(`yq … = load(...)`), 볼륨의 `/opt/data/config.yaml`을 손으로 고친 도구 목록은 다음 배포에서 사라진다. 2026-08-25~09-03 사이 손으로 넣었던 `wiki_apply`가 9/3 배포에서 그렇게 지워져 "ingest 해줘"가 멈췄다. 도구를 더하거나 빼려면 compose를 고치고 배포한다.
 
 ### 검증

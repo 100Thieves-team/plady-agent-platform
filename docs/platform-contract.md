@@ -72,6 +72,7 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `/plady/agent-platform/<env>/qa-actors` | JSON `{"qa-host": "<회원 UUID>", "qa-guest": "<회원 UUID>"}` — dev 목데이터 회원 | qa-platform (테스트 계정 토큰 발급) | 없으면 테스트 계정 케이스는 skipped 로 기록. 런북 [`qa-platform.md`](qa-platform.md). |
 | `/plady/agent-platform/<env>/qa-fixtures` | JSON `{"postingId": …, "jobRoleId": …, "qa-host.resumeId": "…"}` — 케이스가 참조하는 dev 데이터 id | qa-platform (쓰기 케이스) | dev 데이터가 바뀌면 케이스가 아니라 이 값을 고친다. |
 | `/plady/agent-platform/<env>/qa-github-token` | (선택) 읽기 전용 GitHub PAT | qa-platform (배포·PR 조회) | 없으면 미인증 60 req/h + 캐시로 동작. |
+| `/plady/agent-platform/<env>/qa-mcp-token` | (선택) QA MCP 정적 bearer (예: `openssl rand -hex 32`) | qa-platform (`/mcp` 인증), hermes-gateway (`QA_MCP_TOKEN` 플레이스홀더) | 없으면 `/mcp` 는 503 이고 Hermes 에 QA 도구가 등록되지 않는다. 위키 MCP 토큰과 범위 분리. 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) §6. |
 
 ### `<env>` 규칙
 

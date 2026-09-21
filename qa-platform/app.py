@@ -28,6 +28,7 @@ from qa import drafts as draftsmod  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
 from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
+from qa.mcp_server import McpServer  # noqa: E402
 from qa import report as reportmod  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.reminder import Reminder  # noqa: E402
@@ -57,6 +58,8 @@ class App:
         self.reload_cases()
         self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish)
         self.reminder = Reminder(cfg, self.store, lambda text: slack(cfg.slack_webhook_url, text))
+        # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 실행 도구는 없다
+        self.mcp = McpServer(self, hidden_triggers=HIDDEN_TRIGGERS)
 
     def start(self):
         self.runner.start()
@@ -435,7 +438,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"status": "ok", "cases": len(app.cases), "case_errors": len(app.case_errors),
                                     "case_audit": {k: sum(1 for c in app.cases.values() if c.audit["status"] == k) for k in ("ok", "warn", "error", "unchecked")},
                                     "runner": app.runner.current or "idle", "catalog": app.catalog.summary(),
-                                    "wiki": {"available": app.wiki.available, "head": app.wiki.head()}, "config": app.cfg.summary()})
+                                    "wiki": {"available": app.wiki.available, "head": app.wiki.head()},
+                                    "mcp": {"enabled": app.mcp.enabled, "tools": len(app.mcp._impl)}, "config": app.cfg.summary()})
+
+        # ---------- QA MCP (내부 전용 — Hermes 만 부른다. Caddy @qa 는 이 경로를 403 으로 막는다) ----------
+        if path == "/mcp":
+            if method != "POST":
+                return self._send(HTTPStatus.METHOD_NOT_ALLOWED, "", headers={"Allow": "POST"})
+            if not app.mcp.enabled:
+                return self._json(503, {"error": "QA_MCP_TOKEN 이 없어 QA MCP 가 꺼져 있다"})
+            if not app.mcp.authorized(self.headers.get("Authorization")):
+                app.store.add_event(operator="(미인증)", action="mcp.denied", target=None, ip=self._ip(), detail={"has_header": bool(self.headers.get("Authorization"))})
+                return self._send(HTTPStatus.UNAUTHORIZED, json.dumps({"error": "bearer 토큰이 틀리다"}), "application/json; charset=utf-8",
+                                  headers={"WWW-Authenticate": "Bearer"})
+            status, resp = app.mcp.handle(self._body(), ip=self._ip())
+            if resp is None:
+                return self._send(HTTPStatus.ACCEPTED, "")
+            return self._json(status, resp)
 
         # ---------- 대시보드 ----------
         if path == "/" and method == "GET":
@@ -687,14 +706,23 @@ class Handler(BaseHTTPRequestHandler):
             sh, ip = self._session_hash(), self._ip()
             if d["status"] in ("approved", "rejected") and action in ("save", "check"):
                 raise BadRequest("결정된 초안은 고치거나 실행하지 않는다")
+            is_tc = (d.get("kind") or "case") == "tc"     # 서술 TC 제안: 실행할 수 없고, 승인은 manual-tc.yaml 로 옮기라는 뜻
             if action == "save":
                 text = str(fv("yaml"))
+                if is_tc:
+                    items, errors = draftsmod.validate_manual_tc(text)
+                    validation = {"status": "error" if errors else "ok", "errors": errors, "warnings": []}
+                    app.store.update_draft(did, yaml=text, validation=validation, tc_ids=[str(i.get("id")) for i in items], status="draft")
+                    app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"kind": "tc", "errors": len(errors)})
+                    return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
                 case, errors, warnings = app.revalidate_draft(d, text)
                 validation = {"status": ("error" if errors else (case.audit["status"] if case else "error")), "errors": errors, "warnings": warnings}
                 app.store.update_draft(did, yaml=text, validation=validation, case_id=(case.id if case else d.get("case_id")),
                                        tc_ids=(case.covers if case else d["tc_ids"]), status="draft", run_id=None)
                 app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"errors": len(errors), "warnings": len(warnings)})
             elif action == "check":
+                if is_tc:
+                    raise BadRequest("서술 TC 제안은 실행할 것이 없다 — 승인 뒤 manual-tc.yaml 에 붙여 PR 로 낸다")
                 case, errors, _ = app.revalidate_draft(d, d["yaml"])
                 if not case:
                     raise BadRequest("검증 오류가 있는 초안은 실행하지 않는다: " + "; ".join(errors[:3]))
@@ -704,6 +732,13 @@ class Handler(BaseHTTPRequestHandler):
                 app.store.update_draft(did, status="checked", run_id=rid)
                 app.store.add_event(operator=operator, action="draft.check", target=did, session_hash=sh, ip=ip, detail={"run_id": rid})
             elif action == "approve":
+                if is_tc:
+                    _, errors = draftsmod.validate_manual_tc(d["yaml"])
+                    if errors:
+                        raise BadRequest("형식 오류가 있는 제안은 승인하지 않는다: " + "; ".join(errors[:3]))
+                    app.store.update_draft(did, status="approved", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
+                    app.store.add_event(operator=operator, action="draft.approve", target=did, session_hash=sh, ip=ip, detail={"kind": "tc", "tc_ids": d["tc_ids"]})
+                    return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
                 case, errors, _ = app.revalidate_draft(d, d["yaml"])
                 if not case:
                     raise BadRequest("검증 오류가 있는 초안은 승인하지 않는다: " + "; ".join(errors[:3]))

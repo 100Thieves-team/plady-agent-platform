@@ -77,6 +77,9 @@ class Config:
         self.hermes_model = g("HERMES_MODEL", "gpt-5.5")
         self.hermes_timeout = int(g("HERMES_TIMEOUT", "300"))
 
+        # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 QA 도구. 비어 있으면 /mcp 가 꺼진다 (503)
+        self.qa_mcp_token = g("QA_MCP_TOKEN", "")
+
         # llm-wiki MCP (보고서 발행에만, 내부 프록시 + 기존 정적 bearer). 비어 있으면 발행 버튼이 꺼진다
         self.wiki_mcp_url = g("LLM_WIKI_MCP_URL", "").rstrip("/")
         self.wiki_mcp_token = g("LLM_WIKI_MCP_BEARER_TOKEN", "")
@@ -108,4 +111,5 @@ class Config:
             "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
             "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
             "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir), "wiki_publish": bool(self.wiki_mcp_url and self.wiki_mcp_token),
+            "qa_mcp": bool(self.qa_mcp_token),
         }

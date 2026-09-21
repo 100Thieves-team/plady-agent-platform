@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS drafts (
 """
 # P2b 에서 늘어난 초안 열. 이미 만들어진 DB 에는 ALTER 로 더한다 (sqlite 는 IF NOT EXISTS 가 없다).
 DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "validation": "TEXT NOT NULL DEFAULT '{}'",
-                 "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT"}
+                 "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT",
+                 # P4: kind case(케이스 YAML) | tc(서술 TC 제안 — manual-tc.yaml 에 사람이 옮긴다)
+                 "kind": "TEXT NOT NULL DEFAULT 'case'"}
 
 
 def now_iso() -> str:
@@ -209,19 +211,29 @@ class Store:
             r["detail"] = json.loads(r["detail"] or "{}")
         return rows
 
+    def events_between(self, start_iso: str, end_iso: str, action: str | None = None) -> list[dict]:
+        """시각대 안의 이벤트(오름차순). 채팅 턴 동안 들어온 mcp.call 을 묶어 보여 줄 때 쓴다."""
+        sql, args = "SELECT * FROM events WHERE at>=? AND at<=?", [start_iso, end_iso]
+        if action:
+            sql += " AND action=?"; args.append(action)
+        rows = self._q(sql + " ORDER BY id", tuple(args))
+        for r in rows:
+            r["detail"] = json.loads(r["detail"] or "{}")
+        return rows
+
     def event_actions(self) -> list[str]:
         return [r["action"] for r in self._q("SELECT DISTINCT action FROM events ORDER BY action")]
 
     # ---- drafts (케이스 초안, docs/qa-platform-tc.md §7.3) -------------------------------------
     def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None,
                   case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None,
-                  prompt_hash: str | None = None) -> str:
+                  prompt_hash: str | None = None, kind: str = "case") -> str:
         did = "d-" + secrets.token_hex(4)
         t = now_iso()
-        self._x("INSERT INTO drafts(id,created_at,updated_at,operator,source,domain,yaml,note,case_id,tc_ids,validation,prompt_hash)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        self._x("INSERT INTO drafts(id,created_at,updated_at,operator,source,domain,yaml,note,case_id,tc_ids,validation,prompt_hash,kind)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (did, t, t, operator, source, domain, yaml_text, note, case_id, json.dumps(tc_ids or [], ensure_ascii=False),
-                 json.dumps(validation or {}, ensure_ascii=False), prompt_hash))
+                 json.dumps(validation or {}, ensure_ascii=False), prompt_hash, kind))
         return did
 
     @staticmethod

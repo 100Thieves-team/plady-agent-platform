@@ -462,7 +462,7 @@ def drafts_list(drafts: list[dict], counts: dict, status: str) -> str:
     tabs = "".join(f'<a href="/drafts{("?status=" + st) if st else ""}" class="{"on" if (status or "") == st else ""}">{lab} {counts.get(st, "") if st else sum(counts.values())}</a>'
                    for st, lab in (("", "전체"), ("draft", "검토 대기"), ("checked", "dev 확인됨"), ("approved", "승인"), ("rejected", "반려")))
     rows = "".join(
-        f'<tr><td><a href="/drafts/{e(d["id"])}" class="mono">{e(d["id"])}</a></td><td>{badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</td>'
+        f'<tr><td><a href="/drafts/{e(d["id"])}" class="mono">{e(d["id"])}</a>{" " + badge("서술 TC 제안", "warn") if (d.get("kind") or "case") == "tc" else ""}</td><td>{badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</td>'
         f'<td class="mono">{e(d.get("case_id") or "–")}</td><td class="small">{" ".join(tc_link(t) for t in d["tc_ids"][:4])}{" …" if len(d["tc_ids"]) > 4 else ""}</td>'
         f'<td class="small">{e((d.get("validation") or {}).get("status") or "–")}{(" · 경고 " + str(len((d.get("validation") or {}).get("warnings") or []))) if (d.get("validation") or {}).get("warnings") else ""}</td>'
         f'<td class="small">{e(d["source"])} · {e(d["operator"])}</td><td class="small mut">{kst(d["created_at"])}</td></tr>'
@@ -484,23 +484,28 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
     if run:
         run_html = f'<p>확인 실행: <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> {run_badge(run)} <span class="small mut">통과 {run["passed"]} 실패 {run["failed"]} 오류 {run["errored"]} skip {run["skipped"]}</span></p>'
     dis = "disabled" if not operator else ""
+    is_tc = (d.get("kind") or "case") == "tc"
+    check_form = "" if is_tc else (
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button></form>')
     forms = "" if decided else (
         f'<form method="post" action="/drafts/{e(d["id"])}/save"><input type="hidden" name="operator" value="{e(operator)}">'
         f'<textarea name="yaml" style="min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(d["yaml"])}</textarea>'
         f'<div class="actions"><button {dis}>저장하고 다시 검증</button></div></form>'
         f'<div class="actions">'
-        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button></form>'
+        f'{check_form}'
         f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/approve"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="메모 (선택)"> <button class="primary" {dis} {"disabled" if v.get("errors") else ""}>승인</button></form>'
         f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/reject"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="반려 사유"> <button class="danger" {dis}>반려</button></form>'
         f'</div><p class="small mut">운영자: <select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 선택 —</option>{ops}</select> (버튼은 운영자를 고른 뒤 활성화된다)</p>')
     approved_html = ""
     if d["status"] == "approved":
         approved_html = (f'<div class="card" style="background:#f0fdf4"><b>승인됨</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}'
-                         f'<p class="small">아래 YAML 을 <span class="mono">qa-platform/cases/{e(d.get("domain") or "x")}.yaml</span> 의 <span class="mono">cases:</span> 목록에 붙여 PR 을 연다. 리뷰·머지되면 다음 배포에 실린다.</p>'
-                         f'<pre id="y">{e(d["yaml"])}</pre><button onclick="navigator.clipboard.writeText(document.getElementById(\'y\').innerText)">복사</button></div>')
+                         + (f'<p class="small">아래 항목을 <span class="mono">qa-platform/catalog/manual-tc.yaml</span> 의 <span class="mono">cases:</span> 목록에 붙여 PR 을 연다. 머지되면 기준 카탈로그의 서술 층에 들어간다.</p>' if is_tc else
+                            f'<p class="small">아래 YAML 을 <span class="mono">qa-platform/cases/{e(d.get("domain") or "x")}.yaml</span> 의 <span class="mono">cases:</span> 목록에 붙여 PR 을 연다. 리뷰·머지되면 다음 배포에 실린다.</p>')
+                         + f'<pre id="y">{e(d["yaml"])}</pre><button onclick="navigator.clipboard.writeText(document.getElementById(\'y\').innerText)">복사</button></div>')
     elif d["status"] == "rejected":
         approved_html = f'<div class="card" style="background:#fef2f2"><b>반려</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}<pre>{e(d["yaml"])}</pre></div>'
-    return (f'<h1>케이스 초안 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</h1>'
+    kind_html = (' <span class="b warn">서술 TC 제안</span> <span class="small mut">기준(manual-tc.yaml)에 넣을 항목 — 케이스가 아니라 실행하지 않는다</span>' if is_tc else "")
+    return (f'<h1>케이스 초안 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}{kind_html}</h1>'
             f'<div class="card"><div class="kv"><div>케이스 id</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
             f'{(" · 근거 해시 <span class=\"mono\">" + e(d.get("prompt_hash")) + "</span>") if d.get("prompt_hash") else ""}</div>'
             f'<div>덮는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
@@ -631,11 +636,12 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
     s_ai = """
 <p><b>런타임에는 AI 가 없다.</b> 트리거를 누르면 도는 것은 결정론 러너다 — 케이스에 적힌 요청을 보내고 적힌 단언과 비교한다. 같은 케이스·같은 서버면 같은 판정이 나온다. 매 실행마다 LLM 이 판단하면 비용이 들고 결과가 흔들리고 이력을 믿을 수 없어서 설계에서 뺐다.</p>
 <p><b>TC 도 AI 가 만들지 않고</b> SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 "기준" 을 만들면 기준이 정본에서 떠난다.</p>
-<p>AI(Hermes)가 개입하는 지점은 <b>둘뿐이고 둘 다 사람이 버튼을 누를 때만</b> 돈다.</p>
+<p>AI(Hermes)가 개입하는 지점은 <b>셋이고, 셋 다 실행·발행·승인 버튼에는 손이 닿지 않는다.</b></p>
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
 <tr><td>케이스를 늘릴 때</td><td>기준 화면 [케이스 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 케이스 초안에 들어가고 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
-<tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr></table>
-<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
+<tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr>
+<tr><td>Hermes 에게 물을 때 (Slack)</td><td>버튼 없음 — 대화</td><td>QA 도구(<span class="mono">qa_*</span> 13개)로 기준·케이스·런·커버리지·OpenAPI·PRD 절을 읽고 답한다. 케이스를 쓰거나 고치면 케이스 초안으로, PRD 절에서 뽑은 서술 TC 는 "서술 TC 제안" 초안으로 낸다</td><td>런 생성·탐색기 전송·위키 발행·초안 승인 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 활동 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
+<p class="small mut">[케이스 초안 생성] 버튼 경로에서는 위키 도구를 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
     return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)

@@ -13,7 +13,7 @@ import re
 import yaml
 
 from . import hermes
-from .cases import Case, CaseError, _validate, audit
+from .cases import _TC, Case, CaseError, _validate, audit
 from .config import Config
 from .spec import SpecData
 from .wiki import Wiki
@@ -158,6 +158,34 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
     if errors:
         return None, errors, warnings
     return case, [], warnings
+
+
+def validate_manual_tc(text: str) -> tuple[list[dict], list[str]]:
+    """서술 TC 제안(kind tc) YAML — manual-tc.yaml 의 `cases:` 형식인지. 반환 (항목, 오류)."""
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError as ex:
+        return [], [f"YAML 파싱 실패: {ex}"]
+    items = doc.get("cases") if isinstance(doc, dict) else doc
+    if not isinstance(items, list) or not items:
+        return [], ["`cases:` 목록이 비어 있다"]
+    errors, out, seen = [], [], set()
+    for i, it in enumerate(items, 1):
+        if not isinstance(it, dict):
+            errors.append(f"{i}번째 항목은 맵이어야 한다"); continue
+        tid = str(it.get("id") or "")
+        if not _TC.match(tid) or not tid.startswith(("PRD.", "OPS.")):
+            errors.append(f"{i}번째 id 형식 오류: {tid!r} (PRD.문서.절#n 또는 OPS.영역.이름#n)")
+        elif tid in seen:
+            errors.append(f"id 중복: {tid}")
+        seen.add(tid)
+        for k in ("title", "when", "then"):
+            if not isinstance(it.get(k), str) or not it[k].strip():
+                errors.append(f"{tid or i}: {k} 필요")
+        if tid.startswith("PRD.") and not (it.get("doc") and it.get("section")):
+            errors.append(f"{tid}: PRD 항목은 doc·section 필요")
+        out.append(it)
+    return out, errors
 
 
 # ---------------------------------------------------------------------------------------------

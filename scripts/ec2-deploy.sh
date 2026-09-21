@@ -74,6 +74,9 @@ QA_PUBLIC_HOST="${QA_PUBLIC_HOST:-qa.agent.plady.io}"
 QA_ACTORS_PARAM="${QA_ACTORS_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-actors}"
 QA_FIXTURES_PARAM="${QA_FIXTURES_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fixtures}"
 QA_GITHUB_TOKEN_PARAM="${QA_GITHUB_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-github-token}"
+# QA MCP bearer (docs/qa-platform-hermes.md §6): optional. Absent -> qa-platform /mcp answers 503 and
+# hermes-config-init leaves mcp_servers.qa-platform out, so Hermes has no QA tools until it is filled.
+QA_MCP_TOKEN_PARAM="${QA_MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mcp-token}"
 
 COMPOSE_FILE="${APP_DIR}/compose.ec2.yaml"
 ENV_FILE="${APP_DIR}/.env.ec2"
@@ -139,7 +142,9 @@ QA_FIXTURES="$(ssm_get "$QA_FIXTURES_PARAM")"
 [ "$QA_FIXTURES" = "None" ] && QA_FIXTURES=""
 QA_GITHUB_TOKEN="$(ssm_get "$QA_GITHUB_TOKEN_PARAM")"
 [ "$QA_GITHUB_TOKEN" = "None" ] && QA_GITHUB_TOKEN=""
-echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent))"
+QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
+[ "$QA_MCP_TOKEN" = "None" ] && QA_MCP_TOKEN=""
+echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
 else
@@ -232,6 +237,7 @@ SLACK_INGEST_SIGNING_SECRET=${SLACK_INGEST_SIGNING_SECRET}
 QA_ACTORS=${QA_ACTORS}
 QA_FIXTURES=${QA_FIXTURES}
 QA_GITHUB_TOKEN=${QA_GITHUB_TOKEN}
+QA_MCP_TOKEN=${QA_MCP_TOKEN}
 ENV
 chmod 600 "$ENV_FILE"
 
@@ -254,7 +260,7 @@ log "Pulling images"
 # connect-time, and the Codex provider credential is the device-code OAuth
 # session in /opt/data/auth.json (human-written, not touched here).
 # See docs/hermes-gateway.md.
-log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki) into the hermes-home config"
+log "Merging hermes config (model.provider=openai-codex + mcp_servers.llm-wiki + mcp_servers.qa-platform when qa-mcp-token exists) into the hermes-home config"
 # -T: this runs under SSM Run Command (no TTY); `compose run` allocates a
 # pseudo-TTY by default and would abort with "the input device is not a TTY".
 # Matches the `exec -T` smoke checks below.

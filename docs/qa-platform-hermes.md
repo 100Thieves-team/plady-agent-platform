@@ -2,7 +2,7 @@
 
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P4)
 - 선행: [`qa-platform.md`](qa-platform.md) (P0·P1), [`qa-platform-tc.md`](qa-platform-tc.md) (P2·P3)
-- 상태: **검토 대기** (구현 전). 결정이 필요한 항목은 §8.
+- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a 구현 완료**, P4b~P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약
@@ -162,3 +162,28 @@ catalog changes.json  항목에 before 스냅샷
 - **비용·지연**: 도구를 여러 번 부르면 한 턴에 수십 초·수만 토큰. 턴 한도와 타임아웃으로 막고, 채팅 사용량을 events 로 센다.
 - **Hermes 가 초안 검증을 못 넘길 때**: 사유를 돌려주고 스스로 고치게 한다. 3번 넘게 실패하면 사람에게 넘기라고 프롬프트에 둔다.
 - **원칙 ① 착시**: "Hermes 가 돌렸다" 는 일이 없어야 한다. 실행 도구를 아예 만들지 않는 것으로 구조적으로 막는다.
+
+## 10. 구현 결과
+
+### 10.1 P4a — QA MCP 서버 (2026-09-21)
+
+| 항목 | 구현 | 설계 대비 |
+| --- | --- | --- |
+| 서버 | `qa-platform/qa/mcp_server.py` — JSON-RPC 2.0 over `POST /mcp`, 상태 없음(세션 id 없음), `initialize`·`ping`·`tools/list`·`tools/call`. 알림은 202. 표준 라이브러리 | 같음 |
+| 도구 | 읽기 10 + 제안 3 = 13 (§3.1 표 그대로). `tools/list` 의 설명과 `initialize.instructions` 에 "실행·발행·승인은 사람이 버튼" 규칙을 넣었다 | 같음 |
+| 인증 | `QA_MCP_TOKEN` bearer(상수 시간 비교). 토큰이 없으면 `/mcp` 는 503. 틀리면 401 + events `mcp.denied`. GET 은 405 | 같음 |
+| 감사 로그 | tools/call 마다 events `mcp.call` — operator **`hermes`**, target 도구 이름, detail {args 요약(긴 문자열은 길이만), ok, ms, chars, result 힌트(만든 초안 id 등)} | 같음. 활동 화면에서 operator 필터 "hermes" 로 볼 수 있다(드롭다운엔 없고 URL `?operator=hermes`) |
+| 제안 도구의 저장 | `qa_draft_create` → drafts(source `hermes-chat`, operator `hermes`, note = reason). `qa_manual_tc_propose` → drafts **kind `tc`**(새 열, 기본 `case`) — 케이스 초안 화면에 "서술 TC 제안" 배지, [한 번 실행해 보기] 없음, 승인 문구는 `manual-tc.yaml` 에 붙이라는 뜻. `qa_draft_update` 는 kind 에 맞는 검증을 다시 한다 | drafts.kind 는 §5 대로 |
+| 런 단계 노출 | `qa_run_get(with_steps)` 는 요청에서 headers 를 빼고, 요청·응답을 문자열로 절단한 뒤 UUID 를 앞 8자리로 마스킹한다 | "마스킹된 그대로" 보다 한 겹 더 |
+| compose.ec2 | qa-platform·hermes-gateway 에 `QA_MCP_TOKEN`. `hermes-config-init` 이 `QA_MCP_ENABLED`(존재 플래그, 값 아님)를 보고 `mcp_servers.qa-platform` 을 병합하거나 지운다. Caddy `@qa` 에 `handle /mcp { respond 403 }` | §6 대로. 토큰 없을 때 항목을 지우는 것은 추가(연결 실패로 gateway 부팅이 늦어지지 않게) |
+| 배포 스크립트 | `ec2-deploy.sh` 가 SSM `qa-mcp-token`(선택) → `.env.ec2` `QA_MCP_TOKEN`. 없으면 로그에 ABSENT | §6 대로 |
+| 테스트 | `tests/test_mcp.py` 9건(프로토콜·인증·도구 13종·마스킹·감사 로그). 전체 38건 | – |
+
+**사람이 할 일 (P4a 를 켜려면)**
+
+1. SSM 에 `/plady/agent-platform/dev/qa-mcp-token` 을 SecureString 으로 넣는다 (`openssl rand -hex 32`). 값은 SSM 에만.
+2. 배포(main push) → `hermes-config-init` 로그에 `merged mcp_servers.qa-platform` 이 찍히고, `https://qa.agent.plady.io/health` 의 `mcp.enabled` 가 true.
+3. Slack 에서 Hermes 에게 "QA 커버리지 알려 줘" 라고 물어 `qa_coverage` 가 불리는지 활동 화면(`?operator=hermes`)에서 확인.
+4. 밖에서 `curl -X POST https://qa.agent.plady.io/mcp` 가 403 인지 확인.
+
+**남은 확인 (P4b 전)** — 전제 5: Hermes API 응답이 도구 호출 트레이스를 담는지. 담지 않으면 §3.2 대로 `mcp.call` 시각대 상관으로 보여 준다(`store.events_between` 준비됨).

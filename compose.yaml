@@ -230,6 +230,7 @@ services:
       HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
       WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
       QA_WIKI_DIR: /wiki            # 로컬 team-wiki-v2 체크아웃 (기본: 이 레포의 wiki-workspace)
+      QA_MCP_TOKEN: ${QA_MCP_TOKEN:-}   # QA MCP 서버 bearer (docs/qa-platform-hermes.md). 비어 있으면 /mcp 는 503
     volumes:
       - qa-data:/data
       - ${QA_WIKI_HOST_DIR:-./wiki-workspace}:/wiki:ro

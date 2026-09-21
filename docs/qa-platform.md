@@ -354,7 +354,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | P1 ✅ | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·테스트 계정/픽스처 SSM 주입·Hermes 실패 진단(P2 에서 앞당김) |
 | P2 ✅ | TC 카탈로그(SSOT·OpenAPI·서술 파생)·`covers` 검증·커버리지·드리프트 배지·Hermes 초안 생성·케이스 초안·탐색기(Swagger 모드)·위키 보고서 발행 버튼·가이드 화면 — 설계·구현 결과 [`qa-platform-tc.md`](qa-platform-tc.md) |
 | P3 | 커버리지 공백 화면 ✅(P2 기준 화면) · 스프린트 리마인더 Slack ✅(알림만, `qa/reminder.py`) · Linear 코멘트(연결 인증 후). live 읽기 전용 smoke 는 **뺐다** — QA 는 live 와 무관하게 간다(사용자 결정 2026-09-21) |
-| P4 | Hermes 채팅창 · QA MCP 도구 · 바뀐 기준으로 초안 다시 쓰기 · PRD 절에서 서술 TC 제안 — 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) (검토 대기) |
+| P4 | QA MCP 도구 ✅(P4a, `qa/mcp_server.py` — Hermes 가 기준·케이스·런을 읽고 초안을 낸다) · Hermes 채팅창(P4b) · 바뀐 기준으로 초안 다시 쓰기(P4c) · PRD 절에서 서술 TC 제안(P4d, 도구는 P4a 에 포함) — 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) |
 
 P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 
