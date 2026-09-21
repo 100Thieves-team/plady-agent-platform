@@ -37,6 +37,7 @@ PLA-246은 `docs/` 아래에 초기 플랫폼 계약을 정의합니다.
 | `https://hermes.agent.plady.io` | Hermes Gateway 공개 origin |
 | `https://hermes.agent.plady.io/v1` | OpenAI 호환 Hermes base URL |
 | `https://n8n.agent.plady.io` | 예약/비활성 플레이스홀더([`docs/n8n-placeholder.md`](docs/n8n-placeholder.md)) |
+| `https://qa.agent.plady.io` | QA 자동화 플랫폼(팀 비밀번호 세션; [`docs/qa-platform.md`](docs/qa-platform.md)) |
 | OTEL collector | 내부 전용; 공개 엔드포인트 없음([`docs/otel-collector.md`](docs/otel-collector.md)) |
 
 시크릿 값은 절대 커밋하거나 Linear/GitHub/문서에 붙여 넣으면 안 됩니다. 이 저장소 계약에 포함되는 것은 [`docs/platform-contract.md`](docs/platform-contract.md)에 문서화된 파라미터 이름뿐입니다.
@@ -84,6 +85,7 @@ docker compose up -d --build
 | `mcp-proxy` | `http://localhost:18765/mcp` | 로컬 bearer token 보호 llm-wiki MCP HTTP 엔드포인트 |
 | `wiki-ui` | `http://localhost:1313` | 로컬 Hugo 위키 UI |
 | `hermes-gateway` | `http://localhost:8642/v1` | Hermes Agent OpenAI 호환 게이트웨이(`hermes` 프로필; [`docs/hermes-gateway.md`](docs/hermes-gateway.md) 참고) |
+| `qa-platform` | `http://localhost:8800` | QA 자동화 플랫폼 UI(`qa` 프로필; [`docs/qa-platform.md`](docs/qa-platform.md) 참고) |
 
 `hermes-gateway` 서비스는 `hermes` compose 프로필 뒤에 있으며 `HERMES_API_SERVER_KEY`(`/plady/agent-platform/<env>/hermes-api-server-key`의 값)가 필요합니다. 기본 `docker compose up`으로는 시작되지 않습니다.
 
@@ -91,6 +93,13 @@ docker compose up -d --build
 export HERMES_API_SERVER_KEY="dev-only-change-me"
 docker compose --profile hermes up -d hermes-gateway
 scripts/hermes-gateway-smoke.sh   # health + auth boundary + /v1/models
+```
+
+`qa-platform` 서비스는 `qa` 프로필입니다. dev 백엔드(`QA_TARGET_BASE_URL`, 기본 `https://api.dev.moimyeon.plady.io`)를 상대로 케이스를 실행하고 기록합니다. 실행은 UI 에서 사람이 시작하며, 배우가 필요한 케이스는 `QA_ACTORS`(JSON) 없이는 skipped 로 기록됩니다.
+
+```bash
+docker compose --profile qa up -d --build qa-platform   # http://localhost:8800
+python3 -m unittest discover -s qa-platform/tests        # 단위 테스트
 ```
 
 `otel-collector` 서비스도 프로필(`otel`)로 보호되며 **내부 전용**입니다. compose 네트워크의 `otel-collector:4317`(gRPC) / `otel-collector:4318`(HTTP)에서 OTLP를 수신하고, 호스트 publish나 공개 엔드포인트가 없으며, 원본 프롬프트/완성, 시크릿/토큰, PII를 제거한 뒤 파일/로컬 우선으로 export합니다([`docs/otel-collector.md`](docs/otel-collector.md) 참고).

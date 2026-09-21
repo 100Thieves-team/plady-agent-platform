@@ -1,14 +1,12 @@
-# QA 자동화 플랫폼 설계 (MOI-483)
+# QA 자동화 플랫폼 — 설계·런북 (MOI-483)
 
-> 상태: **설계 2판 — 승인됨 (2026-09-20)**. 구현은 후속 커밋.
+> 상태: **P0·P1 구현됨 (2026-09-21)** — 설계 2판을 사용자가 승인한 뒤 구현. 아래 §0~§13 은 설계, §14 는 구현 결과와 운영 절차.
 > 이슈: [MOI-483 QA 자동화 플랫폼 구축](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축)
-> 플랫폼 계약 SSOT는 [`platform-contract.md`](platform-contract.md). 이 문서는 QA 플랫폼의 설계 문서이며, 구현 후 런북으로 갱신한다.
+> 플랫폼 계약 SSOT는 [`platform-contract.md`](platform-contract.md). 소스는 [`qa-platform/`](../qa-platform/README.md).
 >
-> 1판에서 바뀐 것 (2026-09-20 사용자 결정):
-> - **실행을 시작하는 것은 언제나 사람이다.** 배포 훅 자동 실행·스케줄 자동 실행을 전부 뺐다. 플랫폼은 "지금 검증할 것이 있다"를 보여주기만 하고, 버튼은 사람이 누른다.
-> - 그래서 **감사 로그가 1급 자산**이 된다 — 누가 언제 무엇을 트리거했는지 남는다.
-> - 배포 감지는 inbound webhook 대신 **GitHub Actions 조회(읽기)** 로 한다. 백엔드 레포 변경이 필요 없어졌다.
-> - Slack 알림은 기존 `WIKI_SLACK_WEBHOOK_URL`(`_wiki-alert`)을 재사용한다.
+> 설계 결정 이력:
+> - 1판(2026-09-20): 배포 훅 자동 실행 + 스케줄 자동 실행 제안.
+> - 2판(2026-09-20, 사용자 결정): **실행을 시작하는 것은 언제나 사람이다.** 자동 트리거 전부 삭제. 감사 로그가 1급 자산. 배포 감지는 inbound webhook 대신 GitHub Actions 조회(읽기). Slack 은 `WIKI_SLACK_WEBHOOK_URL` 재사용. PR 프리뷰가 없으므로 검증 대상은 dev.
 
 ## 0. 한 줄 요약
 
@@ -352,8 +350,8 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 
 | 단계 | 내용 |
 | --- | --- |
-| P0 | 러너·케이스 형식·시드 9종·런/단계 기록·감사 로그·대시보드·런 상세·케이스·임의 실행·Slack·compose/배포 배선 |
-| P1 | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·배우/픽스처 SSM 주입 |
+| P0 ✅ | 러너·케이스 형식·시드 13종·런/단계 기록·감사 로그·대시보드·런 상세·케이스·임의 실행·Slack·compose/배포 배선 |
+| P1 ✅ | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·배우/픽스처 SSM 주입·Hermes 실패 진단(P2 에서 앞당김) |
 | P2 | 탐색기(Swagger 모드)·Hermes 초안 생성·초안함·위키 보고서 발행 버튼 |
 | P3 | 커버리지 공백 화면, Linear 코멘트, live 읽기 전용 smoke, 스프린트 리마인더 Slack(알림만) |
 
@@ -367,3 +365,45 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 4. **운영자 신원** — 자기 신고(§6.2). 진짜 신원이 필요하면 wiki-auth에 개인 계정을 얹는 별도 작업.
 5. **릴리스 게이트** — P0~P1에서는 사람이 릴리스 화면을 보고 승격을 판단하고 그 판단을 기록만 한다. `promote-live`가 플랫폼에 마지막 릴리스 런을 묻게 하는 것은 후속(자동 차단은 사람 트리거 원칙과 별개 사안이므로 그때 다시 논의).
 
+## 14. 구현 결과와 운영 절차 (2026-09-21)
+
+### 14.1 무엇이 들어갔나
+
+| 위치 | 내용 |
+| --- | --- |
+| `qa-platform/app.py`, `qa-platform/qa/*.py` | 서버·러너·저장소·GitHub 조회·Hermes 진단·Slack·UI. 표준 라이브러리 + PyYAML |
+| `qa-platform/cases/{platform,auth,room}.yaml` | 시드 13건 — smoke 10(비로그인 9 + 배우 1), sanity 3(배우·픽스처 필요) |
+| `qa-platform/tests/test_core.py` | 15 테스트(치환·단언·케이스 검증·선택·도메인 매핑·스프린트·러너·감사 로그·Hermes) |
+| `docker/qa-platform.Dockerfile` | `python:3.12-alpine` + PyYAML, `/data` 볼륨, HEALTHCHECK |
+| `compose.yaml` / `compose.ec2.yaml` | `qa-platform` 서비스(profile `qa`, `expose 8800`, 볼륨 `qa-data`), Caddy `@qa` = `qa.agent.plady.io`(팀 세션, `/health` 만 무인증) |
+| `.github/workflows/deploy-agent-platform.yml` | 세 번째 ECR 이미지 `plady-agent-platform/qa-platform`, 트리거 paths `qa-platform/**`, 공개 smoke 에 `qa/health` |
+| `scripts/ec2-deploy.sh` | SSM `qa-actors`·`qa-fixtures`·`qa-github-token`(전부 선택) → `.env.ec2`, `--profile qa` 상시 |
+| `infra/terraform/platform/variables.tf` | `service_subdomains` 에 `qa` |
+| `docs/platform-contract.md` | 엔드포인트 표·SSM 이름 표에 qa 항목 |
+
+### 14.2 검증한 것
+
+- 단위 테스트 15/15. 도커 이미지 빌드·기동·`/health` OK.
+- dev 서버 상대 실제 실행: 스프린트 smoke 런 **통과 9 · skip 1**(배우 미설정 케이스 `member.me`) — 대시보드 → 확인 화면 → 실행 → 런 상세 → 활동 로그까지 브라우저로 확인.
+- 배우 흐름: 로컬에서 dev 목데이터 회원을 `QA_ACTORS` 로 주고 `member.me`·`room.creation-limit` 읽기 전용 케이스 실행 → dev-sessions 토큰 발급 → **통과**. 기록의 Authorization 은 `Bearer ***` 로 마스킹됨.
+- 릴리스 흐름: 릴리스 런 → 백엔드 `release-checklist.md` 6항목을 raw 로 읽어 표시 → GO 판단 기록(meta + `release.decide` 이벤트). 릴리스가 아닌 런에 판단하면 400.
+- 운영자 없이 런 생성 시 400. GitHub 미인증 조회로 dev 배포 10건 + PR 제목 표시.
+- 아직 못 한 것: 쓰기 sanity 3건(룸 생성·신청·정리)은 픽스처(`postingId`·`jobRoleId`·이력서 id)가 있어야 돈다 → SSM 주입 후 1회 확인. Hermes 진단은 키가 없어 대역으로만 검증.
+
+### 14.3 사람이 해야 하는 일 (배포 순서)
+
+1. **Cloudflare** `agent.plady.io` 존에 `qa` CNAME → ALB DNS (기존 `n8n` 과 동일하게). ALB 리스너 규칙은 host 무관 단일 Caddy origin 이라 추가 없음. terraform `service_subdomains` 는 이미 갱신.
+2. **SSM** (`/plady/agent-platform/dev/`):
+   - `qa-actors` (SecureString) — `{"qa-host": "<dev 목데이터 회원 UUID>", "qa-guest": "<다른 회원 UUID>"}`. 후보: dev 룸 상세에 보이는 `목데이터 판다 01`·`목데이터 수달 02` 계열. 전용 회원을 만들어 주면 그 UUID.
+   - `qa-fixtures` (String) — `{"postingId": <dev 공고 id>, "jobRoleId": 2, "qa-host.resumeId": "<qa-host 의 보관 이력서 UUID>", "qa-guest.resumeId": "<qa-guest 의 이력서 UUID>"}`. 이력서는 `GET /v1/members/me/resumes` 를 각 배우 토큰으로 호출해 얻는다.
+   - `qa-github-token` (선택, SecureString) — 읽기 전용 PAT. 없어도 동작.
+3. **머지 → main** — 워크플로가 이미지를 빌드·배포하고 `https://qa.agent.plady.io/health` 를 smoke 한다.
+4. 배포 후 `https://qa.agent.plady.io` 에서 팀 비밀번호 로그인 → 케이스 화면에서 13건 보이는지 → 스프린트 smoke 1회 실행 → 배우 케이스가 pass 로 바뀌는지 확인. 쓰기 sanity 3건은 대시보드의 미검증 배포 [검증] 또는 임의 실행으로 1회 돌려 dev 에 `[QA]` 룸이 만들어졌다 취소되는지 본다.
+
+### 14.4 운영 메모
+
+- 케이스 추가·수정은 `qa-platform/cases/*.yaml` PR. 배포되면 새 이미지에 실린다. 로컬 확인은 UI 케이스 화면의 [파일에서 다시 읽기].
+- dev 데이터가 바뀌어 케이스가 깨지면 케이스가 아니라 `qa-fixtures` 값을 먼저 의심한다.
+- 스프린트 번호는 앵커(`QA_SPRINT_ANCHOR=2026-09-13T15:00Z` = Cycle 9, 7일 주기)로 계산한다. Linear 사이클 주기가 바뀌면 이 두 값을 바꾼다.
+- 런 기록은 `qa-data` 볼륨(sqlite)에 무기한. 백업은 볼륨 단위.
+- Hermes 진단은 `HERMES_API_SERVER_KEY` 가 `.env.ec2` 에 있으면 켜진다(이미 hermes 프로필용으로 존재). 모델은 `HERMES_MODEL`(기본 gpt-5.5).

@@ -43,6 +43,7 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `https://hermes.agent.plady.io` | Public HTTPS | PLA-247 + PLA-249 | Hermes Gateway public origin. Slack event/interactivity/OAuth callback 등 non-OpenAI path의 origin. |
 | `https://hermes.agent.plady.io/v1` | Public HTTPS + Hermes API key | PLA-249 + PLA-244 | OpenAI-compatible Hermes base URL. PLA-244가 OpenAI-compatible client 설정에 소비하는 canonical base URL. |
 | `https://n8n.agent.plady.io` | Public HTTPS (`/webhook/*` 만 무인증 — HMAC 검증), 그 외 wiki-auth 세션 + n8n 로그인 | 2026-09-04 활성화 | Webex transcript → 위키 자동 ingest 런타임. 내부 타깃 `n8n:5678`. 런북 [`webex-ingest.md`](webex-ingest.md), 이력 [`n8n-placeholder.md`](n8n-placeholder.md). |
+| `https://qa.agent.plady.io` | Public HTTPS + **팀 비밀번호 세션** (`/health` 만 무인증) | MOI-483 (2026-09-21) | QA 자동화 플랫폼 — dev 백엔드 검증·기록. 실행은 사람이 UI 에서 시작하고 inbound webhook 은 없다. 내부 타깃 `qa-platform:8800`. 설계·런북 [`qa-platform.md`](qa-platform.md). |
 | OTEL collector | Internal-only | PLA-251 | public DNS/Internet endpoint를 만들지 않는다. 내부 OTLP `otel-collector:4317`(gRPC)/`4318`(HTTP), file/local-first export, raw prompt/completion·secret/token·PII 미저장. 런북 [`otel-collector.md`](otel-collector.md). |
 
 ### Endpoint 보안 기본값
@@ -68,6 +69,9 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `/plady/agent-platform/<env>/webex-webhook-secret` | Webex 웹훅 HMAC-SHA1 secret | n8n 워크플로(등록·검증) | 회전 시 Webex 웹훅 재등록. 런북 [`webex-ingest.md`](webex-ingest.md). |
 | `/plady/agent-platform/<env>/slack-ingest-signing-secret` | Slack 수집 앱 Signing Secret | n8n 워크플로(Events API 서명 검증) | Hermes Slack 앱과 별개 앱. 런북 [`webex-ingest.md`](webex-ingest.md). |
 | `/plady/agent-platform/<env>/slack-ingest-bot-token` | Slack 수집 앱 Bot token (`xoxb-`) | n8n 워크플로(files.info·캔버스 다운로드) | 스코프 channels:history, groups:history, channels:read, groups:read, files:read. |
+| `/plady/agent-platform/<env>/qa-actors` | JSON `{"qa-host": "<회원 UUID>", "qa-guest": "<회원 UUID>"}` — dev 목데이터 회원 | qa-platform (배우 토큰 발급) | 없으면 배우 케이스는 skipped 로 기록. 런북 [`qa-platform.md`](qa-platform.md). |
+| `/plady/agent-platform/<env>/qa-fixtures` | JSON `{"postingId": …, "jobRoleId": …, "qa-host.resumeId": "…"}` — 케이스가 참조하는 dev 데이터 id | qa-platform (쓰기 케이스) | dev 데이터가 바뀌면 케이스가 아니라 이 값을 고친다. |
+| `/plady/agent-platform/<env>/qa-github-token` | (선택) 읽기 전용 GitHub PAT | qa-platform (배포·PR 조회) | 없으면 미인증 60 req/h + 캐시로 동작. |
 
 ### `<env>` 규칙
 
