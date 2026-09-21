@@ -797,10 +797,15 @@ services:
       QA_WIKI_DIR: /wiki
       QA_WIKI_BRANCH: ${WIKI_SYNC_BRANCH:-main}
       QA_WIKI_PUBLIC_URL: https://${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
+      # 보고서 발행(사람이 [위키에 발행] 을 누를 때만): 내부 mcp-proxy 로 wiki_apply(mode generated). 기존 정적 bearer 재사용
+      LLM_WIKI_MCP_URL: http://mcp-proxy:18765/mcp
+      LLM_WIKI_MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
       TZ: Asia/Seoul
     volumes:
       - qa-data:/data
       - wiki-data:/wiki:ro
+    depends_on:
+      - mcp-proxy
     expose:
       - "8800"          # public only via Caddy (@qa) behind the ALB
     restart: unless-stopped

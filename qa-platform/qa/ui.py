@@ -220,7 +220,7 @@ def _checks_html(checks: list[dict]) -> str:
 
 
 def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]], *, operators: list[str], operator: str,
-               checklist: list[str], public_url: str) -> str:
+               checklist: list[str], public_url: str, can_publish: bool = False) -> str:
     live = run["status"] in ("queued", "running")
     refresh = '<meta http-equiv="refresh" content="4">' if live else ""
     meta = run.get("meta") or {}
@@ -237,6 +237,15 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
     kvh = "".join(f'<div>{k}</div><div>{v}</div>' for k, v in kv.items())
     cancel = (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/cancel"><input type="hidden" name="operator" value="{e(operator)}">'
               f'<button class="danger" {"" if operator else "disabled title=\"운영자를 먼저 고르세요\""}>취소</button></form>') if live else ""
+    publish = ""
+    if not live and run["trigger"] in ("sprint-smoke", "release", "deploy-sanity"):
+        pub = meta.get("published")
+        if pub:
+            publish = f'<span class="small">위키에 발행됨 · <a href="{e(pub.get("url"))}" class="mono">{e(pub.get("slug"))}</a> · {e(pub.get("by"))} {kst(pub.get("at"))}</span> '
+        dis = "" if (operator and can_publish) else ("disabled title=\"운영자를 먼저 고르세요\"" if can_publish else "disabled title=\"LLM_WIKI_MCP_* 미설정\"")
+        publish += (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/publish"><input type="hidden" name="operator" value="{e(operator)}">'
+                    f'<button {dis}>{"다시 " if pub else ""}위키에 발행</button> <button name="dry" value="1" {dis}>dry-run</button></form>'
+                    f'<span class="small mut">wiki/qa/ 에 generated 페이지로. 사람이 누를 때만 · UUID 마스킹</span>')
 
     body_cases = ""
     for rc in cases:
@@ -281,7 +290,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                        f'<button class="primary" {"disabled" if live else ""}>판단 기록</button></form></div>')
 
     return (f'{refresh}<h1>런 <span class="mono">{e(run["id"])}</span> {run_badge(run)}</h1>'
-            f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a></div></div>'
+            f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a></div></div>'
             f'{release}<h2>케이스</h2>{body_cases}')
 
 
@@ -619,6 +628,15 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <p><b>정본은 어디?</b> 케이스 = git <span class="mono">qa-platform/cases/</span>. 기준 = llm-wiki SSOT·PRD + OpenAPI. 바인딩·제외·서술 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 런·감사 로그·초안만 있다.</p>
 <p class="small mut">설계 문서: <span class="mono">docs/qa-platform.md</span>(P0·P1, 런북) · <span class="mono">docs/qa-platform-tc.md</span>(P2, 기준 관리). 이 화면은 <span class="mono">{e(public_url)}/guide</span>.</p>"""
 
+    s_ai = """
+<p><b>런타임에는 AI 가 없다.</b> 트리거를 누르면 도는 것은 결정론 러너다 — 케이스에 적힌 요청을 보내고 적힌 단언과 비교한다. 같은 케이스·같은 서버면 같은 판정이 나온다. 매 실행마다 LLM 이 판단하면 비용이 들고 결과가 흔들리고 이력을 믿을 수 없어서, 설계에서 뺐다.</p>
+<p><b>TC 도 AI 가 만들지 않는다.</b> TC 는 SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 "기준" 을 만들면 기준이 정본에서 떠난다.</p>
+<p>AI(Hermes)가 개입하는 지점은 <b>둘뿐이고, 둘 다 사람이 버튼을 누를 때만</b> 돈다.</p>
+<table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
+<tr><td>케이스를 늘릴 때</td><td>기준 화면 [초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 초안함에 들어가고, 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
+<tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr></table>
+<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로, 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다 — 필요하면 별도 결정이다.</p>"""
     return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
-            + _sec("3. 화면별로 무엇을 하나", s3) + _sec("4. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
-            + _sec("5. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("6. 자주 묻는 것", s6))
+            + _sec("3. AI 는 언제 개입하나", s_ai)
+            + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
+            + _sec("6. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("7. 자주 묻는 것", s6))

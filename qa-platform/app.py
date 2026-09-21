@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import traceback
+from datetime import datetime
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +27,8 @@ from qa.config import Config  # noqa: E402
 from qa import drafts as draftsmod  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
+from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
+from qa import report as reportmod  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.runner import Runner  # noqa: E402
 from qa.spec import Spec  # noqa: E402
@@ -260,6 +263,34 @@ class App:
         self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip, detail={"source": "explorer", "run_id": rid})
         return did
 
+    # ---- 위키 보고서 발행 (docs/qa-platform-tc.md §9) ------------------------------
+    def publish_run(self, run: dict, *, operator: str, dry_run: bool, session_hash: str | None, ip: str | None) -> dict:
+        if not (self.cfg.wiki_mcp_url and self.cfg.wiki_mcp_token):
+            raise BadRequest("LLM_WIKI_MCP_URL / LLM_WIKI_MCP_BEARER_TOKEN 이 없어 발행할 수 없다")
+        if run["trigger"] not in ("sprint-smoke", "release", "deploy-sanity"):
+            raise BadRequest("스프린트·릴리스·배포 검증 런만 발행한다")
+        if run["status"] != "finished":
+            raise BadRequest("런이 끝난 뒤에 발행한다")
+        rcs = self.store.list_run_cases(run["id"])
+        cat = self.current_catalog()
+        sprint = self.cfg.current_sprint(datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))) if run["trigger"] == "sprint-smoke" else None
+        slug = reportmod.slug_for(run)
+        content = reportmod.render(run, rcs, coverage=self.coverage(cat) if cat else None, catalog=cat, public_url=self.cfg.public_url, sprint=sprint)
+        client = McpClient(self.cfg.wiki_mcp_url, self.cfg.wiki_mcp_token, timeout=60)
+        try:
+            res = wiki_apply(client, path=slug, content=content, message=f"qa: {run['trigger']} 보고서 {run['id']} ({operator})", dry_run=dry_run)
+        except McpError as ex:
+            self.store.add_event(operator=operator, action="run.publish", target=run["id"], session_hash=session_hash, ip=ip,
+                                 detail={"slug": slug, "dry_run": dry_run, "error": str(ex)[:300]})
+            raise BadRequest(str(ex))
+        rec = {"slug": slug, "at": now_iso(), "by": operator, "dry_run": dry_run, "result": (res if isinstance(res, dict) else {"text": str(res)}),
+               "url": f"{self.cfg.wiki_public_url}/{slug}/"}
+        if not dry_run:
+            self.store.merge_run_meta(run["id"], {"published": rec})
+        self.store.add_event(operator=operator, action="run.publish", target=run["id"], session_hash=session_hash, ip=ip,
+                             detail={"slug": slug, "dry_run": dry_run, "chars": len(content)})
+        return rec
+
     def revalidate_draft(self, d: dict, yaml_text: str) -> tuple:
         """편집된 YAML 을 다시 검증한다. (Case|None, errors, warnings)."""
         cat = self.current_catalog()
@@ -477,10 +508,17 @@ class Handler(BaseHTTPRequestHandler):
             if m.group(1):
                 return self._json(200, {"run": run, "cases": [dict(rc, steps=steps[rc["id"]]) for rc in rcs]})
             checklist = app.github.release_checklist() if run["trigger"] == "release" else []
+            flash = None
+            if run["meta"].get("_flash"):
+                flash = tuple(run["meta"]["_flash"])
+                m2 = dict(run["meta"]); m2.pop("_flash", None)
+                app.store.update_run(rid, meta=m2)
+                run["meta"] = m2
             return self._page(f"런 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
-                                                        checklist=checklist, public_url=app.cfg.public_url), "runs")
+                                                        checklist=checklist, public_url=app.cfg.public_url,
+                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token)), "runs", flash=flash)
 
-        m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide)$", path)
+        m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide|publish)$", path)
         if m and method == "POST":
             rid, action = m.group(2), m.group(3)
             run = app.store.get_run(rid)
@@ -517,6 +555,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200 if flash[0] == "ok" else 502, {"ok": flash[0] == "ok", "message": flash[1]})
                 self._send(HTTPStatus.SEE_OTHER, "", headers={"Location": f"/runs/{rid}", "Set-Cookie": f"qa_operator={operator}; Path=/; Max-Age=31536000; SameSite=Lax"})
                 return
+            if action == "publish":
+                dry = str(fv("dry")) == "1"
+                try:
+                    rec = app.publish_run(run, operator=operator, dry_run=dry, session_hash=sh, ip=ip)
+                    flash = ("ok", ("dry-run 통과: " if dry else "발행됨: ") + rec["slug"] + (" — " + json.dumps(rec["result"], ensure_ascii=False)[:300] if dry else ""))
+                except BadRequest as ex:
+                    flash = ("err", f"발행 실패: {ex}")
+                if m.group(1):
+                    return self._json(200 if flash[0] == "ok" else 502, {"ok": flash[0] == "ok", "message": flash[1]})
+                app.store.merge_run_meta(rid, {"_flash": list(flash)})   # 다음 GET 에서 한 번 보여 주고 지운다
+                return self._redirect(f"/runs/{rid}", operator)
             if action == "decide":
                 if run["trigger"] != "release":
                     raise BadRequest("릴리스 런에만 판단을 기록한다")

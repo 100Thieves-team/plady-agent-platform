@@ -445,6 +445,59 @@ cases:
         self.assertEqual(st.draft_counts(), {"approved": 1})
 
 
+class McpAndReportTest(unittest.TestCase):
+    def test_mcp_client_sse_and_session(self):
+        from qa.mcp import McpClient, McpError, wiki_apply
+        orig = httpx.request
+        calls = []
+
+        def fake(method, url, headers=None, body=None, timeout=30):
+            calls.append((headers, body))
+            if body.get("method") == "initialize":
+                return httpx.HttpResult(200, {"Content-Type": "text/event-stream", "Mcp-Session-Id": "s-1"},
+                                        'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"llm-wiki"}}}\n\n', 1)
+            if body.get("method") == "notifications/initialized":
+                return httpx.HttpResult(202, {}, "", 1)
+            self.assertEqual(headers["Mcp-Session-Id"], "s-1")          # 세션이 이어진다
+            self.assertEqual(headers["Authorization"], "Bearer tok")
+            args = body["params"]["arguments"]
+            self.assertEqual(args["mode"], "generated")
+            self.assertEqual(args["changes"][0]["path"], "qa/2026-W39-sprint-smoke")
+            return httpx.HttpResult(200, {"Content-Type": "application/json"},
+                                    json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "{\"head\":\"abc\",\"written\":1}"}]}}), 1)
+
+        httpx.request = fake
+        try:
+            c = McpClient("http://mcp-proxy:18765/mcp", "tok")
+            res = wiki_apply(c, path="qa/2026-W39-sprint-smoke", content="---\nmanaged_by: harness\n---\n# x", message="m")
+            self.assertEqual(res, {"head": "abc", "written": 1})
+            self.assertEqual([b.get("method") for _, b in calls], ["initialize", "notifications/initialized", "tools/call"])
+            # 도구 오류는 예외로
+            httpx.request = lambda *a, **k: httpx.HttpResult(200, {"Content-Type": "application/json"},
+                                                             json.dumps({"jsonrpc": "2.0", "id": 3, "result": {"isError": True, "content": [{"type": "text", "text": "mode `generated` is for harness output"}]}}), 1)
+            with self.assertRaises(McpError):
+                c.call_tool("wiki_apply", {})
+        finally:
+            httpx.request = orig
+
+    def test_report_masks_ids_and_has_frontmatter(self):
+        from qa import report
+        run = {"id": "r-20260921-100000-ab12", "created_at": "2026-09-21T01:00:00Z", "trigger": "sprint-smoke", "operator": "bebe",
+               "base_url": "https://api.test", "sha": None, "pr_number": None, "status": "finished", "verdict": "fail",
+               "passed": 9, "failed": 1, "errored": 0, "skipped": 0, "total": 10,
+               "meta": {"catalog": {"ssot": "4bc51d05edce", "openapi": "e07e0cdb698b"}}}
+        rcs = [{"case_id": "member.me", "case_title": "t", "case_suite": "smoke", "verdict": "fail",
+                "error": "json(data.memberId) 기대 '88dd1cac-1234-5678-9abc-def012345678' 실제 None", "triage": "분류: 환경"}]
+        md = report.render(run, rcs, coverage=None, catalog=None, public_url="https://qa.agent.plady.io", sprint={"number": 10})
+        self.assertTrue(md.startswith("---\n"))
+        self.assertIn("managed_by: harness", md)
+        self.assertNotIn("88dd1cac-1234-5678-9abc-def012345678", md)
+        self.assertIn("88dd1cac-…", md)
+        self.assertIn("Cycle 10", md)
+        self.assertIn("분류: 환경", md)
+        self.assertEqual(report.slug_for(run), "qa/2026-W39-sprint-smoke")
+
+
 class HermesTest(unittest.TestCase):
     def test_triage_parses_choice(self):
         from qa import hermes

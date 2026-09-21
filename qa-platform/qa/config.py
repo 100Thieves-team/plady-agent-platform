@@ -74,6 +74,10 @@ class Config:
         self.hermes_model = g("HERMES_MODEL", "gpt-5.5")
         self.hermes_timeout = int(g("HERMES_TIMEOUT", "300"))
 
+        # llm-wiki MCP (보고서 발행에만, 내부 프록시 + 기존 정적 bearer). 비어 있으면 발행 버튼이 꺼진다
+        self.wiki_mcp_url = g("LLM_WIKI_MCP_URL", "").rstrip("/")
+        self.wiki_mcp_token = g("LLM_WIKI_MCP_BEARER_TOKEN", "")
+
         # Slack (WIKI_SLACK_WEBHOOK_URL 재사용 — 사용자 결정)
         self.slack_webhook_url = g("WIKI_SLACK_WEBHOOK_URL", "")
 
@@ -100,5 +104,5 @@ class Config:
             "target": self.target_base_url, "env": self.target_env, "cases_dir": str(self.cases_dir),
             "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
             "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
-            "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir),
+            "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir), "wiki_publish": bool(self.wiki_mcp_url and self.wiki_mcp_token),
         }
