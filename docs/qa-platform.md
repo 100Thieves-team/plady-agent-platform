@@ -399,12 +399,19 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
    aws ecr create-repository --repository-name plady-agent-platform/qa-platform --image-scanning-configuration scanOnPush=true
    aws ecr put-lifecycle-policy --repository-name plady-agent-platform/qa-platform --lifecycle-policy-text \
      '{"rules":[{"rulePriority":1,"description":"Keep last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+   # zsh 는 `set -- $var` 로 단어를 쪼개지 않는다 — 함수 인자로 넘긴다. put 은 stdin 대신 임시 파일로.
    ARN=arn:aws:ecr:ap-northeast-2:781897847312:repository/plady-agent-platform/qa-platform
-   for spec in "plady-agent-platform-github-actions-ecr plady-agent-platform-ecr-push" "plady-agent-platform-ec2-role plady-agent-platform-ecr-pull"; do
-     set -- $spec
+   add_arn() {
      aws iam get-role-policy --role-name "$1" --policy-name "$2" --query PolicyDocument --output json \
        | jq --arg arn "$ARN" '.Statement |= map(if (.Resource|type)=="array" and ((.Resource|index($arn))==null) then .Resource += [$arn] else . end)' \
-       | aws iam put-role-policy --role-name "$1" --policy-name "$2" --policy-document file:///dev/stdin
+       > /tmp/qa-policy.json
+     aws iam put-role-policy --role-name "$1" --policy-name "$2" --policy-document file:///tmp/qa-policy.json
+   }
+   add_arn plady-agent-platform-github-actions-ecr plady-agent-platform-ecr-push
+   add_arn plady-agent-platform-ec2-role plady-agent-platform-ecr-pull
+   # 확인: 두 정책 모두 1 이 나와야 한다
+   for r in "plady-agent-platform-github-actions-ecr plady-agent-platform-ecr-push" "plady-agent-platform-ec2-role plady-agent-platform-ecr-pull"; do
+     aws iam get-role-policy --role-name "${r%% *}" --policy-name "${r#* }" --query PolicyDocument --output json | jq '[.Statement[].Resource] | flatten | map(select(test("qa-platform"))) | length'
    done
    ```
 
