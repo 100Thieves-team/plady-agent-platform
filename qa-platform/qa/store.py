@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS drafts (
   status TEXT NOT NULL DEFAULT 'draft', source TEXT NOT NULL, domain TEXT, yaml TEXT NOT NULL, note TEXT
 );
 """
+# P2b 에서 늘어난 초안 열. 이미 만들어진 DB 에는 ALTER 로 더한다 (sqlite 는 IF NOT EXISTS 가 없다).
+DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "validation": "TEXT NOT NULL DEFAULT '{}'",
+                 "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT"}
 
 
 def now_iso() -> str:
@@ -61,6 +64,10 @@ class Store:
         self._db.execute("PRAGMA busy_timeout=5000")
         with self._lock:
             self._db.executescript(SCHEMA)
+            have = {r[1] for r in self._db.execute("PRAGMA table_info(drafts)").fetchall()}
+            for col, decl in DRAFT_COLUMNS.items():
+                if col not in have:
+                    self._db.execute(f"ALTER TABLE drafts ADD COLUMN {col} {decl}")
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -202,15 +209,42 @@ class Store:
     def event_actions(self) -> list[str]:
         return [r["action"] for r in self._q("SELECT DISTINCT action FROM events ORDER BY action")]
 
-    # ---- drafts (P2 — 테이블만 준비) ---------------------------------------------
-    def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None) -> str:
+    # ---- drafts (초안함, docs/qa-platform-tc.md §7.3) -------------------------------------
+    def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None,
+                  case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None,
+                  prompt_hash: str | None = None) -> str:
         did = "d-" + secrets.token_hex(4)
         t = now_iso()
-        self._x("INSERT INTO drafts(id,created_at,updated_at,operator,source,domain,yaml,note) VALUES(?,?,?,?,?,?,?,?)",
-                (did, t, t, operator, source, domain, yaml_text, note))
+        self._x("INSERT INTO drafts(id,created_at,updated_at,operator,source,domain,yaml,note,case_id,tc_ids,validation,prompt_hash)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (did, t, t, operator, source, domain, yaml_text, note, case_id, json.dumps(tc_ids or [], ensure_ascii=False),
+                 json.dumps(validation or {}, ensure_ascii=False), prompt_hash))
         return did
 
-    def list_drafts(self, status: str | None = None) -> list[dict]:
+    @staticmethod
+    def _draft(r: dict) -> dict:
+        r["tc_ids"] = json.loads(r.get("tc_ids") or "[]")
+        r["validation"] = json.loads(r.get("validation") or "{}")
+        return r
+
+    def get_draft(self, did: str) -> dict | None:
+        r = self._one("SELECT * FROM drafts WHERE id=?", (did,))
+        return self._draft(r) if r else None
+
+    def update_draft(self, did: str, **fields):
+        for k in ("tc_ids", "validation"):
+            if k in fields and not isinstance(fields[k], str):
+                fields[k] = json.dumps(fields[k], ensure_ascii=False)
+        fields["updated_at"] = now_iso()
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._x(f"UPDATE drafts SET {cols} WHERE id=?", (*fields.values(), did))
+
+    def list_drafts(self, status: str | None = None, limit: int = 200) -> list[dict]:
         if status:
-            return self._q("SELECT * FROM drafts WHERE status=? ORDER BY created_at DESC", (status,))
-        return self._q("SELECT * FROM drafts ORDER BY created_at DESC")
+            rows = self._q("SELECT * FROM drafts WHERE status=? ORDER BY created_at DESC LIMIT ?", (status, limit))
+        else:
+            rows = self._q("SELECT * FROM drafts ORDER BY created_at DESC LIMIT ?", (limit,))
+        return [self._draft(r) for r in rows]
+
+    def draft_counts(self) -> dict[str, int]:
+        return {r["status"]: r["n"] for r in self._q("SELECT status, COUNT(*) n FROM drafts GROUP BY status")}

@@ -344,6 +344,107 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(domain_of_path("/v1/members/me/resumes/{id}"), "resume")
 
 
+@unittest.skipUnless((WIKI_DIR / "wiki/policy/_src/상태-SSOT.yaml").is_file(), "wiki-workspace 체크아웃 없음")
+class DraftsTest(unittest.TestCase):
+    """Hermes 초안 — 근거 조립·출력 파싱·결정론 검증 (docs/qa-platform-tc.md §7)."""
+
+    GOOD = """```yaml
+cases:
+  - id: room.create-limit-reject
+    title: 활성 룸이 3개면 네 번째 생성은 E1427 로 거절된다
+    suite: sanity
+    domains: [room]
+    actor: qa-host
+    covers: ["G.room.create#8"]
+    steps:
+      - name: 4번째 생성
+        covers: ["G.room.create#8"]
+        request: { method: POST, path: /v1/rooms, body: { postingId: "{{fixture.postingId}}", title: "[QA] x" } }
+        expect: { status: 409, error_code: E1427 }
+```"""
+
+    def setUp(self):
+        from qa import drafts
+        self.drafts = drafts
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cfg = Config({"QA_DATA_DIR": self.tmp.name, "QA_ACTORS": json.dumps({"qa-host": "m1"}), "QA_FIXTURES": json.dumps({"postingId": 1}),
+                           "HERMES_API_KEY": "k", "HERMES_API_URL": "http://hermes:8642"})
+        self.wiki = Wiki(WIKI_DIR)
+        self.spec = Spec("http://unused", Path(self.tmp.name) / "catalog", file=str(SPEC_FIXTURE))
+        self.svc = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=ROOT / "catalog", data_dir=Path(self.tmp.name))
+        self.cat = self.svc.get(force=True)
+        self.orig = httpx.request
+
+    def tearDown(self):
+        httpx.request = self.orig
+        self.tmp.cleanup()
+
+    def test_assemble_contains_evidence_only(self):
+        text, h = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8", "op.createRoom:E1402"], example=None)
+        self.assertEqual(len(h), 12)
+        self.assertIn("G.room.create#8", text)
+        self.assertIn("must_pass_first", text)
+        self.assertIn('"operationId": "createRoom"', text)
+        self.assertIn("### 4.7", text)                       # PRD 절 본문이 들어간다
+        self.assertIn("qa-host", text)
+        self.assertNotIn("m1", text)                          # 회원 UUID 는 넣지 않는다
+        text2, h2 = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8", "op.createRoom:E1402"], example=None)
+        self.assertEqual(h, h2)                               # 같은 근거 → 같은 해시
+
+    def test_parse_and_validate(self):
+        items = self.drafts.parse_output(self.GOOD)
+        self.assertEqual(len(items), 1)
+        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        self.assertIsNotNone(case)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("정리" in w for w in warnings))    # 쓰기인데 정리 단계 없음 → 경고
+        # covers 가 요청 밖이면 버린다
+        bad = dict(items[0], covers=["G.room.create#9"])
+        bad["steps"] = [dict(bad["steps"][0], covers=["G.room.create#9"])]
+        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        self.assertIsNone(case)
+        self.assertIn("요청하지 않은", errors[0])
+        # 없는 테스트 계정 → 버린다
+        bad = dict(items[0], actor="qa-nobody")
+        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        self.assertIsNone(case)
+        self.assertTrue(any("테스트 계정" in x for x in errors))
+        # 계약 TC 를 덮는다면서 코드가 다르면 버린다
+        bad = dict(items[0], covers=["op.createRoom:E1402"])
+        bad["steps"] = [dict(bad["steps"][0], covers=["op.createRoom:E1402"])]
+        case, errors, _ = self.drafts.validate(bad, requested=["op.createRoom:E1402"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        self.assertIsNone(case)
+        # 기존 id 와 겹치면 -draft 접미
+        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids={"room.create-limit-reject"})
+        self.assertEqual(case.id, "room.create-limit-reject-draft")
+
+    def test_generate_flow_with_fake_hermes(self):
+        seen = {}
+
+        def fake(method, url, headers=None, body=None, timeout=30):
+            seen.update(url=url, body=body, timeout=timeout)
+            content = self.GOOD + "\n```yaml\ncases:\n  - id: junk\n    title: t\n    suite: smoke\n    covers: [C.room.create]\n    steps: [{request: {method: GET, path: /nope}}]\n```"
+            return httpx.HttpResult(200, {}, json.dumps({"choices": [{"message": {"content": content}}]}), 1)
+
+        httpx.request = fake
+        res = self.drafts.generate(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8"], example=None, existing_ids=set())
+        self.assertEqual(seen["url"], "http://hermes:8642/v1/chat/completions")
+        self.assertEqual(seen["body"]["messages"][0]["content"][:20], self.drafts.DRAFT_SYSTEM[:20])
+        self.assertGreaterEqual(seen["timeout"], 180)
+        self.assertEqual([c.id for c, _ in res["accepted"]], ["room.create-limit-reject"])
+        self.assertEqual([r for r, _ in res["rejected"]], ["junk"])           # 요청 밖 TC → 버림
+        # 초안함에 넣고 다시 읽는다 (열 추가 마이그레이션 포함)
+        st = Store(Path(self.tmp.name) / "qa.sqlite")
+        c, w = res["accepted"][0]
+        did = st.add_draft(operator="bebe", source="hermes", domain="room", yaml_text=c.to_yaml(), note=None, case_id=c.id, tc_ids=c.covers,
+                           validation={"status": "warn", "warnings": w}, prompt_hash=res["prompt_hash"])
+        d = st.get_draft(did)
+        self.assertEqual(d["tc_ids"], ["G.room.create#8"])
+        self.assertEqual(d["validation"]["status"], "warn")
+        st.update_draft(did, status="approved", decided_by="bebe")
+        self.assertEqual(st.draft_counts(), {"approved": 1})
+
+
 class HermesTest(unittest.TestCase):
     def test_triage_parses_choice(self):
         from qa import hermes

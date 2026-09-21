@@ -66,16 +66,19 @@ def run_badge(r: dict) -> str:
     return badge(r["status"])
 
 
-TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "임의 실행"}
+TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "임의 실행",
+              "draft-check": "초안 확인", "explorer": "탐색기"}
 ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage": "Hermes 진단", "release.decide": "릴리스 판단",
-             "cases.reload": "케이스 재로드", "draft.generate": "초안 생성", "draft.approve": "초안 승인", "draft.reject": "초안 반려",
-             "wiki.publish": "위키 발행", "explorer.send": "탐색기 전송"}
+             "cases.reload": "케이스 재로드", "draft.generate": "초안 생성", "draft.rejected_by_validation": "초안 검증 탈락",
+             "draft.save": "초안 편집", "draft.check": "초안 확인 실행", "draft.approve": "초안 승인", "draft.reject": "초안 반려",
+             "run.publish": "위키 발행", "explorer.send": "탐색기 전송"}
+DRAFT_KO = {"draft": "초안", "checked": "확인됨", "approved": "승인", "rejected": "반려"}
 
 
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("activity", "/activity", "활동"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "초안"), ("activity", "/activity", "활동"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -355,7 +358,7 @@ LAYER_KO = {"policy": "정책", "contract": "계약", "manual": "서술"}
 
 
 def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str, layer: str, only: str,
-                 changes: dict, wiki_available: bool) -> str:
+                 changes: dict, wiki_available: bool, operators: list[str] | None = None, operator: str = "", hermes: bool = False) -> str:
     by_tc = coverage["by_tc"]
     tabs = "".join(f'<a href="/catalog?domain={e(d)}{("&layer=" + e(layer)) if layer else ""}{("&only=" + e(only)) if only else ""}" class="{"on" if d == domain else ""}">{e(d)}</a>'
                    for d in catalog.domains())
@@ -385,7 +388,8 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
         b = r.get("binding") or {}
         bind = ", ".join(b.get("operations") or b.get("commands") or []) + ((" · " + b["error_code"]) if b.get("error_code") else "")
         ch = changes.get(r["id"])
-        rows += (f'<tr class="{"ex" if state == "excluded" else ""}"><td>{tc_link(r["id"])}</td><td>{badge(r["layer"])} {e(r["title"])}'
+        chk = f'<input type="checkbox" name="tc_ids" value="{e(r["id"])}"> ' if state != "excluded" else ""
+        rows += (f'<tr class="{"ex" if state == "excluded" else ""}"><td>{chk}{tc_link(r["id"])}</td><td>{badge(r["layer"])} {e(r["title"])}'
                  f'{(" <span class=\"b warn\" title=\"카탈로그 경고\">!</span>") if r["id"] in warn_ids else ""}'
                  f'{(" <span class=\"b drift\">" + e(ch["kind"]) + " " + kst(ch["at"]) + "</span>") if ch else ""}</td>'
                  f'<td class="small mono">{e(bind) or "<span class=\"mut\">API 없음</span>" if r["layer"] == "policy" else e(bind)}</td>'
@@ -402,7 +406,11 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 정책 TC 없음</b>"}</p>'
             f'<div class="tabs">{tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
             f'{("<details class=\"card\"><summary>카탈로그 경고 " + str(len(catalog.warnings)) + " — 바인딩·스펙 구조 불일치 (§6.4)</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
-            f'<div class="card"><table><tr><th>TC</th><th>내용 ({n})</th><th>바인딩</th><th>커버 · 마지막 판정</th></tr>{rows}</table></div>')
+            f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
+            f'<select name="operator" required><option value="">— 운영자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
+            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 초안 생성 (Hermes)</button>'
+            f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 초안함에 들어간다 (§7)</span></div>'
+            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>바인딩</th><th>커버 · 마지막 판정</th></tr>{rows}</table></div></form>')
 
 
 def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: list, change: dict | None) -> str:
@@ -437,3 +445,55 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
             f'<h2>기대 힌트</h2><div class="card"><div class="kv">{hint or "<div class=\"mut\">–</div><div></div>"}</div></div>'
             f'{("<h2>PRD 본문</h2><div class=\"card\">" + ex_html + "</div>") if excerpts else ""}'
             f'<h2>덮는 케이스</h2><div class="card"><table><tr><th>케이스</th><th>제목</th><th>스위트</th><th>마지막 판정</th></tr>{cov}</table></div>')
+
+
+# ---- 초안함 --------------------------------------------------------------------------------------
+def drafts_list(drafts: list[dict], counts: dict, status: str) -> str:
+    tabs = "".join(f'<a href="/drafts{("?status=" + st) if st else ""}" class="{"on" if (status or "") == st else ""}">{lab} {counts.get(st, "") if st else sum(counts.values())}</a>'
+                   for st, lab in (("", "전체"), ("draft", "초안"), ("checked", "확인됨"), ("approved", "승인"), ("rejected", "반려")))
+    rows = "".join(
+        f'<tr><td><a href="/drafts/{e(d["id"])}" class="mono">{e(d["id"])}</a></td><td>{badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</td>'
+        f'<td class="mono">{e(d.get("case_id") or "–")}</td><td class="small">{" ".join(tc_link(t) for t in d["tc_ids"][:4])}{" …" if len(d["tc_ids"]) > 4 else ""}</td>'
+        f'<td class="small">{e((d.get("validation") or {}).get("status") or "–")}{(" · 경고 " + str(len((d.get("validation") or {}).get("warnings") or []))) if (d.get("validation") or {}).get("warnings") else ""}</td>'
+        f'<td class="small">{e(d["source"])} · {e(d["operator"])}</td><td class="small mut">{kst(d["created_at"])}</td></tr>'
+        for d in drafts) or '<tr><td colspan="7" class="mut">초안 없음 — 기준 화면에서 TC 를 골라 [초안 생성]</td></tr>'
+    return (f'<h1>초안함</h1><div class="card"><div class="tabs">{tabs}</div>'
+            f'<p class="small mut" style="margin-bottom:0">승인은 스위트 편입이 아니다. 승인된 YAML 을 <span class="mono">qa-platform/cases/</span> 에 붙여 PR 로 리뷰한다. 플랫폼은 git 에 쓰지 않는다.</p></div>'
+            f'<div class="card"><table><tr><th>ID</th><th>상태</th><th>케이스 id</th><th>덮는 TC</th><th>검증</th><th>출처 · 만든 사람</th><th>시각</th></tr>{rows}</table></div>')
+
+
+def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str) -> str:
+    v = d.get("validation") or {}
+    problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in v.get("errors") or []) + \
+        "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in v.get("warnings") or [])
+    tcs = "".join(f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">카탈로그에 없음</span>"} {e(r["title"]) if r else ""}</li>'
+                  for t, r in tc_records.items()) or '<li class="mut">–</li>'
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    decided = d["status"] in ("approved", "rejected")
+    run_html = ""
+    if run:
+        run_html = f'<p>확인 실행: <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> {run_badge(run)} <span class="small mut">통과 {run["passed"]} 실패 {run["failed"]} 오류 {run["errored"]} skip {run["skipped"]}</span></p>'
+    dis = "disabled" if not operator else ""
+    forms = "" if decided else (
+        f'<form method="post" action="/drafts/{e(d["id"])}/save"><input type="hidden" name="operator" value="{e(operator)}">'
+        f'<textarea name="yaml" style="min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(d["yaml"])}</textarea>'
+        f'<div class="actions"><button {dis}>저장하고 다시 검증</button></div></form>'
+        f'<div class="actions">'
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button></form>'
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/approve"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="메모 (선택)"> <button class="primary" {dis} {"disabled" if v.get("errors") else ""}>승인</button></form>'
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/reject"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="반려 사유"> <button class="danger" {dis}>반려</button></form>'
+        f'</div><p class="small mut">운영자: <select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 선택 —</option>{ops}</select> (버튼은 운영자를 고른 뒤 활성화된다)</p>')
+    approved_html = ""
+    if d["status"] == "approved":
+        approved_html = (f'<div class="card" style="background:#f0fdf4"><b>승인됨</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}'
+                         f'<p class="small">아래 YAML 을 <span class="mono">qa-platform/cases/{e(d.get("domain") or "x")}.yaml</span> 의 <span class="mono">cases:</span> 목록에 붙여 PR 을 연다. 리뷰·머지되면 다음 배포에 실린다.</p>'
+                         f'<pre id="y">{e(d["yaml"])}</pre><button onclick="navigator.clipboard.writeText(document.getElementById(\'y\').innerText)">복사</button></div>')
+    elif d["status"] == "rejected":
+        approved_html = f'<div class="card" style="background:#fef2f2"><b>반려</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}<pre>{e(d["yaml"])}</pre></div>'
+    return (f'<h1>초안 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</h1>'
+            f'<div class="card"><div class="kv"><div>케이스 id</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
+            f'{(" · 근거 해시 <span class=\"mono\">" + e(d.get("prompt_hash")) + "</span>") if d.get("prompt_hash") else ""}</div>'
+            f'<div>덮는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
+            f'<div>검증</div><div>{badge({"ok": "OK", "warn": "경고", "error": "오류"}.get(v.get("status"), v.get("status") or "–"), {"ok": "pass", "warn": "warn", "error": "fail"}.get(v.get("status"), ""))}'
+            f'{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div></div>{run_html}</div>'
+            f'{approved_html}{forms}')

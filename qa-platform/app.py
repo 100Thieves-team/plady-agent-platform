@@ -23,6 +23,7 @@ from qa import ui  # noqa: E402
 from qa.cases import audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
+from qa import drafts as draftsmod  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
 from qa.notify import slack  # noqa: E402
@@ -31,7 +32,7 @@ from qa.spec import Spec  # noqa: E402
 from qa.store import Store, now_iso  # noqa: E402
 from qa.wiki import Wiki  # noqa: E402
 
-TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual")
+TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check")
 
 
 class BadRequest(Exception):
@@ -122,12 +123,12 @@ class App:
     # ---- 런 생성 (form / API 공용) --------------------------------------------------
     def create_run(self, *, trigger: str, operator: str, case_ids: list[str], sha: str | None, ref: str | None,
                    pr_number: int | None, deploy_run_id: str | None, reason: str, basis: str, extra: dict,
-                   session_hash: str | None, ip: str | None) -> str:
+                   session_hash: str | None, ip: str | None, cases_override: list | None = None) -> str:
         if trigger not in TRIGGERS:
             raise BadRequest(f"모르는 트리거: {trigger}")
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("운영자를 목록에서 골라야 한다")
-        chosen = [self.cases[c] for c in case_ids if c in self.cases]
+        chosen = list(cases_override) if cases_override else [self.cases[c] for c in case_ids if c in self.cases]
         if not chosen:
             raise BadRequest("케이스를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
@@ -145,6 +146,50 @@ class App:
         tgt = f"sha {sha[:8]}" + (f" PR #{pr_number}" if pr_number else "") if sha else self.cfg.target_env
         slack(self.cfg.slack_webhook_url, f"[QA] {operator} 가 {ui.TRIGGER_KO.get(trigger, trigger)} 실행 — {tgt}, {len(chosen)}건 · {self.cfg.public_url}/runs/{rid}")
         return rid
+
+    # ---- 초안 (Hermes) ------------------------------------------------------------
+    def generate_drafts(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None) -> dict:
+        cat = self.current_catalog()
+        if cat is None:
+            raise BadRequest("카탈로그가 없어 초안을 만들 수 없다")
+        tc_ids = [t for t in dict.fromkeys(tc_ids) if t in cat.records]
+        if not tc_ids:
+            raise BadRequest("카탈로그에 있는 TC 를 하나 이상 골라야 한다")
+        if len(tc_ids) > 10:
+            raise BadRequest("한 번에 10건까지")
+        example = self.cases.get("room.create-and-cancel") or next(iter(self.cases.values()), None)
+        try:
+            res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
+                                     example=example, existing_ids=set(self.cases))
+        except Exception as ex:
+            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip,
+                                 detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
+            raise BadRequest(f"초안 생성 실패: {ex}")
+        ids = []
+        for case, warnings in res["accepted"]:
+            did = self.store.add_draft(operator=operator, source="hermes", domain=(case.domains[0] if case.domains else cat.records[tc_ids[0]]["domain"]),
+                                       yaml_text=case.to_yaml(), note=None, case_id=case.id, tc_ids=case.covers,
+                                       validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"])
+            ids.append(did)
+        for raw_id, errors in res["rejected"]:
+            self.store.add_event(operator=operator, action="draft.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
+                                 detail={"case_id": raw_id, "errors": errors[:6], "prompt_hash": res["prompt_hash"]})
+        self.store.add_event(operator=operator, action="draft.generate", target=",".join(ids) or None, session_hash=session_hash, ip=ip,
+                             detail={"tc_ids": tc_ids, "model": res["model"], "prompt_hash": res["prompt_hash"], "prompt_chars": res["prompt_chars"],
+                                     "accepted": len(ids), "rejected": len(res["rejected"]), "raw_chars": len(res["raw"])})
+        return {"ids": ids, "rejected": res["rejected"], "prompt_hash": res["prompt_hash"]}
+
+    def revalidate_draft(self, d: dict, yaml_text: str) -> tuple:
+        """편집된 YAML 을 다시 검증한다. (Case|None, errors, warnings)."""
+        cat = self.current_catalog()
+        try:
+            raw = draftsmod.yaml.safe_load(yaml_text)
+        except Exception as ex:
+            return None, [f"YAML 파싱 실패: {ex}"], []
+        if not isinstance(raw, dict):
+            return None, ["케이스는 맵이어야 한다"], []
+        return draftsmod.validate(raw, requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
+                                  catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")})
 
     def _on_finish(self, run: dict):
         rcs = self.store.list_run_cases(run["id"])
@@ -412,7 +457,8 @@ class Handler(BaseHTTPRequestHandler):
             cov = app.coverage(cat)
             domain = g("domain") or (cat.domains()[0] if cat.domains() else "")
             body = ui.catalog_list(cat, cov, app.store.last_verdicts(), domain=domain, layer=g("layer"), only=g("only"),
-                                   changes=app.catalog.changes, wiki_available=app.wiki.available)
+                                   changes=app.catalog.changes, wiki_available=app.wiki.available,
+                                   operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key))
             return self._page("기준", body, "catalog")
         if path == "/catalog/tc" and method == "GET":
             cat = app.current_catalog()
@@ -429,6 +475,70 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/catalog" and method == "GET":
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
+
+        # ---------- 초안함 (docs/qa-platform-tc.md §7.3) ----------
+        if path == "/drafts" and method == "GET":
+            st = g("status")
+            return self._page("초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st), "drafts")
+        if path == "/drafts/generate" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("운영자를 목록에서 골라야 한다")
+            res = app.generate_drafts(tc_ids=[str(x) for x in f.get("tc_ids") or []], operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200, res)
+            return self._redirect(f"/drafts/{res['ids'][0]}" if res["ids"] else "/drafts?status=draft", set_operator=operator)
+        m = re.match(r"^/drafts/(d-[0-9a-f]+)$", path)
+        if m and method == "GET":
+            d = app.store.get_draft(m.group(1))
+            if not d:
+                return self._error(404, "초안이 없다")
+            cat = app.current_catalog()
+            recs = {t: (cat.records.get(t) if cat else None) for t in d["tc_ids"]}
+            run = app.store.get_run(d["run_id"]) if d.get("run_id") else None
+            return self._page(f"초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
+        m = re.match(r"^/drafts/(d-[0-9a-f]+)/(save|check|approve|reject)$", path)
+        if m and method == "POST":
+            did, action = m.group(1), m.group(2)
+            d = app.store.get_draft(did)
+            if not d:
+                return self._error(404, "초안이 없다")
+            f = self._form()
+            fv = lambda k, d_="": (f.get(k) or [d_])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("운영자를 목록에서 골라야 한다")
+            sh, ip = self._session_hash(), self._ip()
+            if d["status"] in ("approved", "rejected") and action in ("save", "check"):
+                raise BadRequest("결정된 초안은 고치거나 실행하지 않는다")
+            if action == "save":
+                text = str(fv("yaml"))
+                case, errors, warnings = app.revalidate_draft(d, text)
+                validation = {"status": ("error" if errors else (case.audit["status"] if case else "error")), "errors": errors, "warnings": warnings}
+                app.store.update_draft(did, yaml=text, validation=validation, case_id=(case.id if case else d.get("case_id")),
+                                       tc_ids=(case.covers if case else d["tc_ids"]), status="draft", run_id=None)
+                app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"errors": len(errors), "warnings": len(warnings)})
+            elif action == "check":
+                case, errors, _ = app.revalidate_draft(d, d["yaml"])
+                if not case:
+                    raise BadRequest("검증 오류가 있는 초안은 실행하지 않는다: " + "; ".join(errors[:3]))
+                rid = app.create_run(trigger="draft-check", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None,
+                                     deploy_run_id=None, reason=f"초안 {did} 확인 실행", basis="초안 1건", extra={"draft_id": did},
+                                     session_hash=sh, ip=ip, cases_override=[case])
+                app.store.update_draft(did, status="checked", run_id=rid)
+                app.store.add_event(operator=operator, action="draft.check", target=did, session_hash=sh, ip=ip, detail={"run_id": rid})
+            elif action == "approve":
+                case, errors, _ = app.revalidate_draft(d, d["yaml"])
+                if not case:
+                    raise BadRequest("검증 오류가 있는 초안은 승인하지 않는다: " + "; ".join(errors[:3]))
+                app.store.update_draft(did, status="approved", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
+                app.store.add_event(operator=operator, action="draft.approve", target=did, session_hash=sh, ip=ip, detail={"case_id": d.get("case_id"), "tc_ids": d["tc_ids"]})
+            elif action == "reject":
+                app.store.update_draft(did, status="rejected", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
+                app.store.add_event(operator=operator, action="draft.reject", target=did, session_hash=sh, ip=ip, detail={"note": str(fv("note")).strip()[:200]})
+            return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
 
         # ---------- 케이스 ----------
         if path == "/cases" and method == "GET":
