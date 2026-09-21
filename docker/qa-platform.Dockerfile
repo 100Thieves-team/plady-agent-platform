@@ -5,7 +5,8 @@ WORKDIR /app
 COPY qa-platform/app.py /app/app.py
 COPY qa-platform/qa /app/qa
 COPY qa-platform/cases /app/cases
-ENV QA_PORT=8800 QA_DATA_DIR=/data QA_CASES_DIR=/app/cases PYTHONUNBUFFERED=1
+COPY qa-platform/catalog /app/catalog
+ENV QA_PORT=8800 QA_DATA_DIR=/data QA_CASES_DIR=/app/cases QA_CATALOG_DIR=/app/catalog PYTHONUNBUFFERED=1
 VOLUME ["/data"]
 EXPOSE 8800
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -229,8 +229,10 @@ services:
       HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
       HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
       WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+      QA_WIKI_DIR: /wiki            # 로컬 team-wiki-v2 체크아웃 (기본: 이 레포의 wiki-workspace)
     volumes:
       - qa-data:/data
+      - ${QA_WIKI_HOST_DIR:-./wiki-workspace}:/wiki:ro
     ports:
       - "127.0.0.1:8800:8800"
     restart: unless-stopped

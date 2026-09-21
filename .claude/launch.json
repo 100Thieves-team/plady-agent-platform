@@ -15,7 +15,8 @@
       "env": {
         "QA_PORT": "8800",
         "QA_DATA_DIR": "/private/tmp/claude-501/-Users-luna-Desktop-nonsync-teams-100-thieves-100Thieves-wiki-mcp/9322a02e-bafd-41a8-81ab-457f1842c393/scratchpad/qa-data",
-        "QA_PUBLIC_URL": "http://localhost:8800"
+        "QA_PUBLIC_URL": "http://localhost:8800",
+        "QA_WIKI_DIR": "wiki-workspace"
       }
     }
   ]

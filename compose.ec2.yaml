@@ -792,9 +792,15 @@ services:
       HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
       HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
       WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+      # 기준 문서 (docs/qa-platform-tc.md §4.5 안 B): 위키 체크아웃을 읽기 전용으로 본다.
+      # SSOT·PRD·render_tests.cases() 를 여기서 읽는다. 락은 잡지 않는다.
+      QA_WIKI_DIR: /wiki
+      QA_WIKI_BRANCH: ${WIKI_SYNC_BRANCH:-main}
+      QA_WIKI_PUBLIC_URL: https://${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
       TZ: Asia/Seoul
     volumes:
       - qa-data:/data
+      - wiki-data:/wiki:ro
     expose:
       - "8800"          # public only via Caddy (@qa) behind the ALB
     restart: unless-stopped
