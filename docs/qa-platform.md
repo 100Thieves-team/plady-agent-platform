@@ -388,7 +388,7 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 - 배우 흐름: 로컬에서 dev 목데이터 회원을 `QA_ACTORS` 로 주고 `member.me`·`room.creation-limit` 읽기 전용 케이스 실행 → dev-sessions 토큰 발급 → **통과**. 기록의 Authorization 은 `Bearer ***` 로 마스킹됨.
 - 릴리스 흐름: 릴리스 런 → 백엔드 `release-checklist.md` 6항목을 raw 로 읽어 표시 → GO 판단 기록(meta + `release.decide` 이벤트). 릴리스가 아닌 런에 판단하면 400.
 - 운영자 없이 런 생성 시 400. GitHub 미인증 조회로 dev 배포 10건 + PR 제목 표시.
-- 아직 못 한 것: 쓰기 sanity 3건(룸 생성·신청·정리)은 픽스처(`postingId`·`jobRoleId`·이력서 id)가 있어야 돈다 → SSM 주입 후 1회 확인. Hermes 진단은 키가 없어 대역으로만 검증.
+- 배우·픽스처 주입 후(2026-09-21): `member.me`·`room.creation-limit` 통과. 쓰기 sanity 2건은 목데이터 회원의 참여 슬롯 소진(E1425)으로 실패 — 전용 QA 회원이 생기면 통과할 것으로 본다(§14.3 2번). Hermes 진단은 키가 없어 대역으로만 검증.
 
 ### 14.3 사람이 해야 하는 일 (배포 순서)
 
@@ -416,10 +416,9 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
    ```
 
 1. **Cloudflare** `agent.plady.io` 존에 `qa` CNAME → `plady-agent-platform-alb-1366645660.ap-northeast-2.elb.amazonaws.com` (기존 `n8n` 레코드와 같은 프록시 설정으로). ACM 은 `*.agent.plady.io` 와일드카드라 인증서 작업은 없다. ALB 리스너 규칙은 host 무관 단일 Caddy origin 이라 추가 없음. terraform `service_subdomains` 는 이미 갱신.
-2. **SSM** (`/plady/agent-platform/dev/`):
-   - `qa-actors` (SecureString) — `{"qa-host": "<dev 목데이터 회원 UUID>", "qa-guest": "<다른 회원 UUID>"}`. 후보: dev 룸 상세에 보이는 `목데이터 판다 01`·`목데이터 수달 02` 계열. 전용 회원을 만들어 주면 그 UUID.
-   - `qa-fixtures` (String) — `{"postingId": <dev 공고 id>, "jobRoleId": 2, "qa-host.resumeId": "<qa-host 의 보관 이력서 UUID>", "qa-guest.resumeId": "<qa-guest 의 이력서 UUID>"}`. 이력서는 `GET /v1/members/me/resumes` 를 각 배우 토큰으로 호출해 얻는다.
-   - `qa-github-token` (선택, SecureString) — 읽기 전용 PAT. 없어도 동작.
+2. **SSM** (`/plady/agent-platform/dev/`) — **2026-09-21 주입 완료** (`qa-actors` v2, `qa-fixtures` v1). 배우 = dev 목데이터 `고래 05`(qa-host)·`곰 04`(qa-guest), 픽스처 = 공고 2889 / 직무 1 / 각자의 목데이터 이력서. 값은 SSM 에만 있다.
+   - 이 값으로 dev 에 돌린 결과: `member.me`·`room.creation-limit` **통과**, `room.create-and-cancel`·`room.apply-and-withdraw` 는 **409 E1425** — 목데이터 회원 5명 전원이 참여 슬롯 한도(3)를 이미 넘긴 상태(점유 6~18)라 룸 생성이 거부된다. 케이스가 아니라 dev 데이터의 전제 조건 문제다.
+   - **쓰기 sanity 를 살리려면 전용 QA 회원 2명이 필요하다**: dev 프론트에서 Google 계정 2개로 가입 → 각자 이력서 1개 업로드 → `GET /v1/members/me` 의 `memberId` 와 `GET /v1/members/me/resumes` 의 `resumeId` 를 `qa-actors`·`qa-fixtures` 에 덮어쓴다(`aws ssm put-parameter --overwrite`) → 재배포. 목데이터 회원의 룸을 정리해 슬롯을 비우는 방법은 다른 목적의 데이터를 건드리므로 쓰지 않는다.
 3. **머지 → main** — 워크플로가 이미지를 빌드·배포하고 `https://qa.agent.plady.io/health` 를 smoke 한다.
 4. 배포 후 `https://qa.agent.plady.io` 에서 팀 비밀번호 로그인 → 케이스 화면에서 13건 보이는지 → 스프린트 smoke 1회 실행 → 배우 케이스가 pass 로 바뀌는지 확인. 쓰기 sanity 3건은 대시보드의 미검증 배포 [검증] 또는 임의 실행으로 1회 돌려 dev 에 `[QA]` 룸이 만들어졌다 취소되는지 본다.
 
