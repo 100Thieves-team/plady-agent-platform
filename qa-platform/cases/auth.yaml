@@ -5,6 +5,7 @@ cases:
     suite: smoke
     domains: [auth, member]
     operations: [memberMe]
+    covers: [op.memberMe:E1102]
     source: ["docs/conventions/auth.md", "docs/knowledge/qa-review.md §특수 검증 3"]
     steps:
       - name: 비로그인 /v1/members/me
@@ -16,6 +17,7 @@ cases:
     suite: smoke
     domains: [auth]
     operations: [issueDevSession]
+    covers: [op.issueDevSession:E1006]
     source: ["MOI-487 개발 전용 인증 api"]
     steps:
       - name: 존재하지 않는 UUID
@@ -30,6 +32,7 @@ cases:
     suite: smoke
     domains: [auth]
     operations: [issueDevSession]
+    covers: [op.issueDevSession:E400]
     source: ["MOI-487 개발 전용 인증 api"]
     steps:
       - name: UUID 가 아닌 memberId
@@ -44,6 +47,7 @@ cases:
     suite: smoke
     domains: [member, auth]
     operations: [memberMe]
+    covers: [op.memberMe:200]
     source: ["PRD/회원 및 프로필 §내 상태"]
     actor: qa-host
     steps:

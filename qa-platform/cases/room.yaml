@@ -6,6 +6,7 @@ cases:
     suite: smoke
     domains: [room]
     operations: [roomFormOptions]
+    covers: [op.roomFormOptions:200, PRD.룸-생성.4.1#1]
     source: ["PRD/룸 생성 §4.1"]
     steps:
       - name: 폼 선택지
@@ -17,6 +18,7 @@ cases:
     suite: smoke
     domains: [room]
     operations: [rooms]
+    covers: [op.rooms:200, PRD.룸-탐색.4.1#1]
     source: ["PRD/룸 탐색 §4.1~§4.3"]
     steps:
       - name: 탐색 목록
@@ -28,10 +30,11 @@ cases:
     suite: sanity
     domains: [room]
     operations: [createRoom, roomDetail, cancelRoom]
-    source: ["PRD/룸 생성 §4.8", "PRD/룸 참여 및 참여자 관리 §4.9", "G.room.cancel"]
+    source: ["PRD/룸 생성 §4.8", "PRD/룸 참여 및 참여자 관리 §4.9"]
     actor: qa-host
     steps:
       - name: 룸 생성
+        covers: [C.room.create, op.createRoom:200]
         request:
           method: POST
           path: /v1/rooms
@@ -51,12 +54,15 @@ cases:
         expect: { status: 200, result: SUCCESS, json: { "data.status": RECRUITING } }
         save: { roomId: data.roomId }
       - name: 상세 조회 — 방장이 테스트 계정이다
+        covers: [op.roomDetail:200]
         request: { method: GET, path: "/v1/rooms/{{roomId}}" }
         expect: { status: 200, json: { "data.hostMemberId": "{{actor.qa-host.memberId}}", "data.status": RECRUITING } }
       - name: 취소
+        covers: [C.participation.cancel, op.cancelRoom:200]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200, result: SUCCESS }
       - name: 재취소는 모집 중이 아니라 E1410
+        covers: ["G.participation.cancel#2", op.cancelRoom:E1410]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 409, error_code: E1410 }
 
@@ -65,10 +71,11 @@ cases:
     suite: sanity
     domains: [room, application]
     operations: [createRoom, submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
-    source: ["PRD/룸 참여 및 참여자 관리 §4.2", "G.application.submit"]
+    source: ["PRD/룸 참여 및 참여자 관리 §4.2"]
     actor: qa-host
     steps:
       - name: 방장이 룸 생성
+        covers: [op.createRoom:200]
         request:
           method: POST
           path: /v1/rooms
@@ -87,6 +94,7 @@ cases:
         expect: { status: 200, result: SUCCESS }
         save: { roomId: data.roomId }
       - name: 참가자가 신청
+        covers: [C.application.submit, op.submitRoomApplication:201]
         actor: qa-guest
         request:
           method: POST
@@ -94,14 +102,17 @@ cases:
           body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] sanity 신청" }
         expect: { status: 201, result: SUCCESS, json: { "data.status": PENDING } }
       - name: 참가자가 내 신청 조회
+        covers: [op.myRoomApplication:200]
         actor: qa-guest
         request: { method: GET, path: "/v1/rooms/{{roomId}}/applications/me" }
         expect: { status: 200, result: SUCCESS }
       - name: 참가자가 철회
+        covers: [C.application.withdraw, op.withdrawRoomApplication:200]
         actor: qa-guest
         request: { method: DELETE, path: "/v1/rooms/{{roomId}}/applications/me" }
         expect: { status: 200, result: SUCCESS }
       - name: 방장이 정리(취소)
+        covers: [op.cancelRoom:200]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200 }
 
@@ -110,6 +121,7 @@ cases:
     suite: sanity
     domains: [room]
     operations: [roomCreationLimit]
+    covers: [op.roomCreationLimit:200, PRD.룸-생성.4.7#1]
     source: ["PRD/룸 생성 §4.7"]
     actor: qa-host
     steps:

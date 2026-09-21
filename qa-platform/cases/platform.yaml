@@ -4,6 +4,7 @@ cases:
     title: 백엔드 헬스 체크가 UP 이다
     suite: smoke
     domains: [platform]
+    covers: [OPS.platform.health#1]
     source: ["support/monitoring (Actuator)"]
     steps:
       - name: actuator health
@@ -15,6 +16,7 @@ cases:
     suite: smoke
     domains: [terms]
     operations: [termsList]
+    covers: [op.termsList:200]
     source: ["PRD/회원 및 프로필 §약관"]
     steps:
       - name: 약관 목록
@@ -26,6 +28,7 @@ cases:
     suite: smoke
     domains: [catalog, jobrole]
     operations: [jobRoles]
+    covers: [op.jobRoles:200]
     steps:
       - name: 직무 목록
         request: { method: GET, path: /v1/job-roles }
@@ -36,6 +39,7 @@ cases:
     suite: smoke
     domains: [catalog, region]
     operations: [regions]
+    covers: [op.regions:200]
     steps:
       - name: 지역 목록
         request: { method: GET, path: /v1/regions }

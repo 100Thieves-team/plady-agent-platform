@@ -2,6 +2,9 @@
 
 파일 하나에 케이스 하나(맵) 또는 `cases: [...]` 목록. 로드 실패는 파일 단위로 보고하고
 나머지는 계속 읽는다 — 케이스 하나가 깨졌다고 플랫폼이 못 뜨면 안 된다.
+
+`covers`(docs/qa-platform-tc.md §5): 케이스·단계가 덮는 TC id. smoke·sanity 는 필수. 형식 검증은 여기서,
+카탈로그와의 대조(id 실재, method·path·코드 일치)는 `audit()` 에서 — 카탈로그 없이도 로드는 된다.
 """
 from __future__ import annotations
 
@@ -16,6 +19,8 @@ SUITES = ("smoke", "sanity", "manual")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
 _ID = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
+# TC id: G.room.create#8 · C.room.create · op.createRoom:E1402 · op.createRoom:200 · PRD.룸-탐색.4.2#1
+_TC = re.compile(r"^(?:[GC]\.[a-z_]+\.[a-z_]+(?:#\d+)?|op\.[A-Za-z0-9_]+:(?:E\d{3,4}|\d{3})|(?:PRD|OPS)\.[^\s#]+#\d+)$")
 
 
 class CaseError(ValueError):
@@ -33,9 +38,17 @@ class Case:
     source: list = field(default_factory=list)
     actor: str | None = None
     description: str = ""
+    covers: list = field(default_factory=list)       # 케이스가 덮는 TC id (단계 covers 의 합집합 포함)
+    reviewed: dict | None = None                     # {at: ISO 날짜, by: 운영자} — 드리프트 배지를 이 시각 이후 변경만 보이게
     raw: dict = field(default_factory=dict)
     file: str = ""
     hash: str = ""
+    audit: dict = field(default_factory=lambda: {"status": "unchecked", "errors": [], "warnings": []})
+
+    @property
+    def blocked(self) -> bool:
+        """카탈로그 대조에서 오류가 난 케이스는 스위트에서 뺀다 (선언이 거짓이다)."""
+        return self.audit.get("status") == "error"
 
     def to_yaml(self) -> str:
         return yaml.safe_dump(self.raw, allow_unicode=True, sort_keys=False)
@@ -88,18 +101,47 @@ def _validate(d: dict, file: str) -> Case:
         if not isinstance(save, dict):
             raise CaseError(f"{file}:{cid}: step {i} save 는 변수→경로 맵")
         s["save"] = save
+        s["covers"] = _tc_list(s.get("covers"), f"{file}:{cid}: step {i}")
     for k in ("domains", "operations", "source"):
         v = d.get(k) or []
         if not isinstance(v, list):
             raise CaseError(f"{file}:{cid}: {k} 는 목록")
         d[k] = [str(x) for x in v]
+    step_covers = [t for s in steps for t in s["covers"]]
+    covers = _tc_list(d.get("covers"), f"{file}:{cid}")
+    for t in step_covers:
+        if t not in covers:
+            covers.append(t)
+    if suite in ("smoke", "sanity") and not covers:
+        raise CaseError(f"{file}:{cid}: {suite} 케이스는 covers(덮는 TC id)가 하나 이상 필요하다")
+    d["covers"] = covers
+    reviewed = d.get("reviewed")
+    if reviewed is not None:
+        if not isinstance(reviewed, dict) or not reviewed.get("at"):
+            raise CaseError(f"{file}:{cid}: reviewed 는 {{at: 날짜, by: 운영자}} 맵")
+        reviewed["at"] = str(reviewed["at"])
     canonical = yaml.safe_dump(d, allow_unicode=True, sort_keys=True).encode("utf-8")
     return Case(
         id=cid, title=title.strip(), suite=suite, steps=steps,
         domains=d["domains"], operations=d["operations"], source=d["source"],
-        actor=d.get("actor"), description=str(d.get("description") or ""),
+        actor=d.get("actor"), description=str(d.get("description") or ""), covers=covers, reviewed=reviewed,
         raw=d, file=file, hash=hashlib.sha256(canonical).hexdigest()[:16],
     )
+
+
+def _tc_list(v, where: str) -> list[str]:
+    if v is None:
+        return []
+    if not isinstance(v, list):
+        raise CaseError(f"{where}: covers 는 TC id 목록")
+    out = []
+    for x in v:
+        x = str(x).strip()
+        if not _TC.match(x):
+            raise CaseError(f"{where}: covers 의 TC id 형식이 틀렸다: {x!r}")
+        if x not in out:
+            out.append(x)
+    return out
 
 
 def load_dir(path: Path) -> tuple[dict[str, Case], list[str]]:
@@ -135,12 +177,15 @@ def parse_one(text: str, file: str = "<inline>") -> Case:
 
 def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | None = None,
            domains: list[str] | None = None, operations: list[str] | None = None) -> list[Case]:
-    """suite / ids / domains / operations 는 각각 필터. domains·operations 는 OR 로 합친다."""
+    """suite / ids / domains / operations 는 각각 필터. domains·operations 는 OR 로 합친다.
+    카탈로그 대조 오류(blocked)인 케이스는 스위트 선택에서 빠진다. id 로 직접 고르면 들어간다(사람이 알고 고른 것)."""
     out = []
     dset = set(domains or [])
     oset = set(operations or [])
     for c in cases.values():
         if suite and c.suite != suite:
+            continue
+        if c.blocked and ids is None:
             continue
         if ids is not None and c.id not in ids:
             continue
@@ -148,3 +193,73 @@ def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | No
             continue
         out.append(c)
     return sorted(out, key=lambda c: c.id)
+
+
+# ---- 카탈로그 대조 (docs/qa-platform-tc.md §5.2) ------------------------------------------------
+def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
+    """단계가 계약 TC 의 method·path·기대와 맞는지. (경로 일치, 문제 목록)."""
+    from .spec import match_path
+    req = step["request"]
+    if req["method"] != str(hint.get("method", "")).upper() or not match_path(str(hint.get("path", "")), req.get("path", "")):
+        return False, []
+    problems = []
+    exp = step.get("expect") or {}
+    code = hint.get("error_code")
+    if code:
+        if exp.get("error_code") != code:
+            problems.append(f"expect.error_code 가 {code} 가 아니다 ({exp.get('error_code')!r})")
+    else:
+        st = exp.get("status")
+        if st is not None and not str(st).startswith("2"):
+            problems.append(f"성공 계약인데 expect.status 가 {st}")
+    return True, problems
+
+
+def audit(cases: dict[str, Case], catalog) -> None:
+    """각 케이스의 covers 를 카탈로그와 대조해 case.audit 를 채운다. catalog 가 None 이면 unchecked."""
+    for c in cases.values():
+        if catalog is None:
+            c.audit = {"status": "unchecked", "errors": [], "warnings": []}
+            continue
+        errors: list[str] = []
+        warnings: list[str] = []
+        recs = catalog.records
+        for step_i, step in enumerate(c.steps, 1):
+            for tid in step["covers"]:
+                rec = recs.get(tid)
+                if not rec:
+                    continue   # 아래 케이스 수준에서 보고
+                if rec["layer"] == "contract":
+                    matched, problems = _step_hits(step, rec["expect_hint"])
+                    if not matched:
+                        errors.append(f"step {step_i} 가 {tid} 의 {rec['expect_hint'].get('method')} {rec['expect_hint'].get('path')} 를 부르지 않는다")
+                    errors.extend(f"step {step_i} · {tid}: {p}" for p in problems)
+                elif rec["layer"] == "policy" and rec["kind"] == "reject":
+                    code = (rec.get("binding") or {}).get("error_code")
+                    if code and (step.get("expect") or {}).get("error_code") != code:
+                        warnings.append(f"step {step_i} · {tid}: 바인딩 코드 {code} 와 expect.error_code 가 다르다")
+        step_covered = {t for s in c.steps for t in s["covers"]}
+        for tid in c.covers:
+            rec = recs.get(tid)
+            if not rec:
+                errors.append(f"covers: 카탈로그에 없는 TC {tid}")
+                continue
+            if tid in step_covered:
+                continue
+            if rec["layer"] == "contract":
+                hits = [(_step_hits(s, rec["expect_hint"])) for s in c.steps]
+                if not any(m for m, _ in hits):
+                    errors.append(f"covers {tid}: 그 op 를 부르는 단계가 없다")
+                elif not any(m and not p for m, p in hits):
+                    errors.append(f"covers {tid}: op 를 부르지만 기대(코드·status)가 맞는 단계가 없다")
+            elif rec["layer"] == "policy":
+                ops = (rec.get("binding") or {}).get("operations") or []
+                code = (rec.get("binding") or {}).get("error_code")
+                if ops:
+                    op_recs = [r for r in recs.values() if r["layer"] == "contract" and r.get("operation") in ops]
+                    calls = any(_step_hits(s, r["expect_hint"])[0] for s in c.steps for r in op_recs)
+                    if not calls:
+                        warnings.append(f"covers {tid}: 바인딩된 op {', '.join(ops)} 를 부르는 단계가 없다")
+                    elif code and not any((s.get("expect") or {}).get("error_code") == code for s in c.steps):
+                        warnings.append(f"covers {tid}: 바인딩 코드 {code} 를 기대하는 단계가 없다")
+        c.audit = {"status": "error" if errors else ("warn" if warnings else "ok"), "errors": errors, "warnings": warnings}

@@ -13,12 +13,18 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from qa import httpx  # noqa: E402
-from qa.cases import CaseError, load_dir, parse_one, select  # noqa: E402
+from qa.cases import CaseError, audit, load_dir, parse_one, select  # noqa: E402
+from qa.catalog import CatalogService, diff, domain_of_path  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.github import domains_from_files  # noqa: E402
 from qa.runner import Runner, evaluate  # noqa: E402
+from qa.spec import Spec, match_path  # noqa: E402
 from qa.store import Store  # noqa: E402
 from qa.templating import Context, TemplateError, get_path  # noqa: E402
+from qa.wiki import Wiki  # noqa: E402
+
+WIKI_DIR = ROOT.parent / "wiki-workspace"          # 레포 안의 team-wiki-v2 체크아웃 — 카탈로그 파생 회귀 테스트에 쓴다
+SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
 
 
 class TemplatingTest(unittest.TestCase):
@@ -87,9 +93,21 @@ class CasesTest(unittest.TestCase):
             parse_one("id: a\ntitle: x\nsuite: nope\nsteps: [{request: {method: GET, path: /}}]")
         with self.assertRaises(CaseError):
             parse_one("id: a\ntitle: x\nsuite: smoke\nsteps: [{request: {method: GET, path: /}, expect: {bogus: 1}}]")
-        c = parse_one("id: a\ntitle: x\nsuite: smoke\nsteps: [{request: {method: get, path: /}}]")
+        c = parse_one("id: a\ntitle: x\nsuite: manual\nsteps: [{request: {method: get, path: /}}]")
         self.assertEqual(c.steps[0]["request"]["method"], "GET")
         self.assertEqual(c.steps[0]["name"], "step 1")
+
+    def test_covers_required_and_union(self):
+        with self.assertRaises(CaseError):   # smoke 는 covers 필수
+            parse_one("id: a\ntitle: x\nsuite: smoke\nsteps: [{request: {method: GET, path: /}}]")
+        with self.assertRaises(CaseError):   # 형식
+            parse_one("id: a\ntitle: x\nsuite: smoke\ncovers: [room-create]\nsteps: [{request: {method: GET, path: /}}]")
+        c = parse_one("id: a\ntitle: x\nsuite: sanity\ncovers: [C.room.create]\nsteps:\n"
+                      "  - {covers: ['op.createRoom:200', C.room.create], request: {method: POST, path: /v1/rooms}}\n"
+                      "  - {covers: ['G.participation.cancel#2'], request: {method: POST, path: '/v1/rooms/{{roomId}}/cancellation'}}\n")
+        self.assertEqual(c.covers, ["C.room.create", "op.createRoom:200", "G.participation.cancel#2"])
+        m = parse_one("id: a\ntitle: x\nsuite: manual\nsteps: [{request: {method: GET, path: /}}]")
+        self.assertEqual(m.covers, [])
 
     def test_select(self):
         cases, _ = load_dir(ROOT / "cases")
@@ -168,19 +186,19 @@ class RunnerTest(unittest.TestCase):
         })
         httpx.request = fake
         cases = {
-            "a.pass": self._case("id: a.pass\ntitle: t\nsuite: smoke\nactor: qa-host\nsteps:\n"
+            "a.pass": self._case("id: a.pass\ntitle: t\nsuite: smoke\ncovers: ['op.memberMe:200']\nactor: qa-host\nsteps:\n"
                                  "  - request: {method: GET, path: /v1/members/me}\n"
                                  "    expect: {status: 200, json: {'data.memberId': '{{actor.qa-host.memberId}}'}}\n"),
-            "b.save": self._case("id: b.save\ntitle: t\nsuite: sanity\nactor: qa-host\nsteps:\n"
+            "b.save": self._case("id: b.save\ntitle: t\nsuite: sanity\ncovers: ['op.createRoom:200']\nactor: qa-host\nsteps:\n"
                                  "  - request: {method: POST, path: /v1/rooms, body: {postingId: '{{fixture.postingId}}'}}\n"
                                  "    expect: {status: 200}\n    save: {roomId: data.roomId}\n"
                                  "  - request: {method: GET, path: '/v1/rooms/{{roomId}}'}\n"
                                  "    expect: {status: 200, json: {'data.hostMemberId': '{{actor.qa-host.memberId}}'}}\n"),
-            "c.fail": self._case("id: c.fail\ntitle: t\nsuite: smoke\nsteps:\n"
+            "c.fail": self._case("id: c.fail\ntitle: t\nsuite: smoke\ncovers: ['op.termsList:200']\nsteps:\n"
                                  "  - request: {method: GET, path: /v1/terms}\n    expect: {status: 200, result: SUCCESS}\n"),
-            "d.skip": self._case("id: d.skip\ntitle: t\nsuite: smoke\nactor: qa-guest\nsteps:\n"
+            "d.skip": self._case("id: d.skip\ntitle: t\nsuite: smoke\ncovers: ['op.memberMe:200']\nactor: qa-guest\nsteps:\n"
                                  "  - request: {method: GET, path: /v1/members/me}\n    expect: {status: 200}\n"),
-            "e.skipfx": self._case("id: e.skipfx\ntitle: t\nsuite: smoke\nsteps:\n"
+            "e.skipfx": self._case("id: e.skipfx\ntitle: t\nsuite: smoke\ncovers: ['OPS.x.y#1']\nsteps:\n"
                                    "  - request: {method: GET, path: '/x/{{fixture.nope}}'}\n    expect: {status: 200}\n"),
         }
         runner = Runner(self.cfg, self.store, cases)
@@ -210,7 +228,7 @@ class RunnerTest(unittest.TestCase):
 
     def test_cancel_and_events(self):
         httpx.request = FakeHttp({("GET", "/v1/terms"): (200, {"result": "SUCCESS", "data": []})})
-        c = self._case("id: t\ntitle: t\nsuite: smoke\nsteps:\n  - request: {method: GET, path: /v1/terms}\n    expect: {status: 200}\n")
+        c = self._case("id: t\ntitle: t\nsuite: smoke\ncovers: ['op.termsList:200']\nsteps:\n  - request: {method: GET, path: /v1/terms}\n    expect: {status: 200}\n")
         runner = Runner(self.cfg, self.store, {"t": c})
         rid = self.store.create_run(trigger="manual", operator="bebe", suite="smoke", env="dev", base_url="https://api.test",
                                     ref="dev", sha=None, pr_number=None, meta={}, cases=[c, c])
@@ -222,6 +240,108 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(evs[0]["action"], "run.cancel")
         self.assertEqual(evs[0]["detail"], {"x": 1})
         self.assertEqual(self.store.list_events(action="nope"), [])
+
+
+class SpecTest(unittest.TestCase):
+    def test_parse_fixture(self):
+        sp = Spec("http://unused", Path(tempfile.mkdtemp()), file=str(SPEC_FIXTURE)).get()
+        self.assertIsNotNone(sp)
+        self.assertEqual(sp.ops["createRoom"].method, "POST")
+        self.assertIn("E1402", sp.ops["createRoom"].errors)
+        self.assertIn("E1102", sp.ops["memberMe"].errors)          # application/json;charset=UTF-8 도 읽는다
+        self.assertEqual(list(sp.ops["submitRoomApplication"].success), ["201"])
+        self.assertEqual(sp.op_for("GET", "/v1/rooms/creation-limit").id, "roomCreationLimit")   # 고정 세그먼트 우선
+        self.assertEqual(sp.op_for("GET", "/v1/rooms/{{roomId}}").id, "roomDetail")
+
+    def test_match_path(self):
+        self.assertTrue(match_path("/v1/rooms/{roomId}/cancellation", "/v1/rooms/{{roomId}}/cancellation"))
+        self.assertTrue(match_path("/v1/rooms/{roomId}", "/v1/rooms/abc?x=1"))
+        self.assertFalse(match_path("/v1/rooms/{roomId}", "/v1/rooms"))
+        self.assertFalse(match_path("/v1/rooms/creation-limit", "/v1/rooms/{{roomId}}"))
+
+
+@unittest.skipUnless((WIKI_DIR / "wiki/policy/_src/상태-SSOT.yaml").is_file(), "wiki-workspace 체크아웃 없음")
+class CatalogTest(unittest.TestCase):
+    """실제 team-wiki-v2 체크아웃으로 파생이 되는지 — render_tests.cases() 시그니처가 바뀌면 여기서 먼저 잡힌다."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.wiki = Wiki(WIKI_DIR)
+        self.spec = Spec("http://unused", Path(self.tmp.name) / "catalog", file=str(SPEC_FIXTURE))
+        self.svc = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=ROOT / "catalog", data_dir=Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_build_and_seed_cases_audit_clean(self):
+        cat = self.svc.get(force=True)
+        self.assertIsNone(self.svc.last_error)
+        c = cat.counts()
+        self.assertGreaterEqual(c["by_layer"]["policy"], 200)
+        self.assertGreaterEqual(c["by_layer"]["contract"], 20)
+        self.assertGreaterEqual(c["by_layer"]["manual"], 1)
+        self.assertEqual(len(cat.versions["ssot"]), 12)
+        rec = cat.records["G.room.create#8"]
+        self.assertEqual(rec["domain"], "room")
+        self.assertEqual(rec["binding"], {"operations": ["createRoom"], "error_code": "E1427"})
+        self.assertEqual(rec["prd"][0]["doc"], "룸 생성")
+        self.assertTrue(cat.records["C.room.autocancel_not_started"]["excluded"])   # actor: system 제외
+        self.assertEqual(cat.records["op.createRoom:E1402"]["expect_hint"]["status"], 400)
+        # 시드 케이스 13건은 카탈로그와 어긋나지 않는다
+        cases, errors = load_dir(ROOT / "cases")
+        self.assertEqual(errors, [])
+        audit(cases, cat)
+        bad = {cid: c.audit for cid, c in cases.items() if c.audit["status"] != "ok"}
+        self.assertEqual(bad, {})
+        self.assertTrue(all(c.covers for c in cases.values()))
+        # 캐시가 남고 같은 입력이면 재계산하지 않는다
+        self.assertTrue((Path(self.tmp.name) / "catalog" / "latest.json").is_file())
+        self.assertIs(self.svc.get(force=False), cat)
+
+    def test_audit_catches_false_claims(self):
+        cat = self.svc.get(force=True)
+        cases = {
+            "x.ghost": parse_one("id: x.ghost\ntitle: t\nsuite: smoke\ncovers: [G.room.cancel]\nsteps: [{request: {method: GET, path: /v1/terms}}]"),
+            "x.wrongcode": parse_one("id: x.wrongcode\ntitle: t\nsuite: smoke\nsteps:\n"
+                                     "  - {covers: ['op.cancelRoom:E1410'], request: {method: POST, path: '/v1/rooms/{{r}}/cancellation'}, expect: {status: 409, error_code: E1420}}\n"),
+            "x.wrongop": parse_one("id: x.wrongop\ntitle: t\nsuite: smoke\ncovers: ['op.createRoom:200']\nsteps: [{request: {method: GET, path: /v1/terms}, expect: {status: 200}}]"),
+            "x.policywarn": parse_one("id: x.policywarn\ntitle: t\nsuite: sanity\ncovers: ['G.room.create#8']\nsteps: [{request: {method: POST, path: /v1/rooms}, expect: {status: 409, error_code: E1425}}]"),
+            "x.ok": parse_one("id: x.ok\ntitle: t\nsuite: smoke\ncovers: ['op.termsList:200']\nsteps: [{request: {method: GET, path: /v1/terms}, expect: {status: 200}}]"),
+        }
+        audit(cases, cat)
+        self.assertEqual(cases["x.ghost"].audit["status"], "error")
+        self.assertIn("카탈로그에 없는 TC G.room.cancel", cases["x.ghost"].audit["errors"][0])
+        self.assertEqual(cases["x.wrongcode"].audit["status"], "error")
+        self.assertEqual(cases["x.wrongop"].audit["status"], "error")
+        self.assertEqual(cases["x.policywarn"].audit["status"], "warn")
+        self.assertEqual(cases["x.ok"].audit["status"], "ok")
+        self.assertTrue(cases["x.ghost"].blocked)
+        self.assertEqual([c.id for c in select(cases, suite="smoke")], ["x.ok"])          # 오류 케이스는 스위트에서 빠진다
+        self.assertEqual(len(select(cases, ids=["x.ghost"])), 1)                          # 직접 고르면 들어간다
+
+    def test_diff_and_drift(self):
+        cat = self.svc.get(force=True)
+        import copy
+        nxt = copy.deepcopy(cat)
+        nxt.records["G.room.create#8"]["hash"] = "changed"
+        del nxt.records["op.termsList:200"]
+        nxt.records["op.new:200"] = dict(nxt.records["op.regions:200"], id="op.new:200")
+        d = diff(cat, nxt)
+        self.assertEqual(d, {"changed": ["G.room.create#8"], "added": ["op.new:200"], "removed": ["op.termsList:200"]})
+        self.svc.changes = {"G.room.create#8": {"at": "2026-09-22T00:00:00Z", "kind": "changed"}}
+        self.assertEqual(len(self.svc.drift_for(["G.room.create#8", "op.regions:200"], None)), 1)
+        self.assertEqual(self.svc.drift_for(["G.room.create#8"], "2026-09-23"), [])      # 검토 이후 변경 없음
+        self.assertEqual(len(self.svc.drift_for(["G.room.create#8"], "2026-09-21")), 1)
+
+    def test_wiki_helpers(self):
+        self.assertEqual(Wiki.parse_source("PRD/룸 생성 §4.7"), ("룸 생성", "4.7"))
+        self.assertIsNone(Wiki.parse_source("DEC-003"))
+        sec = self.wiki.prd_section("룸 생성", "4.7")
+        self.assertTrue(sec.startswith("### 4.7"))
+        self.assertIn("3개", sec)
+        self.assertIsNone(self.wiki.prd_section("룸 생성", "99.9"))
+        self.assertEqual(domain_of_path("/v1/rooms/{roomId}/applications/me"), "application")
+        self.assertEqual(domain_of_path("/v1/members/me/resumes/{id}"), "resume")
 
 
 class HermesTest(unittest.TestCase):
