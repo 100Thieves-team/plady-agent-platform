@@ -1,0 +1,56 @@
+# 인증 경계 smoke — 토큰 없는 요청과 dev 세션 발급 오류 계약.
+cases:
+  - id: auth.me-without-token
+    title: 토큰 없이 내 상태를 조회하면 401 E1102 다
+    suite: smoke
+    domains: [auth, member]
+    operations: [memberMe]
+    source: ["docs/conventions/auth.md", "docs/knowledge/qa-review.md §특수 검증 3"]
+    steps:
+      - name: 비로그인 /v1/members/me
+        request: { method: GET, path: /v1/members/me }
+        expect: { status: 401, result: ERROR, error_code: E1102 }
+
+  - id: auth.dev-session-unknown-member
+    title: 없는 회원으로 dev 세션을 요청하면 404 E1006 이다
+    suite: smoke
+    domains: [auth]
+    operations: [issueDevSession]
+    source: ["MOI-487 개발 전용 인증 api"]
+    steps:
+      - name: 존재하지 않는 UUID
+        request:
+          method: POST
+          path: /v1/auth/dev-sessions
+          body: { memberId: "00000000-0000-0000-0000-000000000000" }
+        expect: { status: 404, result: ERROR, error_code: E1006 }
+
+  - id: auth.dev-session-bad-body
+    title: 형식이 틀린 dev 세션 요청은 400 E400 이다
+    suite: smoke
+    domains: [auth]
+    operations: [issueDevSession]
+    source: ["MOI-487 개발 전용 인증 api"]
+    steps:
+      - name: UUID 가 아닌 memberId
+        request:
+          method: POST
+          path: /v1/auth/dev-sessions
+          body: { memberId: "not-a-uuid" }
+        expect: { status: 400, result: ERROR, error_code: E400 }
+
+  - id: member.me
+    title: 배우로 로그인하면 내 상태가 ACTIVE 이고 memberId 가 일치한다
+    suite: smoke
+    domains: [member, auth]
+    operations: [memberMe]
+    source: ["PRD/회원 및 프로필 §내 상태"]
+    actor: qa-host
+    steps:
+      - name: /v1/members/me
+        request: { method: GET, path: /v1/members/me }
+        expect:
+          status: 200
+          result: SUCCESS
+          json: { "data.status": ACTIVE, "data.memberId": "{{actor.qa-host.memberId}}" }
+          exists: [data.nickname, data.profile]

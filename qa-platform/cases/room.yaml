@@ -1,0 +1,118 @@
+# 룸 — 탐색은 비로그인 smoke, 생성·신청 흐름은 배우가 필요한 sanity.
+# 쓰기 케이스는 자기가 만든 데이터를 자기가 닫는다(취소). 제목 접두 [QA].
+cases:
+  - id: room.form-options
+    title: 룸 생성 폼 선택지를 조회한다
+    suite: smoke
+    domains: [room]
+    operations: [roomFormOptions]
+    source: ["PRD/룸 생성 §4.1"]
+    steps:
+      - name: 폼 선택지
+        request: { method: GET, path: /v1/rooms/form-options }
+        expect: { status: 200, result: SUCCESS, exists: [data.rounds, data.types, data.methods, data.durations] }
+
+  - id: room.explore
+    title: 비로그인으로 모집 중인 룸을 탐색한다
+    suite: smoke
+    domains: [room]
+    operations: [rooms]
+    source: ["PRD/룸 탐색 §4.1~§4.3"]
+    steps:
+      - name: 탐색 목록
+        request: { method: GET, path: /v1/rooms, query: { size: 5 } }
+        expect: { status: 200, result: SUCCESS, exists: [data.rooms, data.totalCount] }
+
+  - id: room.create-and-cancel
+    title: 방장이 룸을 만들고 취소하면 CANCELED 가 되고 재취소는 E1410 이다
+    suite: sanity
+    domains: [room]
+    operations: [createRoom, roomDetail, cancelRoom]
+    source: ["PRD/룸 생성 §4.8", "PRD/룸 참여 및 참여자 관리 §4.9", "G.room.cancel"]
+    actor: qa-host
+    steps:
+      - name: 룸 생성
+        request:
+          method: POST
+          path: /v1/rooms
+          body:
+            postingId: "{{fixture.postingId}}"
+            jobRoleId: "{{fixture.jobRoleId}}"
+            round: FIRST
+            type: JOB
+            method: ONLINE
+            minParticipants: 2
+            maxParticipants: 4
+            schedule: { date: "{{date:+7}}", startTime: "14:00", durationMinutes: 90 }
+            title: "[QA] 룸 생성 sanity {{rand}}"
+            description: "QA 플랫폼 sanity 케이스가 만든 룸. 곧 취소된다."
+            resumeId: "{{fixture.qa-host.resumeId}}"
+            resumePublic: true
+        expect: { status: 200, result: SUCCESS, json: { "data.status": RECRUITING } }
+        save: { roomId: data.roomId }
+      - name: 상세 조회 — 방장이 배우다
+        request: { method: GET, path: "/v1/rooms/{{roomId}}" }
+        expect: { status: 200, json: { "data.hostMemberId": "{{actor.qa-host.memberId}}", "data.status": RECRUITING } }
+      - name: 취소
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        expect: { status: 200, result: SUCCESS }
+      - name: 재취소는 모집 중이 아니라 E1410
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        expect: { status: 409, error_code: E1410 }
+
+  - id: room.apply-and-withdraw
+    title: 참가자가 신청하면 PENDING 이고 철회 후 방장이 취소할 수 있다
+    suite: sanity
+    domains: [room, application]
+    operations: [createRoom, submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
+    source: ["PRD/룸 참여 및 참여자 관리 §4.2", "G.application.submit"]
+    actor: qa-host
+    steps:
+      - name: 방장이 룸 생성
+        request:
+          method: POST
+          path: /v1/rooms
+          body:
+            postingId: "{{fixture.postingId}}"
+            jobRoleId: "{{fixture.jobRoleId}}"
+            round: FIRST
+            type: JOB
+            method: ONLINE
+            minParticipants: 2
+            maxParticipants: 4
+            schedule: { date: "{{date:+8}}", startTime: "10:00", durationMinutes: 60 }
+            title: "[QA] 참가 신청 sanity {{rand}}"
+            resumeId: "{{fixture.qa-host.resumeId}}"
+            resumePublic: true
+        expect: { status: 200, result: SUCCESS }
+        save: { roomId: data.roomId }
+      - name: 참가자가 신청
+        actor: qa-guest
+        request:
+          method: POST
+          path: "/v1/rooms/{{roomId}}/applications"
+          body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] sanity 신청" }
+        expect: { status: 201, result: SUCCESS, json: { "data.status": PENDING } }
+      - name: 참가자가 내 신청 조회
+        actor: qa-guest
+        request: { method: GET, path: "/v1/rooms/{{roomId}}/applications/me" }
+        expect: { status: 200, result: SUCCESS }
+      - name: 참가자가 철회
+        actor: qa-guest
+        request: { method: DELETE, path: "/v1/rooms/{{roomId}}/applications/me" }
+        expect: { status: 200, result: SUCCESS }
+      - name: 방장이 정리(취소)
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        expect: { status: 200 }
+
+  - id: room.creation-limit
+    title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
+    suite: sanity
+    domains: [room]
+    operations: [roomCreationLimit]
+    source: ["PRD/룸 생성 §4.7"]
+    actor: qa-host
+    steps:
+      - name: 없는 공고·직무
+        request: { method: GET, path: /v1/rooms/creation-limit, query: { jobPostingId: 999999999, jobRoleId: 999999 } }
+        expect: { status: 200, result: SUCCESS, json: { "data.activeRoomCount": 0 }, exists: [data.limit, data.remaining] }

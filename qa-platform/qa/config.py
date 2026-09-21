@@ -1,0 +1,96 @@
+"""환경 변수 → 설정. 이름 계약은 docs/qa-platform.md §10.2.
+
+비밀값(QA_ACTORS 의 회원 UUID, 토큰)은 절대 로그에 남기지 않는다.
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+def _json_env(env, name: str) -> dict:
+    raw = (env.get(name) or "").strip()
+    if not raw:
+        return {}
+    try:
+        v = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"{name} 은 JSON 객체여야 한다: {e}") from None
+    if not isinstance(v, dict):
+        raise SystemExit(f"{name} 은 JSON 객체여야 한다")
+    return v
+
+
+class Config:
+    """호출 시점의 환경 변수를 읽는다 (테스트가 env 를 바꿔 가며 만들 수 있게)."""
+
+    def __init__(self, env=None):
+        env = os.environ if env is None else env
+        g = env.get
+        self.port = int(g("QA_PORT", "8800"))
+        self.data_dir = Path(g("QA_DATA_DIR", "/data"))
+        self.cases_dir = Path(g("QA_CASES_DIR", str(Path(__file__).resolve().parent.parent / "cases")))
+        self.public_url = g("QA_PUBLIC_URL", "https://qa.agent.plady.io").rstrip("/")
+
+        # 검증 대상
+        self.target_env = g("QA_TARGET_ENV", "dev")
+        self.target_base_url = g("QA_TARGET_BASE_URL", "https://api.dev.moimyeon.plady.io").rstrip("/")
+        self.spec_url = g("QA_SPEC_URL", "https://100thieves-team.github.io/moimyeon-backend/api/branches/dev/openapi/openapi3.yaml")
+        self.request_timeout = int(g("QA_REQUEST_TIMEOUT", "30"))
+
+        # 배우·픽스처 (SSM qa-actors / qa-fixtures → env)
+        self.actors: dict = _json_env(env, "QA_ACTORS")        # name -> memberId
+        self.fixtures: dict = _json_env(env, "QA_FIXTURES")    # key -> value
+
+        # 사람 트리거 — 운영자 목록(자기 신고 드롭다운)
+        self.operators = [s.strip() for s in g("QA_OPERATORS", "bebe,dbwp031,중곤").split(",") if s.strip()]
+
+        # GitHub (읽기 전용)
+        self.backend_repo = g("QA_BACKEND_REPO", "100Thieves-team/moimyeon-backend")
+        self.backend_deploy_workflow = g("QA_BACKEND_DEPLOY_WORKFLOW", "deploy-aws.yml")
+        self.backend_branch = g("QA_BACKEND_BRANCH", "dev")
+        self.github_token = g("QA_GITHUB_TOKEN", "")
+        self.release_checklist_url = g(
+            "QA_RELEASE_CHECKLIST_URL",
+            "https://raw.githubusercontent.com/100Thieves-team/moimyeon-backend/dev/docs/knowledge/release-checklist.md")
+
+        # 스프린트 = Linear 주간 사이클. API 없이 앵커로 계산한다 (docs/qa-platform.md §4 2.3).
+        self.sprint_anchor = g("QA_SPRINT_ANCHOR", "2026-09-13T15:00:00Z")
+        self.sprint_anchor_number = int(g("QA_SPRINT_ANCHOR_NUMBER", "9"))
+        self.sprint_days = int(g("QA_SPRINT_DAYS", "7"))
+
+        # Hermes (AI 는 전부 여기로)
+        self.hermes_url = g("HERMES_API_URL", "http://hermes-gateway:8642").rstrip("/")
+        self.hermes_key = g("HERMES_API_KEY", "")
+        self.hermes_model = g("HERMES_MODEL", "gpt-5.5")
+        self.hermes_timeout = int(g("HERMES_TIMEOUT", "300"))
+
+        # Slack (WIKI_SLACK_WEBHOOK_URL 재사용 — 사용자 결정)
+        self.slack_webhook_url = g("WIKI_SLACK_WEBHOOK_URL", "")
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "qa.sqlite"
+
+    def sprint_anchor_dt(self) -> datetime:
+        dt = datetime.fromisoformat(self.sprint_anchor.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    def current_sprint(self, now: datetime | None = None) -> dict:
+        """앵커 사이클 번호 + 경과 주 수. 반환: {number, starts_at, ends_at}."""
+        now = now or datetime.now(timezone.utc)
+        anchor = self.sprint_anchor_dt()
+        span = timedelta(days=self.sprint_days)
+        elapsed = (now - anchor) // span
+        starts = anchor + span * elapsed
+        return {"number": self.sprint_anchor_number + elapsed, "starts_at": starts, "ends_at": starts + span}
+
+    def summary(self) -> dict:
+        """로그·/health 용. 비밀값은 존재 여부만."""
+        return {
+            "target": self.target_base_url, "env": self.target_env, "cases_dir": str(self.cases_dir),
+            "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
+            "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
+        }

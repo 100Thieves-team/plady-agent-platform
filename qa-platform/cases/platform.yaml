@@ -1,0 +1,42 @@
+# 플랫폼·카탈로그 smoke — 비로그인. dev 서버에서 응답을 확인하고 적었다 (2026-09-20).
+cases:
+  - id: platform.health
+    title: 백엔드 헬스 체크가 UP 이다
+    suite: smoke
+    domains: [platform]
+    source: ["support/monitoring (Actuator)"]
+    steps:
+      - name: actuator health
+        request: { method: GET, path: /actuator/health }
+        expect: { status: 200, json: { status: UP } }
+
+  - id: catalog.terms
+    title: 현재 유효 약관 목록을 비로그인으로 조회한다
+    suite: smoke
+    domains: [terms]
+    operations: [termsList]
+    source: ["PRD/회원 및 프로필 §약관"]
+    steps:
+      - name: 약관 목록
+        request: { method: GET, path: /v1/terms }
+        expect: { status: 200, result: SUCCESS, exists: [data] }
+
+  - id: catalog.job-roles
+    title: 직무 카탈로그를 조회한다
+    suite: smoke
+    domains: [catalog, jobrole]
+    operations: [jobRoles]
+    steps:
+      - name: 직무 목록
+        request: { method: GET, path: /v1/job-roles }
+        expect: { status: 200, result: SUCCESS, exists: [data] }
+
+  - id: catalog.regions
+    title: 지역 카탈로그를 조회한다
+    suite: smoke
+    domains: [catalog, region]
+    operations: [regions]
+    steps:
+      - name: 지역 목록
+        request: { method: GET, path: /v1/regions }
+        expect: { status: 200, result: SUCCESS, exists: [data] }
