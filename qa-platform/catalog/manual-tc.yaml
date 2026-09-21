@@ -1,0 +1,42 @@
+# 서술 TC — 사람이 적는 TC. docs/qa-platform-tc.md §4.1.
+#   PRD.{문서 slug}.{절}#{n}   PRD 절 중 SSOT 로 형식화되지 않은 요구 (doc 은 SSOT meta.문서_링크 의 이름과 같게)
+#   OPS.{영역}.{이름}#{n}       기획 문서 밖의 운영 기준 (헬스 체크 등). source 에 근거를 적는다
+# 케이스가 covers 로 가리키면 커버된다. 비어 있어도 된다 — 0 에서 시작한다.
+
+cases:
+  - id: PRD.룸-탐색.4.1#1
+    doc: 룸 탐색
+    section: "4.1"
+    domain: room
+    title: 비로그인으로 모집 중인 룸 목록을 조회할 수 있다
+    given: 로그인하지 않은 사용자
+    when: GET /v1/rooms
+    then: 200 이고 목록·총 개수가 내려온다
+    operations: [rooms]
+
+  - id: PRD.룸-생성.4.1#1
+    doc: 룸 생성
+    section: "4.1"
+    domain: room
+    title: 룸 생성 폼의 선택지(차수·유형·방식·소요 시간)를 조회할 수 있다
+    given: 로그인 여부 무관
+    when: GET /v1/rooms/form-options
+    then: 200 이고 rounds·types·methods·durations 가 내려온다
+    operations: [roomFormOptions]
+
+  - id: PRD.룸-생성.4.7#1
+    doc: 룸 생성
+    section: "4.7"
+    domain: room
+    title: 중복 생성 제한 조회는 없는 공고·직무에도 0개로 답한다
+    given: 로그인 회원, 존재하지 않는 공고 id·직무 id
+    when: GET /v1/rooms/creation-limit
+    then: 200 이고 activeRoomCount 0, limit·remaining 존재
+    operations: [roomCreationLimit]
+
+  - id: OPS.platform.health#1
+    domain: platform
+    title: 백엔드 헬스 체크가 UP 이다
+    source: ["support/monitoring (Spring Actuator)"]
+    when: GET /actuator/health
+    then: 200 이고 status UP

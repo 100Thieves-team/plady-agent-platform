@@ -1,0 +1,35 @@
+# 자동화 대상에서 빼는 TC — 사유 필수. docs/qa-platform-tc.md §6.2.
+# 분모에서 빠지지만 화면에는 회색으로 남는다. 숨기지 않는다.
+#   id:     TC 하나
+#   prefix: id 접두 (게이트·command 단위)
+#   match:  레코드 필드 일치 (예: actor: system)
+
+exclusions:
+  - match: { actor: system }
+    reason: 시스템 전이(자동 종료·자동 취소·마스킹)는 API 로 트리거되지 않는다. 백엔드 단위·통합 테스트 영역
+
+  - prefix: G.member.signup
+    reason: Google OAuth 가입 흐름. dev 는 dev-sessions 로 우회하므로 API 케이스로 재현할 수 없다
+  - prefix: G.member.login
+    reason: Google OAuth 로그인 흐름. 위와 같다
+  - prefix: G.member.read_admin
+    reason: 운영자 전용. 테스트 계정에 ADMIN 권한이 없다
+  - prefix: G.member.restrict
+    reason: 운영자 전용. 위와 같다
+  - prefix: C.member.restrict
+    reason: 운영자 전용. 위와 같다
+  - prefix: G.member.withdraw
+    reason: 탈퇴는 되돌릴 수 없어 전용 QA 회원 2명으로는 반복 실행이 안 된다
+  - prefix: C.member.withdraw
+    reason: 위와 같다
+  - prefix: G.review.hide
+    reason: 운영자 전용
+  - prefix: C.review.hide
+    reason: 운영자 전용
+
+  - id: "G.room.create#7"
+    reason: 지난 시각 조건. 케이스가 과거 날짜를 보내면 재현 가능하므로 제외를 풀 후보 — 우선 표시만
+  - prefix: G.room.appear_in_list
+    reason: 목록 노출 규칙은 상태별 룸이 동시에 있어야 검증된다. 픽스처가 갖춰지면 푼다
+  - prefix: G.room.read_detail
+    reason: 민감 정보 비노출 검사는 응답 스키마 검사(exists 부정)가 필요하다. expect 5종 밖 — P3

@@ -1,0 +1,70 @@
+# SSOT ↔ API 바인딩. docs/qa-platform-tc.md §4.4.
+# 기획 명세와 API 는 1:1 이 아니다. command 하나가 op 여러 개일 수도, 여러 command 가 한 op 일 수도,
+# API 가 없는 command(시스템 전이)도 있다. 여기 없는 command 는 카탈로그에 "API 없음" 으로 남는다.
+# 케이스와 같은 PR 흐름으로 리뷰한다. operationId 는 dev 브랜치 openapi3.yaml 기준.
+
+commands:
+  # 룸
+  C.room.create: createRoom
+  C.room.create_batch: createRoom            # 일괄 생성은 같은 op 를 일정 수만큼 부른다
+  C.room.confirm: confirmRoom
+  C.room.start: startRoomProgress
+  C.room.change_block: getProgressRail       # 레일 블록 이동은 조회 op 로만 드러난다 (쓰기 op 미문서화)
+  # 참여
+  C.participation.cancel: [cancelRoom, roomLeave]   # 방장의 룸 취소 · 참여자의 나가기 — SSOT 는 하나의 command
+  C.participation.write_final_feedback: leaveFinalRoundFeedback
+  C.participation.write_self_feedback: saveSelfRoundFeedback
+  C.participation.submit_closing: submitClosingResponse
+  # 참가 신청
+  C.application.submit: submitRoomApplication
+  C.application.withdraw: withdrawRoomApplication
+  C.application.accept: acceptApplication
+  C.application.reject: rejectApplication
+  # 회원
+  C.member.logout: authLogout
+  C.member.update_profile: updateProfile
+  # 이력서
+  C.resume.create: createResume
+  C.resume.delete: deleteResume
+  C.resume.set_default: makeResumeDefault
+  # 질문
+  C.question.create: [leavePreparationQuestion, leaveProgressQuestion]
+  C.question.create_followup: [leavePreparationFollowUpQuestion, leaveProgressFollowUpQuestion]
+  C.question.delete: deletePreparationQuestion
+  C.question.mark_asked: changeQuestionAsked
+  C.question.write_comment: leaveQuestionComment
+  C.question.rate_closing: submitClosingResponse
+  # 방명록 · 후기
+  C.guestbook.post: createRoomComment
+  C.review.submit: submitReview
+  C.review.skip: skipReview
+  C.review.edit: updateReview
+  C.review.delete: deleteReview
+
+# 게이트 검사 → 에러 코드. SSOT 의 `error` 필드가 비어 있는 동안만 여기 둔다.
+# 코드가 OpenAPI 응답 예시에 없으면 카탈로그가 경고를 낸다(스펙 누락일 수 있으니 오류는 아니다).
+checks:
+  "G.room.create#1": E1102          # 비로그인
+  "G.room.create#6": E1402          # 인원 범위
+  "G.room.create#8": E1427          # 같은 공고·직무 활성 룸 3개 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
+  "G.room.create#9": E1425          # 참여 슬롯 소진 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
+  "G.room.confirm#2": E1410
+  "G.room.confirm#4": E1421
+  "G.room.start#1": E1701
+  "G.room.start#3": E1702
+  "G.room.start#5": E1706
+  "G.application.submit#1": E1102
+  "G.application.submit#2": E1410
+  "G.participation.cancel#2": E1410
+  "G.participation.submit_closing#2": E1802
+  "G.participation.submit_closing#3": E1801
+  "G.participation.write_final_feedback#3": E1903
+  "G.participation.write_self_feedback#2": E1903
+  "G.question.create#1": E1504
+  "G.question.write_comment#3": E1510
+  "G.guestbook.post_write#1": E2101
+  "G.review.write#1": E2001
+  "G.review.write#2": E2002
+  "G.review.edit#2": E2007
+  "G.review.edit#3": E2008
+  "G.member.mutate#1": E1102
