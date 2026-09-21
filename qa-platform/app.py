@@ -262,7 +262,7 @@ class Handler(BaseHTTPRequestHandler):
                 target["변경 도메인"] = ui.e(", ".join(info["domains"]) or "–")
             warnings = []
             if any(c.needs_actor() for c in suggested) and not app.cfg.actors:
-                warnings.append("배우(QA_ACTORS)가 설정되지 않았다 — 배우가 필요한 케이스는 skipped 로 기록된다.")
+                warnings.append("테스트 계정(QA_ACTORS)가 설정되지 않았다 — 테스트 계정이 필요한 케이스는 skipped 로 기록된다.")
             if app.github.last_error and trigger == "deploy-sanity":
                 warnings.append(app.github.last_error)
             hidden = {"sha": sha, "pr": pr, "deploy_run_id": g("deploy_run_id"), "basis": basis,

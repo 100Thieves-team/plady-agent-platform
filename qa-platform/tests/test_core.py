@@ -197,7 +197,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(rcs["c.fail"]["verdict"], "fail")
         self.assertIn("기대 200 실제 500", rcs["c.fail"]["error"])
         self.assertEqual(rcs["d.skip"]["verdict"], "skipped")
-        self.assertIn("배우 미설정", rcs["d.skip"]["error"])
+        self.assertIn("테스트 계정 미설정", rcs["d.skip"]["error"])
         self.assertEqual(rcs["e.skipfx"]["verdict"], "skipped")
         # 토큰은 한 번만 발급, Authorization 은 기록에서 마스킹, 스텝 기록에 save 된 변수가 반영됨
         self.assertEqual(sum(1 for c in fake.calls if c[1] == "/v1/auth/dev-sessions"), 1)

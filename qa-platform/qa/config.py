@@ -40,7 +40,7 @@ class Config:
         self.spec_url = g("QA_SPEC_URL", "https://100thieves-team.github.io/moimyeon-backend/api/branches/dev/openapi/openapi3.yaml")
         self.request_timeout = int(g("QA_REQUEST_TIMEOUT", "30"))
 
-        # 배우·픽스처 (SSM qa-actors / qa-fixtures → env)
+        # 테스트 계정·픽스처 (SSM qa-actors / qa-fixtures → env)
         self.actors: dict = _json_env(env, "QA_ACTORS")        # name -> memberId
         self.fixtures: dict = _json_env(env, "QA_FIXTURES")    # key -> value
 

@@ -40,7 +40,7 @@ cases:
         expect: { status: 400, result: ERROR, error_code: E400 }
 
   - id: member.me
-    title: 배우로 로그인하면 내 상태가 ACTIVE 이고 memberId 가 일치한다
+    title: 테스트 계정으로 로그인하면 내 상태가 ACTIVE 이고 memberId 가 일치한다
     suite: smoke
     domains: [member, auth]
     operations: [memberMe]

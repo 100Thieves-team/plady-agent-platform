@@ -107,7 +107,7 @@ def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], rec
                    f'<p>{s_state}</p><div class="actions"><a class="btn primary" href="/runs/new?trigger=sprint-smoke">스프린트 smoke 실행</a>'
                    f'<a class="btn" href="/runs/new?trigger=release">릴리스 검증</a><a class="btn" href="/runs/new?trigger=manual">임의 실행</a></div></div>')
 
-    cfg_lines = (f'대상 <span class="mono">{e(cfg_summary["target"])}</span> · 케이스 {case_count}개 · 배우 {", ".join(cfg_summary["actors"]) or "<b style=\"color:var(--warn)\">없음</b>"}'
+    cfg_lines = (f'대상 <span class="mono">{e(cfg_summary["target"])}</span> · 케이스 {case_count}개 · 테스트 계정 {", ".join(cfg_summary["actors"]) or "<b style=\"color:var(--warn)\">없음</b>"}'
                  f' · Hermes {"on" if cfg_summary["hermes"] else "off"} · Slack {"on" if cfg_summary["slack"] else "off"}'
                  f' · 러너 {("실행 중 " + e(runner_current)) if runner_current else "대기"}')
     errs = "".join(f'<li class="small" style="color:var(--bad)">{e(x)}</li>' for x in case_errors)
@@ -140,7 +140,7 @@ def run_new(*, trigger: str, target: dict, suggested: list, all_cases: list, bas
             continue
         items = "".join(
             f'<label class="chk"><input type="checkbox" name="case_ids" value="{e(c.id)}" {"checked" if c.id in sug_ids else ""}> '
-            f'<span class="mono">{e(c.id)}</span> {e(c.title)}{(" <span class=\"small mut\">배우 " + e(c.actor) + "</span>") if c.actor else ""}</label>'
+            f'<span class="mono">{e(c.id)}</span> {e(c.title)}{(" <span class=\"small mut\">테스트 계정 " + e(c.actor) + "</span>") if c.actor else ""}</label>'
             for c in cs)
         lists += f'<h3>{badge(suite)} {len(cs)}개</h3>{items}'
     ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
@@ -203,7 +203,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
             rbody = resp.get("json") if resp.get("json") is not None else resp.get("text")
             st += (f'<details {"open" if s["verdict"] not in ("pass",) else ""}><summary>{badge(s["verdict"])} {s["ord"] + 1}. {e(s["name"])} '
                    f'<span class="mono small">{e(req.get("method"))} {e(req.get("path"))}</span>'
-                   f'{(" <span class=\"small mut\">배우 " + e(req.get("actor")) + "</span>") if req.get("actor") else ""}'
+                   f'{(" <span class=\"small mut\">테스트 계정 " + e(req.get("actor")) + "</span>") if req.get("actor") else ""}'
                    f' <span class="small mut">{s.get("duration_ms") or 0} ms</span></summary>'
                    f'{("<div class=\"small\" style=\"color:var(--bad)\">" + e(s.get("error")) + "</div>") if s.get("error") else ""}'
                    f'{_checks_html(s["checks"])}'
@@ -251,7 +251,7 @@ def cases_list(cases: list, last: dict[str, dict], errors: list[str]) -> str:
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
     return (f'<h1>케이스 <span class="small mut">{len(cases)}개 · 정본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
             f'{("<div class=\"flash err\"><b>로드 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
-            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>배우</th><th>파일</th><th>마지막 판정</th></tr>{rows}</table>'
+            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>파일</th><th>마지막 판정</th></tr>{rows}</table>'
             f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button></form></div>')
 
 
@@ -264,7 +264,7 @@ def case_detail(c, history: list[dict]) -> str:
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}</h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
-            f'<div>배우</div><div>{e(c.actor or "비로그인")}</div><div>근거</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
+            f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>근거</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
             f'<h2>정의</h2><pre>{e(c.to_yaml())}</pre>'
             f'<h2>실행 이력</h2><div class="card"><table><tr><th>런</th><th>판정</th><th>트리거</th><th>운영자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
 

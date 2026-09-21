@@ -2,7 +2,7 @@
 
 - 런은 직렬(worker 1개): dev 데이터 충돌을 막는다.
 - 케이스는 순차, 단계 실패 시 그 케이스 중단.
-- 배우/픽스처 부재 → 케이스 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
+- 테스트 계정/픽스처 부재 → 케이스 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
 - 요청 기록은 Authorization 을 마스킹하고 응답 본문은 8 KB 로 자른다.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ BODY_LIMIT = 8 * 1024
 
 
 class ActorPool:
-    """dev-sessions 로 배우 토큰을 얻어 캐시한다. 토큰은 만료가 없으니 프로세스 수명 동안 유지."""
+    """dev-sessions 로 테스트 계정 토큰을 얻어 캐시한다. 토큰은 만료가 없으니 프로세스 수명 동안 유지."""
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -42,7 +42,7 @@ class ActorPool:
                           timeout=self.cfg.request_timeout)
         tok = get_path(r.json, "data.accessToken") if r.json else None
         if r.status != 200 or not tok:
-            raise RuntimeError(f"배우 '{name}' 토큰 발급 실패: status={r.status} {r.error or (r.text or '')[:200]}")
+            raise RuntimeError(f"테스트 계정 '{name}' 토큰 발급 실패: status={r.status} {r.error or (r.text or '')[:200]}")
         with self._lock:
             self._tokens[name] = tok
         return tok
@@ -206,7 +206,7 @@ class Runner:
                            "headers": {k: ("Bearer ***" if k == "Authorization" else v) for k, v in headers.items()}})
         except TemplateError as e:
             verdict = "skipped" if e.kind in ("actor", "fixture") else "error"
-            msg = (f"{'배우' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if verdict == "skipped" else str(e))
+            msg = (f"{'테스트 계정' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if verdict == "skipped" else str(e))
             self.store.add_step(rcid, i, name, record, None, [], verdict, 0, msg)
             return verdict, 0, msg
         except Exception as e:

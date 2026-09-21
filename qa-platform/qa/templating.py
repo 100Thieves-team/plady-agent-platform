@@ -2,7 +2,7 @@
 
 지원:
   {{name}}                  save 로 저장된 변수
-  {{actor.X.memberId}}      배우 X 의 회원 UUID
+  {{actor.X.memberId}}      테스트 계정 X 의 회원 UUID
   {{fixture.key}}           환경 픽스처 (키에 점이 있어도 정확히 일치하는 키를 먼저 본다)
   {{date:+N}} / {{date:-N}} 오늘(KST) 기준 N 일 뒤/전 ISO 날짜
   {{uuid}} / {{rand}}       임의값

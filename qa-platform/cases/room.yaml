@@ -1,4 +1,4 @@
-# 룸 — 탐색은 비로그인 smoke, 생성·신청 흐름은 배우가 필요한 sanity.
+# 룸 — 탐색은 비로그인 smoke, 생성·신청 흐름은 테스트 계정이 필요한 sanity.
 # 쓰기 케이스는 자기가 만든 데이터를 자기가 닫는다(취소). 제목 접두 [QA].
 cases:
   - id: room.form-options
@@ -50,7 +50,7 @@ cases:
             resumePublic: true
         expect: { status: 200, result: SUCCESS, json: { "data.status": RECRUITING } }
         save: { roomId: data.roomId }
-      - name: 상세 조회 — 방장이 배우다
+      - name: 상세 조회 — 방장이 테스트 계정이다
         request: { method: GET, path: "/v1/rooms/{{roomId}}" }
         expect: { status: 200, json: { "data.hostMemberId": "{{actor.qa-host.memberId}}", "data.status": RECRUITING } }
       - name: 취소

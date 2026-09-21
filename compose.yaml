@@ -210,7 +210,7 @@ services:
     restart: unless-stopped
   # ---------------------------------------------------------------------------
   # qa-platform (docs/qa-platform.md): dev 백엔드 검증·기록. 사람 트리거 전용.
-  # 로컬은 127.0.0.1 로만 publish. 배우/픽스처는 QA_ACTORS / QA_FIXTURES (JSON).
+  # 로컬은 127.0.0.1 로만 publish. 테스트 계정/픽스처는 QA_ACTORS / QA_FIXTURES (JSON).
   qa-platform:
     build:
       context: .

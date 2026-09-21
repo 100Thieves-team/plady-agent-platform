@@ -19,7 +19,7 @@ dev 서버에 배포된 백엔드를 **OpenAPI 계약과 PRD/SSOT 근거로 검�
 | --- | --- | --- |
 | 백엔드 배포 | `dev` push → CI → `deploy-aws` → ECS `https://api.dev.moimyeon.plady.io`. PR 프리뷰 환경 없음. `main` 승격은 `promote-live`(현재 vars 게이트로 비활성). | 검증 대상은 항상 **dev 배포분**이다. 플랫폼은 배포를 **감지만** 하고 실행하지 않는다. |
 | API 계약 | `api-docs-pages` 워크플로가 REST Docs → `openapi3.yaml`을 GitHub Pages에 브랜치별 발행(dev/main). 오퍼레이션 diff Slack 알림 존재(MOI-484). 83 operations. | 스펙은 백엔드가 이미 발행 → 플랫폼은 **읽기만** 한다. 변경 operation 목록을 검증 범위 제안에 쓴다. |
-| dev 인증 | `POST /v1/auth/dev-sessions {memberId}` → 만료 없는 토큰(local/dev 프로파일만, MOI-487). dev DB에 목데이터 회원 존재(`019db000-…-1001~1004`). | 배우(actor) = 고정 회원 UUID. Google OAuth 우회 불필요. |
+| dev 인증 | `POST /v1/auth/dev-sessions {memberId}` → 만료 없는 토큰(local/dev 프로파일만, MOI-487). dev DB에 목데이터 회원 존재(`019db000-…-1001~1004`). | 테스트 계정(actor) = 고정 회원 UUID. Google OAuth 우회 불필요. |
 | 응답 규약 | `{result: SUCCESS\|ERROR, data, error{code E####, message}}`. 에러 코드 정본은 `CoreErrorType`. | 단언은 status + `error.code` + JSON 경로 3종이면 충분. |
 | LLM 위키 | PRD 정본 `raw/product/*.md`, `wiki/policy/_src/상태-SSOT.yaml`(gate/command/transition), `render_tests.py`가 SSOT에서 테스트 뼈대를 뽑음. MCP `wiki_content_read`/`wiki_apply`. | 케이스 근거 = PRD § + SSOT gate id. 보고서는 `wiki_apply mode=generated`(`managed_by: harness`). |
 | 백엔드 하네스 | DR-022: 레포 `qa-reviewer` = 머지 전 정적 diff 리뷰, **플랫폼 qa-engineer = 배포 후 런타임 검증(sanity/smoke)**. `docs/knowledge/qa-review.md`·`release-checklist.md`가 에이전트 중립 지식. | 이 플랫폼이 DR-022가 예약한 자리. 지식 문서를 그대로 소비한다(복제하지 않음). |
@@ -62,7 +62,7 @@ QA 플랫폼  qa.agent.plady.io  (팀 비밀번호 세션 뒤)
 │   ├─ 1.1 스위트  smoke(스프린트·릴리스) / sanity(배포 검증) / manual(탐색기 전용)
 │   ├─ 1.2 케이스 = HTTP 단계 열 + 기대(status·error.code·JSON 경로) + 변수 저장(save)
 │   ├─ 1.3 근거 링크  PRD § · SSOT gate id · operationId  (선택 기준이자 추적 근거)
-│   ├─ 1.4 배우(actor)  dev-sessions 토큰으로 얻는 고정 QA 회원 (qa-host / qa-guest)
+│   ├─ 1.4 테스트 계정(actor)  dev-sessions 토큰으로 얻는 고정 QA 회원 (qa-host / qa-guest)
 │   └─ 1.5 초안  Hermes 생성 → 결정론 검증 → 탐색기로 확인 → 사람 승인 → YAML → PR
 │
 ├─ 2. 검증할 거리 — 사람에게 보여주는 것    플랫폼은 읽기만 한다
@@ -180,7 +180,7 @@ wiki-auth는 팀 공용 비밀번호 하나로 세션을 준다. 세션에 개�
 | `draft.generate` / `draft.approve` / `draft.reject` | 운영자, 도메인, 초안 id, 반려 사유 |
 | `wiki.publish` | 운영자, 런 id, 쓴 페이지 경로, 위키 커밋 sha |
 | `release.decide` | 운영자, 릴리스 런 id, 체크리스트 결과, 승격 판단(go/no-go)과 사유 |
-| `explorer.send` | 운영자, operation, 배우, 응답 status |
+| `explorer.send` | 운영자, operation, 테스트 계정, 응답 status |
 
 `/activity`에서 운영자·기간·행위로 필터해 본다. 보존은 런 기록과 같다(무기한, 볼륨).
 
@@ -215,7 +215,7 @@ wiki-auth는 팀 공용 비밀번호 하나로 세션을 준다. 세션에 개�
 
 1. 사람이 도메인(예: `room`)을 골라 [초안 생성].
 2. 플랫폼이 PRD(`raw/product/룸-생성` 등) + SSOT의 해당 gate/command + OpenAPI 해당 operation(요약·요청 예제·에러 코드)을 모아 Hermes에 넘긴다.
-3. Hermes가 케이스 JSON 목록을 낸다. 플랫폼이 **결정론 검증**: 스키마 유효성, operationId 실재, 에러 코드가 스펙 예시에 존재, 배우 지정 여부, 쓰기 케이스의 정리 단계 존재.
+3. Hermes가 케이스 JSON 목록을 낸다. 플랫폼이 **결정론 검증**: 스키마 유효성, operationId 실재, 에러 코드가 스펙 예시에 존재, 테스트 계정 지정 여부, 쓰기 케이스의 정리 단계 존재.
 4. 통과한 것만 초안함에 들어간다. 사람이 탐색기로 한 번 돌려보고 승인 → YAML → PR(리뷰 대상).
 5. **승인 없이 실행 스위트에 들어가는 케이스는 없다.**
 
@@ -228,7 +228,7 @@ suite: sanity                 # smoke | sanity | manual
 domains: [room]               # 변경 범위 → 권장 케이스 선택 키
 operations: [createRoom, roomDetail, cancelRoom]
 source: ["PRD/룸 생성 §4.8", "PRD/룸 참여 §4.9", "G.room.cancel"]
-actor: qa-host                # 기본 배우. 단계별 actor 로 덮어쓴다. 없으면 비로그인
+actor: qa-host                # 기본 테스트 계정. 단계별 actor 로 덮어쓴다. 없으면 비로그인
 steps:
   - name: 룸 생성
     request:
@@ -265,19 +265,19 @@ steps:
 
 ### 8.1 초기 케이스(시드) — dev에서 실제로 확인된 응답 기준
 
-| id | suite | 배우 | 요지 |
+| id | suite | 테스트 계정 | 요지 |
 | --- | --- | --- | --- |
 | platform.health | smoke | – | `/actuator/health` 200 |
 | catalog.terms / job-roles / regions | smoke | – | 카탈로그 3종 200 + `data` 존재 |
 | room.form-options / room.explore | smoke | – | 폼 선택지·탐색 목록 200 |
 | auth.me-without-token | smoke | – | `/v1/members/me` → 401 E1102 |
 | auth.dev-session-unknown | smoke | – | 없는 회원 → 404 E1006 |
-| member.me | smoke | qa-host | 200, `data.memberId == 배우` |
+| member.me | smoke | qa-host | 200, `data.memberId == 테스트 계정` |
 | room.create-and-cancel | sanity | qa-host | 위 예시 |
 | room.apply-and-withdraw | sanity | qa-host, qa-guest | 생성 → 신청(201 PENDING) → 철회 → 취소 |
 | room.create-limit | sanity | qa-host | 같은 공고·직무 활성 3개 → 4번째 409 E1427 (정리: 3개 취소) |
 
-비로그인 케이스 6건은 이미 dev 서버에서 응답을 확인했다. 배우가 필요한 케이스는 `qa-actors` 주입 후 검증한다.
+비로그인 케이스 6건은 이미 dev 서버에서 응답을 확인했다. 테스트 계정이 필요한 케이스는 `qa-actors` 주입 후 검증한다.
 
 ## 9. 데이터 모델 (sqlite)
 
@@ -332,7 +332,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 
 **백엔드 레포 변경 없음.**
 
-사람이 해야 하는 일: Cloudflare에 `qa.agent.plady.io` CNAME 1건, SSM 파라미터 2~3개 주입(QA 회원 UUID·픽스처 id), 첫 배포 후 배우 케이스 1회 확인.
+사람이 해야 하는 일: Cloudflare에 `qa.agent.plady.io` CNAME 1건, SSM 파라미터 2~3개 주입(QA 회원 UUID·픽스처 id), 첫 배포 후 테스트 계정 케이스 1회 확인.
 
 ## 11. 기술 선택과 이유
 
@@ -351,7 +351,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | 단계 | 내용 |
 | --- | --- |
 | P0 ✅ | 러너·케이스 형식·시드 13종·런/단계 기록·감사 로그·대시보드·런 상세·케이스·임의 실행·Slack·compose/배포 배선 |
-| P1 ✅ | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·배우/픽스처 SSM 주입·Hermes 실패 진단(P2 에서 앞당김) |
+| P1 ✅ | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·테스트 계정/픽스처 SSM 주입·Hermes 실패 진단(P2 에서 앞당김) |
 | P2 | TC 카탈로그(SSOT·OpenAPI·PRD 파생)·`covers` 검증·커버리지·드리프트 배지·Hermes 초안 생성·초안함·탐색기(Swagger 모드)·위키 보고서 발행 버튼 — 설계 [`qa-platform-tc.md`](qa-platform-tc.md) |
 | P3 | 커버리지 공백 화면, Linear 코멘트, live 읽기 전용 smoke, 스프린트 리마인더 Slack(알림만) |
 
@@ -360,7 +360,7 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 ## 13. 남은 결정
 
 1. **케이스 정본 위치** — 이 레포 `qa-platform/cases/`로 정했다(백엔드 레포 무변경 원칙 유지). 케이스가 API 변경과 같은 PR에 실려야 한다는 요구가 나오면 재검토한다.
-2. **dev QA 회원** — 기존 목데이터 회원 2개(`…1001` `…1003`)를 배우로 쓰는 것으로 제안한다. 이 회원들이 다른 목적으로 쓰이고 있어 QA가 상태를 바꾸면 곤란하다면, 전용 회원 2개를 만들어 UUID를 알려주면 된다.
+2. **dev QA 회원** — 기존 목데이터 회원 2개(`…1001` `…1003`)를 테스트 계정으로 쓰는 것으로 제안한다. 이 회원들이 다른 목적으로 쓰이고 있어 QA가 상태를 바꾸면 곤란하다면, 전용 회원 2개를 만들어 UUID를 알려주면 된다.
 3. **위키 보고서** — `wiki/qa/`에 generated 페이지, 사람이 [위키에 발행]을 누를 때만. 기본은 안 쓴다.
 4. **운영자 신원** — 자기 신고(§6.2). 진짜 신원이 필요하면 wiki-auth에 개인 계정을 얹는 별도 작업.
 5. **릴리스 게이트** — P0~P1에서는 사람이 릴리스 화면을 보고 승격을 판단하고 그 판단을 기록만 한다. `promote-live`가 플랫폼에 마지막 릴리스 런을 묻게 하는 것은 후속(자동 차단은 사람 트리거 원칙과 별개 사안이므로 그때 다시 논의).
@@ -372,7 +372,7 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 | 위치 | 내용 |
 | --- | --- |
 | `qa-platform/app.py`, `qa-platform/qa/*.py` | 서버·러너·저장소·GitHub 조회·Hermes 진단·Slack·UI. 표준 라이브러리 + PyYAML |
-| `qa-platform/cases/{platform,auth,room}.yaml` | 시드 13건 — smoke 10(비로그인 9 + 배우 1), sanity 3(배우·픽스처 필요) |
+| `qa-platform/cases/{platform,auth,room}.yaml` | 시드 13건 — smoke 10(비로그인 9 + 테스트 계정 1), sanity 3(테스트 계정·픽스처 필요) |
 | `qa-platform/tests/test_core.py` | 15 테스트(치환·단언·케이스 검증·선택·도메인 매핑·스프린트·러너·감사 로그·Hermes) |
 | `docker/qa-platform.Dockerfile` | `python:3.12-alpine` + PyYAML, `/data` 볼륨, HEALTHCHECK |
 | `compose.yaml` / `compose.ec2.yaml` | `qa-platform` 서비스(profile `qa`, `expose 8800`, 볼륨 `qa-data`), Caddy `@qa` = `qa.agent.plady.io`(팀 세션, `/health` 만 무인증) |
@@ -384,11 +384,11 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 ### 14.2 검증한 것
 
 - 단위 테스트 15/15. 도커 이미지 빌드·기동·`/health` OK.
-- dev 서버 상대 실제 실행: 스프린트 smoke 런 **통과 9 · skip 1**(배우 미설정 케이스 `member.me`) — 대시보드 → 확인 화면 → 실행 → 런 상세 → 활동 로그까지 브라우저로 확인.
-- 배우 흐름: 로컬에서 dev 목데이터 회원을 `QA_ACTORS` 로 주고 `member.me`·`room.creation-limit` 읽기 전용 케이스 실행 → dev-sessions 토큰 발급 → **통과**. 기록의 Authorization 은 `Bearer ***` 로 마스킹됨.
+- dev 서버 상대 실제 실행: 스프린트 smoke 런 **통과 9 · skip 1**(테스트 계정 미설정 케이스 `member.me`) — 대시보드 → 확인 화면 → 실행 → 런 상세 → 활동 로그까지 브라우저로 확인.
+- 테스트 계정 흐름: 로컬에서 dev 목데이터 회원을 `QA_ACTORS` 로 주고 `member.me`·`room.creation-limit` 읽기 전용 케이스 실행 → dev-sessions 토큰 발급 → **통과**. 기록의 Authorization 은 `Bearer ***` 로 마스킹됨.
 - 릴리스 흐름: 릴리스 런 → 백엔드 `release-checklist.md` 6항목을 raw 로 읽어 표시 → GO 판단 기록(meta + `release.decide` 이벤트). 릴리스가 아닌 런에 판단하면 400.
 - 운영자 없이 런 생성 시 400. GitHub 미인증 조회로 dev 배포 10건 + PR 제목 표시.
-- 배우·픽스처 주입 후(2026-09-21, 전용 QA 회원): 배우 케이스 4건 전부 통과 — 쓰기 sanity 2건은 dev 에 `[QA]` 룸을 만들고 신청·철회·취소까지 스스로 정리했다. 남은 미검증은 Hermes 진단(키가 없어 대역으로만)뿐이다.
+- 테스트 계정·픽스처 주입 후(2026-09-21, 전용 QA 회원): 테스트 계정 케이스 4건 전부 통과 — 쓰기 sanity 2건은 dev 에 `[QA]` 룸을 만들고 신청·철회·취소까지 스스로 정리했다. 남은 미검증은 Hermes 진단(키가 없어 대역으로만)뿐이다.
 
 ### 14.3 사람이 해야 하는 일 (배포 순서)
 
@@ -416,12 +416,12 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
    ```
 
 1. **Cloudflare** `agent.plady.io` 존에 `qa` CNAME → `plady-agent-platform-alb-1366645660.ap-northeast-2.elb.amazonaws.com` (기존 `n8n` 레코드와 같은 프록시 설정으로). ACM 은 `*.agent.plady.io` 와일드카드라 인증서 작업은 없다. ALB 리스너 규칙은 host 무관 단일 Caddy origin 이라 추가 없음. terraform `service_subdomains` 는 이미 갱신.
-2. **SSM** (`/plady/agent-platform/dev/`) — **2026-09-21 주입 완료** (`qa-actors` v3, `qa-fixtures` v2). 배우 = dev 에 새로 가입한 **전용 QA 회원 2명**(`영리한 라쿤 95` = qa-host, `차분한 라쿤 69` = qa-guest), 픽스처 = 공고 2889 / 직무 1 / 각자의 이력서. 값은 SSM 에만 있다.
+2. **SSM** (`/plady/agent-platform/dev/`) — **2026-09-21 주입 완료** (`qa-actors` v3, `qa-fixtures` v2). 테스트 계정 = dev 에 새로 가입한 **전용 QA 회원 2명**(`영리한 라쿤 95` = qa-host, `차분한 라쿤 69` = qa-guest), 픽스처 = 공고 2889 / 직무 1 / 각자의 이력서. 값은 SSM 에만 있다.
    - 처음엔 목데이터 회원(`고래 05`·`곰 04`)을 썼는데 목데이터 5명 전원이 참여 슬롯 한도(3)를 넘긴 상태라 룸 생성이 **409 E1425** 로 거부됐다 — 케이스가 아니라 dev 데이터 전제 조건 문제였고, 전용 회원으로 바꾸자 해소됐다.
    - 이 값으로 dev 에 돌린 결과: `member.me`·`room.creation-limit`·`room.create-and-cancel`·`room.apply-and-withdraw` **4/4 통과**. 쓰기 케이스는 `[QA]` 룸을 만들고 스스로 취소했다.
-   - 배우 회원을 바꾸면 `aws ssm put-parameter --overwrite` 로 두 값을 갱신하고 재배포한다. 목데이터 회원의 룸을 정리해 슬롯을 비우는 방법은 다른 용도의 데이터를 건드리므로 쓰지 않는다.
+   - 테스트 계정 회원을 바꾸면 `aws ssm put-parameter --overwrite` 로 두 값을 갱신하고 재배포한다. 목데이터 회원의 룸을 정리해 슬롯을 비우는 방법은 다른 용도의 데이터를 건드리므로 쓰지 않는다.
 3. **머지 → main** — 워크플로가 이미지를 빌드·배포하고 `https://qa.agent.plady.io/health` 를 smoke 한다.
-4. 배포 후 `https://qa.agent.plady.io` 에서 팀 비밀번호 로그인 → 케이스 화면에서 13건 보이는지 → 스프린트 smoke 1회 실행 → 배우 케이스가 pass 로 바뀌는지 확인. 쓰기 sanity 3건은 대시보드의 미검증 배포 [검증] 또는 임의 실행으로 1회 돌려 dev 에 `[QA]` 룸이 만들어졌다 취소되는지 본다.
+4. 배포 후 `https://qa.agent.plady.io` 에서 팀 비밀번호 로그인 → 케이스 화면에서 13건 보이는지 → 스프린트 smoke 1회 실행 → 테스트 계정 케이스가 pass 로 바뀌는지 확인. 쓰기 sanity 3건은 대시보드의 미검증 배포 [검증] 또는 임의 실행으로 1회 돌려 dev 에 `[QA]` 룸이 만들어졌다 취소되는지 본다.
 
 ### 14.4 운영 메모
 

@@ -2,7 +2,8 @@
 
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P2)
 - 선행 문서: [`qa-platform.md`](qa-platform.md) (P0·P1 설계와 런북). 이 문서는 그 §7.3·§12·§13 을 구체화한다.
-- 상태: **검토 대기** (구현 전). 결정이 필요한 항목은 §13.
+- 상태: **결정 확정, 구현 진행** (2026-09-21). 사용자가 결정을 위임해 §13 은 전부 권장안으로 확정했다.
+- 용어: 케이스가 로그인에 쓰는 dev 전용 QA 회원은 **테스트 계정**이라 부른다(YAML·코드 키는 `actor` 그대로).
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약
@@ -92,12 +93,15 @@ catalog: {ssot: 4bc51d05edce, openapi: 9e1c…, bindings: a7…}   # 이 레코�
 
 ### 4.4 바인딩 — SSOT 와 API 를 잇는 유일한 사람 손
 
+기획 명세와 API 는 1:1 이 아니다(사용자 확인). command 하나가 op 여러 개에 걸치거나(일괄 생성), op 하나가 command 여러 개를 실현하거나(취소 = 참여 취소의 특수형), API 가 아예 없는 command(시스템 전이·미구현)도 있다. 바인딩은 이 관계를 **있는 그대로** 적는 표이고, 못 잇는 것은 못 잇는 대로 카탈로그에 "API 없음" 으로 남는다.
+
 `qa-platform/catalog/bindings.yaml`:
 
 ```yaml
 # SSOT command → OpenAPI operationId. 없는 command 는 "API 없음(시스템 전이·미구현)"으로 카탈로그에 표시된다.
 commands:
   C.room.create: createRoom
+  C.room.create_batch: createRoom          # 여러 command 가 같은 op 를 가리켜도 된다
   C.application.submit: submitRoomApplication
   C.application.withdraw: withdrawRoomApplication
   C.participation.cancel: cancelRoom          # 방장의 룸 취소는 SSOT 에서 참여 취소의 특수형
@@ -208,7 +212,7 @@ path 비교는 OpenAPI 템플릿(`/v1/rooms/{roomId}`)과 케이스 path(`/v1/ro
 1. 고른 TC 레코드 전문(§4.3). 거절 TC 는 `must_pass_first` 포함 — "앞 검사를 통과시켜 두어야 이 검사가 걸린다"가 케이스 단계 설계의 핵심이다.
 2. 바인딩된 op 의 OpenAPI 발췌: path·method·요청 예시·응답 예시(성공 1 + 에러 전부).
 3. PRD 절 본문: TC `source` 의 `PRD/{문서} §{절}` 을 `/wiki/raw/product/{slug}.md` 에서 `### {절}` 헤딩부터 다음 헤딩 전까지 추출. 절당 최대 80줄.
-4. 사용 가능한 배우 이름과 픽스처 **키** 목록(값 없음), 치환 문법, 케이스 형식(§8 of 선행 문서), 잘 만든 예시 케이스 1개(`room.creation-limit`).
+4. 사용 가능한 테스트 계정 이름과 픽스처 **키** 목록(값 없음), 치환 문법, 케이스 형식(§8 of 선행 문서), 잘 만든 예시 케이스 1개(`room.creation-limit`).
 5. 규칙: 출력은 YAML 케이스 목록만. 각 케이스·단계에 `covers` 필수이며 요청한 TC id 의 부분집합. 쓰기 케이스는 자기가 만든 것을 닫는 단계로 끝난다. 제목 접두 `[QA]`. 모르는 값은 지어내지 말고 `TODO:` 로 남긴다.
 
 Hermes 의 위키 도구를 쓰지 않는 이유: 도구 호출은 어떤 문서를 읽을지가 매번 달라 재현이 안 되고, 근거 없는 초안을 걸러낼 기준이 사라진다. 플랫폼이 넣어 준 근거만으로 쓰게 하면 "근거 = 프롬프트에 있던 것" 이 성립하고, 검증 겹(§7.2)이 그 근거와 대조할 수 있다(결정 §13-8).
@@ -238,10 +242,10 @@ Hermes 의 위키 도구를 쓰지 않는 이유: 도구 호출은 어떤 문서
 
 ## 8. 탐색기 `/explorer` (Swagger 모드)
 
-- 왼쪽: OpenAPI op 목록(태그·검색). 오른쪽: 선택한 op 의 폼 — path 파라미터, query, body(요청 예시로 미리 채움, 편집 가능), 배우 드롭다운(없음 / qa-host / qa-guest).
+- 왼쪽: OpenAPI op 목록(태그·검색). 오른쪽: 선택한 op 의 폼 — path 파라미터, query, body(요청 예시로 미리 채움, 편집 가능), 테스트 계정 드롭다운(없음 / qa-host / qa-guest).
 - [보내기] → 응답 status·본문·소요 시간 표시. **모든 전송은 런이다**: `trigger=explorer`, 케이스 id `explorer.<operationId>`, 단계 1개, `expect` 없음(판정 `pass` 가 아니라 `n/a`). 새 테이블 없이 마스킹·절단·감사 로그·이력 화면을 그대로 얻는다. 목록 화면에서는 기본 숨김(필터로 보기).
 - [케이스 단계로 담기] → 방금 요청·응답을 단계 YAML 로 변환해 `drafts` 에 `source=explorer` 로 추가(기대는 방금 받은 status·error_code 로 채움, `covers` 는 비워 두고 사람이 채움 — 검증 §7.2 는 승인 전에 돈다).
-- 쓰기 op 허용 범위: dev 대상이고 배우가 QA 회원 2명뿐이므로 허용한다. 단 목데이터 회원은 배우 목록에 없다(결정 §13-7).
+- 쓰기 op 허용 범위: dev 대상이고 테스트 계정이 QA 회원 2명뿐이므로 허용한다. 단 목데이터 회원은 테스트 계정 목록에 없다(결정 §13-7).
 
 ## 9. 위키 보고서 발행
 
@@ -257,7 +261,7 @@ Hermes 의 위키 도구를 쓰지 않는 이유: 도구 호출은 어떤 문서
 | --- | --- |
 | 카탈로그 | DB 아님. `/data/catalog/*.json` 캐시 + `latest.json` |
 | `drafts` | 열 추가: `tc_ids`(json), `validation`(json), `prompt_hash`, `run_id`(check 런). `status` 값에 `checked` 추가 |
-| `runs.meta` | `catalog`(입력 버전), `explorer`(op, 배우) 키 추가. 열 추가 없음 |
+| `runs.meta` | `catalog`(입력 버전), `explorer`(op, 테스트 계정) 키 추가. 열 추가 없음 |
 | `events.action` | `catalog.refresh`(계산이 일어난 시각·버전, 사람 행위는 아니지만 기준 변경 추적용), `draft.*`, `explorer.send`, `run.publish` |
 | 케이스 YAML | `covers`(케이스·단계), `reviewed`(선택) |
 | 레포 파일 | `qa-platform/catalog/bindings.yaml`, `exclusions.yaml`, `prd-tc.yaml` |
@@ -284,9 +288,9 @@ Hermes 의 위키 도구를 쓰지 않는 이유: 도구 호출은 어떤 문서
 
 P2a 를 먼저 배포해 팀이 `/catalog` 를 보고 바인딩·제외를 채우는 동안 P2b 를 만든다. 커밋은 단계·파일 단위로 응집한다.
 
-## 13. 결정 필요
+## 13. 결정 (확정 — 권장안 채택)
 
-| # | 질문 | 권장 | 대안 |
+| # | 질문 | 확정 | 버린 대안 |
 | --- | --- | --- | --- |
 | 1 | 정책 TC 파생 위치 | **B** 플랫폼이 위키 볼륨을 읽기 전용 마운트하고 `render_tests.cases()` 를 import | A team-wiki-v2 렌더러가 JSON 커밋(§4.5) |
 | 2 | SSOT command↔op 바인딩과 에러 코드 위치 | 지금은 `qa-platform/catalog/bindings.yaml`. SSOT `error` 가 채워지면 SSOT 우선 | 처음부터 SSOT 에 `api:`/`error:` 추가(기획 문서에 구현 사실이 들어간다) |
@@ -294,7 +298,7 @@ P2a 를 먼저 배포해 팀이 `/catalog` 를 보고 바인딩·제외를 채�
 | 4 | 커버리지 분모 | 전체 TC, 제외는 사유 필수 파일, 화면에 표시 | 자동화 가능한 것만 분모(분모를 플랫폼이 정하게 된다) |
 | 5 | 승인된 초안의 행선지 | YAML 복사 → 사람이 PR. 플랫폼은 git 에 안 쓴다 | 플랫폼이 GitHub PR 생성(쓰기 토큰·브랜치 관리가 생긴다) |
 | 6 | 위키 보고서 | `wiki/qa/` 스프린트·릴리스 런만, 버튼만(기존 결정 유지) | 매 런 발행(위키 소음) |
-| 7 | 탐색기에서 쓰기 op | 허용, 배우는 QA 회원 2명만 | GET 만 |
+| 7 | 탐색기에서 쓰기 op | 허용, 테스트 계정은 QA 회원 2명만 | GET 만 |
 | 8 | 초안 생성 시 Hermes 위키 도구 | 안 씀. 플랫폼이 근거를 조립해 넣는다 | Hermes 가 `wiki_content_read` 로 직접 찾는다 |
 | 9 | 서술 TC(`prd-tc.yaml`) | P2a 에 파일과 로더만, 내용은 팀이 채운다. Hermes 로 PRD 절에서 뽑는 것은 P3 | P2 에서 Hermes 추출까지 |
 

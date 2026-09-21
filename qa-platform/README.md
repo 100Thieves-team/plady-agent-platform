@@ -12,7 +12,7 @@
 ```bash
 python3 qa-platform/app.py
 ```
-기본 포트 8800, 데이터 `/data` (로컬은 `QA_DATA_DIR` 로 바꾼다). 배우가 필요한 케이스는 `QA_ACTORS='{"qa-host":"<uuid>"}'` 를 주면 실행되고, 없으면 skipped 로 기록된다.
+기본 포트 8800, 데이터 `/data` (로컬은 `QA_DATA_DIR` 로 바꾼다). 테스트 계정이 필요한 케이스는 `QA_ACTORS='{"qa-host":"<uuid>"}'` 를 주면 실행되고, 없으면 skipped 로 기록된다.
 
 ```bash
 python3 -m unittest discover -s qa-platform/tests

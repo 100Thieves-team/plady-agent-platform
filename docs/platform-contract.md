@@ -69,7 +69,7 @@ PLA-246 fixes the foundation contract: domain ownership, public endpoint names, 
 | `/plady/agent-platform/<env>/webex-webhook-secret` | Webex 웹훅 HMAC-SHA1 secret | n8n 워크플로(등록·검증) | 회전 시 Webex 웹훅 재등록. 런북 [`webex-ingest.md`](webex-ingest.md). |
 | `/plady/agent-platform/<env>/slack-ingest-signing-secret` | Slack 수집 앱 Signing Secret | n8n 워크플로(Events API 서명 검증) | Hermes Slack 앱과 별개 앱. 런북 [`webex-ingest.md`](webex-ingest.md). |
 | `/plady/agent-platform/<env>/slack-ingest-bot-token` | Slack 수집 앱 Bot token (`xoxb-`) | n8n 워크플로(files.info·캔버스 다운로드) | 스코프 channels:history, groups:history, channels:read, groups:read, files:read. |
-| `/plady/agent-platform/<env>/qa-actors` | JSON `{"qa-host": "<회원 UUID>", "qa-guest": "<회원 UUID>"}` — dev 목데이터 회원 | qa-platform (배우 토큰 발급) | 없으면 배우 케이스는 skipped 로 기록. 런북 [`qa-platform.md`](qa-platform.md). |
+| `/plady/agent-platform/<env>/qa-actors` | JSON `{"qa-host": "<회원 UUID>", "qa-guest": "<회원 UUID>"}` — dev 목데이터 회원 | qa-platform (테스트 계정 토큰 발급) | 없으면 테스트 계정 케이스는 skipped 로 기록. 런북 [`qa-platform.md`](qa-platform.md). |
 | `/plady/agent-platform/<env>/qa-fixtures` | JSON `{"postingId": …, "jobRoleId": …, "qa-host.resumeId": "…"}` — 케이스가 참조하는 dev 데이터 id | qa-platform (쓰기 케이스) | dev 데이터가 바뀌면 케이스가 아니라 이 값을 고친다. |
 | `/plady/agent-platform/<env>/qa-github-token` | (선택) 읽기 전용 GitHub PAT | qa-platform (배포·PR 조회) | 없으면 미인증 60 req/h + 캐시로 동작. |
 
