@@ -352,7 +352,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | --- | --- |
 | P0 ✅ | 러너·케이스 형식·시드 13종·런/단계 기록·감사 로그·대시보드·런 상세·케이스·임의 실행·Slack·compose/배포 배선 |
 | P1 ✅ | 배포 감지(GitHub 조회)·변경 범위 제안·배포 검증 버튼·스프린트 배지·릴리스 화면(체크리스트 + 판단 기록)·활동 화면·테스트 계정/픽스처 SSM 주입·Hermes 실패 진단(P2 에서 앞당김) |
-| P2 | TC 카탈로그(SSOT·OpenAPI·PRD 파생)·`covers` 검증·커버리지·드리프트 배지·Hermes 초안 생성·초안함·탐색기(Swagger 모드)·위키 보고서 발행 버튼 — 설계 [`qa-platform-tc.md`](qa-platform-tc.md) |
+| P2 ✅ | TC 카탈로그(SSOT·OpenAPI·서술 파생)·`covers` 검증·커버리지·드리프트 배지·Hermes 초안 생성·초안함·탐색기(Swagger 모드)·위키 보고서 발행 버튼·가이드 화면 — 설계·구현 결과 [`qa-platform-tc.md`](qa-platform-tc.md) |
 | P3 | 커버리지 공백 화면, Linear 코멘트, live 읽기 전용 smoke, 스프린트 리마인더 Slack(알림만) |
 
 P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.

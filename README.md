@@ -95,7 +95,7 @@ docker compose --profile hermes up -d hermes-gateway
 scripts/hermes-gateway-smoke.sh   # health + auth boundary + /v1/models
 ```
 
-`qa-platform` 서비스는 `qa` 프로필입니다. dev 백엔드(`QA_TARGET_BASE_URL`, 기본 `https://api.dev.moimyeon.plady.io`)를 상대로 케이스를 실행하고 기록합니다. 실행은 UI 에서 사람이 시작하며, 테스트 계정이 필요한 케이스는 `QA_ACTORS`(JSON) 없이는 skipped 로 기록됩니다.
+`qa-platform` 서비스는 `qa` 프로필입니다. dev 백엔드(`QA_TARGET_BASE_URL`, 기본 `https://api.dev.moimyeon.plady.io`)를 상대로 케이스를 실행하고 기록합니다. 실행은 UI 에서 사람이 시작하며, 테스트 계정이 필요한 케이스는 `QA_ACTORS`(JSON) 없이는 skipped 로 기록됩니다. 검증 기준(TC)은 `./wiki-workspace`(team-wiki-v2 체크아웃)를 읽기 전용으로 마운트해 SSOT·PRD 에서 파생합니다([`docs/qa-platform-tc.md`](docs/qa-platform-tc.md)).
 
 ```bash
 docker compose --profile qa up -d --build qa-platform   # http://localhost:8800

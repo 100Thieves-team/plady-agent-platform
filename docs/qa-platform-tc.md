@@ -310,3 +310,36 @@ P2a 를 먼저 배포해 팀이 `/catalog` 를 보고 바인딩·제외를 채�
 - **바인딩 노후.** OpenAPI 에서 op 가 사라지면 그 바인딩은 `/catalog` 경고. 케이스는 어차피 로더 검증에서 걸린다.
 - **초안 품질.** 검증에서 버려진 비율을 `events` 로 남기고, 높으면 프롬프트(§7.1 5번)를 고친다. 자동으로 재시도하지 않는다.
 - **원칙 ① 오해.** 카탈로그 재계산은 읽기라 자동이다. 런·전송·초안·발행은 전부 버튼이다. 이 구분을 §3 에 못 박았다.
+
+## 15. 구현 결과 (2026-09-21)
+
+P2a~P2d 전부 구현·로컬 검증했다. 테스트 27건(`python3 -m unittest discover -s qa-platform/tests`). 실제 `wiki-workspace` 체크아웃과 스펙 발췌 픽스처로 카탈로그 파생·대조 회귀를 CI 에서 잡는다.
+
+### 15.1 무엇이 들어갔나
+
+| 단계 | 파일 | 요지 |
+| --- | --- | --- |
+| P2a 기준 | `qa/wiki.py` `qa/spec.py` `qa/catalog.py` `catalog/{bindings,exclusions,manual-tc}.yaml` | 정책 230 + 계약 278 + 서술 4 = 512 TC. 위키 볼륨 읽기 전용 마운트(안 B), `render_tests.cases()` import. 캐시·변경 이력 `/data/catalog/` |
+| P2a 대조 | `qa/cases.py` `cases/*.yaml` | `covers`(케이스·단계), `reviewed`, `audit()`. 시드 13건 마이그레이션 — 유령 참조 `G.room.cancel` 은 `G.participation.cancel#2` 로 |
+| P2a 화면 | `app.py` `qa/ui.py` | `/catalog` `/catalog/tc?id=` 대시보드 커버리지 카드, 케이스 대조·근거 변경 배지, 런 meta.catalog |
+| P2b 초안 | `qa/drafts.py` `qa/hermes.py` `qa/store.py` | 근거 조립 → Hermes → 결정론 검증 → `/drafts`. `draft-check` 런. 승인 = YAML 복사 → PR |
+| P2c 탐색기 | `app.py` `qa/ui.py` `qa/runner.py` | `/explorer` 전송 = 런(trigger explorer, 동기·직렬), 런 목록 기본 숨김, [케이스 단계로 담기] |
+| P2d 발행 | `qa/mcp.py` `qa/report.py` | 런 상세 [위키에 발행]/[dry-run] → `wiki_apply` mode generated, 슬러그 `qa/<YYYY-Www>-<trigger>` |
+| 가이드 | `qa/ui.py` | `/guide` — 트리거 원리, TC 출처, AI 개입 시점, 화면별 용도, 개발·QA 워크플로우 (사용자 요청) |
+
+### 15.2 설계에서 달라진 것
+
+- **서술 TC 파일은 `manual-tc.yaml`** (설계 `prd-tc.yaml`). PRD 밖 운영 기준(헬스 체크)도 담아야 해서 `OPS.` 접두를 더했다. 층 이름은 `manual`.
+- **`reviewed` 는 `{at, by}`** (설계 `{ssot: hash, …}`). 변경 이력을 TC 별 시각으로 쌓으므로 "검토 시각 이후 변경" 이 더 단순하고 SSOT·OpenAPI 두 원천에 같이 통한다.
+- **OpenAPI 미디어 타입** `application/json;charset=UTF-8` 을 REST Docs 가 섞어 낸다. 이걸 놓치면 401 예시(E1102)가 통째로 빠진다 — 파서가 둘 다 읽는다.
+- **탐색기 전송은 동기** (큐 대신 워커와 같은 락). 사람이 응답을 바로 봐야 해서다. 직렬성은 유지된다.
+- **발행 대상에 배포 검증 런도 포함** (설계는 스프린트·릴리스만). 버튼은 같고 기본은 안 누른다.
+- **`wiki_apply` 계약 확인**: 인자 `{mode, changes:[{path, content}], message, expected_head?, dry_run?}`. `generated` 모드는 `policy` 경로이거나 frontmatter `managed_by: harness` 여야 통과 — 보고서는 후자. `qa/` 컬렉션은 `wiki.toml` `type_by_prefix` 에 없어 kind 가 없는 페이지로 들어간다. **live 에서 첫 발행은 [dry-run] 으로 먼저 확인한다** (§15.3-3).
+
+### 15.3 사람이 해야 하는 일
+
+1. **push → 배포** (paths 트리거 `qa-platform/**`, compose). 배포 후 `https://qa.agent.plady.io/health` 에서 `catalog.records` 가 500 근처, `wiki.available: true` 인지 본다. `false` 면 `wiki-data` 볼륨 마운트 문제다.
+2. **기준 화면 한 바퀴.** `/catalog?domain=room` 에서 카탈로그 경고 7건(스펙 예시 누락)을 확인한다. 이건 백엔드 REST Docs 에 E1102·E1410·E1425·E1427 예시를 추가하면 사라진다 — 백엔드 이슈로 뺄지 결정.
+3. **첫 발행은 dry-run.** 스프린트 smoke 를 한 번 돌린 뒤 런 상세 [dry-run]. llm-wiki 가 `qa/` 슬러그를 받는지(`type_by_prefix` 밖) 여기서 확인된다. 거부하면 `report.slug_for` 를 `topics/qa-…` 로 바꾸는 한 줄 수정.
+4. **초안 생성 1회.** `/catalog` 에서 미커버 TC 2~3건(같은 도메인) 고르고 [초안 생성]. 검증 탈락률은 활동 화면 `draft.rejected_by_validation` 으로 본다.
+5. **Linear MOI-483** 코멘트 갱신(이 세션에서 Linear 연결이 인증 대기라 못 남겼다).
