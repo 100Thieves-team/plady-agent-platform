@@ -108,9 +108,12 @@ class Store:
             r["meta"] = json.loads(r["meta"] or "{}")
         return r
 
-    def list_runs(self, limit: int = 50, trigger: str | None = None) -> list[dict]:
+    def list_runs(self, limit: int = 50, trigger: str | None = None, exclude: tuple = ()) -> list[dict]:
         if trigger:
             rows = self._q("SELECT * FROM runs WHERE trigger=? ORDER BY created_at DESC LIMIT ?", (trigger, limit))
+        elif exclude:
+            marks = ",".join("?" for _ in exclude)
+            rows = self._q(f"SELECT * FROM runs WHERE trigger NOT IN ({marks}) ORDER BY created_at DESC LIMIT ?", (*exclude, limit))
         else:
             rows = self._q("SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,))
         for r in rows:

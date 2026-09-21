@@ -78,7 +78,7 @@ DRAFT_KO = {"draft": "초안", "checked": "확인됨", "approved": "승인", "re
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "초안"), ("activity", "/activity", "활동"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "초안"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -200,13 +200,14 @@ def run_new(*, trigger: str, target: dict, suggested: list, all_cases: list, bas
 
 
 # ---- 런 목록·상세 ------------------------------------------------------------------------------
-def runs_list(runs: list[dict]) -> str:
+def runs_list(runs: list[dict], show_all: bool = False) -> str:
     rows = "".join(
         f'<tr><td><a href="/runs/{e(r["id"])}" class="mono">{e(r["id"])}</a></td><td>{e(TRIGGER_KO.get(r["trigger"], r["trigger"]))}</td>'
         f'<td>{e(r["operator"])}</td><td class="mono small">{e((r.get("sha") or "")[:8])}{(" #" + str(r["pr_number"])) if r.get("pr_number") else ""}</td>'
         f'<td>{run_badge(r)}</td><td class="small">{r["passed"]} / {r["failed"]} / {r["errored"]} / {r["skipped"]}</td>'
         f'<td class="small mut">{kst(r["created_at"])}</td></tr>' for r in runs) or '<tr><td colspan="7" class="mut">런이 없다</td></tr>'
-    return f'<h1>런</h1><div class="card"><table><tr><th>ID</th><th>트리거</th><th>운영자</th><th>대상</th><th>판정</th><th>통과/실패/오류/skip</th><th>시각</th></tr>{rows}</table></div>'
+    toggle = '<a href="/runs">탐색기 전송 숨기기</a>' if show_all else '<a href="/runs?all=1">탐색기 전송도 보기</a>'
+    return f'<h1>런 <span class="small mut">{toggle}</span></h1><div class="card"><table><tr><th>ID</th><th>트리거</th><th>운영자</th><th>대상</th><th>판정</th><th>통과/실패/오류/skip</th><th>시각</th></tr>{rows}</table></div>'
 
 
 def _checks_html(checks: list[dict]) -> str:
@@ -497,3 +498,127 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
             f'<div>검증</div><div>{badge({"ok": "OK", "warn": "경고", "error": "오류"}.get(v.get("status"), v.get("status") or "–"), {"ok": "pass", "warn": "warn", "error": "fail"}.get(v.get("status"), ""))}'
             f'{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div></div>{run_html}</div>'
             f'{approved_html}{forms}')
+
+
+# ---- 탐색기 (Swagger 모드) ------------------------------------------------------------------------
+def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str], operators: list[str], operator: str, q: str) -> str:
+    ql = (q or "").lower()
+    items = ""
+    for o in sorted(spec.ops.values(), key=lambda o: (o.path, o.method)):
+        if not o.path.startswith("/v1/"):
+            continue
+        if ql and ql not in (o.id + o.path + o.summary).lower():
+            continue
+        on = "font-weight:600" if op and o.id == op.id else ""
+        items += (f'<div class="small" style="{on};padding:2px 0"><a href="/explorer?op={e(o.id)}{("&q=" + e(q)) if q else ""}">'
+                  f'<span class="mono">{e(o.method)}</span> {e(o.path)}</a> <span class="mut">{e(o.summary)}</span></div>')
+    left = (f'<div class="card"><form method="get"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약)" style="width:100%"></form>'
+            f'<div style="max-height:70vh;overflow:auto;margin-top:8px">{items or "<span class=\"mut\">없음</span>"}</div></div>')
+    head = '<h1>탐색기 <span class="small mut">OpenAPI 로 dev 에 한 번 보내 보기</span></h1>'
+    if not op:
+        right = '<div class="card"><p class="mut">왼쪽에서 op 를 고르면 스펙에서 폼을 만든다. 보내기는 런으로 기록된다 (감사 로그·마스킹·응답 절단 동일).</p></div>'
+        return f'{head}<div class="grid" style="grid-template-columns:380px 1fr">{left}{right}</div>'
+    pp = "".join(f'<p><label>path <b>{e(x["name"])}</b>{" *" if x["required"] else ""} <span class="small mut">{e(x["description"])}</span><br>'
+                 f'<input name="p_{e(x["name"])}" style="width:100%" {"required" if x["required"] else ""}></label></p>'
+                 for x in op.params if x["in"] == "path")
+    qp = "".join(f'<p><label>query <b>{e(x["name"])}</b>{" *" if x["required"] else ""} <span class="small mut">{e(x["description"])}</span><br>'
+                 f'<input name="q_{e(x["name"])}" style="width:100%"></label></p>'
+                 for x in op.params if x["in"] == "query")
+    body = ""
+    if op.method in ("POST", "PUT", "PATCH"):
+        ex = json.dumps(op.request_example, ensure_ascii=False, indent=1) if op.request_example is not None else ""
+        body = (f'<p><label>본문 (JSON) <span class="small mut">스펙 예시로 채웠다. 만드는 데이터의 title 은 [QA] 로</span><br>'
+                f'<textarea name="body" style="min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(ex)}</textarea></label></p>')
+    acts = "".join(f'<option value="{e(a)}">{e(a)}</option>' for a in actors)
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    errs = "".join(f'<li><span class="mono">{e(code)}</span> {e(i.get("status"))} {e(i.get("message"))}</li>' for code, i in op.errors.items()) or "<li class='mut'>문서화된 에러 없음</li>"
+    form = (f'<div class="card"><h3 style="margin-top:0"><span class="mono">{e(op.method)}</span> {e(op.path)} <span class="small mut">{e(op.id)} · {e(op.summary)}</span></h3>'
+            f'<form method="post" action="/explorer/send"><input type="hidden" name="op" value="{e(op.id)}">{pp}{qp}{body}'
+            f'<p><select name="actor"><option value="">비로그인</option>{acts}</select> <select name="operator" required><option value="">— 운영자 —</option>{ops}</select> '
+            f'<button class="primary">보내기</button> <span class="small mut">dev 에 실제로 보낸다. 쓰기 op 도 허용 (테스트 계정 2개뿐)</span></p></form>'
+            f'<details><summary class="small mut">문서화된 에러 코드</summary><ul class="small">{errs}</ul></details></div>')
+    result = ""
+    if run and steps:
+        st = steps[0]
+        resp = st.get("response") or {}
+        rbody = resp.get("json") if resp.get("json") is not None else resp.get("text")
+        req = st["request"]
+        ok = str(resp.get("status") or "").startswith("2")
+        result = (f'<div class="card"><h3 style="margin-top:0">응답 {badge(str(resp.get("status") or "–"), "ok" if ok else "warn")} '
+                  f'<span class="small mut">{resp.get("elapsed_ms") or 0} ms · 런 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a></span></h3>'
+                  f'{("<div class=\"small\" style=\"color:var(--bad)\">" + e(st.get("error")) + "</div>") if st.get("error") else ""}'
+                  f'<details open><summary class="small mut">응답 본문</summary><pre>{e(json.dumps(rbody, ensure_ascii=False, indent=1) if not isinstance(rbody, str) else rbody)}</pre></details>'
+                  f'<details><summary class="small mut">보낸 요청</summary><pre>{e(json.dumps({k: v for k, v in req.items() if k in ("url", "query", "body", "headers", "actor")}, ensure_ascii=False, indent=1))}</pre></details>'
+                  f'<form method="post" action="/explorer/draft" class="actions"><input type="hidden" name="run" value="{e(run["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
+                  f'<button {"" if operator else "disabled"}>케이스 단계로 담기 (초안함)</button> <span class="small mut">관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
+    return f'{head}<div class="grid" style="grid-template-columns:380px 1fr">{left}<div>{form}{result}</div></div>'
+
+
+# ---- 가이드 --------------------------------------------------------------------------------------
+def _sec(title: str, body: str) -> str:
+    return f'<h2>{title}</h2><div class="card">{body}</div>'
+
+
+def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> str:
+    intro = ('<h1>가이드 — 이 플랫폼은 무엇을 하고, 어떻게 쓰는가</h1>'
+             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(TC)</b> 을 뽑고, '
+             '그 기준을 덮는 <b>케이스</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
+
+    s1 = f"""
+<ol>
+<li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [임의 실행]. 크론·webhook·자동 실행은 설계상 없다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
+<li><b>확인 화면.</b> 플랫폼이 범위를 <i>제안</i>한다 — 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 케이스, 스프린트면 smoke 전체. 운영자(자기 신고)를 고르고 케이스를 조정한 뒤 [실행].</li>
+<li><b>런이 만들어진다.</b> 그 시점의 케이스 본문(스냅샷)·기준 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 런에 고정된다. 나중에 케이스나 기준이 바뀌어도 과거 런은 그대로다.</li>
+<li><b>러너가 순서대로 보낸다.</b> 한 번에 런 하나, 케이스는 순차, 단계는 요청 → 응답 → 단언(expect 5종: status · result · error_code · json · exists). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
+<li><b>판정.</b> 단언 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정 = <b>skipped</b>(설정 문제, 실패 아님). 런 판정은 케이스 판정의 합. Slack 에 시작·종료가 간다.</li>
+<li><b>실패하면.</b> 런 상세에서 단계별 요청·응답·단언을 본다. [Hermes 진단] 을 누르면 AI 가 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
+</ol>
+<p class="small mut">모든 버튼은 활동 화면(감사 로그)에 운영자·세션 해시·IP 와 함께 남는다. 세션은 팀 공용이라 운영자는 자기 신고다.</p>"""
+
+    s2 = f"""
+<p>플랫폼은 TC 를 <b>만들지 않는다</b>. 정본에서 <b>파생</b>한다. 같은 입력이면 같은 카탈로그가 나온다.</p>
+<table><tr><th>층</th><th>정본</th><th>TC 예</th><th>답하는 질문</th></tr>
+<tr><td>정책</td><td><a href="{e(wiki_url)}/policy/">상태-SSOT.yaml</a> (기획 SSOT) — team-wiki-v2 의 <span class="mono">render_tests.cases()</span> 를 그대로 가져와 쓴다</td><td><span class="mono">G.room.create#8</span> (게이트 8번째 검사에서 거절) · <span class="mono">C.room.create</span> (성공 전이)</td><td>기획이 정한 규칙이 지켜지는가</td></tr>
+<tr><td>계약</td><td>백엔드 OpenAPI (dev 브랜치, REST Docs 산출물)</td><td><span class="mono">op.createRoom:200</span> · <span class="mono">op.createRoom:E1402</span></td><td>API 가 문서대로 응답하는가</td></tr>
+<tr><td>서술</td><td>사람이 적는 <span class="mono">qa-platform/catalog/manual-tc.yaml</span> (PRD 절 · 운영 기준)</td><td><span class="mono">PRD.룸-탐색.4.1#1</span> · <span class="mono">OPS.platform.health#1</span></td><td>SSOT 로 형식화되지 않은 요구</td></tr></table>
+<p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 TC(시스템 전이·OAuth·운영자 전용)는 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다 — 분모에서 빠지지만 화면에는 보인다.</p>
+<p><b>케이스는 <span class="mono">covers:</span> 로 어떤 TC 를 덮는지 선언</b>하고, 플랫폼이 그 선언을 검증한다 — TC id 가 실재하는지, 계약 TC 라면 단계의 method·path·기대 코드가 실제로 그 계약과 맞는지. 거짓 선언은 "대조 오류" 로 스위트에서 빠진다. 커버리지 분모는 전체 TC 다.</p>
+<p><b>기준이 바뀌면.</b> 위키 SSOT 나 OpenAPI 가 바뀌면 카탈로그가 다시 계산되고(읽기라 자동), 덮는 TC 가 바뀐 케이스에 <span class="b drift">근거 변경</span> 배지가 붙는다. 케이스를 다시 본 뒤 <span class="mono">reviewed: {{at, by}}</span> 를 적으면 그 이후 변경만 배지로 뜬다. 케이스를 자동으로 고치거나 런을 자동으로 돌리지는 않는다.</p>"""
+
+    s3 = """
+<table><tr><th>화면</th><th>언제</th><th>무엇</th></tr>
+<tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, 기준 커버리지 매트릭스, 최근 런</td></tr>
+<tr><td><a href="/runs">런</a></td><td>실행 후</td><td>런 목록·상세(단계별 요청·응답·단언), Hermes 진단, 릴리스 판단 기록</td></tr>
+<tr><td><a href="/cases">케이스</a></td><td>케이스 관리</td><td>정본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 대조 상태·근거 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
+<tr><td><a href="/catalog">기준</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 덮는 케이스, 바인딩, 제외 사유, 카탈로그 경고(스펙 누락 등). TC 를 골라 [초안 생성]</td></tr>
+<tr><td><a href="/drafts">초안</a></td><td>케이스 늘릴 때</td><td>Hermes·탐색기가 만든 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
+<tr><td><a href="/explorer">탐색기</a></td><td>손으로 확인할 때</td><td>OpenAPI 에서 폼을 만들어 dev 에 한 번 보낸다. 전송도 런으로 기록. 응답을 [케이스 단계로 담기]</td></tr>
+<tr><td><a href="/activity">활동</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
+
+    s4 = """
+<ol>
+<li><b>PR 을 dev 에 머지한다.</b> 백엔드 CI 가 dev 에 배포하면 대시보드 "dev 배포" 에 <span class="b warn">미검증</span> 으로 뜬다 (GitHub Actions 조회, 1분 캐시).</li>
+<li><b>[검증] 을 누른다.</b> 플랫폼이 PR 변경 파일에서 도메인을 읽어 그 도메인의 sanity 를 제안한다. 확인하고 실행. 통과하면 그 배포에 ✅ 가 붙는다.</li>
+<li><b>실패하면 셋 중 하나다.</b> (a) 버그 → 고친다. (b) 케이스 노후 — 기획이 바뀌어 케이스가 틀렸다 → 케이스 YAML 을 고쳐 PR. (c) 환경 — 픽스처(공고 id 등)가 바뀜 → SSM <span class="mono">qa-fixtures</span> 를 고친다. Hermes 진단이 셋 중 무엇인지 제안한다.</li>
+<li><b>새 기능이면 기준을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 기준 화면에 TC 가 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다 — 플랫폼에서 TC 를 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
+<li><b>케이스를 늘린다.</b> 기준 화면에서 미커버 TC 를 골라 [초안 생성] → 초안함에서 [한 번 실행해 보기] → 승인 → YAML 을 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 붙여 PR. 리뷰·머지되면 다음 배포에 실린다. 승인 없이 스위트에 들어가는 케이스는 없다.</li>
+<li><b>쓰기 케이스 규칙.</b> 만든 데이터는 같은 케이스 안에서 닫는다(취소·철회·삭제). 만드는 데이터의 title 은 <span class="mono">[QA]</span> 로 시작. 테스트 계정(qa-host · qa-guest)만 쓴다 — 목데이터 회원은 참여 슬롯이 차 있어 쓰기에 못 쓴다.</li>
+</ol>"""
+
+    s5 = f"""
+<ul>
+<li><b>스프린트마다 한 번</b> ({sprint_days}일 주기, Linear 사이클과 같은 번호) 대시보드에서 [스프린트 smoke 실행]. 배지가 "미실행" 이면 아직 안 한 것이다.</li>
+<li><b>실배포 전</b> [릴리스 검증] → smoke 전체 실행 → 런 상세의 릴리스 체크리스트(백엔드 <span class="mono">docs/knowledge/release-checklist.md</span> 에서 읽어 옴)를 확인하고 GO / NO-GO 를 <b>기록</b>한다. 기록만 하고 승격을 막지는 않는다.</li>
+<li><b>보고서.</b> 스프린트·릴리스 런은 [위키에 발행] 로 llm-wiki <span class="mono">wiki/qa/</span> 에 남길 수 있다. 사람이 누를 때만, 개인 식별값은 마스킹.</li>
+</ul>"""
+
+    s6 = f"""
+<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고, dev 데이터 오염·런 폭주·알림 피로가 구조적으로 막힌다. 카탈로그 <i>계산</i>은 읽기라 자동이지만 실행·전송·초안·발행은 전부 버튼이다.</p>
+<p><b>skipped 는 실패인가?</b> 아니다. 테스트 계정(<span class="mono">qa-actors</span>)이나 픽스처(<span class="mono">qa-fixtures</span>)가 없어 못 보낸 것이다. 설정을 먼저 본다.</p>
+<p><b>카탈로그 경고는?</b> 바인딩한 에러 코드가 OpenAPI 예시에 없다는 뜻이다(예: E1425·E1427 은 dev 에서 확인됐지만 스펙에 아직 없음). 백엔드 REST Docs 에 예시를 추가하면 사라진다.</p>
+<p><b>정본은 어디?</b> 케이스 = git <span class="mono">qa-platform/cases/</span>. 기준 = llm-wiki SSOT·PRD + OpenAPI. 바인딩·제외·서술 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 런·감사 로그·초안만 있다.</p>
+<p class="small mut">설계 문서: <span class="mono">docs/qa-platform.md</span>(P0·P1, 런북) · <span class="mono">docs/qa-platform-tc.md</span>(P2, 기준 관리). 이 화면은 <span class="mono">{e(public_url)}/guide</span>.</p>"""
+
+    return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
+            + _sec("3. 화면별로 무엇을 하나", s3) + _sec("4. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
+            + _sec("5. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("6. 자주 묻는 것", s6))

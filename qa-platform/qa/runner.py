@@ -96,6 +96,7 @@ class Runner:
         self._q: queue.Queue[str] = queue.Queue()
         self._cancel: set[str] = set()
         self._lock = threading.Lock()
+        self._exec = threading.Lock()      # 런 실행은 언제나 하나씩 — 큐 워커와 탐색기 동기 실행이 이 락을 나눠 쓴다
         self.current: str | None = None
         self._thread = threading.Thread(target=self._loop, name="qa-runner", daemon=True)
 
@@ -120,7 +121,8 @@ class Runner:
         while True:
             rid = self._q.get()
             try:
-                self.execute(rid)
+                with self._exec:
+                    self.execute(rid)
             except Exception:
                 traceback.print_exc()
                 try:
@@ -131,6 +133,11 @@ class Runner:
                 self.current = None
                 with self._lock:
                     self._cancel.discard(rid)
+
+    def execute_now(self, rid: str):
+        """큐를 거치지 않고 지금 실행한다 (탐색기 전송). 진행 중인 런이 있으면 끝날 때까지 기다린다."""
+        with self._exec:
+            self.execute(rid)
 
     # ---- 실행 ----------------------------------------------------------------------
     def execute(self, rid: str):

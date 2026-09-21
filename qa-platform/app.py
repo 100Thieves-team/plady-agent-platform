@@ -32,7 +32,8 @@ from qa.spec import Spec  # noqa: E402
 from qa.store import Store, now_iso  # noqa: E402
 from qa.wiki import Wiki  # noqa: E402
 
-TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check")
+TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check", "explorer")
+HIDDEN_TRIGGERS = ("explorer",)          # 런 목록 기본 숨김 (탐색기 전송은 건수가 많다)
 
 
 class BadRequest(Exception):
@@ -123,7 +124,8 @@ class App:
     # ---- 런 생성 (form / API 공용) --------------------------------------------------
     def create_run(self, *, trigger: str, operator: str, case_ids: list[str], sha: str | None, ref: str | None,
                    pr_number: int | None, deploy_run_id: str | None, reason: str, basis: str, extra: dict,
-                   session_hash: str | None, ip: str | None, cases_override: list | None = None) -> str:
+                   session_hash: str | None, ip: str | None, cases_override: list | None = None,
+                   notify: bool = True, enqueue: bool = True) -> str:
         if trigger not in TRIGGERS:
             raise BadRequest(f"모르는 트리거: {trigger}")
         if not operator or operator not in self.cfg.operators:
@@ -142,9 +144,11 @@ class App:
                                     pr_number=pr_number, meta=meta, cases=chosen)
         self.store.add_event(operator=operator, action="run.create", target=rid, session_hash=session_hash, ip=ip,
                              detail={"trigger": trigger, "sha": sha, "pr": pr_number, "cases": len(chosen), "basis": basis, "reason": reason})
-        self.runner.submit(rid)
-        tgt = f"sha {sha[:8]}" + (f" PR #{pr_number}" if pr_number else "") if sha else self.cfg.target_env
-        slack(self.cfg.slack_webhook_url, f"[QA] {operator} 가 {ui.TRIGGER_KO.get(trigger, trigger)} 실행 — {tgt}, {len(chosen)}건 · {self.cfg.public_url}/runs/{rid}")
+        if enqueue:
+            self.runner.submit(rid)
+        if notify:
+            tgt = f"sha {sha[:8]}" + (f" PR #{pr_number}" if pr_number else "") if sha else self.cfg.target_env
+            slack(self.cfg.slack_webhook_url, f"[QA] {operator} 가 {ui.TRIGGER_KO.get(trigger, trigger)} 실행 — {tgt}, {len(chosen)}건 · {self.cfg.public_url}/runs/{rid}")
         return rid
 
     # ---- 초안 (Hermes) ------------------------------------------------------------
@@ -179,6 +183,83 @@ class App:
                                      "accepted": len(ids), "rejected": len(res["rejected"]), "raw_chars": len(res["raw"])})
         return {"ids": ids, "rejected": res["rejected"], "prompt_hash": res["prompt_hash"]}
 
+    # ---- 탐색기 (docs/qa-platform-tc.md §8) ----------------------------------------
+    def explorer_send(self, *, op_id: str, path_params: dict, query: dict, body_text: str, actor: str | None, operator: str,
+                      session_hash: str | None, ip: str | None) -> str:
+        """op 하나를 지금 보낸다. 전송 = 런(trigger explorer, 단계 1개, expect 없음). 응답은 런 상세와 같은 기록."""
+        spec = self.spec.get()
+        op = spec.ops.get(op_id) if spec else None
+        if not op:
+            raise BadRequest("OpenAPI 에 없는 operationId")
+        if actor and actor not in self.cfg.actors:
+            raise BadRequest("없는 테스트 계정")
+        path = op.path
+        for prm in op.params:
+            if prm["in"] == "path":
+                v = str(path_params.get(prm["name"], "")).strip()
+                if not v:
+                    raise BadRequest(f"path 파라미터 {prm['name']} 이 비었다")
+                path = path.replace("{" + prm["name"] + "}", v)
+        req: dict = {"method": op.method, "path": path}
+        q = {k: v for k, v in query.items() if str(v).strip() != ""}
+        if q:
+            req["query"] = q
+        if body_text.strip():
+            try:
+                req["body"] = json.loads(body_text)
+            except ValueError as ex:
+                raise BadRequest(f"본문이 JSON 이 아니다: {ex}")
+        cid = "explorer." + re.sub(r"[^a-z0-9.\-]", "", re.sub(r"(?<!^)(?=[A-Z])", "-", op_id).lower())
+        raw = {"id": cid, "title": f"탐색기 · {op.summary or op_id}", "suite": "manual", "domains": [], "operations": [op_id],
+               "steps": [{"name": f"{op.method} {path}", "request": req}]}
+        if actor:
+            raw["actor"] = actor
+        from qa.cases import _validate
+        case = _validate(raw, "<explorer>")
+        rid = self.create_run(trigger="explorer", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None, deploy_run_id=None,
+                              reason="", basis="탐색기", extra={"explorer": {"op": op_id, "actor": actor}}, session_hash=session_hash, ip=ip,
+                              cases_override=[case], notify=False, enqueue=False)
+        self.store.add_event(operator=operator, action="explorer.send", target=rid, session_hash=session_hash, ip=ip,
+                             detail={"op": op_id, "method": op.method, "path": path, "actor": actor})
+        self.runner.execute_now(rid)
+        return rid
+
+    def explorer_to_draft(self, rid: str, operator: str, session_hash: str | None, ip: str | None) -> str:
+        """탐색기 런 하나를 초안(단계 1개, 관측한 status·error_code 를 기대로)으로 담는다. covers 는 사람이 채운다."""
+        run = self.store.get_run(rid)
+        if not run or run["trigger"] != "explorer":
+            raise BadRequest("탐색기 런이 아니다")
+        rcs = self.store.list_run_cases(rid)
+        steps = self.store.list_steps(rcs[0]["id"]) if rcs else []
+        if not steps:
+            raise BadRequest("기록된 단계가 없다")
+        st = steps[0]
+        req = st["request"]
+        resp = st.get("response") or {}
+        expect: dict = {}
+        if resp.get("status"):
+            expect["status"] = resp["status"]
+        js = resp.get("json") if isinstance(resp.get("json"), dict) else None
+        if js and js.get("result"):
+            expect["result"] = js["result"]
+        if js and isinstance(js.get("error"), dict) and js["error"].get("code"):
+            expect["error_code"] = js["error"]["code"]
+        op_id = (run["meta"].get("explorer") or {}).get("op") or "op"
+        request = {"method": req["method"], "path": req["path"]}
+        if req.get("query"):
+            request["query"] = req["query"]
+        if req.get("body") is not None:
+            request["body"] = req["body"]
+        raw = {"id": rcs[0]["case_id"].replace("explorer.", "draft.", 1), "title": f"TODO: {rcs[0]['case_title']}", "suite": "manual",
+               "domains": [], "operations": [op_id], "covers": [], "steps": [{"name": st["name"], "covers": [], "request": request, "expect": expect}]}
+        if req.get("actor"):
+            raw["actor"] = req["actor"]
+        text = draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
+        did = self.store.add_draft(operator=operator, source="explorer", domain=None, yaml_text=text, note=f"탐색기 런 {rid}", case_id=raw["id"], tc_ids=[],
+                                   validation={"status": "warn", "warnings": ["covers 와 suite 를 채워야 한다 (지금은 manual)"]}, prompt_hash=None)
+        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip, detail={"source": "explorer", "run_id": rid})
+        return did
+
     def revalidate_draft(self, d: dict, yaml_text: str) -> tuple:
         """편집된 YAML 을 다시 검증한다. (Case|None, errors, warnings)."""
         cat = self.current_catalog()
@@ -192,6 +273,8 @@ class App:
                                   catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")})
 
     def _on_finish(self, run: dict):
+        if run["trigger"] in HIDDEN_TRIGGERS:
+            return
         rcs = self.store.list_run_cases(run["id"])
         bad = [f"{rc['case_id']}" for rc in rcs if rc["verdict"] in ("fail", "error")]
         icon = {"pass": "✅", "fail": "❌", "error": "⚠️", "skipped": "⏭", "canceled": "⏹"}.get(run["verdict"], "")
@@ -333,7 +416,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # ---------- 런 ----------
         if path == "/runs" and method == "GET":
-            return self._page("런", ui.runs_list(app.store.list_runs(100)), "runs")
+            show_all = g("all") == "1"
+            return self._page("런", ui.runs_list(app.store.list_runs(100, exclude=() if show_all else HIDDEN_TRIGGERS), show_all), "runs")
 
         if path == "/runs/new" and method == "GET":
             trigger = g("trigger", "manual")
@@ -476,6 +560,44 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
 
+        # ---------- 탐색기 (docs/qa-platform-tc.md §8) ----------
+        if path == "/explorer" and method == "GET":
+            spec = app.spec.get()
+            if not spec:
+                return self._page("탐색기", f'<h1>탐색기</h1><div class="flash err">OpenAPI 를 읽지 못했다: {ui.e(app.spec.last_error or "")}</div>', "explorer")
+            op = spec.ops.get(g("op")) if g("op") else None
+            run = app.store.get_run(g("run")) if g("run") else None
+            steps = []
+            if run:
+                rcs = app.store.list_run_cases(run["id"])
+                steps = app.store.list_steps(rcs[0]["id"]) if rcs else []
+            return self._page("탐색기", ui.explorer(spec, op, run, steps, actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+                                                 operator=self._operator(), q=g("q")), "explorer")
+        if path == "/explorer/send" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("운영자를 목록에서 골라야 한다")
+            op_id = str(fv("op"))
+            path_params = {k[2:]: str(v[0]) for k, v in f.items() if k.startswith("p_")}
+            query = {k[2:]: str(v[0]) for k, v in f.items() if k.startswith("q_")}
+            rid = app.explorer_send(op_id=op_id, path_params=path_params, query=query, body_text=str(fv("body")), actor=str(fv("actor")) or None,
+                                    operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                run = app.store.get_run(rid)
+                rcs = app.store.list_run_cases(rid)
+                return self._json(200, {"run": run, "steps": app.store.list_steps(rcs[0]["id"]) if rcs else []})
+            return self._redirect(f"/explorer?op={op_id}&run={rid}", set_operator=operator)
+        if path == "/explorer/draft" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("운영자를 목록에서 골라야 한다")
+            did = app.explorer_to_draft(str(fv("run")), operator, self._session_hash(), self._ip())
+            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
+
         # ---------- 초안함 (docs/qa-platform-tc.md §7.3) ----------
         if path == "/drafts" and method == "GET":
             st = g("status")
@@ -558,6 +680,11 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
             return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases")
+
+        # ---------- 가이드 ----------
+        if path == "/guide" and method == "GET":
+            return self._page("가이드", ui.guide(public_url=app.cfg.public_url, target=app.cfg.target_base_url,
+                                                wiki_url=app.cfg.wiki_public_url, sprint_days=app.cfg.sprint_days), "guide")
 
         # ---------- 활동 ----------
         if path == "/activity" and method == "GET":

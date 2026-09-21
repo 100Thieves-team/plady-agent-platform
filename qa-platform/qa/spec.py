@@ -33,6 +33,7 @@ class Op:
     success: dict = field(default_factory=dict)     # status(str) -> example json|None
     errors: dict = field(default_factory=dict)      # code -> {status, message, example}
     request_example: object = None
+    params: list = field(default_factory=list)      # [{name, in: path|query|header, required, description}]
 
     @property
     def is_write(self) -> bool:
@@ -106,6 +107,10 @@ def parse(doc: dict) -> dict[str, Op]:
                 continue
             oid = op.get("operationId") or f"{method}:{path}"
             o = Op(id=oid, method=method.upper(), path=path, summary=str(op.get("summary") or ""), tags=list(op.get("tags") or []))
+            for prm in (op.get("parameters") or []):
+                if isinstance(prm, dict) and prm.get("name"):
+                    o.params.append({"name": str(prm["name"]), "in": str(prm.get("in") or "query"), "required": bool(prm.get("required")),
+                                     "description": str(prm.get("description") or "")})
             rb = _json_content((op.get("requestBody") or {}).get("content") or {})
             for ex in (rb.get("examples") or {}).values():
                 o.request_example = _example_value(ex)
