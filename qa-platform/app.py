@@ -30,6 +30,7 @@ from qa.hermes import triage as hermes_triage  # noqa: E402
 from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
 from qa import report as reportmod  # noqa: E402
 from qa.notify import slack  # noqa: E402
+from qa.reminder import Reminder  # noqa: E402
 from qa.runner import Runner  # noqa: E402
 from qa.spec import Spec  # noqa: E402
 from qa.store import Store, now_iso  # noqa: E402
@@ -55,9 +56,11 @@ class App:
         self.cases, self.case_errors = {}, []
         self.reload_cases()
         self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish)
+        self.reminder = Reminder(cfg, self.store, lambda text: slack(cfg.slack_webhook_url, text))
 
     def start(self):
         self.runner.start()
+        self.reminder.start()      # 알림만. 실행은 여전히 사람 버튼
 
     # ---- 케이스 -----------------------------------------------------------------
     def reload_cases(self) -> tuple[int, list[str]]:

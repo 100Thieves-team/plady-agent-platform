@@ -283,9 +283,10 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(len(cat.versions["ssot"]), 12)
         rec = cat.records["G.room.create#8"]
         self.assertEqual(rec["domain"], "room")
-        self.assertEqual(rec["binding"], {"operations": ["createRoom"], "error_code": "E1427"})
+        self.assertEqual(rec["binding"], {"operations": ["createRoom"], "error_code": "E1427", "error_source": "bindings"})
         self.assertEqual(rec["prd"][0]["doc"], "룸 생성")
         self.assertTrue(cat.records["C.room.autocancel_not_started"]["excluded"])   # actor: system 제외
+        self.assertEqual(rec["binding"]["error_source"], "bindings")                 # SSOT error 가 비어 있는 동안
         self.assertEqual(cat.records["op.createRoom:E1402"]["expect_hint"]["status"], 400)
         # 시드 케이스 13건은 카탈로그와 어긋나지 않는다
         cases, errors = load_dir(ROOT / "cases")
@@ -332,6 +333,19 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(len(self.svc.drift_for(["G.room.create#8", "op.regions:200"], None)), 1)
         self.assertEqual(self.svc.drift_for(["G.room.create#8"], "2026-09-23"), [])      # 검토 이후 변경 없음
         self.assertEqual(len(self.svc.drift_for(["G.room.create#8"], "2026-09-21")), 1)
+
+    def test_ssot_error_precedes_bindings(self):
+        from qa.catalog import build, load_inputs
+        ssot, h = self.wiki.read_ssot()
+        import copy
+        ssot2 = copy.deepcopy(ssot)
+        for g in ssot2["gates"]:
+            if g["id"] == "G.room.create":
+                g["checks"][7]["error"] = "E9999"          # #8 에 SSOT 가 코드를 채운 상황 (bindings 는 E1427)
+        cat = build(ssot=ssot2, ssot_hash=h, rt_mod=self.wiki.render_tests(), spec=self.spec.get(), inputs=load_inputs(ROOT / "catalog"), wiki=self.wiki)
+        b = cat.records["G.room.create#8"]["binding"]
+        self.assertEqual((b["error_code"], b["error_source"]), ("E9999", "ssot"))
+        self.assertTrue(any("SSOT error E9999" in w for w in cat.warnings))
 
     def test_wiki_helpers(self):
         self.assertEqual(Wiki.parse_source("PRD/룸 생성 §4.7"), ("룸 생성", "4.7"))
@@ -443,6 +457,30 @@ cases:
         self.assertEqual(d["validation"]["status"], "warn")
         st.update_draft(did, status="approved", decided_by="bebe")
         self.assertEqual(st.draft_counts(), {"approved": 1})
+
+
+class ReminderTest(unittest.TestCase):
+    def test_due_and_once_per_sprint(self):
+        from qa.reminder import Reminder, due
+        tmp = tempfile.TemporaryDirectory()
+        cfg = Config({"QA_DATA_DIR": tmp.name, "WIKI_SLACK_WEBHOOK_URL": "http://hook"})
+        store = Store(cfg.db_path)
+        sent = []
+        r = Reminder(cfg, store, sent.append)
+        sprint = cfg.current_sprint(datetime(2026, 9, 25, tzinfo=timezone.utc))      # Cycle 10: 9/20 15:00Z ~ 9/27 15:00Z
+        self.assertFalse(due(datetime(2026, 9, 25, tzinfo=timezone.utc), sprint, 0, False, 1))   # 마감 이틀 전 → 아직
+        self.assertTrue(due(datetime(2026, 9, 26, 16, tzinfo=timezone.utc), sprint, 0, False, 1))
+        self.assertFalse(due(datetime(2026, 9, 26, 16, tzinfo=timezone.utc), sprint, 1, False, 1))   # smoke 있으면 조용
+        self.assertFalse(r.tick(datetime(2026, 9, 25, tzinfo=timezone.utc)))
+        self.assertTrue(r.tick(datetime(2026, 9, 26, 16, tzinfo=timezone.utc)))
+        self.assertFalse(r.tick(datetime(2026, 9, 27, 1, tzinfo=timezone.utc)))                    # 스프린트당 한 번
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Cycle 10", sent[0])
+        self.assertEqual(store.list_events(action="sprint.remind")[0]["operator"], "system")
+        off = Reminder(Config({"QA_DATA_DIR": tmp.name, "QA_SPRINT_REMINDER": "0"}), store, sent.append)
+        off.start()
+        self.assertFalse(off._thread.is_alive())
+        tmp.cleanup()
 
 
 class McpAndReportTest(unittest.TestCase):

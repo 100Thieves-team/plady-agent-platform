@@ -67,6 +67,9 @@ class Config:
         self.sprint_anchor = g("QA_SPRINT_ANCHOR", "2026-09-13T15:00:00Z")
         self.sprint_anchor_number = int(g("QA_SPRINT_ANCHOR_NUMBER", "9"))
         self.sprint_days = int(g("QA_SPRINT_DAYS", "7"))
+        # 스프린트 smoke 리마인더 — Slack 알림만 (qa/reminder.py). 마감 N 일 전부터, 스프린트당 한 번
+        self.sprint_reminder = g("QA_SPRINT_REMINDER", "1") not in ("0", "false", "no", "")
+        self.sprint_remind_days = int(g("QA_SPRINT_REMIND_DAYS", "1"))
 
         # Hermes (AI 는 전부 여기로)
         self.hermes_url = g("HERMES_API_URL", "http://hermes-gateway:8642").rstrip("/")

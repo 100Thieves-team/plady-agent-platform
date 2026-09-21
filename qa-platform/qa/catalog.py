@@ -186,14 +186,23 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
             ops = bind_cmds.get(cmd, []) if cmd else []
             if c["kind"] == "거절":
                 rid = f'{c["gate"]}#{c["check"]}'
-                code = bind_checks.get(rid)
+                # 에러 코드: SSOT `error` 가 채워져 있으면 그것이 정본, 비어 있는 동안만 bindings.checks (§4.4)
+                ssot_code = str(c.get("error") or "").strip()
+                ssot_code = ssot_code if ssot_code and ssot_code.upper() != "TBD" else None
+                bound = bind_checks.get(rid)
+                if ssot_code and bound and ssot_code != bound:
+                    warnings.append(f"{rid}: SSOT error {ssot_code} 와 bindings.checks {bound} 가 다르다 — SSOT 를 쓴다. bindings 에서 지워도 된다")
+                elif ssot_code and bound:
+                    warnings.append(f"{rid}: SSOT 가 error {ssot_code} 를 채웠다 — bindings.checks 의 같은 항목은 지워도 된다")
+                code = ssot_code or bound
                 rec = {
                     "id": rid, "layer": "policy", "kind": "reject", "domain": domain,
                     "title": rt_mod.reject_name(c), "gate": c["gate"], "gate_name": c.get("gate_name"),
                     "command": cmd, "actor": cmd_actor.get(cmd),
                     "expect_hint": {"cond": c.get("cond"), "message": c.get("message"), "must_pass_first": c.get("must_pass_first") or [],
                                     "check": c["check"], "of": c.get("of")},
-                    "binding": {"operations": ops, "error_code": code} if (ops or code) else None,
+                    "binding": ({"operations": ops, "error_code": code, "error_source": ("ssot" if ssot_code else "bindings") if code else None}
+                                if (ops or code) else None),
                     "source": c.get("source") or [],
                 }
             else:

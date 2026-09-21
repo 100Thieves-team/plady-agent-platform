@@ -71,7 +71,7 @@ TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 sm
 ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage": "Hermes 진단", "release.decide": "릴리스 판단",
              "cases.reload": "케이스 재로드", "draft.generate": "케이스 초안 생성", "draft.rejected_by_validation": "케이스 초안 검증 탈락",
              "draft.save": "케이스 초안 편집", "draft.check": "케이스 초안 확인 실행", "draft.approve": "케이스 초안 승인", "draft.reject": "케이스 초안 반려",
-             "run.publish": "위키 발행", "explorer.send": "탐색기 전송"}
+             "run.publish": "위키 발행", "explorer.send": "탐색기 전송", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -616,7 +616,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
     s5 = f"""
 <ul>
-<li><b>스프린트마다 한 번</b> ({sprint_days}일 주기, Linear 사이클과 같은 번호) 대시보드에서 [스프린트 smoke 실행]. 배지가 "미실행" 이면 아직 안 한 것이다.</li>
+<li><b>스프린트마다 한 번</b> ({sprint_days}일 주기, Linear 사이클과 같은 번호) 대시보드에서 [스프린트 smoke 실행]. 배지가 "미실행" 이면 아직 안 한 것이다. 마감 하루 전까지 없으면 Slack 에 한 번 알린다 — 알림만 하고 실행은 하지 않는다.</li>
 <li><b>실배포 전</b> [릴리스 검증] → smoke 전체 실행 → 런 상세의 릴리스 체크리스트(백엔드 <span class="mono">docs/knowledge/release-checklist.md</span> 에서 읽어 옴)를 확인하고 GO / NO-GO 를 <b>기록</b>한다. 기록만 하고 승격을 막지는 않는다.</li>
 <li><b>보고서.</b> 스프린트·릴리스 런은 [위키에 발행] 로 llm-wiki <span class="mono">wiki/qa/</span> 에 남길 수 있다. 사람이 누를 때만, 개인 식별값은 마스킹.</li>
 </ul>"""
