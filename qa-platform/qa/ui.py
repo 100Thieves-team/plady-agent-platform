@@ -570,28 +570,28 @@ def _sec(title: str, body: str) -> str:
 
 def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> str:
     intro = ('<h1>가이드 — 이 플랫폼은 무엇을 하고, 어떻게 쓰는가</h1>'
-             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(TC)</b> 을 뽑고, '
+             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(TC)</b> 을 뽑고 '
              '그 기준을 덮는 <b>케이스</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
 
     s1 = f"""
 <ol>
-<li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [임의 실행]. 크론·webhook·자동 실행은 설계상 없다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
-<li><b>확인 화면.</b> 플랫폼이 범위를 <i>제안</i>한다 — 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 케이스, 스프린트면 smoke 전체. 운영자(자기 신고)를 고르고 케이스를 조정한 뒤 [실행].</li>
-<li><b>런이 만들어진다.</b> 그 시점의 케이스 본문(스냅샷)·기준 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 런에 고정된다. 나중에 케이스나 기준이 바뀌어도 과거 런은 그대로다.</li>
+<li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [임의 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
+<li><b>확인 화면</b>에서는 플랫폼이 범위를 <i>제안</i>한다. 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 케이스, 스프린트면 smoke 전체다. 운영자(자기 신고)를 고르고 케이스를 조정한 뒤 [실행].</li>
+<li><b>런이 만들어지면서</b> 그 시점의 케이스 본문(스냅샷)·기준 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 런에 고정된다. 나중에 케이스나 기준이 바뀌어도 과거 런은 그대로다.</li>
 <li><b>러너가 순서대로 보낸다.</b> 한 번에 런 하나, 케이스는 순차, 단계는 요청 → 응답 → 단언(expect 5종: status · result · error_code · json · exists). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
 <li><b>판정.</b> 단언 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정 = <b>skipped</b>(설정 문제, 실패 아님). 런 판정은 케이스 판정의 합. Slack 에 시작·종료가 간다.</li>
-<li><b>실패하면.</b> 런 상세에서 단계별 요청·응답·단언을 본다. [Hermes 진단] 을 누르면 AI 가 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
+<li><b>실패하면</b> 런 상세에서 단계별 요청·응답·단언을 본다. [Hermes 진단] 을 누르면 AI 가 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
 </ol>
 <p class="small mut">모든 버튼은 활동 화면(감사 로그)에 운영자·세션 해시·IP 와 함께 남는다. 세션은 팀 공용이라 운영자는 자기 신고다.</p>"""
 
     s2 = f"""
-<p>플랫폼은 TC 를 <b>만들지 않는다</b>. 정본에서 <b>파생</b>한다. 같은 입력이면 같은 카탈로그가 나온다.</p>
+<p>플랫폼은 TC 를 <b>만들지 않는다</b>. 정본에서 <b>파생</b>하고 같은 입력이면 같은 카탈로그가 나온다.</p>
 <table><tr><th>층</th><th>정본</th><th>TC 예</th><th>답하는 질문</th></tr>
 <tr><td>정책</td><td><a href="{e(wiki_url)}/policy/">상태-SSOT.yaml</a> (기획 SSOT) — team-wiki-v2 의 <span class="mono">render_tests.cases()</span> 를 그대로 가져와 쓴다</td><td><span class="mono">G.room.create#8</span> (게이트 8번째 검사에서 거절) · <span class="mono">C.room.create</span> (성공 전이)</td><td>기획이 정한 규칙이 지켜지는가</td></tr>
 <tr><td>계약</td><td>백엔드 OpenAPI (dev 브랜치, REST Docs 산출물)</td><td><span class="mono">op.createRoom:200</span> · <span class="mono">op.createRoom:E1402</span></td><td>API 가 문서대로 응답하는가</td></tr>
 <tr><td>서술</td><td>사람이 적는 <span class="mono">qa-platform/catalog/manual-tc.yaml</span> (PRD 절 · 운영 기준)</td><td><span class="mono">PRD.룸-탐색.4.1#1</span> · <span class="mono">OPS.platform.health#1</span></td><td>SSOT 로 형식화되지 않은 요구</td></tr></table>
-<p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 TC(시스템 전이·OAuth·운영자 전용)는 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다 — 분모에서 빠지지만 화면에는 보인다.</p>
-<p><b>케이스는 <span class="mono">covers:</span> 로 어떤 TC 를 덮는지 선언</b>하고, 플랫폼이 그 선언을 검증한다 — TC id 가 실재하는지, 계약 TC 라면 단계의 method·path·기대 코드가 실제로 그 계약과 맞는지. 거짓 선언은 "대조 오류" 로 스위트에서 빠진다. 커버리지 분모는 전체 TC 다.</p>
+<p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 TC(시스템 전이·OAuth·운영자 전용)는 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다. 분모에서 빠지지만 화면에는 보인다.</p>
+<p><b>케이스는 <span class="mono">covers:</span> 로 어떤 TC 를 덮는지 선언</b>하고 플랫폼이 그 선언을 검증한다 — TC id 가 실재하는지, 계약 TC 라면 단계의 method·path·기대 코드가 실제로 그 계약과 맞는지. 거짓 선언은 "대조 오류" 로 스위트에서 빠진다. 커버리지 분모는 전체 TC 다.</p>
 <p><b>기준이 바뀌면.</b> 위키 SSOT 나 OpenAPI 가 바뀌면 카탈로그가 다시 계산되고(읽기라 자동), 덮는 TC 가 바뀐 케이스에 <span class="b drift">근거 변경</span> 배지가 붙는다. 케이스를 다시 본 뒤 <span class="mono">reviewed: {{at, by}}</span> 를 적으면 그 이후 변경만 배지로 뜬다. 케이스를 자동으로 고치거나 런을 자동으로 돌리지는 않는다.</p>"""
 
     s3 = """
@@ -609,9 +609,9 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li><b>PR 을 dev 에 머지한다.</b> 백엔드 CI 가 dev 에 배포하면 대시보드 "dev 배포" 에 <span class="b warn">미검증</span> 으로 뜬다 (GitHub Actions 조회, 1분 캐시).</li>
 <li><b>[검증] 을 누른다.</b> 플랫폼이 PR 변경 파일에서 도메인을 읽어 그 도메인의 sanity 를 제안한다. 확인하고 실행. 통과하면 그 배포에 ✅ 가 붙는다.</li>
 <li><b>실패하면 셋 중 하나다.</b> (a) 버그 → 고친다. (b) 케이스 노후 — 기획이 바뀌어 케이스가 틀렸다 → 케이스 YAML 을 고쳐 PR. (c) 환경 — 픽스처(공고 id 등)가 바뀜 → SSM <span class="mono">qa-fixtures</span> 를 고친다. Hermes 진단이 셋 중 무엇인지 제안한다.</li>
-<li><b>새 기능이면 기준을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 기준 화면에 TC 가 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다 — 플랫폼에서 TC 를 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
+<li><b>새 기능이면 기준을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 기준 화면에 TC 가 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다. 플랫폼에서 TC 를 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
 <li><b>케이스를 늘린다.</b> 기준 화면에서 미커버 TC 를 골라 [케이스 초안 생성] → 케이스 초안에서 [한 번 실행해 보기] → 승인 → YAML 을 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 붙여 PR. 리뷰·머지되면 다음 배포에 실린다. 승인 없이 스위트에 들어가는 케이스는 없다.</li>
-<li><b>쓰기 케이스 규칙.</b> 만든 데이터는 같은 케이스 안에서 닫는다(취소·철회·삭제). 만드는 데이터의 title 은 <span class="mono">[QA]</span> 로 시작. 테스트 계정(qa-host · qa-guest)만 쓴다 — 목데이터 회원은 참여 슬롯이 차 있어 쓰기에 못 쓴다.</li>
+<li><b>쓰기 케이스 규칙.</b> 만든 데이터는 같은 케이스 안에서 닫고(취소·철회·삭제) 만드는 데이터의 title 은 <span class="mono">[QA]</span> 로 시작한다. 테스트 계정(qa-host · qa-guest)만 쓴다 — 목데이터 회원은 참여 슬롯이 차 있어 쓰기에 못 쓴다.</li>
 </ol>"""
 
     s5 = f"""
@@ -622,20 +622,20 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 </ul>"""
 
     s6 = f"""
-<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고, dev 데이터 오염·런 폭주·알림 피로가 구조적으로 막힌다. 카탈로그 <i>계산</i>은 읽기라 자동이지만 실행·전송·케이스 초안 생성·발행은 전부 버튼이다.</p>
+<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고 dev 데이터 오염·런 폭주·알림 피로가 구조적으로 막힌다. 카탈로그 <i>계산</i>은 읽기라 자동이지만 실행·전송·케이스 초안 생성·발행은 전부 버튼이다.</p>
 <p><b>skipped 는 실패인가?</b> 아니다. 테스트 계정(<span class="mono">qa-actors</span>)이나 픽스처(<span class="mono">qa-fixtures</span>)가 없어 못 보낸 것이다. 설정을 먼저 본다.</p>
 <p><b>카탈로그 경고는?</b> 바인딩한 에러 코드가 OpenAPI 예시에 없다는 뜻이다(예: E1425·E1427 은 dev 에서 확인됐지만 스펙에 아직 없음). 백엔드 REST Docs 에 예시를 추가하면 사라진다.</p>
 <p><b>정본은 어디?</b> 케이스 = git <span class="mono">qa-platform/cases/</span>. 기준 = llm-wiki SSOT·PRD + OpenAPI. 바인딩·제외·서술 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 런·감사 로그·케이스 초안만 있다.</p>
 <p class="small mut">설계 문서: <span class="mono">docs/qa-platform.md</span>(P0·P1, 런북) · <span class="mono">docs/qa-platform-tc.md</span>(P2, 기준 관리). 이 화면은 <span class="mono">{e(public_url)}/guide</span>.</p>"""
 
     s_ai = """
-<p><b>런타임에는 AI 가 없다.</b> 트리거를 누르면 도는 것은 결정론 러너다 — 케이스에 적힌 요청을 보내고 적힌 단언과 비교한다. 같은 케이스·같은 서버면 같은 판정이 나온다. 매 실행마다 LLM 이 판단하면 비용이 들고 결과가 흔들리고 이력을 믿을 수 없어서, 설계에서 뺐다.</p>
-<p><b>TC 도 AI 가 만들지 않는다.</b> TC 는 SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 "기준" 을 만들면 기준이 정본에서 떠난다.</p>
-<p>AI(Hermes)가 개입하는 지점은 <b>둘뿐이고, 둘 다 사람이 버튼을 누를 때만</b> 돈다.</p>
+<p><b>런타임에는 AI 가 없다.</b> 트리거를 누르면 도는 것은 결정론 러너다 — 케이스에 적힌 요청을 보내고 적힌 단언과 비교한다. 같은 케이스·같은 서버면 같은 판정이 나온다. 매 실행마다 LLM 이 판단하면 비용이 들고 결과가 흔들리고 이력을 믿을 수 없어서 설계에서 뺐다.</p>
+<p><b>TC 도 AI 가 만들지 않고</b> SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 "기준" 을 만들면 기준이 정본에서 떠난다.</p>
+<p>AI(Hermes)가 개입하는 지점은 <b>둘뿐이고 둘 다 사람이 버튼을 누를 때만</b> 돈다.</p>
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
-<tr><td>케이스를 늘릴 때</td><td>기준 화면 [케이스 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 케이스 초안에 들어가고, 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
+<tr><td>케이스를 늘릴 때</td><td>기준 화면 [케이스 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 케이스 초안에 들어가고 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
 <tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr></table>
-<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로, 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다 — 필요하면 별도 결정이다.</p>"""
+<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
     return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
