@@ -33,6 +33,11 @@ pre{background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:8px;overflo
 details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px}.kv div:nth-child(odd){color:var(--mut)}
 .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px}.flash.err{background:var(--badbg);color:var(--bad)}.flash.ok{background:var(--okbg);color:var(--ok)}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.chk{display:block;padding:3px 0}.right{text-align:right}
+.b.policy{color:#0f766e;background:#ccfbf1}.b.contract{color:#9a3412;background:#ffedd5}.b.manual{color:var(--gray);background:var(--graybg)}
+.b.covered{color:var(--ok);background:var(--okbg)}.b.uncovered{color:var(--bad);background:var(--badbg)}.b.excluded{color:var(--mut);background:var(--graybg)}
+.b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
+tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
+.mx{font-size:12px}.mx td,.mx th{padding:4px 6px;text-align:center}.mx td:first-child{text-align:left}
 """
 
 
@@ -70,7 +75,7 @@ ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("activity", "/activity", "활동"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("activity", "/activity", "활동"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -80,8 +85,41 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
 
 
 # ---- 대시보드 ------------------------------------------------------------------------------
+def tc_link(tid: str, label: str | None = None) -> str:
+    from urllib.parse import quote
+    return f'<a href="/catalog/tc?id={quote(tid, safe="")}" class="mono">{e(label or tid)}</a>'
+
+
+def coverage_card(catalog, coverage: dict | None, error: str | None) -> str:
+    if catalog is None or coverage is None:
+        return f'<div class="card"><h3 style="margin-top:0">기준 커버리지</h3><p class="mut small">카탈로그 없음{(": " + e(error)) if error else ""}</p></div>'
+    layers = [l for l in ("policy", "contract", "manual") if any(l in v for v in coverage["matrix"].values())]
+    head = "".join(f"<th>{l}</th>" for l in layers)
+    rows = ""
+    tot = {"covered": 0, "total": 0, "excluded": 0}
+    for d in catalog.domains():
+        cells = ""
+        for l in layers:
+            c = coverage["matrix"].get(d, {}).get(l)
+            if not c:
+                cells += "<td class='mut'>–</td>"
+                continue
+            denom = c["total"] - c["excluded"]
+            cells += (f'<td><a href="/catalog?domain={e(d)}&layer={l}">{c["covered"]}/{denom}</a>'
+                      f'{(" <span class=\"mut\">(제외 " + str(c["excluded"]) + ")</span>") if c["excluded"] else ""}</td>')
+            for k in tot:
+                tot[k] += c[k]
+        rows += f'<tr><td><a href="/catalog?domain={e(d)}">{e(d)}</a></td>{cells}</tr>'
+    v = catalog.versions
+    return (f'<div class="card"><h3 style="margin-top:0">기준 커버리지 <span class="small mut">덮음 {tot["covered"]} / {tot["total"] - tot["excluded"]} (제외 {tot["excluded"]})</span></h3>'
+            f'<table class="mx"><tr><th>도메인</th>{head}</tr>{rows}</table>'
+            f'<p class="small mut" style="margin-bottom:0">SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · {kst(catalog.built_at)} 계산'
+            f'{(" · <b style=\"color:var(--warn)\">경고 " + str(len(catalog.warnings)) + "</b>") if catalog.warnings else ""}</p></div>')
+
+
 def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], recent: list[dict], cfg_summary: dict,
-              case_count: int, case_errors: list[str], gh_error: str | None, runner_current: str | None) -> str:
+              case_count: int, case_errors: list[str], gh_error: str | None, runner_current: str | None,
+              catalog=None, coverage: dict | None = None, catalog_error: str | None = None) -> str:
     rows = ""
     for d in deploys:
         pr = d.get("pr") or {}
@@ -119,7 +157,7 @@ def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], rec
         f'<td>{run_badge(r)} <span class="small mut">{r["passed"]}/{r["total"]}</span></td><td class="small mut">{kst(r["created_at"])}</td></tr>'
         for r in recent) or '<tr><td colspan="6" class="mut">아직 런이 없다</td></tr>'
 
-    return (f'<h1>대시보드</h1><div class="grid">{sprint_card}{status_card}</div>'
+    return (f'<h1>대시보드</h1><div class="grid">{sprint_card}{status_card}</div>{coverage_card(catalog, coverage, catalog_error)}'
             f'<h2>dev 배포 {badge(f"미검증 {unverified}", "warn" if unverified else "ok")}</h2><div class="card">'
             f'<table><tr><th>SHA</th><th>PR</th><th>배포</th><th>검증</th><th></th></tr>{rows}</table>'
             f'<p class="small mut">GitHub Actions 의 성공한 dev 배포를 읽어 표시한다. 검증은 사람이 [검증] 을 눌러야 시작된다.</p></div>'
@@ -187,6 +225,8 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         "대상": f'<span class="mono">{e(run["base_url"])}</span>',
         "SHA / PR": f'<span class="mono">{e(run.get("sha") or "–")}</span>' + (f' · <a href="{e(meta.get("pr_url"))}">#{run["pr_number"]}</a> {e(meta.get("pr_title") or "")}' if run.get("pr_number") else ""),
         "선택 근거": e(meta.get("basis") or "–"), "사유": e(meta.get("reason") or "–"),
+        "기준 버전": (f'SSOT <span class="mono">{e((meta.get("catalog") or {}).get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e((meta.get("catalog") or {}).get("openapi") or "–")}</span>'
+                   f' · 덮는 TC {len(meta.get("covers") or [])}') if meta.get("catalog") else "–",
         "시각": f'{kst(run["created_at"])} 생성 · {kst(run.get("started_at"))} 시작 · {kst(run.get("finished_at"))} 종료',
         "결과": f'{run_badge(run)} 통과 {run["passed"]} · 실패 {run["failed"]} · 오류 {run["errored"]} · skip {run["skipped"]} / {run["total"]}',
     }
@@ -242,20 +282,45 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
 
 
 # ---- 케이스 --------------------------------------------------------------------------------------
-def cases_list(cases: list, last: dict[str, dict], errors: list[str]) -> str:
+def audit_badge(c, drift: list | None = None) -> str:
+    st = c.audit.get("status", "unchecked")
+    label = {"ok": "대조 OK", "warn": "경고", "error": "대조 오류", "unchecked": "미대조"}[st]
+    n = len(c.audit.get("errors") or []) + len(c.audit.get("warnings") or [])
+    out = f'<span class="b {"pass" if st == "ok" else ("warn" if st == "warn" else ("fail" if st == "error" else "unchecked"))}" title="{e("; ".join((c.audit.get("errors") or []) + (c.audit.get("warnings") or [])))}">{label}{(" " + str(n)) if n and st != "ok" else ""}</span>'
+    if drift:
+        out += f' <span class="b drift" title="{e("; ".join(d["id"] + " " + d["kind"] + " " + d["at"] for d in drift))}">근거 변경 {len(drift)}</span>'
+    return out
+
+
+def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None) -> str:
+    drift = drift or {}
     rows = "".join(
         f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a></td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
-        f'<td class="small">{e(", ".join(c.domains))}</td><td class="small">{e(c.actor or "–")}</td><td class="small mono">{e(c.file)}</td>'
+        f'<td class="small">{e(", ".join(c.domains))}</td><td class="small">{e(c.actor or "–")}</td>'
+        f'<td class="small">{len(c.covers)} {audit_badge(c, drift.get(c.id))}</td>'
         f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut small\">–</span>")}</td></tr>'
         for c in cases)
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
+    blocked = [c.id for c in cases if c.blocked]
     return (f'<h1>케이스 <span class="small mut">{len(cases)}개 · 정본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
             f'{("<div class=\"flash err\"><b>로드 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
-            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>파일</th><th>마지막 판정</th></tr>{rows}</table>'
+            f'{("<div class=\"flash err\"><b>카탈로그 대조 오류</b> — covers 선언이 카탈로그와 맞지 않아 스위트에서 빠진 케이스: " + e(", ".join(blocked)) + "</div>") if blocked else ""}'
+            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>덮는 TC · 대조</th><th>마지막 판정</th></tr>{rows}</table>'
+            f'<p class="small mut">대조 = covers 의 TC 가 카탈로그에 있고 단계의 method·path·기대 코드가 계약과 맞는지. 근거 변경 = 덮는 TC 가 마지막 검토(reviewed) 이후 바뀜.</p>'
             f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button></form></div>')
 
 
-def case_detail(c, history: list[dict]) -> str:
+def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None) -> str:
+    tc_records = tc_records or {}
+    changed = {d["id"]: d for d in (drift or [])}
+    covers_html = "".join(
+        f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">카탈로그에 없음</span>"} {e(r["title"]) if r else ""}'
+        f'{(" <span class=\"b drift\">" + e(changed[t]["kind"]) + " " + kst(changed[t]["at"]) + "</span>") if t in changed else ""}</li>'
+        for t, r in ((t, tc_records.get(t)) for t in c.covers)) or '<li class="mut">덮는 TC 없음 (manual 스위트만 허용)</li>'
+    problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in c.audit.get("errors") or []) + \
+        "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in c.audit.get("warnings") or [])
+    audit_html = (f'<div class="kv"><div>대조</div><div>{audit_badge(c, drift)}{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div>'
+                  f'<div>검토</div><div>{(e(c.reviewed.get("by") or "–") + " · " + e(c.reviewed.get("at"))) if c.reviewed else "<span class=\"mut\">기록 없음 — 케이스에 reviewed: {at, by} 를 적으면 그 이후 변경만 배지로 뜬다</span>"}</div></div>')
     hist = "".join(
         f'<tr><td><a href="/runs/{e(h["run_id"])}" class="mono">{e(h["run_id"])}</a></td><td>{badge(h["verdict"])}</td><td>{e(TRIGGER_KO.get(h["trigger"], h["trigger"]))}</td>'
         f'<td>{e(h["operator"])}</td><td class="mono small">{e((h.get("sha") or "")[:8])}</td><td class="small mut">{kst(h["created_at"])}</td>'
@@ -264,7 +329,8 @@ def case_detail(c, history: list[dict]) -> str:
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}</h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
-            f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>근거</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
+            f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>근거 메모</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
+            f'<h2>덮는 TC (covers)</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div></div>'
             f'<h2>정의</h2><pre>{e(c.to_yaml())}</pre>'
             f'<h2>실행 이력</h2><div class="card"><table><tr><th>런</th><th>판정</th><th>트리거</th><th>운영자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
 
@@ -282,3 +348,92 @@ def activity(events: list[dict], operators: list[str], actions: list[str], f_op:
             f'<select name="action"><option value="">행위 전체</option>{acts}</select> <button>필터</button>'
             f' <span class="small mut">모든 사람 행위의 감사 로그. 운영자는 자기 신고, 세션 해시·IP 는 대조용.</span></form>'
             f'<div class="card"><table><tr><th>시각</th><th>운영자</th><th>행위</th><th>대상</th><th>상세</th><th>세션/IP</th></tr>{rows}</table></div>')
+
+
+# ---- 기준 (TC 카탈로그) ---------------------------------------------------------------------------
+LAYER_KO = {"policy": "정책", "contract": "계약", "manual": "서술"}
+
+
+def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str, layer: str, only: str,
+                 changes: dict, wiki_available: bool) -> str:
+    by_tc = coverage["by_tc"]
+    tabs = "".join(f'<a href="/catalog?domain={e(d)}{("&layer=" + e(layer)) if layer else ""}{("&only=" + e(only)) if only else ""}" class="{"on" if d == domain else ""}">{e(d)}</a>'
+                   for d in catalog.domains())
+    ltabs = "".join(f'<a href="/catalog?domain={e(domain)}{("&layer=" + l) if l else ""}{("&only=" + e(only)) if only else ""}" class="{"on" if (layer or "") == l else ""}">{lab}</a>'
+                    for l, lab in (("", "전체 층"), ("policy", "정책"), ("contract", "계약"), ("manual", "서술")))
+    otabs = "".join(f'<a href="/catalog?domain={e(domain)}{("&layer=" + e(layer)) if layer else ""}{("&only=" + o) if o else ""}" class="{"on" if (only or "") == o else ""}">{lab}</a>'
+                    for o, lab in (("", "모두"), ("uncovered", "미커버만"), ("covered", "커버만"), ("warn", "경고만")))
+    rows = ""
+    n = 0
+    warn_ids = {w.split(":")[0] for w in catalog.warnings if ":" in w}
+    for r in sorted(catalog.records.values(), key=lambda r: (r["layer"], r["id"])):
+        if r["domain"] != domain or (layer and r["layer"] != layer):
+            continue
+        cov = by_tc.get(r["id"], [])
+        state = "excluded" if r.get("excluded") else ("covered" if cov else "uncovered")
+        if only == "uncovered" and state != "uncovered":
+            continue
+        if only == "covered" and state != "covered":
+            continue
+        if only == "warn" and r["id"] not in warn_ids:
+            continue
+        n += 1
+        verdicts = ""
+        for cid in cov[:3]:
+            lv = last.get(cid)
+            verdicts += f' <a href="/cases/{e(cid)}" class="mono small">{e(cid)}</a>' + (f' <a href="/runs/{e(lv["run_id"])}">{badge(lv["verdict"])}</a>' if lv else "")
+        b = r.get("binding") or {}
+        bind = ", ".join(b.get("operations") or b.get("commands") or []) + ((" · " + b["error_code"]) if b.get("error_code") else "")
+        ch = changes.get(r["id"])
+        rows += (f'<tr class="{"ex" if state == "excluded" else ""}"><td>{tc_link(r["id"])}</td><td>{badge(r["layer"])} {e(r["title"])}'
+                 f'{(" <span class=\"b warn\" title=\"카탈로그 경고\">!</span>") if r["id"] in warn_ids else ""}'
+                 f'{(" <span class=\"b drift\">" + e(ch["kind"]) + " " + kst(ch["at"]) + "</span>") if ch else ""}</td>'
+                 f'<td class="small mono">{e(bind) or "<span class=\"mut\">API 없음</span>" if r["layer"] == "policy" else e(bind)}</td>'
+                 f'<td>{badge({"covered": "덮음", "uncovered": "미커버", "excluded": "제외"}[state], state)}'
+                 f'{(" <span class=\"small mut\" title=\"" + e(r["excluded"]) + "\">" + e(r["excluded"][:40]) + ("…" if len(r["excluded"]) > 40 else "") + "</span>") if state == "excluded" else verdicts}</td></tr>')
+    if not rows:
+        rows = '<tr><td colspan="4" class="mut">해당 없음</td></tr>'
+    warns = "".join(f'<li class="small">{e(w)}</li>' for w in catalog.warnings)
+    c = catalog.counts()
+    v = catalog.versions
+    return (f'<h1>기준 — TC 카탈로그 <span class="small mut">{c["total"]}건 (정책 {c["by_layer"].get("policy", 0)} · 계약 {c["by_layer"].get("contract", 0)} · 서술 {c["by_layer"].get("manual", 0)} · 제외 {c["excluded"]})</span></h1>'
+            f'<div class="card"><p class="small mut" style="margin-top:0">정본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(정책)과 백엔드 OpenAPI(계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(서술)이다. 플랫폼은 파생만 한다.'
+            f' 기준 버전: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
+            f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 정책 TC 없음</b>"}</p>'
+            f'<div class="tabs">{tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
+            f'{("<details class=\"card\"><summary>카탈로그 경고 " + str(len(catalog.warnings)) + " — 바인딩·스펙 구조 불일치 (§6.4)</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
+            f'<div class="card"><table><tr><th>TC</th><th>내용 ({n})</th><th>바인딩</th><th>커버 · 마지막 판정</th></tr>{rows}</table></div>')
+
+
+def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: list, change: dict | None) -> str:
+    h = rec.get("expect_hint") or {}
+    hint = "".join(f'<div>{e(k)}</div><div>{("<pre style=\"margin:0\">" + e(json.dumps(v, ensure_ascii=False, indent=1)) + "</pre>") if isinstance(v, (dict, list)) else e(v)}</div>'
+                   for k, v in h.items() if v not in (None, "", [], {}))
+    b = rec.get("binding") or {}
+    bind = ("op " + ", ".join(b.get("operations") or [])) if b.get("operations") else (("command " + ", ".join(b.get("commands") or [])) if b.get("commands") else "없음")
+    if b.get("error_code"):
+        bind += f' · 코드 {b["error_code"]}'
+    prd_refs = {f'PRD/{p["doc"]} §{p["section"]}' for p in rec.get("prd") or []}
+    src = "".join(f'<li>{e(s)}</li>' for s in rec.get("source") or [] if s not in prd_refs) or '<li class="mut">–</li>'
+    prd = "".join(f'<li><a href="{e(p["url"])}">{e(p["doc"])} §{e(p["section"])}</a></li>' for p in rec.get("prd") or [] if p.get("url"))
+    ex_html = "".join(
+        f'<details {"open" if i == 0 else ""}><summary>{e(ref["doc"])} §{e(ref["section"])}</summary><pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{e(text) if text else "(본문을 찾지 못했다 — 절 번호가 PRD 헤딩과 다르거나 위키 체크아웃이 없다)"}</pre></details>'
+        for i, (ref, text) in enumerate(excerpts))
+    cov = "".join(
+        f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a></td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
+        f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut\">–</span>")}</td></tr>'
+        for c in covering) or '<tr><td colspan="4" class="mut">덮는 케이스 없음</td></tr>'
+    state = "제외" if rec.get("excluded") else ("덮음" if covering else "미커버")
+    return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))}'
+            f'{(" <span class=\"b drift\">" + e(change["kind"]) + " " + kst(change["at"]) + "</span>") if change else ""}</h1>'
+            f'<div class="card"><b>{e(rec["title"])}</b>'
+            f'{("<p class=\"small\" style=\"color:var(--mut)\">제외: " + e(rec["excluded"]) + "</p>") if rec.get("excluded") else ""}'
+            f'<div class="kv"><div>도메인</div><div>{e(rec["domain"])}</div><div>종류</div><div>{e(rec.get("kind"))}{(" · actor " + e(rec["actor"])) if rec.get("actor") else ""}</div>'
+            f'{("<div>게이트</div><div class=\"mono\">" + e(rec["gate"]) + " " + e(rec.get("gate_name") or "") + "</div>") if rec.get("gate") else ""}'
+            f'{("<div>command</div><div class=\"mono\">" + e(rec["command"]) + "</div>") if rec.get("command") else ""}'
+            f'<div>바인딩</div><div class="mono">{e(bind)}</div><div>근거</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div>'
+            f'{("<div>PRD</div><div><ul style=\"margin:0;padding-left:18px\">" + prd + "</ul></div>") if prd else ""}'
+            f'<div>해시</div><div class="mono">{e(rec.get("hash"))}</div></div></div>'
+            f'<h2>기대 힌트</h2><div class="card"><div class="kv">{hint or "<div class=\"mut\">–</div><div></div>"}</div></div>'
+            f'{("<h2>PRD 본문</h2><div class=\"card\">" + ex_html + "</div>") if excerpts else ""}'
+            f'<h2>덮는 케이스</h2><div class="card"><table><tr><th>케이스</th><th>제목</th><th>스위트</th><th>마지막 판정</th></tr>{cov}</table></div>')

@@ -20,13 +20,16 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from qa import ui  # noqa: E402
-from qa.cases import load_dir, select  # noqa: E402
+from qa.cases import audit as audit_cases, load_dir, select  # noqa: E402
+from qa.catalog import CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.runner import Runner  # noqa: E402
+from qa.spec import Spec  # noqa: E402
 from qa.store import Store, now_iso  # noqa: E402
+from qa.wiki import Wiki  # noqa: E402
 
 TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual")
 
@@ -39,8 +42,13 @@ class App:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.store = Store(cfg.db_path)
-        self.cases, self.case_errors = load_dir(cfg.cases_dir)
         self.github = GitHub(cfg)
+        # 기준 문서 (docs/qa-platform-tc.md): 위키 볼륨 + OpenAPI → TC 카탈로그. 읽기이므로 요청 시 갱신.
+        self.wiki = Wiki(cfg.wiki_dir, cfg.wiki_branch, cfg.wiki_public_url)
+        self.spec = Spec(cfg.spec_url, cfg.data_dir / "catalog", file=cfg.spec_file)
+        self.catalog = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=cfg.catalog_dir, data_dir=cfg.data_dir)
+        self.cases, self.case_errors = {}, []
+        self.reload_cases()
         self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish)
 
     def start(self):
@@ -49,8 +57,37 @@ class App:
     # ---- 케이스 -----------------------------------------------------------------
     def reload_cases(self) -> tuple[int, list[str]]:
         self.cases, self.case_errors = load_dir(self.cfg.cases_dir)
-        self.runner.cases = self.cases
+        audit_cases(self.cases, self.catalog.get())
+        if hasattr(self, "runner"):
+            self.runner.cases = self.cases
         return len(self.cases), self.case_errors
+
+    def current_catalog(self):
+        """카탈로그를 돌려주고, 입력이 바뀌어 다시 계산됐으면 케이스 대조도 다시 한다."""
+        before = self.catalog.current
+        cat = self.catalog.get()
+        if cat is not None and (before is None or cat.key != before.key):
+            audit_cases(self.cases, cat)
+        return cat
+
+    def coverage(self, cat) -> dict:
+        """TC id → 덮는 케이스 id 목록, 도메인×층 매트릭스. 분모는 전체 TC, 제외는 따로 센다 (§6.2)."""
+        by_tc: dict[str, list[str]] = {}
+        for c in self.cases.values():
+            for t in c.covers:
+                by_tc.setdefault(t, []).append(c.id)
+        matrix: dict[str, dict[str, dict]] = {}
+        for r in cat.records.values():
+            cell = matrix.setdefault(r["domain"], {}).setdefault(r["layer"], {"total": 0, "covered": 0, "excluded": 0})
+            cell["total"] += 1
+            if r.get("excluded"):
+                cell["excluded"] += 1
+            elif r["id"] in by_tc:
+                cell["covered"] += 1
+        return {"by_tc": by_tc, "matrix": matrix}
+
+    def drift_of(self, case) -> list[dict]:
+        return self.catalog.drift_for(case.covers, (case.reviewed or {}).get("at"))
 
     # ---- 트리거 준비: 사람에게 보여줄 제안 ------------------------------------------
     def suggest(self, trigger: str, sha: str | None, pr: int | None) -> tuple[list, str, dict]:
@@ -94,7 +131,10 @@ class App:
         if not chosen:
             raise BadRequest("케이스를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
-        meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen]}
+        cat = self.catalog.current
+        meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen],
+                "catalog": (cat.versions if cat else None),   # 이 런의 기준 버전 (§6.3). 과거 런은 다시 해석하지 않는다
+                "covers": sorted({t for c in chosen for t in c.covers})}
         meta.update({k: v for k, v in extra.items() if v not in (None, "")})
         rid = self.store.create_run(trigger=trigger, operator=operator, suite=suite, env=self.cfg.target_env,
                                     base_url=self.cfg.target_base_url, ref=ref or self.cfg.backend_branch, sha=sha,
@@ -231,15 +271,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             return self._json(200, {"status": "ok", "cases": len(app.cases), "case_errors": len(app.case_errors),
-                                    "runner": app.runner.current or "idle", "config": app.cfg.summary()})
+                                    "case_audit": {k: sum(1 for c in app.cases.values() if c.audit["status"] == k) for k in ("ok", "warn", "error", "unchecked")},
+                                    "runner": app.runner.current or "idle", "catalog": app.catalog.summary(),
+                                    "wiki": {"available": app.wiki.available, "head": app.wiki.head()}, "config": app.cfg.summary()})
 
         # ---------- 대시보드 ----------
         if path == "/" and method == "GET":
             sprint = app.cfg.current_sprint()
             since = sprint["starts_at"].isoformat().replace("+00:00", "Z")
+            cat = app.current_catalog()
             body = ui.dashboard(deploys=app.deploys_with_status(), sprint=sprint, sprint_runs=app.store.runs_since(since, "sprint-smoke"),
                                 recent=app.store.list_runs(10), cfg_summary=app.cfg.summary(), case_count=len(app.cases),
-                                case_errors=app.case_errors, gh_error=app.github.last_error, runner_current=app.runner.current)
+                                case_errors=app.case_errors, gh_error=app.github.last_error, runner_current=app.runner.current,
+                                catalog=cat, coverage=app.coverage(cat) if cat else None, catalog_error=app.catalog.last_error)
             return self._page("대시보드", body, "dash")
 
         # ---------- 런 ----------
@@ -262,9 +306,16 @@ class Handler(BaseHTTPRequestHandler):
                 target["변경 도메인"] = ui.e(", ".join(info["domains"]) or "–")
             warnings = []
             if any(c.needs_actor() for c in suggested) and not app.cfg.actors:
-                warnings.append("테스트 계정(QA_ACTORS)가 설정되지 않았다 — 테스트 계정이 필요한 케이스는 skipped 로 기록된다.")
+                warnings.append("테스트 계정(QA_ACTORS)이 설정되지 않았다 — 테스트 계정이 필요한 케이스는 skipped 로 기록된다.")
             if app.github.last_error and trigger == "deploy-sanity":
                 warnings.append(app.github.last_error)
+            app.current_catalog()
+            drifted = [c.id for c in suggested if app.drift_of(c)]
+            if drifted:
+                warnings.append("근거가 바뀐 케이스가 있다 (케이스 화면에서 확인): " + ", ".join(drifted[:6]) + (" …" if len(drifted) > 6 else ""))
+            blocked = [c.id for c in app.cases.values() if c.blocked]
+            if blocked:
+                warnings.append("카탈로그 대조 오류로 스위트에서 빠진 케이스: " + ", ".join(blocked[:6]))
             hidden = {"sha": sha, "pr": pr, "deploy_run_id": g("deploy_run_id"), "basis": basis,
                       "pr_title": info.get("pr_title"), "pr_url": info.get("pr_url"), "domains": ",".join(info.get("domains") or [])}
             body = ui.run_new(trigger=trigger, target=target, suggested=suggested, all_cases=sorted(app.cases.values(), key=lambda c: c.id),
@@ -353,10 +404,38 @@ class Handler(BaseHTTPRequestHandler):
                 slack(app.cfg.slack_webhook_url, f"[QA] 릴리스 판단 {decision.upper()} — {operator}: {rec['reason'] or '(사유 없음)'} · {app.cfg.public_url}/runs/{rid}")
                 return self._json(200, {"ok": True}) if m.group(1) else self._redirect(f"/runs/{rid}", operator)
 
+        # ---------- 기준 (TC 카탈로그) ----------
+        if path == "/catalog" and method == "GET":
+            cat = app.current_catalog()
+            if cat is None:
+                return self._page("기준", f'<h1>기준</h1><div class="flash err">카탈로그를 계산하지 못했다: {ui.e(app.catalog.last_error or "원인 미상")}</div>', "catalog")
+            cov = app.coverage(cat)
+            domain = g("domain") or (cat.domains()[0] if cat.domains() else "")
+            body = ui.catalog_list(cat, cov, app.store.last_verdicts(), domain=domain, layer=g("layer"), only=g("only"),
+                                   changes=app.catalog.changes, wiki_available=app.wiki.available)
+            return self._page("기준", body, "catalog")
+        if path == "/catalog/tc" and method == "GET":
+            cat = app.current_catalog()
+            rec = cat.records.get(g("id")) if cat else None
+            if not rec:
+                return self._error(404, "그 TC 가 카탈로그에 없다")
+            cov = app.coverage(cat)
+            covering = [app.cases[i] for i in cov["by_tc"].get(rec["id"], []) if i in app.cases]
+            excerpts = []
+            for ref in rec.get("prd") or []:
+                text = app.wiki.prd_section(ref["doc"], ref["section"], max_lines=40) if app.wiki.available else None
+                excerpts.append((ref, text))
+            return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"])), "catalog")
+        if path == "/api/catalog" and method == "GET":
+            cat = app.current_catalog()
+            return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
+
         # ---------- 케이스 ----------
         if path == "/cases" and method == "GET":
+            app.current_catalog()
             cs = sorted(app.cases.values(), key=lambda c: c.id)
-            return self._page("케이스", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors), "cases")
+            drift = {c.id: app.drift_of(c) for c in cs}
+            return self._page("케이스", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift), "cases")
         if path == "/cases/reload" and method == "POST":
             n, errs = app.reload_cases()
             app.store.add_event(operator=self._operator() or "(미선택)", action="cases.reload", target=None, detail={"cases": n, "errors": len(errs)})
@@ -366,7 +445,9 @@ class Handler(BaseHTTPRequestHandler):
             c = app.cases.get(m.group(1))
             if not c:
                 return self._error(404, "케이스가 없다")
-            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id)), "cases")
+            cat = app.current_catalog()
+            recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
+            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases")
 
         # ---------- 활동 ----------
         if path == "/activity" and method == "GET":

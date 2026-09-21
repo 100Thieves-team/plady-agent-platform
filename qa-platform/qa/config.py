@@ -39,6 +39,13 @@ class Config:
         self.target_base_url = g("QA_TARGET_BASE_URL", "https://api.dev.moimyeon.plady.io").rstrip("/")
         self.spec_url = g("QA_SPEC_URL", "https://100thieves-team.github.io/moimyeon-backend/api/branches/dev/openapi/openapi3.yaml")
         self.request_timeout = int(g("QA_REQUEST_TIMEOUT", "30"))
+        self.spec_file = g("QA_SPEC_FILE", "") or None          # 로컬·테스트: 파일에서 읽는다
+
+        # 기준 문서 — llm-wiki 체크아웃(읽기 전용 볼륨)과 카탈로그 입력 파일 (docs/qa-platform-tc.md §4.5, §11)
+        self.wiki_dir = g("QA_WIKI_DIR", "") or None
+        self.wiki_branch = g("QA_WIKI_BRANCH", "main")
+        self.wiki_public_url = g("QA_WIKI_PUBLIC_URL", "https://wiki.agent.plady.io").rstrip("/")
+        self.catalog_dir = Path(g("QA_CATALOG_DIR", str(Path(__file__).resolve().parent.parent / "catalog")))
 
         # 테스트 계정·픽스처 (SSM qa-actors / qa-fixtures → env)
         self.actors: dict = _json_env(env, "QA_ACTORS")        # name -> memberId
@@ -93,4 +100,5 @@ class Config:
             "target": self.target_base_url, "env": self.target_env, "cases_dir": str(self.cases_dir),
             "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
             "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
+            "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir),
         }
