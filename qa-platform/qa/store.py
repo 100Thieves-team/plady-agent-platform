@@ -212,7 +212,7 @@ class Store:
     def event_actions(self) -> list[str]:
         return [r["action"] for r in self._q("SELECT DISTINCT action FROM events ORDER BY action")]
 
-    # ---- drafts (초안함, docs/qa-platform-tc.md §7.3) -------------------------------------
+    # ---- drafts (케이스 초안, docs/qa-platform-tc.md §7.3) -------------------------------------
     def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None,
                   case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None,
                   prompt_hash: str | None = None) -> str:

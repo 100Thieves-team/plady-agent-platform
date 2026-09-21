@@ -69,16 +69,16 @@ def run_badge(r: dict) -> str:
 TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "임의 실행",
               "draft-check": "초안 확인", "explorer": "탐색기"}
 ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage": "Hermes 진단", "release.decide": "릴리스 판단",
-             "cases.reload": "케이스 재로드", "draft.generate": "초안 생성", "draft.rejected_by_validation": "초안 검증 탈락",
-             "draft.save": "초안 편집", "draft.check": "초안 확인 실행", "draft.approve": "초안 승인", "draft.reject": "초안 반려",
+             "cases.reload": "케이스 재로드", "draft.generate": "케이스 초안 생성", "draft.rejected_by_validation": "케이스 초안 검증 탈락",
+             "draft.save": "케이스 초안 편집", "draft.check": "케이스 초안 확인 실행", "draft.approve": "케이스 초안 승인", "draft.reject": "케이스 초안 반려",
              "run.publish": "위키 발행", "explorer.send": "탐색기 전송"}
-DRAFT_KO = {"draft": "초안", "checked": "확인됨", "approved": "승인", "rejected": "반려"}
+DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "초안"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "케이스 초안"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -418,8 +418,8 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'{("<details class=\"card\"><summary>카탈로그 경고 " + str(len(catalog.warnings)) + " — 바인딩·스펙 구조 불일치 (§6.4)</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
             f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
             f'<select name="operator" required><option value="">— 운영자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
-            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 초안 생성 (Hermes)</button>'
-            f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 초안함에 들어간다 (§7)</span></div>'
+            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 케이스 초안 생성 (Hermes)</button>'
+            f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 케이스 초안에 들어간다 (§7)</span></div>'
             f'<table><tr><th>TC</th><th>내용 ({n})</th><th>바인딩</th><th>커버 · 마지막 판정</th></tr>{rows}</table></div></form>')
 
 
@@ -457,17 +457,17 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
             f'<h2>덮는 케이스</h2><div class="card"><table><tr><th>케이스</th><th>제목</th><th>스위트</th><th>마지막 판정</th></tr>{cov}</table></div>')
 
 
-# ---- 초안함 --------------------------------------------------------------------------------------
+# ---- 케이스 초안 --------------------------------------------------------------------------------------
 def drafts_list(drafts: list[dict], counts: dict, status: str) -> str:
     tabs = "".join(f'<a href="/drafts{("?status=" + st) if st else ""}" class="{"on" if (status or "") == st else ""}">{lab} {counts.get(st, "") if st else sum(counts.values())}</a>'
-                   for st, lab in (("", "전체"), ("draft", "초안"), ("checked", "확인됨"), ("approved", "승인"), ("rejected", "반려")))
+                   for st, lab in (("", "전체"), ("draft", "검토 대기"), ("checked", "dev 확인됨"), ("approved", "승인"), ("rejected", "반려")))
     rows = "".join(
         f'<tr><td><a href="/drafts/{e(d["id"])}" class="mono">{e(d["id"])}</a></td><td>{badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</td>'
         f'<td class="mono">{e(d.get("case_id") or "–")}</td><td class="small">{" ".join(tc_link(t) for t in d["tc_ids"][:4])}{" …" if len(d["tc_ids"]) > 4 else ""}</td>'
         f'<td class="small">{e((d.get("validation") or {}).get("status") or "–")}{(" · 경고 " + str(len((d.get("validation") or {}).get("warnings") or []))) if (d.get("validation") or {}).get("warnings") else ""}</td>'
         f'<td class="small">{e(d["source"])} · {e(d["operator"])}</td><td class="small mut">{kst(d["created_at"])}</td></tr>'
-        for d in drafts) or '<tr><td colspan="7" class="mut">초안 없음 — 기준 화면에서 TC 를 골라 [초안 생성]</td></tr>'
-    return (f'<h1>초안함</h1><div class="card"><div class="tabs">{tabs}</div>'
+        for d in drafts) or '<tr><td colspan="7" class="mut">케이스 초안 없음 — 기준 화면에서 TC 를 골라 [케이스 초안 생성]</td></tr>'
+    return (f'<h1>케이스 초안 <span class="small mut">아직 케이스가 아닌 것 — Hermes 나 탐색기가 만든 YAML 을 사람이 검토해 승인하면 PR 로 케이스가 된다</span></h1><div class="card"><div class="tabs">{tabs}</div>'
             f'<p class="small mut" style="margin-bottom:0">승인은 스위트 편입이 아니다. 승인된 YAML 을 <span class="mono">qa-platform/cases/</span> 에 붙여 PR 로 리뷰한다. 플랫폼은 git 에 쓰지 않는다.</p></div>'
             f'<div class="card"><table><tr><th>ID</th><th>상태</th><th>케이스 id</th><th>덮는 TC</th><th>검증</th><th>출처 · 만든 사람</th><th>시각</th></tr>{rows}</table></div>')
 
@@ -500,7 +500,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
                          f'<pre id="y">{e(d["yaml"])}</pre><button onclick="navigator.clipboard.writeText(document.getElementById(\'y\').innerText)">복사</button></div>')
     elif d["status"] == "rejected":
         approved_html = f'<div class="card" style="background:#fef2f2"><b>반려</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}<pre>{e(d["yaml"])}</pre></div>'
-    return (f'<h1>초안 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</h1>'
+    return (f'<h1>케이스 초안 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}</h1>'
             f'<div class="card"><div class="kv"><div>케이스 id</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
             f'{(" · 근거 해시 <span class=\"mono\">" + e(d.get("prompt_hash")) + "</span>") if d.get("prompt_hash") else ""}</div>'
             f'<div>덮는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
@@ -559,7 +559,7 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
                   f'<details open><summary class="small mut">응답 본문</summary><pre>{e(json.dumps(rbody, ensure_ascii=False, indent=1) if not isinstance(rbody, str) else rbody)}</pre></details>'
                   f'<details><summary class="small mut">보낸 요청</summary><pre>{e(json.dumps({k: v for k, v in req.items() if k in ("url", "query", "body", "headers", "actor")}, ensure_ascii=False, indent=1))}</pre></details>'
                   f'<form method="post" action="/explorer/draft" class="actions"><input type="hidden" name="run" value="{e(run["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-                  f'<button {"" if operator else "disabled"}>케이스 단계로 담기 (초안함)</button> <span class="small mut">관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
+                  f'<button {"" if operator else "disabled"}>케이스 단계로 담기 (케이스 초안)</button> <span class="small mut">관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
     return f'{head}<div class="grid" style="grid-template-columns:380px 1fr">{left}<div>{form}{result}</div></div>'
 
 
@@ -599,8 +599,8 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, 기준 커버리지 매트릭스, 최근 런</td></tr>
 <tr><td><a href="/runs">런</a></td><td>실행 후</td><td>런 목록·상세(단계별 요청·응답·단언), Hermes 진단, 릴리스 판단 기록</td></tr>
 <tr><td><a href="/cases">케이스</a></td><td>케이스 관리</td><td>정본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 대조 상태·근거 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
-<tr><td><a href="/catalog">기준</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 덮는 케이스, 바인딩, 제외 사유, 카탈로그 경고(스펙 누락 등). TC 를 골라 [초안 생성]</td></tr>
-<tr><td><a href="/drafts">초안</a></td><td>케이스 늘릴 때</td><td>Hermes·탐색기가 만든 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
+<tr><td><a href="/catalog">기준</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 덮는 케이스, 바인딩, 제외 사유, 카탈로그 경고(스펙 누락 등). TC 를 골라 [케이스 초안 생성]</td></tr>
+<tr><td><a href="/drafts">케이스 초안</a></td><td>케이스 늘릴 때</td><td>Hermes·탐색기가 만든 케이스 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/explorer">탐색기</a></td><td>손으로 확인할 때</td><td>OpenAPI 에서 폼을 만들어 dev 에 한 번 보낸다. 전송도 런으로 기록. 응답을 [케이스 단계로 담기]</td></tr>
 <tr><td><a href="/activity">활동</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
@@ -610,7 +610,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li><b>[검증] 을 누른다.</b> 플랫폼이 PR 변경 파일에서 도메인을 읽어 그 도메인의 sanity 를 제안한다. 확인하고 실행. 통과하면 그 배포에 ✅ 가 붙는다.</li>
 <li><b>실패하면 셋 중 하나다.</b> (a) 버그 → 고친다. (b) 케이스 노후 — 기획이 바뀌어 케이스가 틀렸다 → 케이스 YAML 을 고쳐 PR. (c) 환경 — 픽스처(공고 id 등)가 바뀜 → SSM <span class="mono">qa-fixtures</span> 를 고친다. Hermes 진단이 셋 중 무엇인지 제안한다.</li>
 <li><b>새 기능이면 기준을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 기준 화면에 TC 가 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다 — 플랫폼에서 TC 를 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
-<li><b>케이스를 늘린다.</b> 기준 화면에서 미커버 TC 를 골라 [초안 생성] → 초안함에서 [한 번 실행해 보기] → 승인 → YAML 을 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 붙여 PR. 리뷰·머지되면 다음 배포에 실린다. 승인 없이 스위트에 들어가는 케이스는 없다.</li>
+<li><b>케이스를 늘린다.</b> 기준 화면에서 미커버 TC 를 골라 [케이스 초안 생성] → 케이스 초안에서 [한 번 실행해 보기] → 승인 → YAML 을 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 붙여 PR. 리뷰·머지되면 다음 배포에 실린다. 승인 없이 스위트에 들어가는 케이스는 없다.</li>
 <li><b>쓰기 케이스 규칙.</b> 만든 데이터는 같은 케이스 안에서 닫는다(취소·철회·삭제). 만드는 데이터의 title 은 <span class="mono">[QA]</span> 로 시작. 테스트 계정(qa-host · qa-guest)만 쓴다 — 목데이터 회원은 참여 슬롯이 차 있어 쓰기에 못 쓴다.</li>
 </ol>"""
 
@@ -622,10 +622,10 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 </ul>"""
 
     s6 = f"""
-<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고, dev 데이터 오염·런 폭주·알림 피로가 구조적으로 막힌다. 카탈로그 <i>계산</i>은 읽기라 자동이지만 실행·전송·초안·발행은 전부 버튼이다.</p>
+<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고, dev 데이터 오염·런 폭주·알림 피로가 구조적으로 막힌다. 카탈로그 <i>계산</i>은 읽기라 자동이지만 실행·전송·케이스 초안 생성·발행은 전부 버튼이다.</p>
 <p><b>skipped 는 실패인가?</b> 아니다. 테스트 계정(<span class="mono">qa-actors</span>)이나 픽스처(<span class="mono">qa-fixtures</span>)가 없어 못 보낸 것이다. 설정을 먼저 본다.</p>
 <p><b>카탈로그 경고는?</b> 바인딩한 에러 코드가 OpenAPI 예시에 없다는 뜻이다(예: E1425·E1427 은 dev 에서 확인됐지만 스펙에 아직 없음). 백엔드 REST Docs 에 예시를 추가하면 사라진다.</p>
-<p><b>정본은 어디?</b> 케이스 = git <span class="mono">qa-platform/cases/</span>. 기준 = llm-wiki SSOT·PRD + OpenAPI. 바인딩·제외·서술 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 런·감사 로그·초안만 있다.</p>
+<p><b>정본은 어디?</b> 케이스 = git <span class="mono">qa-platform/cases/</span>. 기준 = llm-wiki SSOT·PRD + OpenAPI. 바인딩·제외·서술 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 런·감사 로그·케이스 초안만 있다.</p>
 <p class="small mut">설계 문서: <span class="mono">docs/qa-platform.md</span>(P0·P1, 런북) · <span class="mono">docs/qa-platform-tc.md</span>(P2, 기준 관리). 이 화면은 <span class="mono">{e(public_url)}/guide</span>.</p>"""
 
     s_ai = """
@@ -633,9 +633,9 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <p><b>TC 도 AI 가 만들지 않는다.</b> TC 는 SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 "기준" 을 만들면 기준이 정본에서 떠난다.</p>
 <p>AI(Hermes)가 개입하는 지점은 <b>둘뿐이고, 둘 다 사람이 버튼을 누를 때만</b> 돈다.</p>
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
-<tr><td>케이스를 늘릴 때</td><td>기준 화면 [초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 초안함에 들어가고, 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
+<tr><td>케이스를 늘릴 때</td><td>기준 화면 [케이스 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 케이스 초안에 들어가고, 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
 <tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr></table>
-<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로, 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다 — 필요하면 별도 결정이다.</p>"""
+<p class="small mut">위키 도구도 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로, 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다 — 필요하면 별도 결정이다.</p>"""
     return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)

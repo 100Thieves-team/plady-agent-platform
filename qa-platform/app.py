@@ -647,10 +647,10 @@ class Handler(BaseHTTPRequestHandler):
             did = app.explorer_to_draft(str(fv("run")), operator, self._session_hash(), self._ip())
             return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
 
-        # ---------- 초안함 (docs/qa-platform-tc.md §7.3) ----------
+        # ---------- 케이스 초안 (docs/qa-platform-tc.md §7.3) ----------
         if path == "/drafts" and method == "GET":
             st = g("status")
-            return self._page("초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st), "drafts")
+            return self._page("케이스 초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st), "drafts")
         if path == "/drafts/generate" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -669,7 +669,7 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in d["tc_ids"]}
             run = app.store.get_run(d["run_id"]) if d.get("run_id") else None
-            return self._page(f"초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
+            return self._page(f"케이스 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
         m = re.match(r"^/drafts/(d-[0-9a-f]+)/(save|check|approve|reject)$", path)
         if m and method == "POST":
             did, action = m.group(1), m.group(2)
@@ -696,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not case:
                     raise BadRequest("검증 오류가 있는 초안은 실행하지 않는다: " + "; ".join(errors[:3]))
                 rid = app.create_run(trigger="draft-check", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None,
-                                     deploy_run_id=None, reason=f"초안 {did} 확인 실행", basis="초안 1건", extra={"draft_id": did},
+                                     deploy_run_id=None, reason=f"케이스 초안 {did} 확인 실행", basis="케이스 초안 1건", extra={"draft_id": did},
                                      session_hash=sh, ip=ip, cases_override=[case])
                 app.store.update_draft(did, status="checked", run_id=rid)
                 app.store.add_event(operator=operator, action="draft.check", target=did, session_hash=sh, ip=ip, detail={"run_id": rid})

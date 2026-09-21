@@ -433,7 +433,7 @@ cases:
         self.assertGreaterEqual(seen["timeout"], 180)
         self.assertEqual([c.id for c, _ in res["accepted"]], ["room.create-limit-reject"])
         self.assertEqual([r for r, _ in res["rejected"]], ["junk"])           # 요청 밖 TC → 버림
-        # 초안함에 넣고 다시 읽는다 (열 추가 마이그레이션 포함)
+        # 케이스 초안에 넣고 다시 읽는다 (열 추가 마이그레이션 포함)
         st = Store(Path(self.tmp.name) / "qa.sqlite")
         c, w = res["accepted"][0]
         did = st.add_draft(operator="bebe", source="hermes", domain="room", yaml_text=c.to_yaml(), note=None, case_id=c.id, tc_ids=c.covers,
