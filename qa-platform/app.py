@@ -24,6 +24,7 @@ from qa import ui  # noqa: E402
 from qa.cases import audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
+from qa import chat as chatmod  # noqa: E402
 from qa import drafts as draftsmod  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
@@ -296,6 +297,39 @@ class App:
         self.store.add_event(operator=operator, action="run.publish", target=run["id"], session_hash=session_hash, ip=ip,
                              detail={"slug": slug, "dry_run": dry_run, "chars": len(content)})
         return rec
+
+    # ---- Hermes 대화 (docs/qa-platform-hermes.md §3.2) ----------------------------------
+    def chat_create(self, *, operator: str, context: dict, session_hash: str | None, ip: str | None) -> str:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("운영자를 목록에서 골라야 한다")
+        if not self.cfg.hermes_key:
+            raise BadRequest("HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다")
+        _, title = chatmod.context_block(self, context)
+        cid = self.store.add_chat(operator=operator, title=title, context={k: v for k, v in context.items() if v})
+        self.store.add_event(operator=operator, action="chat.create", target=cid, session_hash=session_hash, ip=ip, detail={"context": context})
+        return cid
+
+    def chat_send(self, chat: dict, text: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("운영자를 목록에서 골라야 한다")
+        if not text.strip():
+            raise BadRequest("메시지가 비었다")
+        if len(text) > 8000:
+            raise BadRequest("메시지는 8000자까지")
+        if chat["status"] != "open":
+            raise BadRequest("닫힌 대화다 — 새 대화를 연다")
+        if chat["turns"] >= self.cfg.chat_max_turns:
+            raise BadRequest(f"대화당 {self.cfg.chat_max_turns}턴까지 — 새 대화를 연다")
+        if self.chat_stale(chat):
+            raise BadRequest(f"{self.cfg.chat_stale_days}일 넘게 조용했던 대화다 — 새 대화를 연다")
+        return chatmod.send(self, chat, text, operator=operator, session_hash=session_hash, ip=ip)
+
+    def chat_stale(self, chat: dict) -> bool:
+        try:
+            last = datetime.fromisoformat(chat["updated_at"].replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        return (datetime.now(last.tzinfo) - last).days >= self.cfg.chat_stale_days
 
     def revalidate_draft(self, d: dict, yaml_text: str) -> tuple:
         """편집된 YAML 을 다시 검증한다. (Case|None, errors, warnings)."""
@@ -767,6 +801,55 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
             return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases")
+
+        # ---------- Hermes 대화 (docs/qa-platform-hermes.md §3.2) ----------
+        if path == "/chat" and method == "GET":
+            chats = app.store.list_chats(100)
+            return self._page("Hermes", ui.chats_list(chats, stale={c["id"]: app.chat_stale(c) for c in chats}, hermes=bool(app.cfg.hermes_key),
+                                                     operator=self._operator(), operators=app.cfg.operators), "chat")
+        if path == "/chat/new" and method == "GET":
+            ctx = {k: g(k) for k in ("run", "case", "tc") if g(k)}
+            attach, label = chatmod.context_block(app, ctx)
+            return self._page("새 대화", ui.chat_new(ctx, label, attach, operator=self._operator(), operators=app.cfg.operators, hermes=bool(app.cfg.hermes_key)), "chat")
+        if path == "/chat" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            ctx = {k: str(fv(k)) for k in ("run", "case", "tc") if fv(k)}
+            sh, ip = self._session_hash(), self._ip()
+            cid = app.chat_create(operator=operator, context=ctx, session_hash=sh, ip=ip)
+            text = str(fv("text"))
+            if text.strip():
+                app.chat_send(app.store.get_chat(cid), text, operator=operator, session_hash=sh, ip=ip)
+            return self._json(200, {"id": cid}) if self._wants_json() else self._redirect(f"/chat/{cid}", set_operator=operator)
+        m = re.match(r"^/chat/(c-[0-9a-f]+)$", path)
+        if m and method == "GET":
+            chat = app.store.get_chat(m.group(1))
+            if not chat:
+                return self._error(404, "대화가 없다")
+            msgs = app.store.list_chat_messages(chat["id"])
+            drafts = {d: app.store.get_draft(d) for mm in msgs for d in mm["draft_ids"]}
+            if self._wants_json():
+                return self._json(200, {"chat": chat, "messages": msgs})
+            return self._page(f"대화 {chat['id']}", ui.chat_detail(chat, msgs, drafts, stale=app.chat_stale(chat), max_turns=app.cfg.chat_max_turns,
+                                                                 timeout=app.cfg.chat_timeout, operator=self._operator(), operators=app.cfg.operators), "chat")
+        m = re.match(r"^/chat/(c-[0-9a-f]+)/(send|close)$", path)
+        if m and method == "POST":
+            chat = app.store.get_chat(m.group(1))
+            if not chat:
+                return self._error(404, "대화가 없다")
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("운영자를 목록에서 골라야 한다")
+            sh, ip = self._session_hash(), self._ip()
+            if m.group(2) == "close":
+                app.store.update_chat(chat["id"], status="closed")
+                app.store.add_event(operator=operator, action="chat.close", target=chat["id"], session_hash=sh, ip=ip, detail={"turns": chat["turns"]})
+                return self._json(200, {"ok": True}) if self._wants_json() else self._redirect("/chat", set_operator=operator)
+            reply = app.chat_send(chat, str(fv("text")), operator=operator, session_hash=sh, ip=ip)
+            return self._json(200, reply) if self._wants_json() else self._redirect(f"/chat/{chat['id']}#end", set_operator=operator)
 
         # ---------- 가이드 ----------
         if path == "/guide" and method == "GET":

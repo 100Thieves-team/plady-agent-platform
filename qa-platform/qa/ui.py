@@ -37,6 +37,9 @@ details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-colum
 .b.covered{color:var(--ok);background:var(--okbg)}.b.uncovered{color:var(--bad);background:var(--badbg)}.b.excluded{color:var(--mut);background:var(--graybg)}
 .b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
 tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
+a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;font-weight:500;text-decoration:none;vertical-align:middle}
+.msg{padding:10px 14px;border-radius:10px;margin:8px 0;max-width:92%;white-space:pre-wrap;word-break:break-word}.msg.user{background:#eef2ff;margin-left:auto}.msg.assistant{background:var(--card);border:1px solid var(--line)}.msg.err{background:var(--badbg);color:var(--bad)}
+.msg .who{font-size:11px;color:var(--mut);margin-bottom:4px}.tools{font-size:12px;margin:6px 0 0}.tools pre{max-height:220px;overflow:auto;font-size:11px;margin:4px 0}
 .mx{font-size:12px}.mx td,.mx th{padding:4px 6px;text-align:center}.mx td:first-child{text-align:left}
 """
 
@@ -69,6 +72,7 @@ def run_badge(r: dict) -> str:
 TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "임의 실행",
               "draft-check": "초안 확인", "explorer": "탐색기"}
 ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage": "Hermes 진단", "release.decide": "릴리스 판단",
+             "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "케이스 재로드", "draft.generate": "케이스 초안 생성", "draft.rejected_by_validation": "케이스 초안 검증 탈락",
              "draft.save": "케이스 초안 편집", "draft.check": "케이스 초안 확인 실행", "draft.approve": "케이스 초안 승인", "draft.reject": "케이스 초안 반려",
              "run.publish": "위키 발행", "explorer.send": "탐색기 전송", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
@@ -78,7 +82,7 @@ DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "�
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "케이스 초안"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "케이스 초안"), ("chat", "/chat", "Hermes"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -289,7 +293,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                        f'<select name="operator" required><option value="">— 운영자 —</option>{ops}</select></p><p><textarea name="reason" placeholder="판단 사유"></textarea></p>'
                        f'<button class="primary" {"disabled" if live else ""}>판단 기록</button></form></div>')
 
-    return (f'{refresh}<h1>런 <span class="mono">{e(run["id"])}</span> {run_badge(run)}</h1>'
+    return (f'{refresh}<h1>런 <span class="mono">{e(run["id"])}</span> {run_badge(run)} <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></h1>'
             f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a></div></div>'
             f'{release}<h2>케이스</h2>{body_cases}')
 
@@ -339,7 +343,7 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
         f'<td>{e(h["operator"])}</td><td class="mono small">{e((h.get("sha") or "")[:8])}</td><td class="small mut">{kst(h["created_at"])}</td>'
         f'<td class="small" style="color:var(--bad)">{e(h.get("error") or "")}</td></tr>' for h in history) or '<tr><td colspan="7" class="mut">실행 이력 없음</td></tr>'
     src = "".join(f'<li>{e(s)}</li>' for s in c.source) or '<li class="mut">근거 미기재</li>'
-    return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}</h1><div class="card"><b>{e(c.title)}</b>'
+    return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)} <a class="btn" href="/chat/new?case={e(c.id)}">Hermes 와 이야기</a></h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>근거 메모</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
@@ -442,7 +446,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
         f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut\">–</span>")}</td></tr>'
         for c in covering) or '<tr><td colspan="4" class="mut">덮는 케이스 없음</td></tr>'
     state = "제외" if rec.get("excluded") else ("덮음" if covering else "미커버")
-    return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))}'
+    return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))} <a class="btn" href="/chat/new?tc={e(rec["id"])}">Hermes 와 이야기</a>'
             f'{(" <span class=\"b drift\">" + e(change["kind"]) + " " + kst(change["at"]) + "</span>") if change else ""}</h1>'
             f'<div class="card"><b>{e(rec["title"])}</b>'
             f'{("<p class=\"small\" style=\"color:var(--mut)\">제외: " + e(rec["excluded"]) + "</p>") if rec.get("excluded") else ""}'
@@ -606,6 +610,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/cases">케이스</a></td><td>케이스 관리</td><td>정본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 대조 상태·근거 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
 <tr><td><a href="/catalog">기준</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 덮는 케이스, 바인딩, 제외 사유, 카탈로그 경고(스펙 누락 등). TC 를 골라 [케이스 초안 생성]</td></tr>
 <tr><td><a href="/drafts">케이스 초안</a></td><td>케이스 늘릴 때</td><td>Hermes·탐색기가 만든 케이스 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
+<tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 런·케이스·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
 <tr><td><a href="/explorer">탐색기</a></td><td>손으로 확인할 때</td><td>OpenAPI 에서 폼을 만들어 dev 에 한 번 보낸다. 전송도 런으로 기록. 응답을 [케이스 단계로 담기]</td></tr>
 <tr><td><a href="/activity">활동</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
@@ -640,9 +645,100 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
 <tr><td>케이스를 늘릴 때</td><td>기준 화면 [케이스 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 케이스 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 케이스 초안에 들어가고 사람이 승인해 PR 로 올려야 케이스가 된다</td></tr>
 <tr><td>런이 실패한 뒤</td><td>런 상세 [Hermes 진단]</td><td>단계별 요청·응답·단언만 보고 <i>버그 / 케이스 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 진단은 런 케이스에 메모로 붙을 뿐이다</td></tr>
-<tr><td>Hermes 에게 물을 때 (Slack)</td><td>버튼 없음 — 대화</td><td>QA 도구(<span class="mono">qa_*</span> 13개)로 기준·케이스·런·커버리지·OpenAPI·PRD 절을 읽고 답한다. 케이스를 쓰거나 고치면 케이스 초안으로, PRD 절에서 뽑은 서술 TC 는 "서술 TC 제안" 초안으로 낸다</td><td>런 생성·탐색기 전송·위키 발행·초안 승인 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 활동 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
+<tr><td>Hermes 에게 물을 때 (<a href="/chat">Hermes</a> 화면 · Slack)</td><td>대화</td><td>QA 도구(<span class="mono">qa_*</span> 13개)로 기준·케이스·런·커버리지·OpenAPI·PRD 절을 읽고 답한다. 케이스를 쓰거나 고치면 케이스 초안으로, PRD 절에서 뽑은 서술 TC 는 "서술 TC 제안" 초안으로 낸다</td><td>런 생성·탐색기 전송·위키 발행·초안 승인 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 활동 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
 <p class="small mut">[케이스 초안 생성] 버튼 경로에서는 위키 도구를 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 케이스 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 대조할 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
     return (intro + _sec("1. 트리거를 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
             + _sec("6. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("7. 자주 묻는 것", s6))
+
+
+# ---- Hermes 대화 (docs/qa-platform-hermes.md §3.2) ----------------------------------------------
+def _operator_select(operator: str, operators: list[str]) -> str:
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    return (f'<select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()">'
+            f'<option value="">— 운영자 —</option>{ops}</select>')
+
+
+def _ctx_label(ctx: dict) -> str:
+    if ctx.get("run"):
+        return f'런 <a href="/runs/{e(ctx["run"])}" class="mono">{e(ctx["run"])}</a>'
+    if ctx.get("case"):
+        return f'케이스 <a href="/cases/{e(ctx["case"])}" class="mono">{e(ctx["case"])}</a>'
+    if ctx.get("tc"):
+        return f'TC {tc_link(ctx["tc"])}'
+    return "–"
+
+
+def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, operators: list[str]) -> str:
+    warn = "" if hermes else '<div class="flash err">HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다.</div>'
+    rows = "".join(
+        f'<tr><td><a href="/chat/{e(c["id"])}">{e(c.get("title") or "(제목 없음)")}</a></td><td>{_ctx_label(c["context"])}</td>'
+        f'<td>{badge("닫힘", "skipped") if c["status"] != "open" else (badge("오래됨", "skipped") if stale.get(c["id"]) else badge("열림", "pass"))}</td>'
+        f'<td class="right">{c["turns"]}</td><td class="right">{c["drafts"]}</td><td>{e(c["operator"])}</td><td class="small mut">{kst(c["updated_at"])}</td></tr>'
+        for c in chats) or '<tr><td colspan="7" class="mut">대화 없음</td></tr>'
+    return (f'<h1>Hermes <span class="small mut">QA 를 아는 Hermes 와 이야기한다 — 기준·케이스·런을 읽고, 케이스 초안을 내고, 실패를 해석한다</span></h1>{warn}'
+            f'<div class="card"><div class="actions"><a class="btn" href="/chat/new">새 대화</a> <span class="small mut">런·케이스·TC 상세의 [Hermes 와 이야기] 로 열면 그 객체가 첨부된다. '
+            f'실행·발행·승인은 Hermes 가 못 한다 — 사람이 버튼을 누른다.</span></div></div>'
+            f'<div class="card"><table><tr><th>제목</th><th>첨부</th><th>상태</th><th>턴</th><th>초안</th><th>운영자</th><th>마지막</th></tr>{rows}</table></div>')
+
+
+def _send_js() -> str:
+    return ('onsubmit="var b=this.querySelector(\'button[type=submit]\');b.disabled=true;b.textContent=\'Hermes 가 도구를 쓰는 중…\';'
+            'var w=document.getElementById(\'wait\');if(w)w.style.display=\'block\'"')
+
+
+def chat_new(ctx: dict, label: str | None, attach: str, *, operator: str, operators: list[str], hermes: bool) -> str:
+    if not hermes:
+        return '<h1>새 대화</h1><div class="flash err">HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다.</div>'
+    hidden = "".join(f'<input type="hidden" name="{k}" value="{e(v)}">' for k, v in ctx.items())
+    attach_html = f'<div class="card"><div class="small mut">첨부 — 첫 메시지 앞에 붙는다</div><pre>{e(attach)}</pre></div>' if attach else ""
+    dis = "" if operator else "disabled"
+    return (f'<h1>새 대화 <span class="small mut">{("첨부: " + e(label)) if label else "첨부 없음"}</span></h1>{attach_html}'
+            f'<form class="card" method="post" action="/chat" {_send_js()}>{hidden}<input type="hidden" name="operator" value="{e(operator)}">'
+            f'<textarea name="text" required placeholder="예: room 도메인에서 아직 안 덮은 정책 TC 중 지금 케이스로 만들 수 있는 것 골라 줘" style="min-height:100px"></textarea>'
+            f'<div class="actions"><button type="submit" class="primary" {dis}>보내기</button> {_operator_select(operator, operators)} '
+            f'<span class="small mut">응답은 동기다 — 도구를 여러 번 부르면 수십 초 걸린다</span></div>'
+            f'<div id="wait" class="small mut" style="display:none">Hermes 가 도구를 쓰는 중… 화면을 닫지 말고 기다린다.</div></form>')
+
+
+def _tool_calls_html(calls: list[dict]) -> str:
+    if not calls:
+        return ""
+    items = ""
+    for c in calls:
+        args = c.get("arguments")
+        args_s = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+        out = c.get("output")
+        out_s = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False)
+        items += (f'<details><summary><span class="mono">{e(c.get("name"))}</span> <span class="mut">{e((args_s or "")[:120])}</span></summary>'
+                  f'<div class="small mut">인자</div><pre>{e((args_s or "")[:1500])}</pre><div class="small mut">결과</div><pre>{e((out_s or "–")[:2500])}</pre></details>')
+    return f'<div class="tools"><b>도구 호출 {len(calls)}건</b>{items}</div>'
+
+
+def chat_detail(chat: dict, messages: list[dict], drafts: dict, *, stale: bool, max_turns: int, timeout: int, operator: str, operators: list[str]) -> str:
+    closed = chat["status"] != "open" or stale or chat["turns"] >= max_turns
+    why = ("닫힌 대화" if chat["status"] != "open" else ("오래된 대화 — 새 대화를 연다" if stale else (f"{max_turns}턴 한도 — 새 대화를 연다" if chat["turns"] >= max_turns else "")))
+    body = ""
+    for m in messages:
+        if m["role"] == "user":
+            body += f'<div class="msg user"><div class="who">{e(chat["operator"])} · {kst(m["at"])}</div>{e(m["content"])}</div>'
+            continue
+        links = "".join(f' <a href="/drafts/{e(d)}" class="mono">{e(d)}</a>{(" " + badge(DRAFT_KO.get(drafts[d]["status"], drafts[d]["status"]), drafts[d]["status"])) if drafts.get(d) else ""}'
+                        for d in m["draft_ids"])
+        body += (f'<div class="msg assistant{" err" if m.get("error") else ""}"><div class="who">Hermes · {kst(m["at"])}{(" · " + str(m["ms"] // 1000) + "초") if m.get("ms") else ""}</div>'
+                 f'{e(m["content"])}{_tool_calls_html(m["tool_calls"])}'
+                 f'{("<div class=\"small\" style=\"margin-top:6px\">만든 초안:" + links + "</div>") if links else ""}</div>')
+    dis = "" if operator else "disabled"
+    form = (f'<div class="card mut small">{e(why)}</div>' if closed else
+            f'<form class="card" method="post" action="/chat/{e(chat["id"])}/send" {_send_js()}><input type="hidden" name="operator" value="{e(operator)}">'
+            f'<textarea name="text" required placeholder="메시지" style="min-height:80px"></textarea>'
+            f'<div class="actions"><button type="submit" class="primary" {dis}>보내기</button> {_operator_select(operator, operators)} '
+            f'<span class="small mut">{chat["turns"]}/{max_turns} 턴 · 타임아웃 {timeout}초</span></div>'
+            f'<div id="wait" class="small mut" style="display:none">Hermes 가 도구를 쓰는 중… 화면을 닫지 말고 기다린다.</div></form>')
+    close = ("" if chat["status"] != "open" else
+             f'<form class="inline" method="post" action="/chat/{e(chat["id"])}/close"><input type="hidden" name="operator" value="{e(operator)}"><button {dis}>대화 닫기</button></form>')
+    return (f'<h1>{e(chat.get("title") or "대화")} <span class="small mut mono">{e(chat["id"])}</span></h1>'
+            f'<div class="card"><div class="kv"><div>첨부</div><div>{_ctx_label(chat["context"])}</div><div>운영자</div><div>{e(chat["operator"])} · {kst(chat["created_at"])}</div>'
+            f'<div>초안</div><div>{chat["drafts"]}건 — 승인은 <a href="/drafts">케이스 초안</a> 화면에서</div></div><div class="actions">{close}<a class="btn" href="/chat">목록</a></div></div>'
+            f'{body}<div id="end"></div>{form}')

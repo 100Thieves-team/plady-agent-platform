@@ -1,4 +1,4 @@
-"""sqlite 저장소 — 런·단계·감사 로그·초안. 케이스 정본은 여기 없다. docs/qa-platform.md §9."""
+"""sqlite 저장소 — 런·단계·감사 로그·초안·Hermes 대화. 케이스 정본은 여기 없다. docs/qa-platform.md §9."""
 from __future__ import annotations
 
 import json
@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS drafts (
   id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, operator TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft', source TEXT NOT NULL, domain TEXT, yaml TEXT NOT NULL, note TEXT
 );
+-- Hermes 대화 (docs/qa-platform-hermes.md §5). 대화 하나 = Hermes 세션 키 하나. 메시지는 전부 남긴다.
+CREATE TABLE IF NOT EXISTS chats (
+  id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, operator TEXT NOT NULL, title TEXT,
+  session_key TEXT NOT NULL, context TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'open',
+  turns INTEGER NOT NULL DEFAULT 0, drafts INTEGER NOT NULL DEFAULT 0, last_response_id TEXT
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id TEXT NOT NULL, at TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL,
+  tool_calls TEXT NOT NULL DEFAULT '[]', draft_ids TEXT NOT NULL DEFAULT '[]', ms INTEGER, error TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_chat_messages_chat ON chat_messages(chat_id, id);
 """
 # P2b 에서 늘어난 초안 열. 이미 만들어진 DB 에는 ALTER 로 더한다 (sqlite 는 IF NOT EXISTS 가 없다).
 DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "validation": "TEXT NOT NULL DEFAULT '{}'",
@@ -263,3 +274,42 @@ class Store:
 
     def draft_counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self._q("SELECT status, COUNT(*) n FROM drafts GROUP BY status")}
+
+    # ---- chats (Hermes 대화, docs/qa-platform-hermes.md §3.2) ------------------------------------
+    def add_chat(self, *, operator: str, title: str | None, context: dict | None) -> str:
+        cid = "c-" + secrets.token_hex(4)
+        t = now_iso()
+        self._x("INSERT INTO chats(id,created_at,updated_at,operator,title,session_key,context) VALUES(?,?,?,?,?,?,?)",
+                (cid, t, t, operator, title, f"qa-chat-{cid}", json.dumps(context or {}, ensure_ascii=False)))
+        return cid
+
+    @staticmethod
+    def _chat(r: dict) -> dict:
+        r["context"] = json.loads(r.get("context") or "{}")
+        return r
+
+    def get_chat(self, cid: str) -> dict | None:
+        r = self._one("SELECT * FROM chats WHERE id=?", (cid,))
+        return self._chat(r) if r else None
+
+    def update_chat(self, cid: str, **fields):
+        if "context" in fields and not isinstance(fields["context"], str):
+            fields["context"] = json.dumps(fields["context"], ensure_ascii=False)
+        fields.setdefault("updated_at", now_iso())
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._x(f"UPDATE chats SET {cols} WHERE id=?", (*fields.values(), cid))
+
+    def list_chats(self, limit: int = 100) -> list[dict]:
+        return [self._chat(r) for r in self._q("SELECT * FROM chats ORDER BY updated_at DESC LIMIT ?", (limit,))]
+
+    def add_chat_message(self, cid: str, *, role: str, content: str, tool_calls: list | None = None, draft_ids: list | None = None,
+                         ms: int | None = None, error: str | None = None) -> int:
+        return self._x("INSERT INTO chat_messages(chat_id,at,role,content,tool_calls,draft_ids,ms,error) VALUES(?,?,?,?,?,?,?,?)",
+                       (cid, now_iso(), role, content, json.dumps(tool_calls or [], ensure_ascii=False), json.dumps(draft_ids or [], ensure_ascii=False), ms, error))
+
+    def list_chat_messages(self, cid: str) -> list[dict]:
+        rows = self._q("SELECT * FROM chat_messages WHERE chat_id=? ORDER BY id", (cid,))
+        for r in rows:
+            r["tool_calls"] = json.loads(r["tool_calls"] or "[]")
+            r["draft_ids"] = json.loads(r["draft_ids"] or "[]")
+        return rows

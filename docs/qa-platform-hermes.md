@@ -2,7 +2,7 @@
 
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P4)
 - 선행: [`qa-platform.md`](qa-platform.md) (P0·P1), [`qa-platform-tc.md`](qa-platform-tc.md) (P2·P3)
-- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a 구현 완료**, P4b~P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
+- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a·P4b 구현 완료**, P4c·P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약
@@ -17,7 +17,7 @@ UI 안에 Hermes 채팅창을 둔다. Hermes 는 플랫폼이 내주는 **QA 도
 | 2 | Hermes 의 도구는 `~/.hermes/config.yaml` 의 `mcp_servers` 로 들어간다(평면 스키마 `url`/`headers`/`tools.include`). `hermes-config-init` 가 compose 에서 `yq` 로 병합하고, **include 목록의 SSOT 는 compose** 다 | 플랫폼이 MCP 서버를 내주고 compose 에 등록하면 Hermes 가 QA 도구를 갖는다. 클라이언트가 요청마다 도구를 정의하는 방식(OpenAI `tools` 파라미터)은 hermes-agent 가 받는지 확인되지 않았다 → 쓰지 않는다 |
 | 3 | Hermes 에는 MCP 도구 호출을 막는 **승인 게이트가 없다**. `wiki_apply` 가 include 에 들어 있고, Slack 쪽 allowlist 는 Slack 플랫폼 층에만 있다 | API 경로(=채팅창)에서는 팀 세션만 있으면 누구나 Hermes 에게 위키 쓰기를 시킬 수 있다 → §8-1 결정 |
 | 4 | 플랫폼은 MCP **클라이언트**(`qa/mcp.py`, 발행용)만 있고 **서버**는 없다. llm-wiki 의 서버는 Rust(rmcp streamable HTTP) | 플랫폼에 최소 MCP 서버(JSON-RPC over HTTP, 표준 라이브러리)를 얹는다. initialize / tools/list / tools/call 세 메서드면 된다 |
-| 5 | Hermes API 응답이 도구 호출 트레이스를 어떤 형식으로 담는지 **미확인** | 구현 전 확인 항목. 못 받으면 플랫폼 쪽 도구 호출 로그(events)로 대신 보여 준다 |
+| 5 | ~~Hermes API 응답이 도구 호출 트레이스를 어떤 형식으로 담는지 미확인~~ → **확인(2026-09-21, hermes-agent v2026.6.19 `api_server.py`)**: `/v1/chat/completions` 비스트리밍 응답에는 트레이스가 없다. `/v1/responses` 는 `output` 에 `function_call{name, arguments, call_id}` · `function_call_output{call_id, output}` · `message` 항목으로 그 턴의 도구 호출을 그대로 담고, `previous_response_id` 로 서버가 대화(도구 호출 포함)를 잇는다. 서버 저장소는 sqlite LRU **100건** | 채팅창은 `/v1/responses` 를 쓴다(§10.2). 시각대 상관은 필요 없어졌다 |
 | 6 | Hermes 는 위키 read 도구 16개를 이미 갖는다 | 채팅에서는 Hermes 가 PRD·SSOT 를 스스로 읽을 수 있다. §13-8(초안 생성 버튼은 플랫폼이 근거를 넣어 준다)은 **버튼 경로에 한해** 유지 |
 
 ## 2. 원칙 (기존 것에 더한다)
@@ -187,3 +187,19 @@ catalog changes.json  항목에 before 스냅샷
 4. 밖에서 `curl -X POST https://qa.agent.plady.io/mcp` 가 403 인지 확인.
 
 **남은 확인 (P4b 전)** — 전제 5: Hermes API 응답이 도구 호출 트레이스를 담는지. 담지 않으면 §3.2 대로 `mcp.call` 시각대 상관으로 보여 준다(`store.events_between` 준비됨).
+
+### 10.2 P4b — 채팅창 (2026-09-21)
+
+| 항목 | 구현 | 설계 대비 |
+| --- | --- | --- |
+| 화면 | `/chat`(대화 목록) · `/chat/new?run=\|case=\|tc=`(첨부 미리보기 + 첫 메시지) · `/chat/{id}`(스레드·도구 호출·초안 링크·입력창) · `POST /chat`(만들고 첫 메시지 전송) · `POST /chat/{id}/send` · `POST /chat/{id}/close`. 운영자 필수. nav "Hermes" | §3.2·§6 대로. `/chat/new` 는 GET 미리보기 화면이고 만들기는 POST 하나로 |
+| Hermes 경로 | **`/v1/responses`** (전제 5 확인 결과). 첫 턴: `instructions`(시스템 프롬프트 §3.4 + 공개 URL + "위키 쓰지 않는다") + 첨부 + 메시지. 이후 턴: 새 메시지만 + `previous_response_id`. `X-Hermes-Session-Key: qa-chat-<id>`. 동기, 타임아웃 `QA_CHAT_TIMEOUT`(180초) | 설계는 chat completions + 시각대 상관이었다 → responses API 로 바꿨다. 도구 호출이 응답에 그대로 오고, 대화 연속성도 서버가 맡는다 |
+| 서버 저장소가 밀렸을 때 | `previous_response_id` 가 404 면 플랫폼이 보관한 사람·Hermes 본문(실패 턴 제외, 도구 호출 제외)을 `conversation_history` 로 보내고 시스템 프롬프트를 다시 넣는다 | 추가. Hermes 응답 저장소가 LRU 100건이라 3인이 쓰면 오래된 대화가 밀린다 |
+| 기록 | `chats`(id, operator, title, session_key, context, status, turns, drafts, last_response_id) · `chat_messages`(role, content, tool_calls, draft_ids, ms, error). 화면의 사람 메시지에는 첨부를 붙이지 않는다(첨부는 Hermes 에게만 간다; 미리보기는 `/chat/new` 에서) | §5 대로. `last_response_id` 추가 |
+| 초안 링크 | 그 턴의 `qa_draft_create`·`qa_draft_update`·`qa_manual_tc_propose` 결과 텍스트에서 `d-…` id 를 뽑아 존재하는 것만 링크. 승인은 케이스 초안 화면에서 | 같음 |
+| 한도 | 대화당 `QA_CHAT_MAX_TURNS`(40), `QA_CHAT_STALE_DAYS`(30)일 지나면 "오래됨" 표시 + 입력 막힘(삭제 안 함), 메시지 8000자 | §8-5 대로 |
+| 감사 로그 | `chat.create{context}` · `chat.send{chars, reply_chars, tools, drafts, ms, usage, error?}` · `chat.close`. 도구 호출 자체는 P4a 의 `mcp.call`(operator hermes) 로 따로 남는다 | 같음 |
+| 진행 표시 | 보내기를 누르면 버튼이 "Hermes 가 도구를 쓰는 중…" 으로 바뀌고 안내 문구가 뜬다(스트리밍 없음) | §8-4 대로 |
+| 검증 | 가짜 Hermes(`/v1/responses` 흉내, 실제 `/mcp` 를 두 번 부름)로 브라우저에서 첨부 → 도구 호출 표시 → 초안 링크 → 두 번째 턴 체이닝 → 활동 로그까지 확인. 테스트 `tests/test_chat.py` 6건(전체 44건) | – |
+
+**사람이 할 일**: 없음 (P4a 의 SSM 주입이 곧 이 화면의 전제). 배포 뒤 실제 Hermes 로 첫 대화를 열어 응답 시간과 도구 이름 표기(MCP 접두 여부)를 본다 — 도구 이름은 그대로 표시하므로 접두가 붙어도 동작에는 영향 없다.

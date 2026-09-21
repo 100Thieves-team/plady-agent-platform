@@ -76,6 +76,10 @@ class Config:
         self.hermes_key = g("HERMES_API_KEY", "")
         self.hermes_model = g("HERMES_MODEL", "gpt-5.5")
         self.hermes_timeout = int(g("HERMES_TIMEOUT", "300"))
+        # Hermes 채팅창 (docs/qa-platform-hermes.md §3.2·§8-4·§8-5): 동기 호출 상한, 대화당 턴 한도, 오래된 대화 닫힘 표시
+        self.chat_timeout = int(g("QA_CHAT_TIMEOUT", "180"))
+        self.chat_max_turns = int(g("QA_CHAT_MAX_TURNS", "40"))
+        self.chat_stale_days = int(g("QA_CHAT_STALE_DAYS", "30"))
 
         # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 QA 도구. 비어 있으면 /mcp 가 꺼진다 (503)
         self.qa_mcp_token = g("QA_MCP_TOKEN", "")
