@@ -60,9 +60,9 @@ variable "manage_dns" {
 }
 
 variable "service_subdomains" {
-  description = "Service hostnames (left labels under agent_zone_name) that resolve to the ALB. Reserved names are still created as alias records. n8n went live 2026-09-04 (docs/webex-ingest.md)."
+  description = "Service hostnames (left labels under agent_zone_name) that resolve to the ALB. Reserved names are still created as alias records. n8n went live 2026-09-04 (docs/webex-ingest.md); qa added 2026-09-21 (docs/qa-platform.md)."
   type        = list(string)
-  default     = ["wiki", "mcp", "hermes", "n8n"]
+  default     = ["wiki", "mcp", "hermes", "n8n", "qa"]
 }
 
 variable "reserved_subdomains" {

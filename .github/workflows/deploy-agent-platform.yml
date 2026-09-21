@@ -18,6 +18,7 @@ on:
       - compose.ec2.yaml
       - docker/**
       - n8n/workflows/**
+      - qa-platform/**
       - llm-wiki/**
       - llm-wiki-hugo-cms/**
   workflow_dispatch:
@@ -34,11 +35,13 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
   ECR_LLM_WIKI_REPOSITORY: ${{ vars.ECR_LLM_WIKI_REPOSITORY || 'plady-agent-platform/llm-wiki' }}
   ECR_WIKI_UI_REPOSITORY: ${{ vars.ECR_WIKI_UI_REPOSITORY || 'plady-agent-platform/wiki-ui' }}
+  ECR_QA_PLATFORM_REPOSITORY: ${{ vars.ECR_QA_PLATFORM_REPOSITORY || 'plady-agent-platform/qa-platform' }}
   PLATFORM_INSTANCE_ID: ${{ vars.PLATFORM_INSTANCE_ID }}
   PLATFORM_ENV: ${{ vars.PLATFORM_ENV || 'dev' }}
   WIKI_PUBLIC_HOST: ${{ vars.WIKI_PUBLIC_HOST || 'wiki.agent.plady.io' }}
   MCP_PUBLIC_HOST: ${{ vars.MCP_PUBLIC_HOST || 'mcp.agent.plady.io' }}
   HERMES_PUBLIC_HOST: ${{ vars.HERMES_PUBLIC_HOST || 'hermes.agent.plady.io' }}
+  QA_PUBLIC_HOST: ${{ vars.QA_PUBLIC_HOST || 'qa.agent.plady.io' }}
 
 jobs:
   deploy:
@@ -86,6 +89,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push qa-platform
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/qa-platform.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_QA_PLATFORM_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_QA_PLATFORM_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Deploy to EC2 via SSM Run Command
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -121,11 +136,13 @@ jobs:
           export ECR_REGISTRY="${ECR_REGISTRY}"
           export LLM_WIKI_REPO="${ECR_LLM_WIKI_REPOSITORY}"
           export WIKI_UI_REPO="${ECR_WIKI_UI_REPOSITORY}"
+          export QA_PLATFORM_REPO="${ECR_QA_PLATFORM_REPOSITORY}"
           export IMAGE_TAG="${IMAGE_TAG}"
           export PLATFORM_ENV="${PLATFORM_ENV}"
           export WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST}"
           export MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST}"
           export HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST}"
+          export QA_PUBLIC_HOST="${QA_PUBLIC_HOST}"
           bash /tmp/ec2-deploy.sh
           EOF
           )
@@ -198,5 +215,16 @@ jobs:
           echo "== hermes: /v1/models no-auth (expect 401)"
           code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${HERMES_PUBLIC_HOST}/v1/models" || echo 000)"
           echo "  -> ${code}"; [ "$code" = "401" ] || { echo "  FAIL"; fail=1; }
+
+          # qa-platform (docs/qa-platform.md): /health 만 무인증. 루트는 팀 세션 게이트 → 302 /auth/login.
+          # 프로필이 꺼져 있으면(Caddy 가 upstream 을 못 찾음) 502 가 오므로 경고만 하고 실패시키지 않는다.
+          echo "== qa: https://${QA_PUBLIC_HOST}/health (expect status ok; 502 = profile off)"
+          out="$(curl -sS -o /tmp/qa-health -w '%{http_code}' --max-time 20 "https://${QA_PUBLIC_HOST}/health" || echo 000)"
+          echo "  -> ${out} $(head -c 200 /tmp/qa-health 2>/dev/null)"
+          case "${out}" in
+            200) grep -qE '"status":[[:space:]]*"ok"' /tmp/qa-health || { echo "  FAIL"; fail=1; } ;;
+            502|503) echo "  WARN: qa-platform 이 꺼져 있다 (profile qa 미활성)" ;;
+            *) echo "  FAIL"; fail=1 ;;
+          esac
 
           [ "$fail" = 0 ] && echo "All public smoke checks passed." || { echo "Smoke checks failed."; exit 1; }

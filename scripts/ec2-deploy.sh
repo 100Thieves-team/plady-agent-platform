@@ -15,7 +15,7 @@
 # Idempotent: safe to re-run for every push (named volumes persist state).
 #
 # Required env (set by the workflow):
-#   AWS_REGION, ECR_REGISTRY, LLM_WIKI_REPO, WIKI_UI_REPO, IMAGE_TAG
+#   AWS_REGION, ECR_REGISTRY, LLM_WIKI_REPO, WIKI_UI_REPO, QA_PLATFORM_REPO, IMAGE_TAG
 # Optional env (defaults shown):
 #   APP_DIR=/opt/plady-agent-platform
 #   PLATFORM_ENV=dev
@@ -28,6 +28,11 @@
 #   WIKI_PUBLIC_HOST=wiki.agent.plady.io
 #   MCP_PUBLIC_HOST=mcp.agent.plady.io
 #   HERMES_PUBLIC_HOST=hermes.agent.plady.io
+#   QA_PUBLIC_HOST=qa.agent.plady.io
+#   QA_ACTORS_PARAM=/plady/agent-platform/<env>/qa-actors (optional; JSON {"qa-host": "<uuid>", ...}.
+#     Absent -> qa profile still starts, actor cases are recorded as skipped)
+#   QA_FIXTURES_PARAM=/plady/agent-platform/<env>/qa-fixtures (optional; JSON)
+#   QA_GITHUB_TOKEN_PARAM=/plady/agent-platform/<env>/qa-github-token (optional; read-only PAT)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -37,6 +42,7 @@ AWS_REGION="${AWS_REGION:?AWS_REGION required}"
 ECR_REGISTRY="${ECR_REGISTRY:?ECR_REGISTRY required}"
 LLM_WIKI_REPO="${LLM_WIKI_REPO:?LLM_WIKI_REPO required}"
 WIKI_UI_REPO="${WIKI_UI_REPO:?WIKI_UI_REPO required}"
+QA_PLATFORM_REPO="${QA_PLATFORM_REPO:-plady-agent-platform/qa-platform}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG required}"
 
 APP_DIR="${APP_DIR:-/opt/plady-agent-platform}"
@@ -62,10 +68,16 @@ SLACK_INGEST_SIGNING_SECRET_PARAM="${SLACK_INGEST_SIGNING_SECRET_PARAM:-/plady/a
 WIKI_PUBLIC_HOST="${WIKI_PUBLIC_HOST:-wiki.agent.plady.io}"
 MCP_PUBLIC_HOST="${MCP_PUBLIC_HOST:-mcp.agent.plady.io}"
 HERMES_PUBLIC_HOST="${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}"
+QA_PUBLIC_HOST="${QA_PUBLIC_HOST:-qa.agent.plady.io}"
+# qa-platform (docs/qa-platform.md). All optional: the profile is always on; actor
+# cases are simply recorded as skipped until qa-actors exists.
+QA_ACTORS_PARAM="${QA_ACTORS_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-actors}"
+QA_FIXTURES_PARAM="${QA_FIXTURES_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fixtures}"
+QA_GITHUB_TOKEN_PARAM="${QA_GITHUB_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-github-token}"
 
 COMPOSE_FILE="${APP_DIR}/compose.ec2.yaml"
 ENV_FILE="${APP_DIR}/.env.ec2"
-DC=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile hermes)
+DC=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile hermes --profile qa)
 
 # --- 1. Docker + compose plugin -------------------------------------------
 if ! command -v docker >/dev/null 2>&1; then
@@ -120,6 +132,14 @@ if [ -n "$N8N_ENCRYPTION_KEY" ]; then
 else
   echo "  n8n: off (${N8N_ENCRYPTION_KEY_PARAM} absent)"
 fi
+# qa-platform actors/fixtures (JSON). Values contain member UUIDs — presence only is logged.
+QA_ACTORS="$(ssm_get "$QA_ACTORS_PARAM")"
+[ "$QA_ACTORS" = "None" ] && QA_ACTORS=""
+QA_FIXTURES="$(ssm_get "$QA_FIXTURES_PARAM")"
+[ "$QA_FIXTURES" = "None" ] && QA_FIXTURES=""
+QA_GITHUB_TOKEN="$(ssm_get "$QA_GITHUB_TOKEN_PARAM")"
+[ "$QA_GITHUB_TOKEN" = "None" ] && QA_GITHUB_TOKEN=""
+echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
 else
@@ -189,6 +209,8 @@ umask 077
 cat >"$ENV_FILE" <<ENV
 LLM_WIKI_IMAGE=${ECR_REGISTRY}/${LLM_WIKI_REPO}:${IMAGE_TAG}
 WIKI_UI_IMAGE=${ECR_REGISTRY}/${WIKI_UI_REPO}:${IMAGE_TAG}
+QA_PLATFORM_IMAGE=${ECR_REGISTRY}/${QA_PLATFORM_REPO}:${IMAGE_TAG}
+QA_PUBLIC_HOST=${QA_PUBLIC_HOST}
 WIKI_DOMAIN_NAME=${WIKI_PUBLIC_HOST}
 MCP_PUBLIC_HOST=${MCP_PUBLIC_HOST}
 HERMES_PUBLIC_HOST=${HERMES_PUBLIC_HOST}
@@ -207,6 +229,9 @@ N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
 WEBEX_WEBHOOK_SECRET=${WEBEX_WEBHOOK_SECRET}
 SLACK_INGEST_BOT_TOKEN=${SLACK_INGEST_BOT_TOKEN}
 SLACK_INGEST_SIGNING_SECRET=${SLACK_INGEST_SIGNING_SECRET}
+QA_ACTORS=${QA_ACTORS}
+QA_FIXTURES=${QA_FIXTURES}
+QA_GITHUB_TOKEN=${QA_GITHUB_TOKEN}
 ENV
 chmod 600 "$ENV_FILE"
 

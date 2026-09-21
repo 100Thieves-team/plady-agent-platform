@@ -15,6 +15,7 @@ services:
       HERMES_PUBLIC_HOST: ${HERMES_PUBLIC_HOST:-hermes.agent.plady.io}
       WIKI_PUBLIC_HOST: ${WIKI_DOMAIN_NAME:-wiki.agent.plady.io}
       N8N_PUBLIC_HOST: ${N8N_PUBLIC_HOST:-n8n.agent.plady.io}
+      QA_PUBLIC_HOST: ${QA_PUBLIC_HOST:-qa.agent.plady.io}
     command:
       - /bin/sh
       - -ec
@@ -32,6 +33,7 @@ services:
           @hermes host {$$HERMES_PUBLIC_HOST}
           @wiki host {$$WIKI_PUBLIC_HOST}
           @n8n host {$$N8N_PUBLIC_HOST}
+          @qa host {$$QA_PUBLIC_HOST}
 
           handle @mcp {
             reverse_proxy mcp-proxy:18765
@@ -74,6 +76,23 @@ services:
                 uri /auth/verify-browser
               }
               reverse_proxy n8n:5678
+            }
+          }
+
+          # QA 플랫폼 (docs/qa-platform.md): 전부 팀 비밀번호 세션 뒤. inbound webhook 이
+          # 없으므로 무인증 경로는 /health 하나뿐이다 (배포 smoke 용).
+          handle @qa {
+            handle /health {
+              reverse_proxy qa-platform:8800
+            }
+            handle /auth/* {
+              reverse_proxy wiki-auth:8790
+            }
+            handle {
+              forward_auth wiki-auth:8790 {
+                uri /auth/verify-browser
+              }
+              reverse_proxy qa-platform:8800
             }
           }
 
@@ -751,6 +770,35 @@ services:
       - "5678"          # public only via Caddy (@n8n) behind the ALB
     restart: unless-stopped
   # ---------------------------------------------------------------------------
+  # qa-platform (docs/qa-platform.md): dev 백엔드를 OpenAPI·PRD 근거로 검증하고
+  # 누가 언제 무엇을 검증했는지 남긴다. 실행은 사람이 UI 에서 시작한다 — 자동
+  # 트리거·inbound webhook 없음. 공개는 Caddy @qa (팀 세션) 뒤에만.
+  #   QA_ACTORS / QA_FIXTURES: SSM qa-actors / qa-fixtures (JSON, 회원 UUID 포함 → 비밀 취급)
+  #   AI 는 hermes-gateway 경유(플랫폼은 모델 키 없음), 알림은 WIKI_SLACK_WEBHOOK_URL 재사용.
+  #   `${VAR:-}` 만 쓴다 — Compose 는 profile 필터 전에 전 서비스를 보간하므로 `:?` 금지.
+  qa-platform:
+    image: ${QA_PLATFORM_IMAGE:-}
+    profiles:
+      - qa
+    environment:
+      QA_PUBLIC_URL: https://${QA_PUBLIC_HOST:-qa.agent.plady.io}
+      QA_TARGET_ENV: ${QA_TARGET_ENV:-dev}
+      QA_TARGET_BASE_URL: ${QA_TARGET_BASE_URL:-https://api.dev.moimyeon.plady.io}
+      QA_ACTORS: ${QA_ACTORS:-}
+      QA_FIXTURES: ${QA_FIXTURES:-}
+      QA_OPERATORS: ${QA_OPERATORS:-bebe,dbwp031,중곤}
+      QA_GITHUB_TOKEN: ${QA_GITHUB_TOKEN:-}
+      HERMES_API_URL: http://hermes-gateway:8642
+      HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
+      HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
+      WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+      TZ: Asia/Seoul
+    volumes:
+      - qa-data:/data
+    expose:
+      - "8800"          # public only via Caddy (@qa) behind the ALB
+    restart: unless-stopped
+  # ---------------------------------------------------------------------------
 
 volumes:
   wiki-data:
@@ -758,3 +806,4 @@ volumes:
   llm-wiki-config:
   hermes-home:
   otel-data:
+  qa-data:

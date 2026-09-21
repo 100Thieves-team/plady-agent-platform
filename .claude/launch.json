@@ -6,6 +6,17 @@
       "runtimeExecutable": "hugo",
       "runtimeArgs": ["server", "--source", "/private/tmp/claude-501/-Users-luna-Desktop-nonsync-teams-100-thieves-100Thieves-wiki-mcp/6cf4a61b-679d-412e-bb88-ce4cd67eed3c/scratchpad/preview/site", "--port", "1441", "--buildDrafts", "--noBuildLock"],
       "port": 1441
+    },
+    {
+      "name": "qa-platform",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["qa-platform/app.py"],
+      "port": 8800,
+      "env": {
+        "QA_PORT": "8800",
+        "QA_DATA_DIR": "/private/tmp/claude-501/-Users-luna-Desktop-nonsync-teams-100-thieves-100Thieves-wiki-mcp/9322a02e-bafd-41a8-81ab-457f1842c393/scratchpad/qa-data",
+        "QA_PUBLIC_URL": "http://localhost:8800"
+      }
     }
   ]
 }

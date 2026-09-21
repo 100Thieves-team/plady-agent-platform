@@ -209,9 +209,36 @@ services:
       - "127.0.0.1:5678:5678"
     restart: unless-stopped
   # ---------------------------------------------------------------------------
+  # qa-platform (docs/qa-platform.md): dev 백엔드 검증·기록. 사람 트리거 전용.
+  # 로컬은 127.0.0.1 로만 publish. 배우/픽스처는 QA_ACTORS / QA_FIXTURES (JSON).
+  qa-platform:
+    build:
+      context: .
+      dockerfile: docker/qa-platform.Dockerfile
+    image: 100thieves/qa-platform:local
+    profiles:
+      - qa
+    environment:
+      QA_PUBLIC_URL: ${QA_PUBLIC_URL:-http://localhost:8800}
+      QA_TARGET_BASE_URL: ${QA_TARGET_BASE_URL:-https://api.dev.moimyeon.plady.io}
+      QA_ACTORS: ${QA_ACTORS:-}
+      QA_FIXTURES: ${QA_FIXTURES:-}
+      QA_OPERATORS: ${QA_OPERATORS:-bebe,dbwp031,중곤}
+      QA_GITHUB_TOKEN: ${QA_GITHUB_TOKEN:-}
+      HERMES_API_URL: ${HERMES_API_URL:-http://hermes-gateway:8642}
+      HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
+      HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}
+      WIKI_SLACK_WEBHOOK_URL: ${WIKI_SLACK_WEBHOOK_URL:-}
+    volumes:
+      - qa-data:/data
+    ports:
+      - "127.0.0.1:8800:8800"
+    restart: unless-stopped
+  # ---------------------------------------------------------------------------
 
 volumes:
   llm-wiki-config:
   n8n-data:
   hermes-home:
   otel-data:
+  qa-data:
