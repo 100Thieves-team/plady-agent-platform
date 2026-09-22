@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from qa import ui  # noqa: E402
 from qa.cases import audit as audit_cases, load_dir, select  # noqa: E402
-from qa.catalog import CatalogService  # noqa: E402
+from qa.catalog import domain_of_path, CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa import chat as chatmod  # noqa: E402
 from qa import drafts as draftsmod  # noqa: E402
@@ -100,6 +100,34 @@ class App:
 
     def drift_of(self, case) -> list[dict]:
         return self.catalog.drift_for(case.covers, (case.reviewed or {}).get("at"))
+
+    def op_qa(self, op_id: str) -> dict | None:
+        """API 하나의 검증 상태 요약 — 호출 카드의 QA 배지(docs/qa-platform-api.md §5.6). TC 목록이 없으면 None.
+        {tc, covered, excluded, uncovered, ids, scripts, last: {verdict, run_id, created_at, case_id}|None}"""
+        cat = self.current_catalog()
+        if cat is None:
+            return None
+        ids = cat.by_operation().get(op_id, [])
+        by_tc = self.coverage(cat)["by_tc"]
+        last_v = self.store.last_verdicts()
+        covered = excluded = 0
+        scripts: list[str] = []
+        for i in ids:
+            rec = cat.records.get(i) or {}
+            if rec.get("excluded"):
+                excluded += 1
+            elif by_tc.get(i):
+                covered += 1
+            for cid in by_tc.get(i, []):
+                if cid not in scripts:
+                    scripts.append(cid)
+        last = None
+        for cid in scripts:
+            lv = last_v.get(cid)
+            if lv and (last is None or lv["created_at"] > last["created_at"]):
+                last = dict(lv)
+        return {"tc": len(ids), "covered": covered, "excluded": excluded, "uncovered": len(ids) - covered - excluded,
+                "ids": ids, "scripts": scripts, "last": last}
 
     # ---- 트리거 준비: 사람에게 보여줄 제안 ------------------------------------------
     def suggest(self, trigger: str, sha: str | None, pr: int | None) -> tuple[list, str, dict]:
@@ -734,7 +762,8 @@ class Handler(BaseHTTPRequestHandler):
             domain = g("domain") or (cat.domains()[0] if cat.domains() else "")
             body = ui.catalog_list(cat, cov, app.store.last_verdicts(), domain=domain, layer=g("layer"), only=g("only"),
                                    changes=app.catalog.changes, wiki_available=app.wiki.available,
-                                   operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key))
+                                   operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key),
+                                   op=g("op"), op_ids=cat.by_operation().get(g("op")) if g("op") else None)
             return self._page("테스트 케이스", body, "catalog")
         if path == "/catalog/tc" and method == "GET":
             cat = app.current_catalog()
@@ -769,8 +798,12 @@ class Handler(BaseHTTPRequestHandler):
             if run:
                 rcs = app.store.list_run_cases(run["id"])
                 steps = app.store.list_steps(rcs[0]["id"]) if rcs else []
+            # 프리필 (docs/qa-platform-api.md §5.3): p.<path 파라미터> · q.<query> · actor · body · view — 채우기만 하고 보내지 않는다
+            prefill = {"p": {k[2:]: v[0] for k, v in q.items() if k.startswith("p.")}, "q": {k[2:]: v[0] for k, v in q.items() if k.startswith("q.")},
+                       "actor": g("actor"), "body": g("body"), "view": g("view")}
             return self._page("API 호출", ui.explorer(spec, op, run, steps, actors=sorted(app.cfg.actors), operators=app.cfg.operators,
-                                                 operator=self._operator(), q=g("q")), "explorer")
+                                                 operator=self._operator(), q=g("q"), domain_of=domain_of_path,
+                                                 qa=app.op_qa(op.id) if op else None, prefill=prefill), "explorer")
         if path == "/explorer/send" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731

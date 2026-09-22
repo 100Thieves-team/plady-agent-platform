@@ -137,6 +137,20 @@ class Catalog:
     def to_json(self) -> dict:
         return {"records": self.records, "versions": self.versions, "built_at": self.built_at, "warnings": self.warnings}
 
+    def by_operation(self) -> dict[str, list[str]]:
+        """operationId → 그 API 에 걸린 TC id 목록 (API 계약 TC 는 `operation`, 비즈니스 규칙·수동 작성 TC 는 `binding.operations`).
+        API 별로 모아 보기(docs/qa-platform-api.md §5.2)와 호출 카드의 QA 배지가 쓴다. 처음 부를 때 한 번 계산해 둔다."""
+        cached = getattr(self, "_by_op", None)
+        if cached is not None:
+            return cached
+        out: dict[str, list[str]] = {}
+        for rid, r in sorted(self.records.items()):
+            ops = [r["operation"]] if r.get("operation") else list((r.get("binding") or {}).get("operations") or [])
+            for op in ops:
+                out.setdefault(op, []).append(rid)
+        self._by_op = out
+        return out
+
     @classmethod
     def from_json(cls, d: dict) -> "Catalog":
         return cls(records=d["records"], versions=d["versions"], built_at=d["built_at"], warnings=d.get("warnings") or [])

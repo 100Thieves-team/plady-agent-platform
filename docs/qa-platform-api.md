@@ -253,3 +253,17 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - **준비 작업 남용으로 dev 데이터 누적**: 제목 `[QA]` + 실행 기록으로 누가 언제 만들었는지 남는다. 회원은 QA 계정 2개뿐이라 범위가 좁다.
 - **`inputs` 가 스크립트를 "사람 없이 못 도는 것" 으로 만든다**: setup 스위트에만 허용하고, smoke·sanity 선택 화면에는 setup 이 안 뜬다.
 - **localStorage 값이 남의 브라우저엔 없다**: 편의값이라 괜찮다. 공유가 필요한 값은 픽스처(SSM)다.
+
+## 11. 구현 결과
+
+### 11.1 P5a — 호출 카드 (2026-09-22)
+
+- **들어간 것**: `ui.explorer` 를 다시 썼다. 왼쪽 op 목록은 도메인별 `<details>`(선택된 도메인·검색 중엔 펼침) + ☆ 즐겨찾기(localStorage `qa_fav`, 맨 위 "즐겨찾기" 묶음). 오른쪽은 호출 카드 — 머리(요약·operationId·메서드 배지·경로, Normal | Swagger 세그먼트), QA 배지 한 줄, Normal 보기(path·query 입력칸 + 본문 최상위 키 칸, 중첩은 JSON 칸, 예시 타입 힌트), Swagger 보기(메서드 배지 + 채워진 경로, Parameters 표, Request Body JSON), 발(테스트 계정 라디오·담당자·꽉 찬 파란 [보내기]). `ui.EXPLORER_JS` 가 토글·양방향 동기화·최근 값·즐겨찾기·응답 id 수집을 한다.
+- **값의 정본은 하나**: path·query 는 Normal 의 `name=p_*/q_*` 칸이 진짜고 Swagger 표의 칸은 `data-mirror` 거울. 본문은 Swagger 의 `name=body` JSON 칸이 진짜고 Normal 의 `data-bk` 칸은 그 키만 읽고 쓴다. JSON 이 깨지면 Normal 을 잠그고 빨간 줄로 이유를 보여 준다. 서버 계약(`POST /explorer/send` 의 `op`·`p_*`·`q_*`·`body`·`actor`·`operator`)은 그대로다.
+- **QA 배지**: `Catalog.by_operation()`(op → TC id, 세 층 모두) + `App.op_qa()` → "TC 15 · 자동화 2/14 (제외 1) · 마지막 pass 09-21". 클릭하면 `/catalog?op=<id>` — TC 목록에 op 필터를 더했다(도메인 무시, 그 API 에 걸린 TC 만). P5b 의 `/apis/{op}` 가 생기면 링크를 그쪽으로 옮긴다.
+- **프리필**: `/explorer?op=X&p.roomId=…&q.size=…&actor=qa-host&body=<json>&view=swagger`. 응답 카드의 [같은 요청으로 다시 열기] 가 실행 기록의 요청에서 path 파라미터를 되찾아(`ui._path_param_values`) 이 링크를 만든다.
+- **최근 값**: 파라미터 이름별 localStorage `qa_recent.<name>` 5개 → `<datalist>`, 비어 있으면 최근 값으로 채움. 응답 `data` 안(깊이 3까지)의 `*Id`·`id` 를 자동으로 기억하고 응답 카드 아래에 "다음 호출을 위해 기억한 값" 한 줄.
+- **CSS 손질**(플랫폼 전체): 카드 12px 모서리·18/20px 여백, 주 버튼 파랑(`--info`) + `.wide`, 입력칸 8px 모서리·포커스 링, `.field`(라벨 위·필수 빨간 점·힌트), `.seg` 세그먼트, `.m.get/post/put/patch/delete` 메서드 배지, `.xgrid` 2열→860px 아래 1열, nav 가로 스크롤(좁은 화면에서 글자가 세로로 깨지던 것).
+- **설계에서 달라진 것**: 응답 카드를 호출 카드 **위** 에 둔다(§5.6 그림은 아래). 보내고 돌아왔을 때 긴 Normal 폼을 지나치지 않고 응답이 바로 보이는 쪽이 토스인컴의 "결과를 바로 확인" 에 맞다.
+- **검증**: 테스트 8건 추가(카드 렌더·정본 하나·프리필·목록 묶음·역색인 세 층·QA 요약·op 필터), 전체 63건. 브라우저: createRoom 카드에서 Normal 칸 → JSON 반영(숫자 타입 유지), 깨진 JSON → Normal 잠김·복구, roomDetail 거울 칸 → 진짜 칸·경로 갱신, 즐겨찾기 토글, `GET /v1/terms` 실전송 → 응답 200·termsId 기억·다시 열기 링크, 모바일 폭 1열, 콘솔 오류 없음.
+- **남은 것(P5b 로)**: 배지 링크를 `/apis/{op}` 로, 최근 호출 20건 표.

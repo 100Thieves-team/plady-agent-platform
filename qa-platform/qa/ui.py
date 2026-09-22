@@ -12,11 +12,11 @@ CSS = """
 --warn:#b45309;--warnbg:#fef3c7;--info:#1d4ed8;--infobg:#dbeafe;--gray:#374151;--graybg:#e5e7eb}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--ink);background:var(--bg)}
 a{color:var(--info);text-decoration:none}a:hover{text-decoration:underline}
-nav{background:#111827;color:#fff;padding:0 20px;display:flex;align-items:center;gap:18px;height:48px}
+nav{background:#111827;color:#fff;padding:0 20px;display:flex;align-items:center;gap:18px;height:48px;overflow-x:auto;white-space:nowrap}nav a{flex:none}
 nav a{color:#d1d5db}nav a.on{color:#fff;font-weight:600}nav .brand{font-weight:700;color:#fff;margin-right:8px}nav .op{margin-left:auto;color:#9ca3af}
 main{max-width:1180px;margin:0 auto;padding:20px}
 h1{font-size:20px;margin:0 0 14px}h2{font-size:15px;margin:22px 0 8px;color:var(--gray)}h3{font-size:14px;margin:14px 0 6px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:600;font-size:12px}
 tr:last-child td{border-bottom:0}.mut{color:var(--mut)}.small{font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
@@ -26,9 +26,9 @@ tr:last-child td{border-bottom:0}.mut{color:var(--mut)}.small{font-size:12px}.mo
 .b.smoke{color:var(--info);background:var(--infobg)}.b.sanity{color:#6d28d9;background:#ede9fe}.b.manual{color:var(--gray);background:var(--graybg)}
 .b.warn{color:var(--warn);background:var(--warnbg)}.b.ok{color:var(--ok);background:var(--okbg)}
 button,.btn{display:inline-block;border:1px solid #d1d5db;background:#fff;color:var(--ink);border-radius:7px;padding:6px 12px;font:inherit;cursor:pointer}
-button.primary,.btn.primary{background:#111827;color:#fff;border-color:#111827}button.danger{color:var(--bad);border-color:#fca5a5}
+button.primary,.btn.primary{background:var(--info);color:#fff;border-color:var(--info)}button.primary:hover{background:#1e40af}button.wide{display:block;width:100%;padding:11px 14px;font-weight:600;font-size:15px;border-radius:9px;margin-top:6px}button.danger{color:var(--bad);border-color:#fca5a5}
 button:disabled{opacity:.5;cursor:default}form.inline{display:inline}
-input,select,textarea{font:inherit;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff}textarea{width:100%;min-height:60px}
+input,select,textarea{font:inherit;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff}textarea{width:100%;min-height:60px}input:focus,select:focus,textarea:focus{outline:2px solid #bfdbfe;border-color:var(--info)}
 pre{background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:8px;overflow:auto;font-size:12px;margin:6px 0}
 details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px}.kv div:nth-child(odd){color:var(--mut)}
 .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px}.flash.err{background:var(--badbg);color:var(--bad)}.flash.ok{background:var(--okbg);color:var(--ok)}
@@ -38,6 +38,23 @@ details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-colum
 .b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
 tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
 a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;font-weight:500;text-decoration:none;vertical-align:middle}
+/* 폼 부품 (토스 카드식): 라벨 위 · 칸은 가로로 꽉 · 필수는 빨간 점 · 칸 아래 회색 힌트 */
+.field{margin:0 0 12px}.field>label{display:block;font-weight:500;margin-bottom:4px}.field>input,.field>select,.field>textarea{width:100%}.field textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.req::after{content:'•';color:var(--bad);margin-left:3px;font-weight:700}.hint{color:var(--mut);font-size:12px;margin:4px 0 0}.hint.bad{color:var(--bad)}.field>label .hint{display:inline;margin-left:6px;font-weight:400}
+.radio{display:inline-block;margin:4px 14px 0 0}.radio input{width:auto;margin-right:4px}
+.seg{display:inline-flex;background:#eef0f3;border-radius:9px;padding:3px}.seg button{border:0;background:transparent;color:var(--mut);padding:4px 12px;border-radius:7px;font-weight:600;font-size:13px}.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.m{display:inline-block;min-width:52px;text-align:center;padding:2px 8px;border-radius:6px;font:700 11px/16px ui-monospace,Menlo,monospace;color:#fff;background:var(--gray);vertical-align:middle}
+.m.get{background:#2563eb}.m.post{background:#16a34a}.m.put,.m.patch{background:#d97706}.m.delete{background:#dc2626}
+/* API 호출: 왼쪽 목록 + 오른쪽 호출 카드 (Normal | Swagger). 좁으면 1열 */
+.xgrid{display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start}@media(max-width:860px){.xgrid{grid-template-columns:1fr}}
+.opl .oplist{max-height:70vh;overflow:auto;margin-top:8px}.opl details{margin:2px 0}.opl summary{font-weight:600;padding:4px 0}
+.opi{display:flex;align-items:center;gap:6px;padding:3px 0 3px 4px;border-radius:6px}.opi.on{background:#eef2ff}.opi a{white-space:nowrap}.opi .small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.star{border:0;background:transparent;color:#cbd5e1;padding:0 2px;cursor:pointer;font-size:14px}.star.on{color:#f59e0b}
+.call .callhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px}.call .qaline{margin:6px 0 14px}
+.qab{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--graybg);color:var(--gray)}.qab.ok{background:var(--okbg);color:var(--ok)}.qab.warn{background:var(--warnbg);color:var(--warn)}a.qab:hover{text-decoration:none;filter:brightness(.95)}
+.call .view.bad [data-bk]{opacity:.5;pointer-events:none}.call [data-bk].bad,.call textarea.bad{border-color:var(--bad)}
+.call .sline{margin:0 0 10px}.call h4{font-size:13px;margin:12px 0 6px;color:var(--gray)}.call .params td input{width:100%}.call .params td:first-child{white-space:nowrap}
+.call .callfoot{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
 /* Hermes 위젯 (채널톡처럼 어느 화면에서나) */
 #hx-btn{position:fixed;right:22px;bottom:22px;z-index:50;border:0;border-radius:999px;background:#111827;color:#fff;font-weight:600;padding:12px 18px;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer;font-size:14px}
 #hx{position:fixed;right:22px;bottom:80px;z-index:51;width:400px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 100px);background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:none;flex-direction:column;overflow:hidden}
@@ -399,8 +416,10 @@ LAYER_KO = {"policy": "비즈니스 규칙", "contract": "API 계약", "manual":
 
 
 def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str, layer: str, only: str,
-                 changes: dict, wiki_available: bool, operators: list[str] | None = None, operator: str = "", hermes: bool = False) -> str:
+                 changes: dict, wiki_available: bool, operators: list[str] | None = None, operator: str = "", hermes: bool = False,
+                 op: str = "", op_ids: list[str] | None = None) -> str:
     by_tc = coverage["by_tc"]
+    op_set = set(op_ids or []) if op else None
     tabs = "".join(f'<a href="/catalog?domain={e(d)}{("&layer=" + e(layer)) if layer else ""}{("&only=" + e(only)) if only else ""}" class="{"on" if d == domain else ""}">{e(d)}</a>'
                    for d in catalog.domains())
     ltabs = "".join(f'<a href="/catalog?domain={e(domain)}{("&layer=" + l) if l else ""}{("&only=" + e(only)) if only else ""}" class="{"on" if (layer or "") == l else ""}">{lab}</a>'
@@ -411,7 +430,10 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
     n = 0
     warn_ids = {w.split(":")[0] for w in catalog.warnings if ":" in w}
     for r in sorted(catalog.records.values(), key=lambda r: (r["layer"], r["id"])):
-        if r["domain"] != domain or (layer and r["layer"] != layer):
+        if op_set is not None:
+            if r["id"] not in op_set or (layer and r["layer"] != layer):
+                continue
+        elif r["domain"] != domain or (layer and r["layer"] != layer):
             continue
         cov = by_tc.get(r["id"], [])
         state = "excluded" if r.get("excluded") else ("covered" if cov else "uncovered")
@@ -445,6 +467,7 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
             f' TC 소스 버전: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"}</p>'
+            f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 에 걸린 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
             f'<div class="tabs">{tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
             f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
             f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
@@ -560,57 +583,221 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
 
 
 # ---- 탐색기 (Swagger 모드) ------------------------------------------------------------------------
-def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str], operators: list[str], operator: str, q: str) -> str:
+def method_badge(m: str) -> str:
+    return f'<span class="m {e((m or "").lower())}">{e((m or "").upper())}</span>'
+
+
+def _fmt_json(v) -> str:
+    return json.dumps(v, ensure_ascii=False, indent=1)
+
+
+def _path_param_values(template: str, path: str) -> dict:
+    """실행 기록의 채워진 경로에서 path 파라미터 값을 되찾는다 (/v1/rooms/{roomId} + /v1/rooms/abc → {roomId: abc})."""
+    out = {}
+    t = [s for s in (template or "").split("?")[0].split("/") if s]
+    p = [s for s in (path or "").split("?")[0].split("/") if s]
+    if len(t) != len(p):
+        return out
+    for a, b in zip(t, p):
+        if a.startswith("{") and a.endswith("}"):
+            out[a[1:-1]] = b
+    return out
+
+
+def qa_badge(qa: dict | None, op_id: str) -> str:
+    """호출 카드 머리의 검증 상태 한 줄 — "TC 5 · 자동화 3/5 · 마지막 pass 09-21". 클릭하면 그 API 의 TC 목록."""
+    if qa is None:
+        return '<span class="qab none" title="TC 목록을 만들지 못했다">TC ?</span>'
+    if not qa["tc"]:
+        return f'<a class="qab none" href="/catalog?op={e(op_id)}" title="이 API 에 걸린 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
+    denom = qa["tc"] - qa["excluded"]
+    cls = "ok" if denom and qa["covered"] == denom else ("warn" if qa["uncovered"] else "none")
+    last = qa.get("last")
+    tail = f' · 마지막 {badge(last["verdict"])} <span class="small">{kst(last["created_at"])}</span>' if last else " · 실행 기록 없음"
+    ex = f' (제외 {qa["excluded"]})' if qa["excluded"] else ""
+    return (f'<a class="qab {cls}" href="/catalog?op={e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화 {qa["covered"]}/{denom}{ex}{tail}</a>')
+
+
+EXPLORER_JS = r"""
+(function(){
+  var F=document.getElementById('callf'); var LS=window.localStorage;
+  function ls(k,d){try{var v=LS.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
+  function lsset(k,v){try{LS.setItem(k,JSON.stringify(v))}catch(e){}}
+  // ---- 즐겨찾기 (브라우저에만) ----
+  var favs=ls('qa_fav',[]); var favbox=document.getElementById('favbox');
+  function renderFavs(){
+    if(!favbox) return; favbox.innerHTML='';
+    var n=0; favs.forEach(function(id){var it=document.querySelector('.opi[data-op="'+id+'"]'); if(!it) return; n++; favbox.appendChild(it.cloneNode(true));});
+    var fn=document.getElementById('favn'); if(fn) fn.textContent=n?('('+n+')'):'';
+    var fd=document.getElementById('favs'); if(fd) fd.style.display=n?'':'none';
+    document.querySelectorAll('.star').forEach(function(b){b.textContent=favs.indexOf(b.dataset.op)>=0?'★':'☆'; b.classList.toggle('on',favs.indexOf(b.dataset.op)>=0)});
+    favbox.querySelectorAll('.star').forEach(bindStar);
+  }
+  function bindStar(b){b.addEventListener('click',function(ev){ev.preventDefault(); var id=b.dataset.op; var i=favs.indexOf(id); if(i>=0) favs.splice(i,1); else favs.unshift(id); lsset('qa_fav',favs); renderFavs();});}
+  document.querySelectorAll('.opl .star').forEach(bindStar); renderFavs();
+  if(!F) return;
+  // ---- Normal | Swagger 보기 (같은 값을 두 모양으로) ----
+  var nv=document.getElementById('nv'), sv=document.getElementById('sv'), seg=document.getElementById('seg');
+  function setView(v){ nv.hidden=(v!=='normal'); sv.hidden=(v!=='swagger'); seg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.v===v)}); lsset('qa_view',v); }
+  seg.addEventListener('click',function(ev){var b=ev.target.closest('button[data-v]'); if(b) setView(b.dataset.v)});
+  setView(F.dataset.view||ls('qa_view','normal'));
+  // ---- 파라미터: Normal 의 진짜 입력칸(name=p_·q_) ↔ Swagger 표의 거울 칸(data-mirror) ----
+  function pathLive(){ var t=F.dataset.path; F.querySelectorAll('input[name^="p_"]').forEach(function(i){ t=t.split('{'+i.name.slice(2)+'}').join(i.value||('{'+i.name.slice(2)+'}')); }); document.querySelectorAll('.pathv').forEach(function(x){x.textContent=t}); }
+  F.querySelectorAll('[data-mirror]').forEach(function(m){ var real=F.querySelector('[name="'+m.dataset.mirror+'"]'); if(!real) return; m.value=real.value;
+    m.addEventListener('input',function(){real.value=m.value; pathLive()}); real.addEventListener('input',function(){m.value=real.value; pathLive()}); });
+  pathLive();
+  // ---- 본문: Swagger 의 JSON 칸(name=body)이 정본, Normal 의 키별 칸(data-bk)은 그 키만 ----
+  var bodyt=F.querySelector('textarea[name="body"]'); var msg=document.getElementById('nvmsg');
+  function parseBody(){ var t=(bodyt.value||'').trim(); if(!t) return {}; return JSON.parse(t); }
+  function coerce(raw,type){ if(type==='number'){ var n=Number(raw); return raw.trim()!==''&&!isNaN(n)?n:raw } if(type==='boolean'){ if(raw==='true') return true; if(raw==='false') return false; return raw } if(type==='null'&&raw==='') return null; return raw; }
+  function toNormal(){ if(!bodyt) return; var o; try{o=parseBody(); nv.classList.remove('bad'); if(msg) msg.textContent='';}catch(err){ nv.classList.add('bad'); if(msg) msg.textContent='Swagger 보기의 JSON 이 깨져 있다: '+err.message+' — 고치면 다시 열린다'; return; }
+    F.querySelectorAll('[data-bk]').forEach(function(f){ var k=f.dataset.bk; var v=o&&Object.prototype.hasOwnProperty.call(o,k)?o[k]:undefined; f.disabled=false;
+      if(f.dataset.kind==='json'){ f.value=v===undefined?'':JSON.stringify(v,null,1); } else { f.value=(v===undefined||v===null)?'':String(v); } }); }
+  function fromNormal(f){ if(!bodyt) return; var o; try{o=parseBody()}catch(err){o={}} if(o===null||typeof o!=='object'||Array.isArray(o)) o={}; var k=f.dataset.bk;
+    if(f.dataset.kind==='json'){ if(f.value.trim()==='') { delete o[k]; f.classList.remove('bad'); } else { try{o[k]=JSON.parse(f.value); f.classList.remove('bad');}catch(err){ f.classList.add('bad'); return; } } }
+    else { o[k]=coerce(f.value,f.dataset.type||'string'); }
+    bodyt.value=JSON.stringify(o,null,1); }
+  F.querySelectorAll('[data-bk]').forEach(function(f){ f.addEventListener('input',function(){fromNormal(f)}); });
+  if(bodyt){ bodyt.addEventListener('input',toNormal); if(F.querySelector('[data-bk]')) toNormal(); }
+  // ---- 최근 값 (파라미터 이름별, 브라우저에만) ----
+  function recentKey(n){return 'qa_recent.'+n}
+  F.querySelectorAll('input[name^="p_"],input[name^="q_"]').forEach(function(i){ var n=i.name.slice(2); var vals=ls(recentKey(n),[]); if(!vals.length) return;
+    var dl=document.createElement('datalist'); dl.id='dl_'+n; vals.forEach(function(v){var o=document.createElement('option'); o.value=v; dl.appendChild(o)}); F.appendChild(dl); i.setAttribute('list',dl.id);
+    if(!i.value&&i.dataset.autofill!=='0'){ i.value=vals[0]; i.dispatchEvent(new Event('input')); } });
+  function remember(n,v){ if(!v) return; var vals=ls(recentKey(n),[]).filter(function(x){return x!==v}); vals.unshift(v); lsset(recentKey(n),vals.slice(0,5)); }
+  F.addEventListener('submit',function(){ F.querySelectorAll('input[name^="p_"],input[name^="q_"]').forEach(function(i){remember(i.name.slice(2),i.value.trim())}); var b=F.querySelector('button.primary'); if(b){b.disabled=true;b.textContent='보내는 중…'} });
+  // ---- 응답에서 id 자동 수집 → 다음 호출의 최근 값 ----
+  var R=window.XRESP; var saved=[]; 
+  (function walk(o,d){ if(!o||typeof o!=='object'||d>3) return; Object.keys(o).forEach(function(k){ var v=o[k]; if((/Id$/.test(k)||k==='id')&&(typeof v==='string'||typeof v==='number')){ remember(k,String(v)); saved.push(k+'='+v); } else if(v&&typeof v==='object') walk(v,d+1); }); })(R&&R.data,0);
+  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='다음 호출을 위해 기억한 값 (이 브라우저에만): '+saved.join(' · ');
+})();
+"""
+
+
+def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str], operators: list[str], operator: str, q: str,
+             domain_of=None, qa: dict | None = None, prefill: dict | None = None) -> str:
+    """API 호출 화면 — 왼쪽 op 목록(도메인별·검색·즐겨찾기), 오른쪽 호출 카드(Normal 폼 | Swagger 요청 원문). docs/qa-platform-api.md §5.3·§5.6."""
     ql = (q or "").lower()
-    items = ""
+    pf = prefill or {}
+    groups: dict[str, list] = {}
     for o in sorted(spec.ops.values(), key=lambda o: (o.path, o.method)):
-        if not o.path.startswith("/v1/"):
+        if not (o.path.startswith("/v1/") or o.path.startswith("/actuator")):
             continue
         if ql and ql not in (o.id + o.path + o.summary).lower():
             continue
-        on = "font-weight:600" if op and o.id == op.id else ""
-        items += (f'<div class="small" style="{on};padding:2px 0"><a href="/explorer?op={e(o.id)}{("&q=" + e(q)) if q else ""}">'
-                  f'<span class="mono">{e(o.method)}</span> {e(o.path)}</a> <span class="mut">{e(o.summary)}</span></div>')
-    left = (f'<div class="card"><form method="get"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약)" style="width:100%"></form>'
-            f'<div style="max-height:70vh;overflow:auto;margin-top:8px">{items or "<span class=\"mut\">없음</span>"}</div></div>')
-    head = '<h1>API 호출 <span class="small mut">OpenAPI 스펙으로 폼을 만들어 dev 에 요청 하나를 보내 본다 (Swagger 의 Try it out)</span></h1>'
+        groups.setdefault(domain_of(o.path) if domain_of else "all", []).append(o)
+    cur_dom = domain_of(op.path) if (op and domain_of) else None
+
+    def item(o) -> str:
+        on = " on" if op and o.id == op.id else ""
+        return (f'<div class="opi{on}" data-op="{e(o.id)}"><button type="button" class="star" data-op="{e(o.id)}" title="즐겨찾기">☆</button>'
+                f'<a href="/explorer?op={e(o.id)}{("&q=" + e(q)) if q else ""}">{method_badge(o.method)} <span class="mono">{e(o.path)}</span></a>'
+                f'<span class="small mut">{e(o.summary)}</span></div>')
+    lists = "".join(
+        f'<details {"open" if (ql or d == cur_dom) else ""}><summary>{e(d)} <span class="mut small">{len(os_)}</span></summary>{"".join(item(o) for o in os_)}</details>'
+        for d, os_ in groups.items()) or '<span class="mut">없음</span>'
+    left = (f'<div class="card opl"><form method="get"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약)" style="width:100%"></form>'
+            f'<details id="favs" open style="display:none"><summary>즐겨찾기 <span id="favn" class="mut small"></span></summary><div id="favbox"></div></details>'
+            f'<div class="oplist">{lists}</div></div>')
+    head = ('<h1>API 호출 <span class="small mut">OpenAPI 로 만든 카드에서 dev 에 요청 하나를 보내 본다. '
+            'Normal 은 값만 넣는 폼, Swagger 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 둘은 같은 값이다. 보낸 것은 실행 기록에 남는다</span></h1>')
     if not op:
-        right = '<div class="card"><p class="mut">왼쪽에서 op 를 고르면 스펙에서 폼을 만든다. 보내기도 실행 기록으로 남는다 (감사 로그·마스킹·응답 절단 동일).</p></div>'
-        return f'{head}<div class="grid" style="grid-template-columns:380px 1fr">{left}{right}</div>'
-    pp = "".join(f'<p><label>path <b>{e(x["name"])}</b>{" *" if x["required"] else ""} <span class="small mut">{e(x["description"])}</span><br>'
-                 f'<input name="p_{e(x["name"])}" style="width:100%" {"required" if x["required"] else ""}></label></p>'
-                 for x in op.params if x["in"] == "path")
-    qp = "".join(f'<p><label>query <b>{e(x["name"])}</b>{" *" if x["required"] else ""} <span class="small mut">{e(x["description"])}</span><br>'
-                 f'<input name="q_{e(x["name"])}" style="width:100%"></label></p>'
-                 for x in op.params if x["in"] == "query")
-    body = ""
-    if op.method in ("POST", "PUT", "PATCH"):
-        ex = json.dumps(op.request_example, ensure_ascii=False, indent=1) if op.request_example is not None else ""
-        body = (f'<p><label>본문 (JSON) <span class="small mut">스펙 예시로 채웠다. 만드는 데이터의 title 은 [QA] 로</span><br>'
-                f'<textarea name="body" style="min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(ex)}</textarea></label></p>')
-    acts = "".join(f'<option value="{e(a)}">{e(a)}</option>' for a in actors)
-    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+        right = ('<div class="card"><p class="mut" style="margin:0">왼쪽에서 API 를 고르면 카드가 열린다. ☆ 로 즐겨찾기에 올릴 수 있고, '
+                 '한 번 넣은 path·query 값은 이 브라우저에 기억돼 다음 카드에 뜬다.</p></div>')
+        return f'{head}<div class="xgrid">{left}{right}</div><script>{EXPLORER_JS}</script>'
+
+    # ---- 카드: 값의 정본은 하나 — path·query 는 Normal 의 입력칸(name=p_·q_), 본문은 Swagger 의 JSON 칸(name=body) ----
+    pparams = [x for x in op.params if x["in"] == "path"]
+    qparams = [x for x in op.params if x["in"] == "query"]
+    pv = pf.get("p") or {}
+    qv = pf.get("q") or {}
+    has_body = op.method in ("POST", "PUT", "PATCH")
+    body_obj = op.request_example if has_body else None
+    body_text = ""
+    if has_body:
+        if pf.get("body"):
+            body_text = pf["body"]
+            try:
+                body_obj = json.loads(body_text)
+            except ValueError:
+                pass   # 깨진 프리필은 그대로 보여 주고 JS 가 Normal 을 잠근다
+        elif op.request_example is not None:
+            body_text = _fmt_json(op.request_example)
+
+    def field(label: str, inner: str, *, required: bool = False, hint: str = "") -> str:
+        return (f'<div class="field"><label>{e(label)}{"<i class=\"req\" title=\"필수\"></i>" if required else ""}'
+                f'{(" <span class=\"hint\">" + e(hint) + "</span>") if hint else ""}</label>{inner}</div>')
+    normal = "".join(field(x["name"], f'<input name="p_{e(x["name"])}" value="{e(pv.get(x["name"], ""))}" {"required" if x["required"] else ""} autocomplete="off">',
+                           required=x["required"], hint=x["description"] or "path") for x in pparams)
+    normal += "".join(field(x["name"], f'<input name="q_{e(x["name"])}" value="{e(qv.get(x["name"], ""))}" {"required" if x["required"] else ""} autocomplete="off">',
+                            required=x["required"], hint=x["description"] or "query") for x in qparams)
+    if has_body:
+        if isinstance(body_obj, dict) and body_obj:
+            for k, v in body_obj.items():
+                if isinstance(v, (dict, list)):
+                    normal += field(k, f'<textarea data-bk="{e(k)}" data-kind="json" rows="3">{e(_fmt_json(v))}</textarea>', hint="JSON")
+                else:
+                    t = "number" if isinstance(v, (int, float)) and not isinstance(v, bool) else ("boolean" if isinstance(v, bool) else ("null" if v is None else "string"))
+                    normal += field(k, f'<input data-bk="{e(k)}" data-kind="scalar" data-type="{t}" value="{e("" if v is None else v)}" autocomplete="off">', hint=t if t != "string" else "")
+            normal += '<p class="hint">본문 키는 OpenAPI 요청 예시에서 왔다. 예시에 없는 키를 넣으려면 Swagger 보기에서 JSON 을 고친다. 만드는 데이터의 title 은 [QA] 로</p>'
+        else:
+            normal += '<p class="hint">이 API 의 본문은 Swagger 보기에서 JSON 으로 넣는다 (예시가 객체가 아니다)</p>'
+    if not normal:
+        normal = '<p class="hint">넣을 값이 없다 — 그대로 보내면 된다</p>'
+    normal += '<p id="nvmsg" class="hint bad"></p>'
+
+    prow = "".join(f'<tr><td class="mono">{e(x["name"])}{"<i class=\"req\"></i>" if x["required"] else ""}</td><td class="mut small">{e(x["in"])}</td>'
+                   f'<td><input data-mirror="{"p_" if x["in"] == "path" else "q_"}{e(x["name"])}" autocomplete="off"></td></tr>' for x in pparams + qparams)
+    swagger = (f'<div class="sline">{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
+               f'<h4>Parameters</h4>' + (f'<table class="params"><tr><th>Name</th><th>In</th><th>Value</th></tr>{prow}</table>' if prow else '<p class="hint">없음</p>'))
+    if has_body:
+        swagger += (f'<h4>Request Body</h4><textarea name="body" rows="12" class="mono">{e(body_text)}</textarea>'
+                    f'<p class="hint">💡 OpenAPI 요청 예시로 채웠다. 여기 JSON 이 실제로 나가는 본문이다 — Normal 보기의 칸은 이것을 키별로 보여 준 것</p>')
     errs = "".join(f'<li><span class="mono">{e(code)}</span> {e(i.get("status"))} {e(i.get("message"))}</li>' for code, i in op.errors.items()) or "<li class='mut'>문서화된 에러 없음</li>"
-    form = (f'<div class="card"><h3 style="margin-top:0"><span class="mono">{e(op.method)}</span> {e(op.path)} <span class="small mut">{e(op.id)} · {e(op.summary)}</span></h3>'
-            f'<form method="post" action="/explorer/send"><input type="hidden" name="op" value="{e(op.id)}">{pp}{qp}{body}'
-            f'<p><select name="actor"><option value="">비로그인</option>{acts}</select> <select name="operator" required><option value="">— 담당자 —</option>{ops}</select> '
-            f'<button class="primary">보내기</button> <span class="small mut">dev 에 실제로 보낸다. 쓰기 op 도 허용 (테스트 계정 2개뿐)</span></p></form>'
-            f'<details><summary class="small mut">문서화된 에러 코드</summary><ul class="small">{errs}</ul></details></div>')
+    sel_actor = pf.get("actor") or ""
+    acts = f'<label class="radio"><input type="radio" name="actor" value="" {"checked" if not sel_actor else ""}> 비로그인</label>' + "".join(
+        f'<label class="radio"><input type="radio" name="actor" value="{e(a)}" {"checked" if a == sel_actor else ""}> {e(a)}</label>' for a in actors)
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    view = pf.get("view") if pf.get("view") in ("normal", "swagger") else ""
+    card = (f'<form method="post" action="/explorer/send" id="callf" class="card call" data-path="{e(op.path)}" data-view="{e(view)}">'
+            f'<input type="hidden" name="op" value="{e(op.id)}">'
+            f'<div class="callhead"><div><b>{e(op.summary or op.id)}</b> <span class="mono mut small">{e(op.id)}</span><br>{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
+            f'<div class="seg" id="seg"><button type="button" data-v="normal">Normal</button><button type="button" data-v="swagger">Swagger</button></div></div>'
+            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 에 걸린 TC 와 자동화 상태 — 클릭하면 TC 목록</span></div>'
+            f'<div id="nv" class="view">{normal}</div><div id="sv" class="view" hidden>{swagger}</div>'
+            f'<div class="callfoot"><div class="field"><label>테스트 계정 <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
+            f'<div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
+            f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>보내기 — dev 에 실제로 나간다 (쓰기 API 도 그대로)</button></div>'
+            f'<details><summary class="small mut">문서화된 에러 코드</summary><ul class="small">{errs}</ul></details></form>')
+
     result = ""
+    resp_json = None
     if run and steps:
         st = steps[0]
         resp = st.get("response") or {}
         rbody = resp.get("json") if resp.get("json") is not None else resp.get("text")
+        resp_json = resp.get("json") if isinstance(resp.get("json"), dict) else None
         req = st["request"]
         ok = str(resp.get("status") or "").startswith("2")
+        again = {"op": op.id}
+        again.update({f"p.{k}": v for k, v in _path_param_values(op.path, req.get("path") or "").items()})
+        again.update({f"q.{k}": v for k, v in (req.get("query") or {}).items()})
+        if req.get("actor"):
+            again["actor"] = req["actor"]
+        if req.get("body") is not None:
+            again["body"] = _fmt_json(req["body"])
+        from urllib.parse import urlencode
         result = (f'<div class="card"><h3 style="margin-top:0">응답 {badge(str(resp.get("status") or "–"), "ok" if ok else "warn")} '
-                  f'<span class="small mut">{resp.get("elapsed_ms") or 0} ms · 실행 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a></span></h3>'
+                  f'<span class="small mut">{resp.get("elapsed_ms") or 0} ms · 실행 기록 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a></span></h3>'
                   f'{("<div class=\"small\" style=\"color:var(--bad)\">" + e(st.get("error")) + "</div>") if st.get("error") else ""}'
-                  f'<details open><summary class="small mut">응답 본문</summary><pre>{e(json.dumps(rbody, ensure_ascii=False, indent=1) if not isinstance(rbody, str) else rbody)}</pre></details>'
-                  f'<details><summary class="small mut">보낸 요청</summary><pre>{e(json.dumps({k: v for k, v in req.items() if k in ("url", "query", "body", "headers", "actor")}, ensure_ascii=False, indent=1))}</pre></details>'
+                  f'<details open><summary class="small mut">응답 본문</summary><pre>{e(_fmt_json(rbody) if not isinstance(rbody, str) else rbody)}</pre></details>'
+                  f'<details><summary class="small mut">보낸 요청</summary><pre>{e(_fmt_json({k: v for k, v in req.items() if k in ("url", "query", "body", "headers", "actor")}))}</pre></details>'
+                  f'<p id="saved" class="hint"></p>'
                   f'<form method="post" action="/explorer/draft" class="actions"><input type="hidden" name="run" value="{e(run["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-                  f'<button {"" if operator else "disabled"}>스크립트 단계로 담기 (스크립트 초안)</button> <span class="small mut">관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
-    return f'{head}<div class="grid" style="grid-template-columns:380px 1fr">{left}<div>{form}{result}</div></div>'
+                  f'<button {"" if operator else "disabled"}>스크립트 단계로 담기 (스크립트 초안)</button> <a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 다시 열기</a>'
+                  f'<span class="small mut">담기: 관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
+    xresp = f'<script>window.XRESP={json.dumps(resp_json, ensure_ascii=False).replace("</", "<\\/") if resp_json is not None else "null"}</script>'
+    return f'{head}<div class="xgrid">{left}<div>{result}{card}</div></div>{xresp}<script>{EXPLORER_JS}</script>'
 
 
 # ---- 가이드 --------------------------------------------------------------------------------------
@@ -652,7 +839,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/catalog">테스트 케이스</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). TC 를 골라 [스크립트 초안 생성]</td></tr>
 <tr><td><a href="/drafts">스크립트 초안</a></td><td>스크립트 늘릴 때</td><td>Hermes·API 호출가 만든 스크립트 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
-<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 에서 폼을 만들어 dev 에 한 번 보낸다. 전송도 실행 기록으로 기록. 응답을 [스크립트 단계로 담기]</td></tr>
+<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 카드에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 폼, <b>Swagger</b> 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 카드 머리의 QA 배지가 그 API 의 TC·자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
     s4 = """
