@@ -56,6 +56,9 @@ DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "val
                  "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT",
                  # P4: kind case(케이스 YAML) | tc(서술 TC 제안 — manual-tc.yaml 에 사람이 옮긴다)
                  "kind": "TEXT NOT NULL DEFAULT 'case'"}
+# P5b: 단계가 부른 OpenAPI operationId. 기록 시점에 박아 두어 스펙이 바뀌어도 과거 기록의 해석이 안 바뀐다(런 불변).
+# 이전 행은 NULL — 조회 때 method/path 로 폴백 매칭(app.py), 백필하지 않는다. docs/qa-platform-api.md §6.
+STEP_COLUMNS = {"op_id": "TEXT"}
 
 
 def now_iso() -> str:
@@ -81,6 +84,11 @@ class Store:
             for col, decl in DRAFT_COLUMNS.items():
                 if col not in have:
                     self._db.execute(f"ALTER TABLE drafts ADD COLUMN {col} {decl}")
+            have = {r[1] for r in self._db.execute("PRAGMA table_info(run_steps)").fetchall()}
+            for col, decl in STEP_COLUMNS.items():
+                if col not in have:
+                    self._db.execute(f"ALTER TABLE run_steps ADD COLUMN {col} {decl}")
+            self._db.execute("CREATE INDEX IF NOT EXISTS ix_run_steps_op ON run_steps(op_id, id)")
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -170,14 +178,41 @@ class Store:
         self._x(f"UPDATE run_cases SET {cols} WHERE id=?", (*fields.values(), rcid))
 
     def add_step(self, rcid: int, ord_: int, name: str, request: dict, response: dict | None,
-                 checks: list, verdict: str, duration_ms: int, error: str | None) -> int:
+                 checks: list, verdict: str, duration_ms: int, error: str | None, op_id: str | None = None) -> int:
         return self._x(
-            "INSERT INTO run_steps(run_case_id,ord,name,request,response,checks,verdict,duration_ms,error)"
-            " VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO run_steps(run_case_id,ord,name,request,response,checks,verdict,duration_ms,error,op_id)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
             (rcid, ord_, name, json.dumps(request, ensure_ascii=False),
              json.dumps(response, ensure_ascii=False) if response is not None else None,
-             json.dumps(checks, ensure_ascii=False), verdict, duration_ms, error),
+             json.dumps(checks, ensure_ascii=False), verdict, duration_ms, error, op_id),
         )
+
+    _STEP_CALL_SQL = ("SELECT s.id, s.op_id, s.name, s.verdict, s.duration_ms, s.error, s.request, s.response, s.checks,"
+                      " rc.case_id, rc.case_title, r.id AS run_id, r.trigger, r.operator, r.created_at"
+                      " FROM run_steps s JOIN run_cases rc ON rc.id=s.run_case_id JOIN runs r ON r.id=rc.run_id ")
+
+    @staticmethod
+    def _call_row(r: dict) -> dict:
+        req = json.loads(r["request"]) if r.get("request") else {}
+        resp = json.loads(r["response"]) if r.get("response") else None
+        checks = json.loads(r["checks"]) if r.get("checks") else []
+        return {"step_id": r["id"], "op_id": r.get("op_id"), "name": r["name"], "verdict": r["verdict"], "duration_ms": r["duration_ms"], "error": r["error"],
+                "method": req.get("method"), "path": req.get("path"), "url": req.get("url"), "query": req.get("query"), "body": req.get("body"), "actor": req.get("actor"),
+                "status": (resp or {}).get("status"), "checks": checks,
+                "case_id": r["case_id"], "case_title": r["case_title"], "run_id": r["run_id"], "trigger": r["trigger"], "operator": r["operator"], "created_at": r["created_at"]}
+
+    def calls_for_op(self, op_id: str, limit: int = 20) -> list[dict]:
+        """이 API 를 부른 단계(최신순) — API 상세의 "최근 호출" (docs/qa-platform-api.md §5.2). op_id 가 박힌 행만."""
+        return [self._call_row(r) for r in self._q(self._STEP_CALL_SQL + "WHERE s.op_id=? ORDER BY s.id DESC LIMIT ?", (op_id, limit))]
+
+    def calls_unresolved(self, limit: int = 300) -> list[dict]:
+        """op_id 가 없는 옛 단계(최신순 일부) — 조회 때 method/path 로 폴백 매칭할 재료."""
+        return [self._call_row(r) for r in self._q(self._STEP_CALL_SQL + "WHERE s.op_id IS NULL ORDER BY s.id DESC LIMIT ?", (limit,))]
+
+    def last_call_by_op(self) -> dict[str, dict]:
+        """op_id 별 가장 최근 단계 (API 목록의 "마지막 호출" 열)."""
+        rows = self._q(self._STEP_CALL_SQL + "WHERE s.id IN (SELECT MAX(id) FROM run_steps WHERE op_id IS NOT NULL GROUP BY op_id)")
+        return {r["op_id"]: self._call_row(r) for r in rows}
 
     def list_steps(self, rcid: int) -> list[dict]:
         rows = self._q("SELECT * FROM run_steps WHERE run_case_id=? ORDER BY ord", (rcid,))

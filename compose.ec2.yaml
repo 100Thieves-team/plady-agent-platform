@@ -724,7 +724,8 @@ services:
           prompts: false
         YAML
           yq -i '.mcp_servers."qa-platform" = load("/tmp/qa-platform.yaml")' "$$CONFIG"
-          echo "hermes-config-init: merged mcp_servers.qa-platform (13 QA tools: read + draft proposals)"
+          echo "hermes-config-init: merged mcp_servers.qa-platform (14 QA tools: read + draft proposals)"
+            - qa_api_get
         else
           yq -i 'del(.mcp_servers."qa-platform")' "$$CONFIG"
           echo "hermes-config-init: QA_MCP_TOKEN absent — mcp_servers.qa-platform not configured"

@@ -57,7 +57,7 @@ class App:
         self.catalog = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=cfg.catalog_dir, data_dir=cfg.data_dir)
         self.cases, self.case_errors = {}, []
         self.reload_cases()
-        self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish)
+        self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish, op_resolver=self.op_of)
         self.reminder = Reminder(cfg, self.store, lambda text: slack(cfg.slack_webhook_url, text))
         # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 실행 도구는 없다
         self.mcp = McpServer(self, hidden_triggers=HIDDEN_TRIGGERS)
@@ -100,6 +100,107 @@ class App:
 
     def drift_of(self, case) -> list[dict]:
         return self.catalog.drift_for(case.covers, (case.reviewed or {}).get("at"))
+
+    def op_of(self, method: str, path: str) -> str | None:
+        """method + 경로(템플릿 `{{x}}` 든 채워진 값이든) → operationId. 러너가 단계 기록에, 조회가 옛 기록 폴백에 쓴다."""
+        spec = self.spec.get()
+        op = spec.op_for(method, path) if spec else None
+        return op.id if op else None
+
+    def scripts_by_op(self) -> dict[str, dict]:
+        """operationId → {"calls": {case_id: [단계 이름]}, "declared": [case_id]} — 단계의 method/path 로 판별, `operations:` 선언은 따로."""
+        out: dict[str, dict] = {}
+        for c in self.cases.values():
+            for st in c.steps:
+                req = st.get("request") or {}
+                oid = self.op_of(req.get("method", ""), req.get("path", "")) if req.get("method") and req.get("path") else None
+                if oid:
+                    out.setdefault(oid, {"calls": {}, "declared": []})["calls"].setdefault(c.id, []).append(st.get("name") or "")
+            for oid in c.operations:
+                out.setdefault(oid, {"calls": {}, "declared": []})["declared"].append(c.id)
+        return out
+
+    def _resolve_unresolved_calls(self, limit: int = 300) -> dict[str, list[dict]]:
+        """op_id 가 없는 옛 단계를 method/path 로 매칭해 op 별로 나눈다 (백필 없음, 조회 때만)."""
+        out: dict[str, list[dict]] = {}
+        for row in self.store.calls_unresolved(limit):
+            oid = self.op_of(row.get("method") or "", row.get("path") or "")
+            if oid:
+                out.setdefault(oid, []).append(row)
+        return out
+
+    def api_overview(self) -> tuple[list[dict], object]:
+        """API 목록 한 행씩 (docs/qa-platform-api.md §5.1). (rows, catalog). OpenAPI 가 없으면 ([], None)."""
+        spec = self.spec.get()
+        if not spec:
+            return [], None
+        cat = self.current_catalog()
+        by_op = cat.by_operation() if cat else {}
+        by_tc = self.coverage(cat)["by_tc"] if cat else {}
+        scripts = self.scripts_by_op()
+        last = self.store.last_call_by_op()
+        old = self._resolve_unresolved_calls()
+        rows = []
+        for op in sorted(spec.ops.values(), key=lambda o: (o.path, o.method)):
+            if not (op.path.startswith("/v1/") or op.path.startswith("/actuator")):
+                continue
+            ids = by_op.get(op.id, [])
+            layers = {"contract": 0, "policy": 0, "manual": 0}
+            covered = excluded = 0
+            for i in ids:
+                rec = cat.records.get(i) or {}
+                layers[rec.get("layer", "manual")] = layers.get(rec.get("layer", "manual"), 0) + 1
+                if rec.get("excluded"):
+                    excluded += 1
+                elif by_tc.get(i):
+                    covered += 1
+            sc = scripts.get(op.id) or {"calls": {}, "declared": []}
+            lc = last.get(op.id)
+            if lc is None and old.get(op.id):
+                lc = old[op.id][0]
+            rows.append({"id": op.id, "method": op.method, "path": op.path, "summary": op.summary, "domain": domain_of_path(op.path),
+                         "tc": len(ids), "layers": layers, "covered": covered, "excluded": excluded, "uncovered": len(ids) - covered - excluded,
+                         "scripts": len(sc["calls"]), "errors": len(op.errors), "last": lc})
+        return rows, cat
+
+    def api_detail(self, op_id: str) -> dict | None:
+        """API 하나의 모아 보기 (docs/qa-platform-api.md §5.2): 스펙 · 층별 TC · 부르는 스크립트 · 최근 호출 20건. 화면·JSON·MCP 도구 공용."""
+        spec = self.spec.get()
+        op = spec.ops.get(op_id) if spec else None
+        if not op:
+            return None
+        cat = self.current_catalog()
+        qa = self.op_qa(op.id) or {"tc": 0, "covered": 0, "excluded": 0, "uncovered": 0, "ids": [], "scripts": [], "last": None}
+        by_tc = self.coverage(cat)["by_tc"] if cat else {}
+        last_v = self.store.last_verdicts()
+        tcs: dict[str, list[dict]] = {"contract": [], "policy": [], "manual": []}
+        for i in qa["ids"]:
+            rec = cat.records.get(i) if cat else None
+            if not rec:
+                continue
+            cov = by_tc.get(i, [])
+            tcs.setdefault(rec["layer"], []).append({"id": i, "title": rec.get("title"), "kind": rec.get("kind"), "excluded": rec.get("excluded"),
+                                                     "error_code": (rec.get("binding") or {}).get("error_code") or (rec.get("expect_hint") or {}).get("error_code"),
+                                                     "scripts": cov, "last": {cid: last_v[cid] for cid in cov if cid in last_v}})
+        sc = self.scripts_by_op().get(op.id) or {"calls": {}, "declared": []}
+        scripts = []
+        for cid, names in sc["calls"].items():
+            c = self.cases.get(cid)
+            scripts.append({"id": cid, "title": c.title if c else "", "suite": c.suite if c else "", "steps": names,
+                            "declared": cid in sc["declared"], "last": last_v.get(cid)})
+        for cid in sc["declared"]:
+            if cid not in sc["calls"]:
+                c = self.cases.get(cid)
+                scripts.append({"id": cid, "title": c.title if c else "", "suite": c.suite if c else "", "steps": [], "declared": True, "last": last_v.get(cid)})
+        recent = self.store.calls_for_op(op.id, 20)
+        if len(recent) < 20:
+            recent = (recent + self._resolve_unresolved_calls().get(op.id, []))[:20]
+        return {"op": {"id": op.id, "method": op.method, "path": op.path, "summary": op.summary, "domain": domain_of_path(op.path), "params": op.params,
+                       "request_example": op.request_example, "success": op.success,
+                       "errors": {code: {"status": i.get("status"), "message": i.get("message")} for code, i in op.errors.items()}},
+                "qa": qa, "tcs": tcs, "scripts": scripts, "recent_calls": recent,
+                "docs_url": (self.cfg.spec_docs_url + "#" + ui.restdocs_anchor(op.summary)) if (self.cfg.spec_docs_url and op.summary) else None,
+                "spec_hash": spec.hash}
 
     def op_qa(self, op_id: str) -> dict | None:
         """API 하나의 검증 상태 요약 — 호출 카드의 QA 배지(docs/qa-platform-api.md §5.6). TC 목록이 없으면 None.
@@ -787,6 +888,26 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
 
+        # ---------- API 별로 모아 보기 (docs/qa-platform-api.md §5.1·§5.2) ----------
+        if path == "/apis" and method == "GET":
+            rows, cat = app.api_overview()
+            if cat is None and not rows:
+                return self._page("API", f'<h1>API</h1><div class="flash err">OpenAPI 를 읽지 못했다: {ui.e(app.spec.last_error or "")}</div>', "apis")
+            spec = app.spec.get()
+            known = cat.domains() if cat else []
+            domains = [d for d in known if any(r["domain"] == d for r in rows)] + sorted({r["domain"] for r in rows} - set(known))
+            return self._page("API", ui.apis_list(rows, domains=domains, domain=g("domain") or (domains[0] if domains else ""), only=g("only"), q=g("q"),
+                                                 spec_hash=spec.hash if spec else None, spec_source=spec.source if spec else None, docs_url=app.cfg.spec_docs_url), "apis")
+        m = re.match(r"^/(api/)?apis/([A-Za-z0-9_.\-]+)$", path)
+        if m and method == "GET":
+            d = app.api_detail(m.group(2))
+            if not d:
+                return self._json(404, {"error": "OpenAPI 에 없는 operationId"}) if m.group(1) else self._error(404, "OpenAPI 에 없는 operationId")
+            if m.group(1):
+                return self._json(200, d)
+            return self._page(f"{d['op']['method']} {d['op']['path']}", ui.api_detail(d, operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key)),
+                              "apis", context={"op": d["op"]["id"]})
+
         # ---------- 탐색기 (docs/qa-platform-tc.md §8) ----------
         if path == "/explorer" and method == "GET":
             spec = app.spec.get()
@@ -946,7 +1067,7 @@ class Handler(BaseHTTPRequestHandler):
                                                      operator=self._operator(), operators=app.cfg.operators), "chat")
         if path == "/chat/new" and method == "GET":
             # 상세 화면의 [Hermes 와 이야기] — 위젯을 그 객체를 첨부한 새 대화로 연다
-            ctx = {k: g(k) for k in ("run", "case", "tc") if g(k)}
+            ctx = {k: g(k) for k in ("run", "case", "tc", "op") if g(k)}
             chats = app.store.list_chats(100)
             return self._page("Hermes", ui.chats_list(chats, stale={c["id"]: app.chat_stale(c) for c in chats}, hermes=bool(app.cfg.hermes_key),
                                                      operator=self._operator(), operators=app.cfg.operators), "chat", autostart=ctx or {"new": True})

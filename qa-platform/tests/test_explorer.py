@@ -90,7 +90,7 @@ class OpQaTest(unittest.TestCase):
         self.assertIsNone(qa["last"])                                     # 실행 기록 없음
         h = ui.qa_badge(qa, "termsList")
         self.assertIn(f"TC {qa['tc']}", h)
-        self.assertIn('href="/catalog?op=termsList"', h)
+        self.assertIn('href="/apis/termsList"', h)
         self.assertIn("실행 기록 없음", h)
         self.assertEqual(self.app.op_qa("noSuchOp")["tc"], 0)
         self.assertIn("TC 없음", ui.qa_badge(self.app.op_qa("noSuchOp"), "noSuchOp"))

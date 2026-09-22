@@ -87,7 +87,9 @@ def _truncate_text(t: str | None) -> str | None:
 
 
 class Runner:
-    def __init__(self, cfg: Config, store: Store, cases: dict[str, Case], on_finish=None):
+    def __init__(self, cfg: Config, store: Store, cases: dict[str, Case], on_finish=None, op_resolver=None):
+        # op_resolver(method, path) -> operationId|None. 단계 기록에 op id 를 박는다 (docs/qa-platform-api.md §6). 없으면 NULL
+        self.op_resolver = op_resolver
         self.cfg = cfg
         self.store = store
         self.cases = cases
@@ -198,6 +200,7 @@ class Runner:
         name = step.get("name") or f"step {i + 1}"
         actor = step.get("actor", case.actor)
         record = {"method": step["request"]["method"], "path": step["request"].get("path"), "actor": actor}
+        op_id = self._op_of(record["method"], record["path"])
         try:
             req = ctx.render(step["request"])
             expect = ctx.render(step.get("expect") or {})
@@ -214,12 +217,13 @@ class Runner:
         except TemplateError as e:
             verdict = "skipped" if e.kind in ("actor", "fixture") else "error"
             msg = (f"{'테스트 계정' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if verdict == "skipped" else str(e))
-            self.store.add_step(rcid, i, name, record, None, [], verdict, 0, msg)
+            self.store.add_step(rcid, i, name, record, None, [], verdict, 0, msg, op_id=op_id)
             return verdict, 0, msg
         except Exception as e:
             msg = f"{type(e).__name__}: {e}"
-            self.store.add_step(rcid, i, name, record, None, [], "error", 0, msg)
+            self.store.add_step(rcid, i, name, record, None, [], "error", 0, msg, op_id=op_id)
             return "error", 0, msg
+        op_id = self._op_of(req["method"], req.get("path")) or op_id   # 치환된 경로가 더 정확하다
 
         r = httpx.request(req["method"], url, headers=headers, body=req.get("body"), timeout=self.cfg.request_timeout)
         response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": r.json if r.json is not None else None,
@@ -228,7 +232,7 @@ class Runner:
             response["json"] = None
             response["text"] = _truncate_text(r.text)
         if r.error:
-            self.store.add_step(rcid, i, name, record, response, [], "error", r.elapsed_ms, r.error)
+            self.store.add_step(rcid, i, name, record, response, [], "error", r.elapsed_ms, r.error, op_id=op_id)
             return "error", r.elapsed_ms, f"{name}: {r.error}"
         checks = evaluate(expect, r.status, r.json)
         ok = all(c["ok"] for c in checks)
@@ -240,5 +244,13 @@ class Runner:
         if ok:
             for var, path in (step.get("save") or {}).items():
                 ctx.vars[var] = get_path(r.json, path)
-        self.store.add_step(rcid, i, name, record, response, checks, "pass" if ok else "fail", r.elapsed_ms, err)
+        self.store.add_step(rcid, i, name, record, response, checks, "pass" if ok else "fail", r.elapsed_ms, err, op_id=op_id)
         return ("pass" if ok else "fail"), r.elapsed_ms, err
+
+    def _op_of(self, method: str | None, path: str | None) -> str | None:
+        if not self.op_resolver or not method or not path:
+            return None
+        try:
+            return self.op_resolver(method, path)
+        except Exception:
+            return None

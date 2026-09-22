@@ -267,3 +267,14 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - **설계에서 달라진 것**: 응답 카드를 호출 카드 **위** 에 둔다(§5.6 그림은 아래). 보내고 돌아왔을 때 긴 Normal 폼을 지나치지 않고 응답이 바로 보이는 쪽이 토스인컴의 "결과를 바로 확인" 에 맞다.
 - **검증**: 테스트 8건 추가(카드 렌더·정본 하나·프리필·목록 묶음·역색인 세 층·QA 요약·op 필터), 전체 63건. 브라우저: createRoom 카드에서 Normal 칸 → JSON 반영(숫자 타입 유지), 깨진 JSON → Normal 잠김·복구, roomDetail 거울 칸 → 진짜 칸·경로 갱신, 즐겨찾기 토글, `GET /v1/terms` 실전송 → 응답 200·termsId 기억·다시 열기 링크, 모바일 폭 1열, 콘솔 오류 없음.
 - **남은 것(P5b 로)**: 배지 링크를 `/apis/{op}` 로, 최근 호출 20건 표.
+
+### 11.2 P5b — API 별로 모아 보기 (2026-09-22)
+
+- **들어간 것**: nav "API" → `/apis` 목록(도메인 탭 × 검색 × 필터 모두 / 부르는 스크립트 없음 / 미자동화 TC 있음 / 문서화된 에러 없음). 행 = 메서드·경로·요약·operationId · TC 수(계약·규칙·수동) · 자동화 m/n(제외) · 부르는 스크립트 수 · 마지막 호출(판정·status·시각·실행 기록 링크) · 에러 코드 수. `/apis/{operationId}` 상세 = 머리(QA 배지, [호출해 보기]·[Hermes 와 이야기]·[REST Docs]) · 스펙(파라미터·요청 예시·성공 응답·에러 코드) · 이 API 의 TC(층별, 체크 → 초안 생성 폼 재사용) · 부르는 스크립트(단계 이름, "선언만"/"선언 없음" 표시) · 최근 호출 20건(시각·실행 기록·스크립트 또는 API 호출·판정·status·소요·[같은 요청으로 열기]). `GET /api/apis/{op}` JSON 이 같은 묶음.
+- **데이터**: `run_steps.op_id`(ALTER + 인덱스). 러너가 단계마다 `App.op_of(method, path)`(= `spec.op_for`)로 채운다 — 치환 전 템플릿으로 한 번, 치환 뒤 경로로 한 번 더(더 정확). 옛 행(NULL)은 `store.calls_unresolved(300)` 을 조회 때 method/path 로 매칭해 섞는다 — 백필 없음. 실제로 배포 전 기록(09-21 실행)의 termsList 호출 4건이 폴백으로 잡혔다.
+- **집계**: `App.api_overview()`(목록 한 번에), `App.api_detail(op)`(상세·JSON·MCP·대화 첨부 공용), `App.scripts_by_op()`(단계 method/path 로 판별 + `operations:` 선언 따로). `Catalog.by_operation()` 은 P5a 것.
+- **Hermes**: MCP 도구 `qa_api_get(operationId)` 추가(14개, compose `tools.include` 갱신). 요청·응답 본문은 안 넘기고 UUID 는 마스킹. 채팅 위젯 첨부에 `{"op": id}` 종류 추가(`/chat/new?op=`, 첨부 텍스트가 `qa_api_get` 을 가리킨다).
+- **REST Docs 링크**: 절 앵커는 AsciiDoc 규칙대로 제목에서 만든다(`ui.restdocs_anchor`: 소문자·기호→`_`·앞 `_`). 같은 제목이 둘이면 `_2` 가 붙는데 그건 모른다 — 안 맞으면 문서 맨 위가 열린다. 문서 URL 은 `QA_SPEC_DOCS_URL`(기본: 스펙 URL 의 `/openapi/` 앞까지).
+- **호출 카드 QA 배지** 링크를 `/catalog?op=` 에서 `/apis/{op}` 로 옮겼다(op 필터는 남겨 둔다).
+- **검증**: 테스트 6건 추가(op_id 기록·최근 호출·NULL 폴백·목록 집계·상세 구조·화면·MCP·대화 첨부), 전체 69건. 브라우저: `/apis?domain=room` 목록·필터, `createRoom` 상세(TC 15 층별), `termsList` 상세(부르는 스크립트 1·최근 호출 4건 중 폴백 3건), 콘솔 오류 없음.
+- **남은 것**: 통계(통과율·평균·flaky)는 P5e. 목록의 "마지막 호출" 은 op_id 있는 행 우선, 없으면 폴백 300건 안에서만.

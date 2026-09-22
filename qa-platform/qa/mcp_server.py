@@ -100,6 +100,9 @@ TOOLS: list[dict] = [
      "inputSchema": _schema({"id": _STR, "with_steps": {"type": "boolean"}}, ["id"])},
     {"name": "qa_spec_op", "description": "OpenAPI(dev 브랜치 계약) 발췌: method·path·파라미터·요청 예시·성공 응답·문서화된 에러 코드.",
      "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
+    {"name": "qa_api_get", "description": "API 하나를 축으로 모아 보기: OpenAPI 발췌(파라미터·요청 예시·응답·에러 코드) + 그 API 에 걸린 TC(층별, 자동화 여부, 검증하는 스크립트) "
+                                          "+ 그 API 를 부르는 스크립트(단계 이름) + 최근 호출 20건(실행 기록·판정·status·소요). \"이 API 지난번에 어땠나\" 에 답할 때.",
+     "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
     {"name": "qa_prd_section", "description": "PRD 절 본문(위키 체크아웃에서). doc 은 문서 이름(예: 룸 생성), section 은 절 번호(예: 4.7).",
      "inputSchema": _schema({"doc": _STR, "section": _STR}, ["doc", "section"])},
     {"name": "qa_draft_create", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 TC 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
@@ -384,6 +387,18 @@ class McpServer:
                 "request_example": op.request_example, "success": op.success,
                 "errors": {code: {"status": i.get("status"), "message": i.get("message"), "example": i.get("example")} for code, i in op.errors.items()},
                 "tc_ids": [f"op.{op.id}:{st}" for st in op.success] + [f"op.{op.id}:{code}" for code in op.errors], "spec_hash": spec.hash}
+
+    def t_api_get(self, operationId: str) -> dict:  # noqa: N803
+        d = self.app.api_detail(operationId)
+        if not d:
+            spec = self.app.spec.get()
+            ql = operationId.lower()
+            near = [o.id for o in spec.ops.values() if ql in (o.id + o.path).lower()][:10] if spec else []
+            raise ToolError(f"OpenAPI 에 없는 operationId: {operationId}" + (f". 비슷한 것: {', '.join(near)}" if near else ""))
+        calls = [{k: v for k, v in c.items() if k not in ("url", "body", "query", "checks")} for c in d["recent_calls"]]
+        out = {"op": d["op"], "qa": {k: v for k, v in d["qa"].items() if k != "ids"}, "tcs": d["tcs"], "scripts": d["scripts"], "recent_calls": calls,
+               "docs_url": d["docs_url"], "spec_hash": d["spec_hash"], "url": f"{self.app.cfg.public_url}/apis/{d['op']['id']}"}
+        return json.loads(mask_ids(json.dumps(out, ensure_ascii=False, default=str)))
 
     def t_prd_section(self, doc: str, section: str) -> dict:
         wiki = self.app.wiki

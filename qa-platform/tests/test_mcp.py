@@ -1,4 +1,4 @@
-"""QA MCP 서버 (docs/qa-platform-hermes.md §3.1) — JSON-RPC 처리·인증·도구 13종·감사 로그.
+"""QA MCP 서버 (docs/qa-platform-hermes.md §3.1) — JSON-RPC 처리·인증·도구 14종·감사 로그.
 
 실제 App 을 띄운다(러너 스레드는 시작하지 않는다). 카탈로그는 레포 안의 wiki-workspace 체크아웃 + OpenAPI 시드에서.
 """
@@ -93,7 +93,7 @@ class McpServerTest(unittest.TestCase):
         self.assertEqual(resp["result"], {})
         status, resp = self.rpc("tools/list")
         names = [t["name"] for t in resp["result"]["tools"]]
-        self.assertEqual(len(names), 13)
+        self.assertEqual(len(names), 14)
         # 실행·전송·발행·승인 도구는 없다 (원칙 ①)
         for bad in ("run_create", "run_start", "send", "publish", "approve", "reject", "apply", "write", "execute", "cancel"):
             self.assertFalse(any(bad in n for n in names), names)

@@ -39,7 +39,18 @@ def system_prompt(cfg: Config) -> str:
 # 첨부 (컨텍스트) — 첫 메시지 앞에 붙는 요약. 나머지는 Hermes 가 도구로 읽는다.
 # ---------------------------------------------------------------------------------------------
 def context_block(app, ctx: dict) -> tuple[str, str | None]:
-    """(첨부 텍스트, 제목 후보). ctx = {"run": id} | {"case": id} | {"tc": id} | {}."""
+    """(첨부 텍스트, 제목 후보). ctx = {"run": id} | {"case": id} | {"tc": id} | {"op": operationId} | {}."""
+    if ctx.get("op"):
+        d = app.api_detail(ctx["op"])
+        if not d:
+            return "", None
+        o = d["op"]
+        qa = d["qa"]
+        text = (f"[첨부: API {o['method']} {o['path']} ({o['id']})] {o['summary']} · TC {qa['tc']}건(자동화 {qa['covered']}, 제외 {qa['excluded']}) "
+                f"· 부르는 스크립트 {len(d['scripts'])}건 · 최근 호출 {len(d['recent_calls'])}건"
+                + (f" · 마지막 {d['recent_calls'][0]['verdict']} {d['recent_calls'][0]['created_at']}" if d["recent_calls"] else "")
+                + f"\n스펙·TC·최근 호출은 qa_api_get(operationId=\"{o['id']}\") 로 읽어라.")
+        return text, f"API {o['id']}"
     if ctx.get("run"):
         run = app.store.get_run(ctx["run"])
         if not run:

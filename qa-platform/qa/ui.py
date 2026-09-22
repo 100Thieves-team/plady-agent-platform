@@ -113,7 +113,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("explorer", "/explorer", "API 호출"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -609,13 +609,13 @@ def qa_badge(qa: dict | None, op_id: str) -> str:
     if qa is None:
         return '<span class="qab none" title="TC 목록을 만들지 못했다">TC ?</span>'
     if not qa["tc"]:
-        return f'<a class="qab none" href="/catalog?op={e(op_id)}" title="이 API 에 걸린 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
+        return f'<a class="qab none" href="/apis/{e(op_id)}" title="이 API 에 걸린 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
     denom = qa["tc"] - qa["excluded"]
     cls = "ok" if denom and qa["covered"] == denom else ("warn" if qa["uncovered"] else "none")
     last = qa.get("last")
     tail = f' · 마지막 {badge(last["verdict"])} <span class="small">{kst(last["created_at"])}</span>' if last else " · 실행 기록 없음"
     ex = f' (제외 {qa["excluded"]})' if qa["excluded"] else ""
-    return (f'<a class="qab {cls}" href="/catalog?op={e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화 {qa["covered"]}/{denom}{ex}{tail}</a>')
+    return (f'<a class="qab {cls}" href="/apis/{e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화 {qa["covered"]}/{denom}{ex}{tail}</a>')
 
 
 EXPLORER_JS = r"""
@@ -763,7 +763,7 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
             f'<input type="hidden" name="op" value="{e(op.id)}">'
             f'<div class="callhead"><div><b>{e(op.summary or op.id)}</b> <span class="mono mut small">{e(op.id)}</span><br>{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
             f'<div class="seg" id="seg"><button type="button" data-v="normal">Normal</button><button type="button" data-v="swagger">Swagger</button></div></div>'
-            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 에 걸린 TC 와 자동화 상태 — 클릭하면 TC 목록</span></div>'
+            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 에 걸린 TC 와 자동화 상태 — 클릭하면 API 모아 보기</span></div>'
             f'<div id="nv" class="view">{normal}</div><div id="sv" class="view" hidden>{swagger}</div>'
             f'<div class="callfoot"><div class="field"><label>테스트 계정 <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
             f'<div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
@@ -798,6 +798,129 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
                   f'<span class="small mut">담기: 관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
     xresp = f'<script>window.XRESP={json.dumps(resp_json, ensure_ascii=False).replace("</", "<\\/") if resp_json is not None else "null"}</script>'
     return f'{head}<div class="xgrid">{left}<div>{result}{card}</div></div>{xresp}<script>{EXPLORER_JS}</script>'
+
+
+# ---- API 별로 모아 보기 (docs/qa-platform-api.md §5.1·§5.2) ----------------------------------------------
+def restdocs_anchor(summary: str) -> str:
+    """REST Docs(AsciiDoc) HTML 의 절 앵커 — 절 제목에서 만든다: 소문자, 공백·기호 → `_`, 앞에 `_`. 예: 개발 환경 액세스 토큰 발급 → _개발_환경_액세스_토큰_발급.
+    같은 제목이 둘이면 AsciiDoc 이 `_2` 를 붙이는데 그건 알 수 없다 — 안 맞으면 문서 맨 위가 열릴 뿐이다."""
+    import re
+    return "_" + re.sub(r"[^\w]+", "_", (summary or "").lower()).strip("_")
+
+
+def _call_verdict(c: dict) -> str:
+    return badge(c["verdict"]) + (f' <span class="mono small">{e(c["status"])}</span>' if c.get("status") else "")
+
+
+def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q: str, spec_hash: str | None, spec_source: str | None, docs_url: str) -> str:
+    ql = (q or "").lower()
+    link = lambda d, o: f'/apis?domain={e(d)}{("&only=" + e(o)) if o else ""}{("&q=" + e(q)) if q else ""}'  # noqa: E731
+    tabs = "".join(f'<a href="{link(d, only)}" class="{"on" if d == domain else ""}">{e(d)}</a>' for d in domains)
+    otabs = "".join(f'<a href="{link(domain, o)}" class="{"on" if (only or "") == o else ""}">{lab}</a>'
+                    for o, lab in (("", "모두"), ("noscript", "부르는 스크립트 없음"), ("uncovered", "미자동화 TC 있음"), ("noerrors", "문서화된 에러 없음")))
+    trs = ""
+    n = 0
+    for r in rows:
+        if ql:
+            if ql not in (r["id"] + r["path"] + r["summary"]).lower():
+                continue
+        elif r["domain"] != domain:
+            continue
+        if only == "noscript" and r["scripts"]:
+            continue
+        if only == "uncovered" and not r["uncovered"]:
+            continue
+        if only == "noerrors" and r["errors"]:
+            continue
+        n += 1
+        denom = r["tc"] - r["excluded"]
+        auto = (f'<span class="qab {"ok" if denom and r["covered"] == denom else ("warn" if r["uncovered"] else "none")}">{r["covered"]}/{denom}</span>'
+                + (f' <span class="small mut">(제외 {r["excluded"]})</span>' if r["excluded"] else "")) if r["tc"] else '<span class="mut">–</span>'
+        lc = r.get("last")
+        last = (f'<a href="/runs/{e(lc["run_id"])}">{_call_verdict(lc)}</a> <span class="small mut">{kst(lc["created_at"])}</span>') if lc else '<span class="mut">–</span>'
+        ly = r["layers"]
+        tc = (f'{r["tc"]} <span class="small mut">계약 {ly.get("contract", 0)} · 규칙 {ly.get("policy", 0)} · 수동 {ly.get("manual", 0)}</span>') if r["tc"] else '<span class="mut">0</span>'
+        trs += (f'<tr><td><a href="/apis/{e(r["id"])}">{method_badge(r["method"])} <span class="mono">{e(r["path"])}</span></a><br><span class="small mut">{e(r["summary"])} · <span class="mono">{e(r["id"])}</span></span></td>'
+                f'<td>{tc}</td><td>{auto}</td><td>{r["scripts"] or "<span class=\"mut\">0</span>"}</td><td>{last}</td><td class="small">{r["errors"] or "<span class=\"mut\">0</span>"}</td></tr>')
+    if not trs:
+        trs = '<tr><td colspan="6" class="mut">해당 없음</td></tr>'
+    return (f'<h1>API <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
+            f'<div class="card"><p class="small mut" style="margin-top:0">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> · 출처 {e(spec_source or "–")}'
+            f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · 태그가 전부 v1 이라 경로로 도메인을 나눴다</p>'
+            f'<form method="get" style="margin:0 0 8px"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약) — 검색 중엔 모든 도메인" style="width:100%"></form>'
+            f'<div class="tabs">{tabs}</div><div class="tabs">{otabs}</div></div>'
+            f'<div class="card"><table><tr><th>API ({n})</th><th>TC</th><th>자동화</th><th>부르는 스크립트</th><th>마지막 호출</th><th>에러 코드</th></tr>{trs}</table>'
+            f'<p class="hint">TC = 그 API 에 걸린 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
+            f'부르는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 부른 가장 최근 단계(API 호출 화면 전송 포함).</p></div>')
+
+
+def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) -> str:
+    o, qa = d["op"], d["qa"]
+    denom = qa["tc"] - qa["excluded"]
+    head = (f'<h1>{method_badge(o["method"])} <span class="mono">{e(o["path"])}</span> <span class="small mut">{e(o["id"])} · {e(o["domain"])}</span></h1>'
+            f'<div class="card"><div class="callhead"><div><b>{e(o["summary"] or o["id"])}</b><div class="qaline" style="margin:8px 0 0">{qa_badge(qa, o["id"])}</div></div>'
+            f'<div class="actions" style="margin:0"><a class="btn primary" href="/explorer?op={e(o["id"])}">호출해 보기</a> <a class="btn" href="/chat/new?op={e(o["id"])}">Hermes 와 이야기</a>'
+            f'{(" <a class=\"btn\" href=\"" + e(d["docs_url"]) + "\">REST Docs</a>") if d.get("docs_url") else ""}</div></div></div>')
+    # 스펙
+    prow = "".join(f'<tr><td class="mono">{e(x["name"])}{"<i class=\"req\"></i>" if x["required"] else ""}</td><td class="small mut">{e(x["in"])}</td><td class="small">{e(x["description"])}</td></tr>' for x in o["params"])
+    succ = "".join(f'<details><summary class="small">{e(st)} 응답 예시</summary><pre>{e(_fmt_json(ex))}</pre></details>' for st, ex in (o.get("success") or {}).items())
+    errs = "".join(f'<tr><td class="mono">{e(code)}</td><td>{e(i.get("status"))}</td><td>{e(i.get("message"))}</td></tr>' for code, i in (o.get("errors") or {}).items())
+    spec = (f'<h2>스펙 <span class="small mut">OpenAPI 에 적힌 것 — Swagger 가 보여 주는 것과 같다</span></h2><div class="card">'
+            f'<h4>Parameters</h4>{("<table class=\"params\"><tr><th>Name</th><th>In</th><th>설명</th></tr>" + prow + "</table>") if prow else "<p class=\"hint\">없음</p>"}'
+            f'{("<h4>Request Body 예시</h4><pre>" + e(_fmt_json(o["request_example"])) + "</pre>") if o.get("request_example") is not None else ""}'
+            f'<h4>성공 응답</h4>{succ or "<p class=\"hint\">예시 없음</p>"}'
+            f'<h4>문서화된 에러 코드</h4>{("<table><tr><th>코드</th><th>status</th><th>메시지</th></tr>" + errs + "</table>") if errs else "<p class=\"hint\">없음 — API 계약 TC 가 성공 하나뿐이다. 거절 조건이 있다면 백엔드 REST Docs 에 4xx 예시가 빠진 것</p>"}</div>')
+    # TC (층별)
+    def tc_rows(items: list[dict]) -> str:
+        out = ""
+        for t in items:
+            state = "excluded" if t.get("excluded") else ("covered" if t["scripts"] else "uncovered")
+            sc = " ".join(f'<a href="/cases/{e(cid)}" class="mono small">{e(cid)}</a>' + (f' <a href="/runs/{e(t["last"][cid]["run_id"])}">{badge(t["last"][cid]["verdict"])}</a>' if cid in t["last"] else "") for cid in t["scripts"][:3])
+            chk = f'<input type="checkbox" name="tc_ids" value="{e(t["id"])}"> ' if state != "excluded" else ""
+            out += (f'<tr class="{"ex" if state == "excluded" else ""}"><td>{chk}{tc_link(t["id"])}</td><td>{e(t["title"])}{(" <span class=\"mono small\">" + e(t["error_code"]) + "</span>") if t.get("error_code") else ""}</td>'
+                    f'<td>{badge({"covered": "자동화됨", "uncovered": "미자동화", "excluded": "자동화 제외"}[state], state)}'
+                    f'{(" <span class=\"small mut\" title=\"" + e(t["excluded"]) + "\">" + e(t["excluded"][:40]) + "</span>") if state == "excluded" else (" " + sc)}</td></tr>')
+        return out
+    sections = ""
+    for layer, lab in (("contract", "API 계약 (OpenAPI 응답·에러 코드)"), ("policy", "비즈니스 규칙 (SSOT, API 매핑으로 연결)"), ("manual", "수동 작성 (manual-tc.yaml)")):
+        items = d["tcs"].get(layer) or []
+        if items:
+            sections += f'<h3>{badge(layer)} {e(lab)} <span class="mut small">{len(items)}</span></h3><table><tr><th>TC</th><th>내용</th><th>자동화 · 검증하는 스크립트</th></tr>{tc_rows(items)}</table>'
+    ops = "".join(f'<option value="{e(x)}" {"selected" if x == operator else ""}>{e(x)}</option>' for x in operators)
+    tcs = (f'<h2>이 API 의 TC <span class="small mut">{qa["tc"]}건 · 자동화 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
+           f'<form method="post" action="/drafts/generate"><div class="card">'
+           + (sections or '<p class="mut">이 API 에 걸린 TC 가 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
+           + (f'<div class="actions"><select name="operator" required><option value="">— 담당자 —</option>{ops}</select>'
+              f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 스크립트 초안 생성 (Hermes)</button>'
+              f'<span class="small mut">같은 도메인 1~10건</span></div>' if sections else "") + '</div></form>')
+    # 부르는 스크립트
+    srows = "".join(
+        f'<tr><td><a href="/cases/{e(s["id"])}" class="mono">{e(s["id"])}</a>{(" <span class=\"small mut\" title=\"operations: 에 선언했지만 이 API 를 부르는 단계가 없다\">선언만</span>") if not s["steps"] else (" <span class=\"small mut\" title=\"단계는 부르는데 operations: 에 선언이 없다\">선언 없음</span>" if not s["declared"] else "")}</td>'
+        f'<td>{e(s["title"])}</td><td class="small">{e(" · ".join(s["steps"]))}</td><td>{badge(s["suite"])}</td>'
+        f'<td>{(("<a href=\"/runs/" + e(s["last"]["run_id"]) + "\">" + badge(s["last"]["verdict"]) + "</a> <span class=\"small mut\">" + kst(s["last"]["created_at"]) + "</span>") if s.get("last") else "<span class=\"mut\">–</span>")}</td></tr>'
+        for s in d["scripts"]) or '<tr><td colspan="5" class="mut">이 API 를 부르는 스크립트가 없다 — 커버리지 공백</td></tr>'
+    scripts = f'<h2>부르는 스크립트 <span class="small mut">{len(d["scripts"])}건</span></h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>이 API 를 부르는 단계</th><th>스위트</th><th>마지막 결과</th></tr>{srows}</table></div>'
+    # 최근 호출
+    crows = ""
+    for c in d["recent_calls"]:
+        again = {"op": o["id"]}
+        again.update({f"p.{k}": v for k, v in _path_param_values(o["path"], c.get("path") or "").items()})
+        again.update({f"q.{k}": v for k, v in (c.get("query") or {}).items()})
+        if c.get("actor"):
+            again["actor"] = c["actor"]
+        if c.get("body") is not None:
+            again["body"] = _fmt_json(c["body"])
+        from urllib.parse import urlencode
+        who = "API 호출" if c["trigger"] == "explorer" else f'<a href="/cases/{e(c["case_id"])}" class="mono">{e(c["case_id"])}</a> <span class="small mut">{e(c["name"])}</span>'
+        bad = [x for x in (c.get("checks") or []) if not x.get("ok")]
+        note = (f' <span class="small" style="color:var(--bad)">{e(c["error"][:100])}</span>' if c.get("error") else "") if (c["verdict"] != "pass") else ""
+        crows += (f'<tr><td class="small">{kst(c["created_at"])}</td><td><a href="/runs/{e(c["run_id"])}" class="mono small">{e(c["run_id"])}</a><br><span class="small mut">{e(TRIGGER_KO.get(c["trigger"], c["trigger"]))} · {e(c["operator"])}</span></td>'
+                  f'<td>{who}{(" <span class=\"small mut\">" + e(c["actor"]) + "</span>") if c.get("actor") else ""}</td><td>{_call_verdict(c)}{note}</td><td class="small">{c.get("duration_ms") or 0} ms</td>'
+                  f'<td><a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 열기</a></td></tr>')
+    recent = (f'<h2>최근 호출 <span class="small mut">이 API 를 부른 단계 최근 {len(d["recent_calls"])}건 — 스크립트 실행과 API 호출 화면 전송 모두</span></h2>'
+              f'<div class="card"><table><tr><th>시각</th><th>실행 기록</th><th>스크립트 · 단계</th><th>판정 · status</th><th>소요</th><th></th></tr>'
+              f'{crows or "<tr><td colspan=\"6\" class=\"mut\">아직 부른 기록이 없다</td></tr>"}</table></div>')
+    return head + spec + tcs + scripts + recent
 
 
 # ---- 가이드 --------------------------------------------------------------------------------------
@@ -839,6 +962,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/catalog">테스트 케이스</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). TC 를 골라 [스크립트 초안 생성]</td></tr>
 <tr><td><a href="/drafts">스크립트 초안</a></td><td>스크립트 늘릴 때</td><td>Hermes·API 호출가 만든 스크립트 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
+<tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 걸린 TC(층별, 자동화 여부), 부르는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "부르는 스크립트 없음" 필터가 커버리지 공백</td></tr>
 <tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 카드에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 폼, <b>Swagger</b> 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 카드 머리의 QA 배지가 그 API 의 TC·자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
@@ -873,7 +997,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
 <tr><td>스크립트를 늘릴 때</td><td>테스트 스크립트 화면 [스크립트 초안 생성]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 스크립트 YAML 초안을 쓴다</td><td>초안을 스위트에 넣지 못한다. 플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 스크립트 초안에 들어가고 사람이 승인해 PR 로 올려야 스크립트가 된다</td></tr>
 <tr><td>테스트 실행이 실패한 뒤</td><td>실행 상세 [Hermes 실패 분석]</td><td>단계별 요청·응답·검증 항목(assertion)만 보고 <i>버그 / 스크립트 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 분석 결과는 실행 기록의 스크립트에 메모로 붙을 뿐이다</td></tr>
-<tr><td>Hermes 에게 물을 때 (<a href="/chat">Hermes</a> 화면 · Slack)</td><td>대화</td><td>QA 도구(<span class="mono">qa_*</span> 13개)로 테스트 케이스·스크립트·실행 기록·커버리지·OpenAPI·PRD 절을 읽고 답한다. 스크립트를 쓰거나 고치면 스크립트 초안으로, PRD 절에서 뽑은 수동 작성 TC 는 "수동 TC 제안" 초안으로 낸다</td><td>테스트 실행·API 직접 호출·위키 보고서 게시·초안 승인 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 감사 로그 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
+<tr><td>Hermes 에게 물을 때 (<a href="/chat">Hermes</a> 화면 · Slack)</td><td>대화</td><td>QA 도구(<span class="mono">qa_*</span> 14개)로 테스트 케이스·스크립트·실행 기록·커버리지·OpenAPI·PRD 절을 읽고 답한다. 스크립트를 쓰거나 고치면 스크립트 초안으로, PRD 절에서 뽑은 수동 작성 TC 는 "수동 TC 제안" 초안으로 낸다</td><td>테스트 실행·API 직접 호출·위키 보고서 게시·초안 승인 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 감사 로그 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
 <p class="small mut">[스크립트 초안 생성] 버튼 경로에서는 위키 도구를 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 스크립트 초안이 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 맞춰 볼 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
     s_terms = """
 <p class="small mut" style="margin-top:0">이 화면들에서 쓰는 말. 일반 QA 용어를 따르고, 코드·URL 의 영어 키(run, case, catalog, covers, audit)는 그대로 둔다.</p>
@@ -914,6 +1038,8 @@ def _ctx_label(ctx: dict) -> str:
         return f'스크립트 <a href="/cases/{e(ctx["case"])}" class="mono">{e(ctx["case"])}</a>'
     if ctx.get("tc"):
         return f'TC {tc_link(ctx["tc"])}'
+    if ctx.get("op"):
+        return f'API <a href="/apis/{e(ctx["op"])}" class="mono">{e(ctx["op"])}</a>'
     return "–"
 
 
@@ -931,7 +1057,7 @@ def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, o
 
 
 # ---- Hermes 위젯 스크립트 (/static/hermes.js). 표준 라이브러리 서버라 문자열로 낸다 ---------------------------
-HERMES_JS_VERSION = "2"
+HERMES_JS_VERSION = "3"
 HERMES_JS = r"""
 (function(){
   var Q = window.QA || {}; var LS_ID='qa_chat_id', LS_OPEN='qa_chat_open';
@@ -940,7 +1066,7 @@ HERMES_JS = r"""
   function el(tag, cls, html){var x=document.createElement(tag); if(cls) x.className=cls; if(html!=null) x.innerHTML=html; return x;}
   function kst(iso){ if(!iso) return ''; var d=new Date(iso); return isNaN(d)?'':d.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}); }
   function linkify(t){ return h(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1">$1</a>').replace(/\b(d-[0-9a-f]{8})\b/g,'<a href="/drafts/$1" class="mono">$1</a>'); }
-  function ctxLabel(c){ c=c||{}; if(c.run) return '실행 <a href="/runs/'+h(c.run)+'" class="mono">'+h(c.run)+'</a>'; if(c.case) return '스크립트 <a href="/cases/'+h(c.case)+'" class="mono">'+h(c.case)+'</a>'; if(c.tc) return 'TC <a href="/catalog/tc?id='+encodeURIComponent(c.tc)+'" class="mono">'+h(c.tc)+'</a>'; return ''; }
+  function ctxLabel(c){ c=c||{}; if(c.run) return '실행 <a href="/runs/'+h(c.run)+'" class="mono">'+h(c.run)+'</a>'; if(c.case) return '스크립트 <a href="/cases/'+h(c.case)+'" class="mono">'+h(c.case)+'</a>'; if(c.tc) return 'TC <a href="/catalog/tc?id='+encodeURIComponent(c.tc)+'" class="mono">'+h(c.tc)+'</a>'; if(c.op) return 'API <a href="/apis/'+h(c.op)+'" class="mono">'+h(c.op)+'</a>'; return ''; }
 
   // ---- DOM ----
   var inline = !!Q.inline, root = inline ? document.getElementById('hx-inline') : document.body;

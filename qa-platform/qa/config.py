@@ -40,6 +40,8 @@ class Config:
         self.spec_url = g("QA_SPEC_URL", "https://100thieves-team.github.io/moimyeon-backend/api/branches/dev/openapi/openapi3.yaml")
         self.request_timeout = int(g("QA_REQUEST_TIMEOUT", "30"))
         self.spec_file = g("QA_SPEC_FILE", "") or None          # 로컬·테스트: 파일에서 읽는다
+        # REST Docs HTML(사람이 읽는 API 문서). 기본은 스펙 URL 의 상위(…/branches/dev/). API 상세가 절 앵커로 링크한다
+        self.spec_docs_url = g("QA_SPEC_DOCS_URL", "") or (self.spec_url.rsplit("/openapi/", 1)[0] + "/" if "/openapi/" in self.spec_url else "")
 
         # 기준 문서 — llm-wiki 체크아웃(읽기 전용 볼륨)과 카탈로그 입력 파일 (docs/qa-platform-tc.md §4.5, §11)
         self.wiki_dir = g("QA_WIKI_DIR", "") or None

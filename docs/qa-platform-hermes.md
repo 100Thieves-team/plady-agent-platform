@@ -178,7 +178,7 @@ catalog changes.json  항목에 before 스냅샷
 | 런 단계 노출 | `qa_run_get(with_steps)` 는 요청에서 headers 를 빼고, 요청·응답을 문자열로 절단한 뒤 UUID 를 앞 8자리로 마스킹한다 | "마스킹된 그대로" 보다 한 겹 더 |
 | compose.ec2 | qa-platform·hermes-gateway 에 `QA_MCP_TOKEN`. `hermes-config-init` 이 `QA_MCP_ENABLED`(존재 플래그, 값 아님)를 보고 `mcp_servers.qa-platform` 을 병합하거나 지운다. Caddy `@qa` 에 `handle /mcp { respond 403 }` | §6 대로. 토큰 없을 때 항목을 지우는 것은 추가(연결 실패로 gateway 부팅이 늦어지지 않게) |
 | 배포 스크립트 | `ec2-deploy.sh` 가 SSM `qa-mcp-token`(선택) → `.env.ec2` `QA_MCP_TOKEN`. 없으면 로그에 ABSENT | §6 대로 |
-| 테스트 | `tests/test_mcp.py` 9건(프로토콜·인증·도구 13종·마스킹·감사 로그). 전체 38건 | – |
+| 테스트 | `tests/test_mcp.py` 9건(프로토콜·인증·도구 13종 — P5b 에서 `qa_api_get` 이 더해져 14종·마스킹·감사 로그). 전체 38건(당시) | – |
 
 **사람이 할 일 (P4a 를 켜려면)**
 
