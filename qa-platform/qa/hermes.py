@@ -14,12 +14,12 @@ from . import httpx
 from .config import Config
 
 TRIAGE_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 자동 API 케이스가 dev 서버에서 실패했다. "
-    "주어진 케이스·단계·요청·응답만 근거로 삼고, 모르는 것은 모른다고 말한다. 한국어로 답한다.\n"
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 자동 API 스크립트가 dev 서버에서 실패했다. "
+    "주어진 스크립트·단계·요청·응답만 근거로 삼고, 모르는 것은 모른다고 말한다. 한국어로 답한다.\n"
     "출력 형식(그대로):\n"
-    "분류: 버그 | 케이스 노후 | 환경\n"
+    "분류: 버그 | 스크립트 노후 | 환경\n"
     "근거: 두세 문장. 어느 단계의 무엇이 기대와 어긋났는지, 응답 코드·에러 코드를 인용.\n"
-    "다음 행동: 한 줄씩 최대 3개. 버그면 확인할 코드 영역, 케이스 노후면 고칠 기대값, 환경이면 확인할 설정."
+    "다음 행동: 한 줄씩 최대 3개. 버그면 확인할 코드 영역, 스크립트 노후면 고칠 기대값, 환경이면 확인할 설정."
 )
 
 
@@ -153,8 +153,8 @@ def parse_response(data: dict) -> dict:
 
 def triage(cfg: Config, run: dict, rc: dict, steps: list[dict]) -> str:
     parts = [f"## 런\n트리거 {run['trigger']} · 대상 {run['base_url']} · sha {run.get('sha') or '-'} · PR {run.get('pr_number') or '-'}",
-             f"## 케이스 {rc['case_id']} — {rc['case_title']}\n판정 {rc['verdict']} · 오류 {rc.get('error') or '-'}",
-             "## 케이스 정의\n```yaml\n" + rc["case_yaml"] + "\n```", "## 단계 결과"]
+             f"## 스크립트 {rc['case_id']} — {rc['case_title']}\n판정 {rc['verdict']} · 오류 {rc.get('error') or '-'}",
+             "## 스크립트 정의\n```yaml\n" + rc["case_yaml"] + "\n```", "## 단계 결과"]
     for s in steps:
         req = dict(s["request"]); req.pop("headers", None)
         resp = s.get("response") or {}
@@ -162,5 +162,5 @@ def triage(cfg: Config, run: dict, rc: dict, steps: list[dict]) -> str:
         parts.append(
             f"### {s['ord'] + 1}. {s['name']} → {s['verdict']}\n요청: {json.dumps(req, ensure_ascii=False)[:1500]}\n"
             f"응답 status={resp.get('status')} body={json.dumps(body, ensure_ascii=False)[:1500] if body is not None else '-'}\n"
-            f"단언: {json.dumps(s['checks'], ensure_ascii=False)[:1200]}\n오류: {s.get('error') or '-'}")
+            f"검증 항목(assertion): {json.dumps(s['checks'], ensure_ascii=False)[:1200]}\n오류: {s.get('error') or '-'}")
     return chat(cfg, TRIAGE_SYSTEM, "\n\n".join(parts), session_prefix="qa-triage")

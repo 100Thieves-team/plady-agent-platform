@@ -3,8 +3,8 @@
 streamable HTTP 의 서버 쪽 최소 구현: JSON-RPC 2.0 over POST, 상태 없음(세션 id 없음), 표준 라이브러리만.
 메서드는 initialize · ping · tools/list · tools/call 네 개. 알림(id 없음)은 202 로 받고 버린다.
 
-도구는 읽기 10 + 제안 3. **실행·전송·발행·승인·케이스 파일 쓰기 도구는 없다** — 사용자 결정 ①(실행은 사람 버튼)을
-도구 목록 자체로 막는다. 제안 도구는 케이스 초안(drafts)까지만 쓰고, 그 뒤는 지금과 같은 사람 승인 경로다.
+도구는 읽기 10 + 제안 3. **실행·전송·발행·승인·스크립트 파일 쓰기 도구는 없다** — 사용자 결정 ①(실행은 사람 버튼)을
+도구 목록 자체로 막는다. 제안 도구는 스크립트 초안(drafts)까지만 쓰고, 그 뒤는 지금과 같은 사람 승인 경로다.
 
 인증: `Authorization: Bearer QA_MCP_TOKEN` (내부 네트워크 전용. Caddy @qa 는 /mcp 를 403 으로 막는다).
 모든 tools/call 은 events `mcp.call` 로 남는다 (operator "hermes" — 사람이 아니라 에이전트가 부른 것임을 그대로 적는다).
@@ -29,8 +29,8 @@ AGENT = "hermes"          # 도구를 부르는 쪽. 감사 로그 operator 열�
 MAX_LIMIT = 200
 
 INSTRUCTIONS = (
-    "plady QA 플랫폼의 도구다. 기준(TC)은 SSOT·PRD·OpenAPI 에서 파생된 것이라 여기서 만들거나 고칠 수 없다. "
-    "케이스를 새로 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 케이스 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
+    "plady QA 플랫폼의 도구다. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이라 여기서 만들거나 고칠 수 없다. "
+    "스크립트를 새로 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 스크립트 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
     "실행·전송·발행·승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크로 안내한다. "
     "회원 UUID 같은 식별값은 답에 옮기지 않는다."
 )
@@ -80,37 +80,37 @@ _STR = {"type": "string"}
 _INT = {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT}
 
 TOOLS: list[dict] = [
-    {"name": "qa_catalog_search", "description": "기준(TC 카탈로그) 검색. 정책(policy: SSOT 에서 파생)·계약(contract: OpenAPI)·서술(manual) 세 층. "
-     "only=uncovered 면 아직 어떤 케이스도 덮지 않는 TC 만. 결과의 covered_by 가 그 TC 를 덮는 케이스와 마지막 판정.",
+    {"name": "qa_catalog_search", "description": "테스트 케이스(TC) 목록 검색. 비즈니스 규칙(policy: SSOT 에서 파생)·API 계약(contract: OpenAPI)·수동 작성(manual) 세 층. "
+     "only=uncovered 면 아직 어떤 스크립트도 덮지 않는 TC 만. 결과의 covered_by 가 그 TC 를 검증하는 스크립트와 마지막 결과.",
      "inputSchema": _schema({"domain": _STR, "layer": {"type": "string", "enum": ["policy", "contract", "manual"]},
                              "only": {"type": "string", "enum": ["uncovered", "covered", "excluded", "warn"]},
-                             "q": {"type": "string", "description": "id·제목·바인딩에 대한 부분 문자열"}, "limit": _INT})},
-    {"name": "qa_tc_get", "description": "TC 하나의 레코드 전문 + 근거 PRD 절 본문 + 덮는 케이스 + 최근 변경 여부.",
+                             "q": {"type": "string", "description": "id·제목·API 매핑에 대한 부분 문자열"}, "limit": _INT})},
+    {"name": "qa_tc_get", "description": "TC 하나의 레코드 전문 + 근거 PRD 절 본문 + 검증하는 스크립트 + 최근 변경 여부.",
      "inputSchema": _schema({"id": {"type": "string", "description": "예: G.room.create#8, op.createRoom:E1402, PRD.룸-탐색.4.1#1"}}, ["id"])},
-    {"name": "qa_coverage", "description": "도메인×층 커버리지 매트릭스, 제외 수, 기준 버전(SSOT·OpenAPI 해시), 카탈로그 경고.", "inputSchema": _schema({})},
-    {"name": "qa_changes", "description": "최근 바뀐(추가·변경·삭제된) TC 와 영향받는 케이스. since 는 ISO 시각(그 이후만).",
+    {"name": "qa_coverage", "description": "도메인×층 커버리지 매트릭스, 제외 수, TC 소스 버전(SSOT·OpenAPI 해시), 스펙 불일치 경고.", "inputSchema": _schema({})},
+    {"name": "qa_changes", "description": "최근 바뀐(추가·변경·삭제된) TC 와 영향받는 스크립트. since 는 ISO 시각(그 이후만).",
      "inputSchema": _schema({"since": _STR, "limit": _INT})},
-    {"name": "qa_case_list", "description": "케이스(정본 YAML, git) 목록: suite·덮는 TC 수·카탈로그 대조 상태·마지막 판정·근거 변경 수.",
+    {"name": "qa_case_list", "description": "스크립트(원본 YAML, git) 목록: suite·검증하는 TC 수·TC 정합성 검사 상태·마지막 결과·TC 변경 수.",
      "inputSchema": _schema({"domain": _STR, "suite": {"type": "string", "enum": ["smoke", "sanity", "manual"]}})},
-    {"name": "qa_case_get", "description": "케이스 하나: YAML 전문, covers, 카탈로그 대조 결과, 근거 변경(드리프트), 최근 실행 이력.",
+    {"name": "qa_case_get", "description": "스크립트 하나: YAML 전문, covers, TC 정합성 검사 결과, TC 변경(드리프트), 최근 실행 이력.",
      "inputSchema": _schema({"id": _STR}, ["id"])},
-    {"name": "qa_run_list", "description": "런 목록(최신순). trigger: deploy-sanity | sprint-smoke | release | manual | draft-check | explorer.",
+    {"name": "qa_run_list", "description": "테스트 실행 목록(최신순). trigger: deploy-sanity | sprint-smoke | release | manual | draft-check | explorer.",
      "inputSchema": _schema({"trigger": _STR, "limit": _INT})},
-    {"name": "qa_run_get", "description": "런 상세: 케이스별 판정·오류·진단. with_steps=true 면 단계마다 요청·응답·단언까지(마스킹된 그대로, 응답은 절단).",
+    {"name": "qa_run_get", "description": "실행 상세: 스크립트별 판정·오류·진단. with_steps=true 면 단계마다 요청·응답·검증 항목(assertion)까지(마스킹된 그대로, 응답은 절단).",
      "inputSchema": _schema({"id": _STR, "with_steps": {"type": "boolean"}}, ["id"])},
     {"name": "qa_spec_op", "description": "OpenAPI(dev 브랜치 계약) 발췌: method·path·파라미터·요청 예시·성공 응답·문서화된 에러 코드.",
      "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
     {"name": "qa_prd_section", "description": "PRD 절 본문(위키 체크아웃에서). doc 은 문서 이름(예: 룸 생성), section 은 절 번호(예: 4.7).",
      "inputSchema": _schema({"doc": _STR, "section": _STR}, ["doc", "section"])},
-    {"name": "qa_draft_create", "description": "케이스 YAML 을 결정론 검증(형식·covers 가 카탈로그에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
-     "통과하면 케이스 초안으로 저장한다. 실패하면 사유를 돌려준다 — 고쳐서 다시 부른다. 초안은 사람이 화면에서 승인해야 케이스가 된다. "
-     "YAML 은 케이스 맵 하나 또는 `cases:` 목록(최대 5).",
-     "inputSchema": _schema({"yaml": _STR, "reason": {"type": "string", "description": "왜 이 케이스인지 한 줄 (초안 메모에 남는다)"}}, ["yaml"])},
+    {"name": "qa_draft_create", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 TC 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
+     "통과하면 스크립트 초안으로 저장한다. 실패하면 사유를 돌려준다 — 고쳐서 다시 부른다. 초안은 사람이 화면에서 승인해야 스크립트가 된다. "
+     "YAML 은 스크립트 맵 하나 또는 `cases:` 목록(최대 5).",
+     "inputSchema": _schema({"yaml": _STR, "reason": {"type": "string", "description": "왜 이 스크립트인지 한 줄 (초안 메모에 남는다)"}}, ["yaml"])},
     {"name": "qa_draft_update", "description": "아직 결정되지 않은 초안의 YAML 을 바꾸고 다시 검증한다. 승인·반려된 초안은 못 고친다.",
      "inputSchema": _schema({"id": {"type": "string", "description": "d-… 초안 id"}, "yaml": _STR}, ["id", "yaml"])},
-    {"name": "qa_manual_tc_propose", "description": "PRD 절에서 서술 TC(사람이 적는 기준) 제안을 만든다. 파일(manual-tc.yaml)에는 쓰지 않고 초안(kind tc)으로만 남긴다 — "
+    {"name": "qa_manual_tc_propose", "description": "PRD 절에서 수동 작성 TC(사람이 적는 TC) 제안을 만든다. 파일(manual-tc.yaml)에는 쓰지 않고 초안(kind tc)으로만 남긴다 — "
      "사람이 검토해 PR 로 옮긴다. items 의 각 항목은 title·when·then 필수, given·operations 선택.",
-     "inputSchema": _schema({"doc": _STR, "section": _STR, "domain": {"type": "string", "description": "room·participation 등. 없으면 같은 문서의 기존 서술 TC 에서 가져온다"},
+     "inputSchema": _schema({"doc": _STR, "section": _STR, "domain": {"type": "string", "description": "room·participation 등. 없으면 같은 문서의 기존 수동 작성 TC 에서 가져온다"},
                              "items": {"type": "array", "minItems": 1, "maxItems": 10,
                                        "items": _schema({"title": _STR, "given": _STR, "when": _STR, "then": _STR,
                                                          "operations": {"type": "array", "items": _STR}}, ["title", "when", "then"])}},
@@ -212,7 +212,7 @@ class McpServer:
     def _catalog(self):
         cat = self.app.current_catalog()
         if cat is None:
-            raise ToolError("카탈로그가 없다: " + (self.app.catalog.last_error or "원인 미상"))
+            raise ToolError("TC 목록이 없다: " + (self.app.catalog.last_error or "원인 미상"))
         return cat
 
     def _url(self, path: str) -> str:
@@ -265,14 +265,14 @@ class McpServer:
                 item["warnings"] = [w for w in cat.warnings if w.startswith(r["id"] + ":")]
             items.append(item)
         return {"total": total, "returned": len(items), "domains": cat.domains(), "items": items,
-                "note": "케이스로 쓰려면 qa_draft_create 에 YAML 을 낸다. covers 는 여기 있는 id 만 쓸 수 있다."}
+                "note": "스크립트로 쓰려면 qa_draft_create 에 YAML 을 낸다. covers 는 여기 있는 id 만 쓸 수 있다."}
 
     def t_tc_get(self, id: str) -> dict:  # noqa: A002
         cat = self._catalog()
         r = cat.records.get(id)
         if not r:
             near = [i for i in cat.records if id.lower() in i.lower()][:10]
-            raise ToolError(f"카탈로그에 없는 TC: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
+            raise ToolError(f"TC 목록에 없는 TC: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
         cov = self.app.coverage(cat)["by_tc"].get(id, [])
         last = self._last_verdicts()
         prd = []
@@ -305,7 +305,7 @@ class McpServer:
             rows.append(dict(ch, id=tid, affected_cases=by_tc.get(tid, [])))
         rows.sort(key=lambda x: (x.get("at") or "", x["id"]), reverse=True)
         return {"total": len(rows), "items": rows[:n],
-                "note": "영향 케이스는 케이스 화면의 근거 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_draft_create 로 고친 판을 낸다."}
+                "note": "영향 스크립트는 스크립트 화면의 TC 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_draft_create 로 고친 판을 낸다."}
 
     def t_case_list(self, domain=None, suite=None) -> dict:
         self.app.current_catalog()
@@ -325,7 +325,7 @@ class McpServer:
         c = self.app.cases.get(id)
         if not c:
             near = [i for i in self.app.cases if id.lower() in i.lower()][:10]
-            raise ToolError(f"없는 케이스: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
+            raise ToolError(f"없는 스크립트: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
         self.app.current_catalog()
         return {"id": c.id, "title": c.title, "suite": c.suite, "domains": c.domains, "operations": c.operations, "actor": c.actor,
                 "covers": c.covers, "reviewed": c.reviewed, "audit": c.audit, "blocked": c.blocked, "drift": self.app.drift_of(c),
@@ -348,7 +348,7 @@ class McpServer:
     def t_run_get(self, id: str, with_steps=False) -> dict:  # noqa: A002
         run = self.app.store.get_run(id)
         if not run:
-            raise ToolError(f"없는 런: {id}")
+            raise ToolError(f"없는 실행 기록: {id}")
         meta = {k: v for k, v in run["meta"].items() if not k.startswith("_")}
         rcs = self.app.store.list_run_cases(id)
         cases = []
@@ -401,7 +401,7 @@ class McpServer:
         cat = self._catalog()
         raws = draftsmod.parse_output(str(yaml))
         if not raws:
-            raise ToolError("YAML 에서 케이스를 찾지 못했다 — 케이스 맵 하나 또는 `cases:` 목록이어야 한다")
+            raise ToolError("YAML 에서 스크립트를 찾지 못했다 — 스크립트 맵 하나 또는 `cases:` 목록이어야 한다")
         if len(raws) > 5:
             raise ToolError("한 번에 5건까지")
         created, rejected = [], []
@@ -474,7 +474,7 @@ class McpServer:
                 raise ToolError(f"만들어진 id 가 형식에 안 맞는다: {rec['id']} (doc·section 확인)")
             out.append(rec)
         text = yaml_dump({"cases": out})
-        note = f"manual-tc.yaml 에 붙일 서술 TC 제안 — PRD/{doc} §{sec}"
+        note = f"manual-tc.yaml 에 붙일 수동 TC 제안 — PRD/{doc} §{sec}"
         did = self.app.store.add_draft(operator=AGENT, source="hermes-chat", domain=str(domain), yaml_text=text, note=note, case_id=None,
                                        tc_ids=[r["id"] for r in out], validation={"status": "warn" if warnings else "ok", "warnings": warnings}, kind="tc")
         self.app.store.add_event(operator=AGENT, action="draft.generate", target=did, detail={"source": "hermes-chat", "kind": "tc", "tc_ids": [r["id"] for r in out]})

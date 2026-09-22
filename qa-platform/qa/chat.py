@@ -1,6 +1,6 @@
 """Hermes 채팅 — 어느 화면에서나 뜨는 위젯(채널톡처럼)과 Hermes 사이. docs/qa-platform-hermes.md §3.2.
 
-플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(런·케이스·TC 요약)를 붙인다, (2) Hermes `/v1/responses` 를
+플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(실행·스크립트·TC 요약)를 붙인다, (2) Hermes `/v1/responses` 를
 SSE 로 한 번 부르며 델타·도구 호출·도구 결과를 그대로 브라우저로 흘린다(previous_response_id 로 서버가 대화를 잇고, 밀려났으면
 여기 기록으로 다시 잇는다), (3) 끝나면 응답 본문·도구 호출·그 턴에 생긴 초안 id 를 저장하고 감사 로그에 남긴다.
 실행·발행·승인은 도구에 없으므로 채팅으로는 일어나지 않는다.
@@ -19,12 +19,12 @@ DRAFT_TOOLS = ("qa_draft_create", "qa_draft_update", "qa_manual_tc_propose")
 Emit = Callable[[str, object], None]
 
 SYSTEM = (
-    "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 기준(TC)·케이스·런·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
+    "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 테스트 케이스(TC)·스크립트·실행 기록·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
     "규칙:\n"
-    "1. 기준(TC)은 SSOT·PRD·OpenAPI 에서 파생된 것이고 네가 만들거나 고치지 않는다. 기준을 바꾸려면 위키를 고쳐야 한다고 안내한다.\n"
-    "2. 케이스를 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 케이스 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
+    "1. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이고 네가 만들거나 고치지 않는다. TC 를 바꾸려면 위키를 고쳐야 한다고 안내한다.\n"
+    "2. 스크립트를 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 스크립트 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
     "세 번 넘게 실패하면 사람에게 넘긴다. covers 는 qa_catalog_search 로 확인한 실재 TC id 만 쓴다.\n"
-    "3. 실행·탐색기 전송·위키 발행·초안 승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
+    "3. 실행·API 직접 호출·위키 보고서 게시·초안 승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
     "4. 답은 도구로 읽은 사실에 근거하고, 모르는 것은 모른다고 한다. 회원 UUID 같은 식별값은 답에 옮기지 않는다.\n"
     "5. 이 QA 대화에서는 위키를 쓰지 않는다(wiki_apply 금지). 위키 읽기 도구는 PRD·SSOT 확인에만 쓴다.\n"
     "6. 초안을 만들었으면 초안 id(d-…)와 링크를 답에 적는다. 답은 짧게, 마크다운 없이 평문으로."
@@ -46,19 +46,19 @@ def context_block(app, ctx: dict) -> tuple[str, str | None]:
             return "", None
         rcs = app.store.list_run_cases(run["id"])
         bad = [f"{rc['case_id']}({rc['verdict']}{(': ' + rc['error'][:80]) if rc.get('error') else ''})" for rc in rcs if rc["verdict"] in ("fail", "error")]
-        text = (f"[첨부: 런 {run['id']}] 트리거 {run['trigger']} · 판정 {run.get('verdict') or run['status']} · 통과 {run['passed']} 실패 {run['failed']} "
-                f"오류 {run['errored']} skip {run['skipped']} · sha {run.get('sha') or '-'}" + (f"\n실패한 케이스: {', '.join(bad[:8])}" if bad else "")
+        text = (f"[첨부: 테스트 실행 {run['id']}] 트리거 {run['trigger']} · 판정 {run.get('verdict') or run['status']} · 통과 {run['passed']} 실패 {run['failed']} "
+                f"오류 {run['errored']} skip {run['skipped']} · sha {run.get('sha') or '-'}" + (f"\n실패한 스크립트: {', '.join(bad[:8])}" if bad else "")
                 + f"\n자세한 요청·응답은 qa_run_get(id=\"{run['id']}\", with_steps=true) 로 읽어라.")
-        return text, f"런 {run['id']}"
+        return text, f"실행 {run['id']}"
     if ctx.get("case"):
         c = app.cases.get(ctx["case"])
         if not c:
             return "", None
         drift = app.drift_of(c)
-        text = (f"[첨부: 케이스 {c.id}] {c.title} · suite {c.suite} · 덮는 TC {len(c.covers)}건 · 카탈로그 대조 {c.audit.get('status')}"
-                + (f" · 근거가 바뀐 TC {len(drift)}건: {', '.join(d['id'] for d in drift[:6])}" if drift else "")
+        text = (f"[첨부: 스크립트 {c.id}] {c.title} · suite {c.suite} · 검증하는 TC {len(c.covers)}건 · TC 정합성 검사 {c.audit.get('status')}"
+                + (f" · 바뀐 TC {len(drift)}건: {', '.join(d['id'] for d in drift[:6])}" if drift else "")
                 + f"\nYAML 은 qa_case_get(id=\"{c.id}\") 로 읽어라.")
-        return text, f"케이스 {c.id}"
+        return text, f"스크립트 {c.id}"
     if ctx.get("tc"):
         cat = app.current_catalog()
         r = cat.records.get(ctx["tc"]) if cat else None
@@ -66,7 +66,7 @@ def context_block(app, ctx: dict) -> tuple[str, str | None]:
             return "", None
         cov = app.coverage(cat)["by_tc"].get(r["id"], [])
         text = (f"[첨부: TC {r['id']}] {r.get('title') or ''} · {r['layer']} · {r['domain']}"
-                + (f" · 제외: {r['excluded']}" if r.get("excluded") else "") + f" · 덮는 케이스 {len(cov)}건"
+                + (f" · 제외: {r['excluded']}" if r.get("excluded") else "") + f" · 검증하는 스크립트 {len(cov)}건"
                 + f"\n레코드·PRD 절은 qa_tc_get(id=\"{r['id']}\") 로 읽어라.")
         return text, f"TC {r['id']}"
     return "", None

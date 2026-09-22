@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """qa-platform HTTP 서버. 설계: docs/qa-platform.md.
 
-inbound 은 브라우저(팀 세션 뒤)뿐이다. 외부에서 런을 시작시키는 경로는 없다.
-모든 변경 행위는 운영자 필드가 필수이고 감사 로그(events)에 남는다.
+inbound 은 브라우저(팀 세션 뒤)뿐이다. 외부에서 실행을 시작시키는 경로는 없다.
+모든 변경 행위는 담당자 필드가 필수이고 감사 로그(events)에 남는다.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ from qa.store import Store, now_iso  # noqa: E402
 from qa.wiki import Wiki  # noqa: E402
 
 TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check", "explorer")
-HIDDEN_TRIGGERS = ("explorer",)          # 런 목록 기본 숨김 (탐색기 전송은 건수가 많다)
+HIDDEN_TRIGGERS = ("explorer",)          # 테스트 실행 목록 기본 숨김 (API 직접 호출은 건수가 많다)
 
 
 class BadRequest(Exception):
@@ -75,7 +75,7 @@ class App:
         return len(self.cases), self.case_errors
 
     def current_catalog(self):
-        """카탈로그를 돌려주고, 입력이 바뀌어 다시 계산됐으면 케이스 대조도 다시 한다."""
+        """TC 목록을 돌려주고, 입력이 바뀌어 다시 계산됐으면 스크립트 정합성 검사도 다시 한다."""
         before = self.catalog.current
         cat = self.catalog.get()
         if cat is not None and (before is None or cat.key != before.key):
@@ -83,7 +83,7 @@ class App:
         return cat
 
     def coverage(self, cat) -> dict:
-        """TC id → 덮는 케이스 id 목록, 도메인×층 매트릭스. 분모는 전체 TC, 제외는 따로 센다 (§6.2)."""
+        """TC id → 검증하는 스크립트 id 목록, 도메인×층 매트릭스. 분모는 전체 TC, 제외는 따로 센다 (§6.2)."""
         by_tc: dict[str, list[str]] = {}
         for c in self.cases.values():
             for t in c.covers:
@@ -103,7 +103,7 @@ class App:
 
     # ---- 트리거 준비: 사람에게 보여줄 제안 ------------------------------------------
     def suggest(self, trigger: str, sha: str | None, pr: int | None) -> tuple[list, str, dict]:
-        """반환: (제안 케이스, 근거 문장, 대상 정보)."""
+        """반환: (제안 스크립트, 근거 문장, 대상 정보)."""
         info: dict = {}
         if trigger == "deploy-sanity":
             if not sha:
@@ -121,7 +121,7 @@ class App:
                 cases = select(self.cases, suite="sanity", domains=domains)
                 if cases:
                     return cases, f"PR #{pr} 변경 파일 {len(files)}개 → 도메인 {', '.join(domains)} → sanity {len(cases)}개", info
-                return select(self.cases, suite="sanity"), f"PR #{pr} 도메인 {', '.join(domains)} 에 맞는 케이스가 없어 sanity 전체", info
+                return select(self.cases, suite="sanity"), f"PR #{pr} 도메인 {', '.join(domains)} 에 맞는 스크립트가 없어 sanity 전체", info
             why = "PR 을 찾지 못함" if not pr else "변경 파일에서 도메인을 못 읽음"
             return select(self.cases, suite="sanity"), f"{why} → sanity 전체 (보수 폴백)", info
         if trigger in ("sprint-smoke", "release"):
@@ -129,7 +129,7 @@ class App:
             return cs, f"smoke 스위트 전체 {len(cs)}개", info
         if trigger == "manual":
             return [], "직접 고른다", info
-        raise BadRequest(f"모르는 트리거: {trigger}")
+        raise BadRequest(f"모르는 실행 종류: {trigger}")
 
     # ---- 런 생성 (form / API 공용) --------------------------------------------------
     def create_run(self, *, trigger: str, operator: str, case_ids: list[str], sha: str | None, ref: str | None,
@@ -137,16 +137,16 @@ class App:
                    session_hash: str | None, ip: str | None, cases_override: list | None = None,
                    notify: bool = True, enqueue: bool = True) -> str:
         if trigger not in TRIGGERS:
-            raise BadRequest(f"모르는 트리거: {trigger}")
+            raise BadRequest(f"모르는 실행 종류: {trigger}")
         if not operator or operator not in self.cfg.operators:
-            raise BadRequest("운영자를 목록에서 골라야 한다")
+            raise BadRequest("담당자를 목록에서 골라야 한다")
         chosen = list(cases_override) if cases_override else [self.cases[c] for c in case_ids if c in self.cases]
         if not chosen:
-            raise BadRequest("케이스를 하나 이상 골라야 한다")
+            raise BadRequest("스크립트를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
         cat = self.catalog.current
         meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen],
-                "catalog": (cat.versions if cat else None),   # 이 런의 기준 버전 (§6.3). 과거 런은 다시 해석하지 않는다
+                "catalog": (cat.versions if cat else None),   # 이 런의 TC 소스 버전 (§6.3). 과거 런은 다시 해석하지 않는다
                 "covers": sorted({t for c in chosen for t in c.covers})}
         meta.update({k: v for k, v in extra.items() if v not in (None, "")})
         rid = self.store.create_run(trigger=trigger, operator=operator, suite=suite, env=self.cfg.target_env,
@@ -165,10 +165,10 @@ class App:
     def generate_drafts(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None) -> dict:
         cat = self.current_catalog()
         if cat is None:
-            raise BadRequest("카탈로그가 없어 초안을 만들 수 없다")
+            raise BadRequest("TC 목록이 없어 초안을 만들 수 없다")
         tc_ids = [t for t in dict.fromkeys(tc_ids) if t in cat.records]
         if not tc_ids:
-            raise BadRequest("카탈로그에 있는 TC 를 하나 이상 골라야 한다")
+            raise BadRequest("TC 목록에 있는 TC 를 하나 이상 골라야 한다")
         if len(tc_ids) > 10:
             raise BadRequest("한 번에 10건까지")
         example = self.cases.get("room.create-and-cancel") or next(iter(self.cases.values()), None)
@@ -196,7 +196,7 @@ class App:
     # ---- 탐색기 (docs/qa-platform-tc.md §8) ----------------------------------------
     def explorer_send(self, *, op_id: str, path_params: dict, query: dict, body_text: str, actor: str | None, operator: str,
                       session_hash: str | None, ip: str | None) -> str:
-        """op 하나를 지금 보낸다. 전송 = 런(trigger explorer, 단계 1개, expect 없음). 응답은 런 상세와 같은 기록."""
+        """op 하나를 지금 보낸다. 전송 = 실행 기록(trigger explorer, 단계 1개, expect 없음). 응답은 실행 상세와 같은 기록."""
         spec = self.spec.get()
         op = spec.ops.get(op_id) if spec else None
         if not op:
@@ -220,14 +220,14 @@ class App:
             except ValueError as ex:
                 raise BadRequest(f"본문이 JSON 이 아니다: {ex}")
         cid = "explorer." + re.sub(r"[^a-z0-9.\-]", "", re.sub(r"(?<!^)(?=[A-Z])", "-", op_id).lower())
-        raw = {"id": cid, "title": f"탐색기 · {op.summary or op_id}", "suite": "manual", "domains": [], "operations": [op_id],
+        raw = {"id": cid, "title": f"API 호출 · {op.summary or op_id}", "suite": "manual", "domains": [], "operations": [op_id],
                "steps": [{"name": f"{op.method} {path}", "request": req}]}
         if actor:
             raw["actor"] = actor
         from qa.cases import _validate
         case = _validate(raw, "<explorer>")
         rid = self.create_run(trigger="explorer", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None, deploy_run_id=None,
-                              reason="", basis="탐색기", extra={"explorer": {"op": op_id, "actor": actor}}, session_hash=session_hash, ip=ip,
+                              reason="", basis="API 호출", extra={"explorer": {"op": op_id, "actor": actor}}, session_hash=session_hash, ip=ip,
                               cases_override=[case], notify=False, enqueue=False)
         self.store.add_event(operator=operator, action="explorer.send", target=rid, session_hash=session_hash, ip=ip,
                              detail={"op": op_id, "method": op.method, "path": path, "actor": actor})
@@ -235,10 +235,10 @@ class App:
         return rid
 
     def explorer_to_draft(self, rid: str, operator: str, session_hash: str | None, ip: str | None) -> str:
-        """탐색기 런 하나를 초안(단계 1개, 관측한 status·error_code 를 기대로)으로 담는다. covers 는 사람이 채운다."""
+        """API 호출 기록 하나를 초안(단계 1개, 관측한 status·error_code 를 기대로)으로 담는다. covers 는 사람이 채운다."""
         run = self.store.get_run(rid)
         if not run or run["trigger"] != "explorer":
-            raise BadRequest("탐색기 런이 아니다")
+            raise BadRequest("API 호출 기록이 아니다")
         rcs = self.store.list_run_cases(rid)
         steps = self.store.list_steps(rcs[0]["id"]) if rcs else []
         if not steps:
@@ -265,7 +265,7 @@ class App:
         if req.get("actor"):
             raw["actor"] = req["actor"]
         text = draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
-        did = self.store.add_draft(operator=operator, source="explorer", domain=None, yaml_text=text, note=f"탐색기 런 {rid}", case_id=raw["id"], tc_ids=[],
+        did = self.store.add_draft(operator=operator, source="explorer", domain=None, yaml_text=text, note=f"API 호출 기록 {rid}", case_id=raw["id"], tc_ids=[],
                                    validation={"status": "warn", "warnings": ["covers 와 suite 를 채워야 한다 (지금은 manual)"]}, prompt_hash=None)
         self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip, detail={"source": "explorer", "run_id": rid})
         return did
@@ -273,11 +273,11 @@ class App:
     # ---- 위키 보고서 발행 (docs/qa-platform-tc.md §9) ------------------------------
     def publish_run(self, run: dict, *, operator: str, dry_run: bool, session_hash: str | None, ip: str | None) -> dict:
         if not (self.cfg.wiki_mcp_url and self.cfg.wiki_mcp_token):
-            raise BadRequest("LLM_WIKI_MCP_URL / LLM_WIKI_MCP_BEARER_TOKEN 이 없어 발행할 수 없다")
+            raise BadRequest("LLM_WIKI_MCP_URL / LLM_WIKI_MCP_BEARER_TOKEN 이 없어 게시할 수 없다")
         if run["trigger"] not in ("sprint-smoke", "release", "deploy-sanity"):
-            raise BadRequest("스프린트·릴리스·배포 검증 런만 발행한다")
+            raise BadRequest("스프린트·릴리스·배포 검증 실행만 게시한다")
         if run["status"] != "finished":
-            raise BadRequest("런이 끝난 뒤에 발행한다")
+            raise BadRequest("실행이 끝난 뒤에 게시한다")
         rcs = self.store.list_run_cases(run["id"])
         cat = self.current_catalog()
         sprint = self.cfg.current_sprint(datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))) if run["trigger"] == "sprint-smoke" else None
@@ -301,7 +301,7 @@ class App:
     # ---- Hermes 대화 (docs/qa-platform-hermes.md §3.2) ----------------------------------
     def chat_create(self, *, operator: str, context: dict, session_hash: str | None, ip: str | None) -> str:
         if not operator or operator not in self.cfg.operators:
-            raise BadRequest("운영자를 목록에서 골라야 한다")
+            raise BadRequest("담당자를 목록에서 골라야 한다")
         if not self.cfg.hermes_key:
             raise BadRequest("HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다")
         _, title = chatmod.context_block(self, context)
@@ -312,7 +312,7 @@ class App:
     def chat_check(self, chat: dict, text: str, *, operator: str) -> None:
         """보내기 전 검사 — 스트림을 열기 전에 400 으로 돌려줄 수 있게 따로 둔다."""
         if not operator or operator not in self.cfg.operators:
-            raise BadRequest("운영자를 목록에서 골라야 한다")
+            raise BadRequest("담당자를 목록에서 골라야 한다")
         if not text.strip():
             raise BadRequest("메시지가 비었다")
         if len(text) > 8000:
@@ -343,7 +343,7 @@ class App:
         except Exception as ex:
             return None, [f"YAML 파싱 실패: {ex}"], []
         if not isinstance(raw, dict):
-            return None, ["케이스는 맵이어야 한다"], []
+            return None, ["스크립트는 맵이어야 한다"], []
         return draftsmod.validate(raw, requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
                                   catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")})
 
@@ -373,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
     app: App
     server_version = "qa-platform/0.1"
 
-    def log_message(self, fmt, *args):  # 조용히: 요청 로그에 쿼리(운영자 등)가 섞이지 않게 경로만
+    def log_message(self, fmt, *args):  # 조용히: 요청 로그에 쿼리(담당자 등)가 섞이지 않게 경로만
         sys.stderr.write(f"{self.address_string()} {self.command} {urlsplit(self.path).path} {args[1] if len(args) > 1 else ''}\n")
 
     # -- 유틸 --
@@ -529,12 +529,12 @@ class Handler(BaseHTTPRequestHandler):
         # ---------- 런 ----------
         if path == "/runs" and method == "GET":
             show_all = g("all") == "1"
-            return self._page("런", ui.runs_list(app.store.list_runs(100, exclude=() if show_all else HIDDEN_TRIGGERS), show_all), "runs")
+            return self._page("테스트 실행", ui.runs_list(app.store.list_runs(100, exclude=() if show_all else HIDDEN_TRIGGERS), show_all), "runs")
 
         if path == "/runs/new" and method == "GET":
             trigger = g("trigger", "manual")
             if trigger not in TRIGGERS:
-                raise BadRequest(f"모르는 트리거: {trigger}")
+                raise BadRequest(f"모르는 실행 종류: {trigger}")
             sha, pr = g("sha") or None, (int(g("pr")) if g("pr").isdigit() else None)
             suggested, basis, info = app.suggest(trigger, sha, pr)
             pr = info.get("pr_number", pr)
@@ -547,16 +547,16 @@ class Handler(BaseHTTPRequestHandler):
                 target["변경 도메인"] = ui.e(", ".join(info["domains"]) or "–")
             warnings = []
             if any(c.needs_actor() for c in suggested) and not app.cfg.actors:
-                warnings.append("테스트 계정(QA_ACTORS)이 설정되지 않았다 — 테스트 계정이 필요한 케이스는 skipped 로 기록된다.")
+                warnings.append("테스트 계정(QA_ACTORS)이 설정되지 않았다 — 테스트 계정이 필요한 스크립트는 skipped 로 기록된다.")
             if app.github.last_error and trigger == "deploy-sanity":
                 warnings.append(app.github.last_error)
             app.current_catalog()
             drifted = [c.id for c in suggested if app.drift_of(c)]
             if drifted:
-                warnings.append("근거가 바뀐 케이스가 있다 (케이스 화면에서 확인): " + ", ".join(drifted[:6]) + (" …" if len(drifted) > 6 else ""))
+                warnings.append("검증하는 TC 가 바뀐 스크립트가 있다 (스크립트 화면에서 확인): " + ", ".join(drifted[:6]) + (" …" if len(drifted) > 6 else ""))
             blocked = [c.id for c in app.cases.values() if c.blocked]
             if blocked:
-                warnings.append("카탈로그 대조 오류로 스위트에서 빠진 케이스: " + ", ".join(blocked[:6]))
+                warnings.append("TC 정합성 불일치로 스위트에서 빠진 스크립트: " + ", ".join(blocked[:6]))
             hidden = {"sha": sha, "pr": pr, "deploy_run_id": g("deploy_run_id"), "basis": basis,
                       "pr_title": info.get("pr_title"), "pr_url": info.get("pr_url"), "domains": ",".join(info.get("domains") or [])}
             body = ui.run_new(trigger=trigger, target=target, suggested=suggested, all_cases=sorted(app.cases.values(), key=lambda c: c.id),
@@ -583,7 +583,7 @@ class Handler(BaseHTTPRequestHandler):
             rid = m.group(2)
             run = app.store.get_run(rid)
             if not run:
-                return self._error(404, "런이 없다")
+                return self._error(404, "실행 기록이 없다")
             rcs = app.store.list_run_cases(rid)
             steps = {rc["id"]: app.store.list_steps(rc["id"]) for rc in rcs}
             if m.group(1):
@@ -595,7 +595,7 @@ class Handler(BaseHTTPRequestHandler):
                 m2 = dict(run["meta"]); m2.pop("_flash", None)
                 app.store.update_run(rid, meta=m2)
                 run["meta"] = m2
-            return self._page(f"런 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
+            return self._page(f"실행 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
                                                         checklist=checklist, public_url=app.cfg.public_url,
                                                         can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token)), "runs", flash=flash, context={"run": rid})
 
@@ -604,12 +604,12 @@ class Handler(BaseHTTPRequestHandler):
             rid, action = m.group(2), m.group(3)
             run = app.store.get_run(rid)
             if not run:
-                return self._error(404, "런이 없다")
+                return self._error(404, "실행 기록이 없다")
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                raise BadRequest("담당자를 목록에서 골라야 한다")
             sh, ip = self._session_hash(), self._ip()
             if action == "cancel":
                 app.runner.cancel(rid)
@@ -621,17 +621,17 @@ class Handler(BaseHTTPRequestHandler):
                 rcid = fv("run_case_id")
                 rc = app.store.get_run_case(int(rcid)) if str(rcid).isdigit() else None
                 if not rc or rc["run_id"] != rid:
-                    raise BadRequest("run_case_id 가 이 런의 것이 아니다")
+                    raise BadRequest("run_case_id 가 이 실행의 것이 아니다")
                 try:
                     text = hermes_triage(app.cfg, run, rc, app.store.list_steps(rc["id"]))
                     app.store.update_run_case(rc["id"], triage=text, triaged_at=now_iso())
                     app.store.add_event(operator=operator, action="run.triage", target=rid, session_hash=sh, ip=ip,
                                         detail={"case": rc["case_id"], "chars": len(text)})
-                    flash = ("ok", f"Hermes 진단을 {rc['case_id']} 에 기록했다")
+                    flash = ("ok", f"Hermes 실패 분석을 {rc['case_id']} 에 기록했다")
                 except Exception as ex:
                     app.store.add_event(operator=operator, action="run.triage", target=rid, session_hash=sh, ip=ip,
                                         detail={"case": rc["case_id"], "error": str(ex)[:300]})
-                    flash = ("err", f"Hermes 진단 실패: {ex}")
+                    flash = ("err", f"Hermes 실패 분석 실패: {ex}")
                 if m.group(1):
                     return self._json(200 if flash[0] == "ok" else 502, {"ok": flash[0] == "ok", "message": flash[1]})
                 self._send(HTTPStatus.SEE_OTHER, "", headers={"Location": f"/runs/{rid}", "Set-Cookie": f"qa_operator={operator}; Path=/; Max-Age=31536000; SameSite=Lax"})
@@ -640,18 +640,18 @@ class Handler(BaseHTTPRequestHandler):
                 dry = str(fv("dry")) == "1"
                 try:
                     rec = app.publish_run(run, operator=operator, dry_run=dry, session_hash=sh, ip=ip)
-                    flash = ("ok", ("dry-run 통과: " if dry else "발행됨: ") + rec["slug"] + (" — " + json.dumps(rec["result"], ensure_ascii=False)[:300] if dry else ""))
+                    flash = ("ok", ("dry-run 통과: " if dry else "게시됨: ") + rec["slug"] + (" — " + json.dumps(rec["result"], ensure_ascii=False)[:300] if dry else ""))
                 except BadRequest as ex:
-                    flash = ("err", f"발행 실패: {ex}")
+                    flash = ("err", f"게시 실패: {ex}")
                 if m.group(1):
                     return self._json(200 if flash[0] == "ok" else 502, {"ok": flash[0] == "ok", "message": flash[1]})
                 app.store.merge_run_meta(rid, {"_flash": list(flash)})   # 다음 GET 에서 한 번 보여 주고 지운다
                 return self._redirect(f"/runs/{rid}", operator)
             if action == "decide":
                 if run["trigger"] != "release":
-                    raise BadRequest("릴리스 런에만 판단을 기록한다")
+                    raise BadRequest("릴리스 QA 실행에만 판단을 기록한다")
                 if run["status"] != "finished":
-                    raise BadRequest("런이 끝난 뒤에 판단한다")
+                    raise BadRequest("실행이 끝난 뒤에 판단한다")
                 decision = str(fv("decision"))
                 if decision not in ("go", "no-go"):
                     raise BadRequest("decision 은 go | no-go")
@@ -667,18 +667,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/catalog" and method == "GET":
             cat = app.current_catalog()
             if cat is None:
-                return self._page("기준", f'<h1>기준</h1><div class="flash err">카탈로그를 계산하지 못했다: {ui.e(app.catalog.last_error or "원인 미상")}</div>', "catalog")
+                return self._page("테스트 케이스", f'<h1>테스트 케이스</h1><div class="flash err">TC 목록을 만들지 못했다: {ui.e(app.catalog.last_error or "원인 미상")}</div>', "catalog")
             cov = app.coverage(cat)
             domain = g("domain") or (cat.domains()[0] if cat.domains() else "")
             body = ui.catalog_list(cat, cov, app.store.last_verdicts(), domain=domain, layer=g("layer"), only=g("only"),
                                    changes=app.catalog.changes, wiki_available=app.wiki.available,
                                    operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key))
-            return self._page("기준", body, "catalog")
+            return self._page("테스트 케이스", body, "catalog")
         if path == "/catalog/tc" and method == "GET":
             cat = app.current_catalog()
             rec = cat.records.get(g("id")) if cat else None
             if not rec:
-                return self._error(404, "그 TC 가 카탈로그에 없다")
+                return self._error(404, "그 TC 가 TC 목록에 없다")
             cov = app.coverage(cat)
             covering = [app.cases[i] for i in cov["by_tc"].get(rec["id"], []) if i in app.cases]
             excerpts = []
@@ -694,21 +694,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/explorer" and method == "GET":
             spec = app.spec.get()
             if not spec:
-                return self._page("탐색기", f'<h1>탐색기</h1><div class="flash err">OpenAPI 를 읽지 못했다: {ui.e(app.spec.last_error or "")}</div>', "explorer")
+                return self._page("API 호출", f'<h1>API 호출</h1><div class="flash err">OpenAPI 를 읽지 못했다: {ui.e(app.spec.last_error or "")}</div>', "explorer")
             op = spec.ops.get(g("op")) if g("op") else None
             run = app.store.get_run(g("run")) if g("run") else None
             steps = []
             if run:
                 rcs = app.store.list_run_cases(run["id"])
                 steps = app.store.list_steps(rcs[0]["id"]) if rcs else []
-            return self._page("탐색기", ui.explorer(spec, op, run, steps, actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+            return self._page("API 호출", ui.explorer(spec, op, run, steps, actors=sorted(app.cfg.actors), operators=app.cfg.operators,
                                                  operator=self._operator(), q=g("q")), "explorer")
         if path == "/explorer/send" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                raise BadRequest("담당자를 목록에서 골라야 한다")
             op_id = str(fv("op"))
             path_params = {k[2:]: str(v[0]) for k, v in f.items() if k.startswith("p_")}
             query = {k[2:]: str(v[0]) for k, v in f.items() if k.startswith("q_")}
@@ -724,20 +724,20 @@ class Handler(BaseHTTPRequestHandler):
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                raise BadRequest("담당자를 목록에서 골라야 한다")
             did = app.explorer_to_draft(str(fv("run")), operator, self._session_hash(), self._ip())
             return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
 
         # ---------- 케이스 초안 (docs/qa-platform-tc.md §7.3) ----------
         if path == "/drafts" and method == "GET":
             st = g("status")
-            return self._page("케이스 초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st), "drafts")
+            return self._page("스크립트 초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st), "drafts")
         if path == "/drafts/generate" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                raise BadRequest("담당자를 목록에서 골라야 한다")
             res = app.generate_drafts(tc_ids=[str(x) for x in f.get("tc_ids") or []], operator=operator, session_hash=self._session_hash(), ip=self._ip())
             if self._wants_json():
                 return self._json(200, res)
@@ -750,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in d["tc_ids"]}
             run = app.store.get_run(d["run_id"]) if d.get("run_id") else None
-            return self._page(f"케이스 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
+            return self._page(f"스크립트 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
         m = re.match(r"^/drafts/(d-[0-9a-f]+)/(save|check|approve|reject)$", path)
         if m and method == "POST":
             did, action = m.group(1), m.group(2)
@@ -761,11 +761,11 @@ class Handler(BaseHTTPRequestHandler):
             fv = lambda k, d_="": (f.get(k) or [d_])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                raise BadRequest("담당자를 목록에서 골라야 한다")
             sh, ip = self._session_hash(), self._ip()
             if d["status"] in ("approved", "rejected") and action in ("save", "check"):
                 raise BadRequest("결정된 초안은 고치거나 실행하지 않는다")
-            is_tc = (d.get("kind") or "case") == "tc"     # 서술 TC 제안: 실행할 수 없고, 승인은 manual-tc.yaml 로 옮기라는 뜻
+            is_tc = (d.get("kind") or "case") == "tc"     # 수동 TC 제안: 실행할 수 없고, 승인은 manual-tc.yaml 로 옮기라는 뜻
             if action == "save":
                 text = str(fv("yaml"))
                 if is_tc:
@@ -781,12 +781,12 @@ class Handler(BaseHTTPRequestHandler):
                 app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"errors": len(errors), "warnings": len(warnings)})
             elif action == "check":
                 if is_tc:
-                    raise BadRequest("서술 TC 제안은 실행할 것이 없다 — 승인 뒤 manual-tc.yaml 에 붙여 PR 로 낸다")
+                    raise BadRequest("수동 TC 제안은 실행할 것이 없다 — 승인 뒤 manual-tc.yaml 에 붙여 PR 로 낸다")
                 case, errors, _ = app.revalidate_draft(d, d["yaml"])
                 if not case:
                     raise BadRequest("검증 오류가 있는 초안은 실행하지 않는다: " + "; ".join(errors[:3]))
                 rid = app.create_run(trigger="draft-check", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None,
-                                     deploy_run_id=None, reason=f"케이스 초안 {did} 확인 실행", basis="케이스 초안 1건", extra={"draft_id": did},
+                                     deploy_run_id=None, reason=f"스크립트 초안 {did} 확인 실행", basis="스크립트 초안 1건", extra={"draft_id": did},
                                      session_hash=sh, ip=ip, cases_override=[case])
                 app.store.update_draft(did, status="checked", run_id=rid)
                 app.store.add_event(operator=operator, action="draft.check", target=did, session_hash=sh, ip=ip, detail={"run_id": rid})
@@ -813,7 +813,7 @@ class Handler(BaseHTTPRequestHandler):
             app.current_catalog()
             cs = sorted(app.cases.values(), key=lambda c: c.id)
             drift = {c.id: app.drift_of(c) for c in cs}
-            return self._page("케이스", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift), "cases")
+            return self._page("스크립트", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift), "cases")
         if path == "/cases/reload" and method == "POST":
             n, errs = app.reload_cases()
             app.store.add_event(operator=self._operator() or "(미선택)", action="cases.reload", target=None, detail={"cases": n, "errors": len(errs)})
@@ -822,7 +822,7 @@ class Handler(BaseHTTPRequestHandler):
         if m and method == "GET":
             c = app.cases.get(m.group(1))
             if not c:
-                return self._error(404, "케이스가 없다")
+                return self._error(404, "스크립트가 없다")
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
             return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases", context={"case": c.id})
@@ -846,7 +846,7 @@ class Handler(BaseHTTPRequestHandler):
             if not chat:
                 return self._error(404, "대화가 없다")
             head = (f'<h1>{ui.e(chat.get("title") or "대화")} <span class="small mut mono">{ui.e(chat["id"])}</span> <a class="btn" href="/chat">목록</a></h1>'
-                    f'<p class="small mut">운영자 {ui.e(chat["operator"])} · {ui.kst(chat["created_at"])} · 초안 {chat["drafts"]}건(승인은 <a href="/drafts">케이스 초안</a> 화면에서)</p>')
+                    f'<p class="small mut">담당자 {ui.e(chat["operator"])} · {ui.kst(chat["created_at"])} · 초안 {chat["drafts"]}건(승인은 <a href="/drafts">스크립트 초안</a> 화면에서)</p>')
             return self._page(f"대화 {chat['id']}", head, "chat", inline_chat=chat["id"])
         if path == "/api/chats" and method == "GET":
             chats = app.store.list_chats(50)
@@ -874,14 +874,14 @@ class Handler(BaseHTTPRequestHandler):
             sh, ip = self._session_hash(), self._ip()
             if action == "close" and method == "POST":
                 if not operator or operator not in app.cfg.operators:
-                    raise BadRequest("운영자를 목록에서 골라야 한다")
+                    raise BadRequest("담당자를 목록에서 골라야 한다")
                 app.store.update_chat(chat["id"], status="closed")
                 app.store.add_event(operator=operator, action="chat.close", target=chat["id"], session_hash=sh, ip=ip, detail={"turns": chat["turns"]})
                 return self._json(200, {"ok": True})
             if action == "send" and method == "POST":
                 f = self._form()
                 text = str((f.get("text") or [""])[0])
-                app.chat_check(chat, text, operator=operator)          # 한도·운영자 검사는 스트림을 열기 전에 (400 으로)
+                app.chat_check(chat, text, operator=operator)          # 한도·담당자 검사는 스트림을 열기 전에 (400 으로)
                 if "text/event-stream" not in self.headers.get("Accept", ""):
                     return self._json(200, app.chat_send(chat, text, operator=operator, session_hash=sh, ip=ip))
                 self._sse_start()
