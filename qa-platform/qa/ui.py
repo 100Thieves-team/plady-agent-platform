@@ -451,7 +451,13 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'<select name="operator" required><option value="">— 담당자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
             f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 스크립트 초안 생성 (Hermes)</button>'
             f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 스크립트 초안에 들어간다 (§7)</span></div>'
-            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>API 매핑</th><th>스크립트 · 마지막 결과</th></tr>{rows}</table></div></form>')
+            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>API 매핑</th><th>스크립트 · 마지막 결과</th></tr>{rows}</table></div></form>'
+            f'<form method="post" action="/catalog/propose-tc" class="card" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'Hermes 가 읽는 중…\'">'
+            f'<h3 style="margin-top:0">PRD 절에서 수동 작성 TC 제안 (Hermes)</h3>'
+            f'<p class="small mut">SSOT 로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라낸다. 결과는 스크립트 초안 화면에 "수동 TC 제안" 으로 들어가고, 사람이 승인해 <span class="mono">catalog/manual-tc.yaml</span> 에 붙여 PR 을 연다.</p>'
+            f'<p><input name="doc" placeholder="PRD 문서 이름 (예: 룸 탐색)" required style="width:220px"> <input name="section" placeholder="절 번호 (예: 4.2)" required style="width:120px"> '
+            f'<input name="domain" placeholder="도메인 (선택, 예: room)" style="width:160px"> <input type="hidden" name="operator" value="{e(operator)}">'
+            f'<button class="primary" {"" if (hermes and operator) else ("disabled title=\"담당자를 먼저 고르세요\"" if hermes else "disabled title=\"HERMES_API_KEY 없음\"")}>제안 받기</button></p></form>')
 
 
 def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: list, change: dict | None) -> str:

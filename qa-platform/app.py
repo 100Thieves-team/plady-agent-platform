@@ -193,6 +193,36 @@ class App:
                                      "accepted": len(ids), "rejected": len(res["rejected"]), "raw_chars": len(res["raw"])})
         return {"ids": ids, "rejected": res["rejected"], "prompt_hash": res["prompt_hash"]}
 
+    def propose_tc(self, *, doc: str, section: str, domain: str | None, operator: str, session_hash: str | None, ip: str | None) -> str:
+        """PRD 절 본문을 Hermes 에게 주어 수동 작성 TC 를 제안받고 초안(kind tc)으로. docs/qa-platform-hermes.md §3 트리 4 (P4d)."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        if not doc.strip() or not section.strip():
+            raise BadRequest("PRD 문서 이름과 절 번호가 필요하다")
+        cat = self.current_catalog()
+        if cat is None:
+            raise BadRequest("TC 목록이 없어 제안을 만들 수 없다")
+        try:
+            res = draftsmod.propose_manual_tc(cfg=self.cfg, catalog=cat, wiki=self.wiki, doc=doc.strip(), section=section.strip(), domain=(domain or "").strip() or None)
+        except ValueError as ex:
+            raise BadRequest(str(ex))
+        except Exception as ex:
+            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-propose", "doc": doc, "section": section, "error": str(ex)[:300]})
+            raise BadRequest(f"제안 실패: {ex}")
+        if not res["records"]:
+            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-propose", "doc": doc, "section": section, "prompt_hash": res["prompt_hash"], "items": 0})
+            raise BadRequest("Hermes 가 이 절에서 제안할 TC 를 찾지 못했다 (이미 뽑힌 것과 겹치거나 본문에 확인 항목이 없다)")
+        text = draftsmod.yaml.safe_dump({"cases": res["records"]}, allow_unicode=True, sort_keys=False)
+        did = self.store.add_draft(operator=operator, source="hermes-propose", domain=res["domain"], yaml_text=text,
+                                   note=f"manual-tc.yaml 에 붙일 수동 작성 TC 제안 — PRD/{doc.strip()} §{section.strip().rstrip('.')}", case_id=None,
+                                   tc_ids=[r["id"] for r in res["records"]], validation={"status": "warn" if res["warnings"] else "ok", "warnings": res["warnings"]},
+                                   prompt_hash=res["prompt_hash"], kind="tc")
+        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip,
+                             detail={"source": "hermes-propose", "kind": "tc", "doc": doc, "section": section, "tc_ids": [r["id"] for r in res["records"]],
+                                     "model": res["model"], "prompt_hash": res["prompt_hash"], "raw_chars": len(res["raw"])})
+        return did
+
     def revise_case(self, case_id: str, *, operator: str, session_hash: str | None, ip: str | None) -> str:
         """TC 가 바뀐 스크립트를 Hermes 가 바뀐 만큼만 고쳐 초안(source hermes-revise, 같은 id)으로. docs/qa-platform-hermes.md §3.3."""
         if not operator or operator not in self.cfg.operators:
@@ -718,6 +748,12 @@ class Handler(BaseHTTPRequestHandler):
                 text = app.wiki.prd_section(ref["doc"], ref["section"], max_lines=40) if app.wiki.available else None
                 excerpts.append((ref, text))
             return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"])), "catalog", context={"tc": rec["id"]})
+        if path == "/catalog/propose-tc" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            did = app.propose_tc(doc=str(fv("doc")), section=str(fv("section")), domain=str(fv("domain")), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
         if path == "/api/catalog" and method == "GET":
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})

@@ -313,3 +313,89 @@ def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Cas
     d["id"] = case.id                      # 규칙 1 — 원본 id 유지 (사람이 파일을 바꿔치기한다)
     c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id})
     return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": (c, warnings) if c else None, "errors": errors, "model": cfg.hermes_model}
+
+
+# ---------------------------------------------------------------------------------------------
+# PRD 절에서 수동 작성 TC 제안 (docs/qa-platform-hermes.md §3 트리 4, P4d). MCP 도구 qa_manual_tc_propose 와 버튼이 같이 쓴다
+# ---------------------------------------------------------------------------------------------
+PROPOSE_SYSTEM = (
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 주어진 PRD 절 본문에서, SSOT 로 형식화되지 않아 자동으로 뽑히지 않은 확인 항목(테스트 케이스)을 골라낸다. 한국어로 쓴다.\n\n"
+    "규칙(어기면 버려진다):\n"
+    "1. 출력은 ```yaml 코드 블록 하나, 최상위는 `items:` 목록. 항목은 title(한 문장, ~할 수 있다/~이다 꼴)·given·when(요청이나 행동)·then(기대 결과) 네 키, 선택으로 operations(OpenAPI operationId 목록).\n"
+    "2. 본문에 적힌 것만 쓴다. 추측한 규칙이나 수치는 넣지 않는다. 이미 주어진 '기존 TC' 와 같은 내용은 다시 내지 않는다.\n"
+    "3. API 로 확인할 수 있는 것을 우선하되, 화면·운영 기준도 된다. 많아도 8개, 없으면 빈 목록."
+)
+
+
+def build_manual_tc(*, catalog, doc: str, section: str, items: list, domain: str | None, wiki: Wiki | None) -> tuple[list[dict], list[str], str]:
+    """items(title·given·when·then·operations) → manual-tc.yaml 형식 레코드. 번호는 기존 다음부터. 반환 (레코드, 경고, 도메인).
+
+    형식 오류는 ValueError. 도메인이 없으면 같은 문서의 기존 수동 TC 에서, 그것도 없으면 other."""
+    from .cases import _TC
+    from .wiki import doc_slug
+    slug = doc_slug(str(doc))
+    sec = str(section).strip().rstrip(".")
+    prefix = f"PRD.{slug}.{sec}#"
+    existing = [r for r in catalog.records.values() if r["layer"] == "manual" and r["id"].startswith(prefix)]
+    n0 = max([int(r["id"].split("#")[-1]) for r in existing if r["id"].split("#")[-1].isdigit()] or [0])
+    if not domain:
+        same_doc = [r for r in catalog.records.values() if r["layer"] == "manual" and r["id"].startswith(f"PRD.{slug}.")]
+        domain = same_doc[0]["domain"] if same_doc else "other"
+    warnings: list[str] = []
+    if wiki is not None and wiki.available and not wiki.prd_path(str(doc)):
+        warnings.append(f"PRD 문서 '{doc}' 를 위키 체크아웃에서 찾지 못했다 — 문서 이름을 확인")
+    elif wiki is not None and wiki.available and wiki.prd_section(str(doc), sec, max_lines=5) is None:
+        warnings.append(f"PRD/{doc} 에 §{sec} 헤딩이 없다")
+    out = []
+    for i, it in enumerate(items, 1):
+        if not isinstance(it, dict) or not all(isinstance(it.get(k), str) and it[k].strip() for k in ("title", "when", "then")):
+            raise ValueError(f"items[{i}]: title·when·then 은 비어 있지 않은 문자열")
+        rec = {"id": f"{prefix}{n0 + i}", "doc": str(doc), "section": sec, "domain": str(domain), "title": it["title"].strip()}
+        if it.get("given"):
+            rec["given"] = str(it["given"]).strip()
+        rec["when"] = it["when"].strip()
+        rec["then"] = it["then"].strip()
+        ops = [str(o) for o in (it.get("operations") or []) if str(o).strip()]
+        if ops:
+            rec["operations"] = ops
+        if not _TC.match(rec["id"]):
+            raise ValueError(f"만들어진 id 가 형식에 안 맞는다: {rec['id']} (doc·section 확인)")
+        out.append(rec)
+    return out, warnings, str(domain)
+
+
+def propose_manual_tc(*, cfg: Config, catalog, wiki: Wiki, doc: str, section: str, domain: str | None) -> dict:
+    """PRD 절 본문 → Hermes → items. 반환 {prompt_hash, raw, items, records, warnings, domain, model}. 본문이 없으면 ValueError."""
+    if not wiki.available:
+        raise ValueError("위키 체크아웃이 없다 (QA_WIKI_DIR) — PRD 를 읽을 수 없다")
+    if not wiki.prd_path(doc):
+        raise ValueError(f"PRD 문서를 찾지 못했다: {doc}")
+    sec = str(section).strip().rstrip(".")
+    text = wiki.prd_section(doc, sec, max_lines=150)
+    if text is None:
+        raise ValueError(f"PRD/{doc} 에 §{sec} 헤딩이 없다")
+    from .wiki import doc_slug
+    prefix = f"PRD.{doc_slug(doc)}.{sec}#"
+    existing = [r for r in catalog.records.values() if r["layer"] == "manual" and r["id"].startswith(prefix)]
+    parts = [f"# PRD/{doc} §{sec} 본문\n{text}"]
+    if existing:
+        parts.append("# 기존 TC (이 절에서 이미 뽑힌 것 — 다시 내지 않는다)\n" + "\n".join(f"- {r['id']}: {r['title']}" for r in existing))
+    parts.append("# 출력\n```yaml\nitems:\n  - title: …\n    given: …\n    when: …\n    then: …\n    operations: [operationId]\n```")
+    prompt = "\n\n".join(parts)
+    phash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
+    raw = hermes.chat(cfg, PROPOSE_SYSTEM, prompt, session_prefix="qa-propose", timeout=max(cfg.hermes_timeout, 180))
+    items: list[dict] = []
+    for b in re.findall(r"```(?:ya?ml)?\s*\n(.*?)```", raw, re.S) or [raw]:
+        try:
+            doc_y = yaml.safe_load(b)
+        except yaml.YAMLError:
+            continue
+        if isinstance(doc_y, dict) and isinstance(doc_y.get("items"), list):
+            items = [x for x in doc_y["items"] if isinstance(x, dict)]
+            break
+        if isinstance(doc_y, list):
+            items = [x for x in doc_y if isinstance(x, dict)]
+            break
+    items = items[:8]
+    records, warnings, dom = ([], [], domain or "other") if not items else build_manual_tc(catalog=catalog, doc=doc, section=sec, items=items, domain=domain, wiki=wiki)
+    return {"prompt_hash": phash, "raw": raw, "items": items, "records": records, "warnings": warnings, "domain": dom, "model": cfg.hermes_model}

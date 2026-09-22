@@ -2,7 +2,7 @@
 
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P4)
 - 선행: [`qa-platform.md`](qa-platform.md) (P0·P1), [`qa-platform-tc.md`](qa-platform-tc.md) (P2·P3)
-- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a·P4b·P4c 구현 완료**, P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
+- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a~P4d 구현 완료**. 구현 결과와 사람이 할 일은 §10.
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약
@@ -216,3 +216,22 @@ catalog changes.json  항목에 before 스냅샷
 | 테스트 | `tests/test_revise.py` 7건 (전체 52건) | – |
 
 **사람이 할 일**: 없음. 실제 TC 변경이 처음 생겼을 때(SSOT·OpenAPI 갱신 뒤) 스크립트 상세에서 버튼을 눌러 diff 가 말이 되는지 본다. `changes.json` 은 이 배포 이후의 변경부터 `before` 를 갖는다(이전 항목은 "(스냅샷 없음)" 으로 표시).
+
+### 10.4 P4d — PRD 절에서 수동 작성 TC 제안 (2026-09-22)
+
+| 항목 | 구현 | 설계 대비 |
+| --- | --- | --- |
+| 버튼 | 테스트 케이스 화면 아래 카드: PRD 문서 이름 · 절 번호 · 도메인(선택) → [제안 받기]. 담당자·HERMES_API_KEY 필요 | 설계는 "서술 층 화면" 이었으나 층 구분 없이 같은 화면 하단에 |
+| 조립 | 플랫폼이 PRD 절 본문(위키 체크아웃, 150줄) + **이미 그 절에서 뽑힌 수동 TC 목록**(중복 방지)을 넣는다. 프롬프트 해시 저장. `drafts.propose_manual_tc()` | 같음 |
+| Hermes 규칙 | `items:` 목록(title·given·when·then·operations?), 본문에 적힌 것만, 최대 8개 (`PROPOSE_SYSTEM`) | – |
+| 레코드 | MCP 도구 `qa_manual_tc_propose` 와 **같은 조립 함수** `drafts.build_manual_tc()` — id 는 `PRD.<slug>.<절>#n` 기존 다음 번호, 도메인은 인자 → 같은 문서의 기존 수동 TC → other. 문서·절이 위키에 없으면 경고 | 도구와 버튼이 같은 문 |
+| 초안 | kind `tc`, source `hermes-propose`, note "manual-tc.yaml 에 붙일 …". 승인 → 사람이 `catalog/manual-tc.yaml` 에 붙여 PR. 제안이 0건이면 400 과 감사 로그 | 같음 |
+| 테스트 | `tests/test_propose.py` 3건 (전체 55건) | – |
+
+**사람이 할 일**: 없음.
+
+## 11. P4 전체 정리
+
+- 구현 순서와 커밋: P4a QA MCP 서버 → P4b 채팅 위젯(모달·SSE) → 용어 정리 → P4c 다시 쓰기 → P4d 수동 TC 제안.
+- Hermes 가 하는 일은 **읽기·제안·설명** 에 머문다. 실행·발행·승인·파일 쓰기 도구는 서버에 없다(원칙 ①). 위키 쓰기(`wiki_apply`)는 채팅 경로에서 가능하나 시스템 프롬프트로 금하고 git 으로 되돌린다(§8-1).
+- 근거: 버튼 경로(초안 생성·다시 쓰기·수동 TC 제안)는 프롬프트 해시, 채팅 경로는 대화 기록 + `mcp.call` 로그.

@@ -444,43 +444,19 @@ class McpServer:
             raise ToolError("items 는 비어 있지 않은 목록")
         if len(items) > 10:
             raise ToolError("한 번에 10건까지")
-        from .wiki import doc_slug
-        slug = doc_slug(str(doc))
+        try:
+            out, warnings, domain = draftsmod.build_manual_tc(catalog=cat, doc=doc, section=section, items=items, domain=domain, wiki=self.app.wiki)
+        except ValueError as ex:
+            raise ToolError(str(ex))
         sec = str(section).strip().rstrip(".")
-        prefix = f"PRD.{slug}.{sec}#"
-        existing = [r for r in cat.records.values() if r["layer"] == "manual" and r["id"].startswith(prefix)]
-        n0 = max([int(r["id"].split("#")[-1]) for r in existing if r["id"].split("#")[-1].isdigit()] or [0])
-        if not domain:
-            same_doc = [r for r in cat.records.values() if r["layer"] == "manual" and r["id"].startswith(f"PRD.{slug}.")]
-            domain = same_doc[0]["domain"] if same_doc else "other"
-        warnings = []
-        if self.app.wiki.available and not self.app.wiki.prd_path(str(doc)):
-            warnings.append(f"PRD 문서 '{doc}' 를 위키 체크아웃에서 찾지 못했다 — 문서 이름을 확인")
-        elif self.app.wiki.available and self.app.wiki.prd_section(str(doc), sec, max_lines=5) is None:
-            warnings.append(f"PRD/{doc} 에 §{sec} 헤딩이 없다")
-        out = []
-        for i, it in enumerate(items, 1):
-            if not isinstance(it, dict) or not all(isinstance(it.get(k), str) and it[k].strip() for k in ("title", "when", "then")):
-                raise ToolError(f"items[{i}]: title·when·then 은 비어 있지 않은 문자열")
-            rec = {"id": f"{prefix}{n0 + i}", "doc": str(doc), "section": sec, "domain": str(domain), "title": it["title"].strip()}
-            if it.get("given"):
-                rec["given"] = str(it["given"]).strip()
-            rec["when"] = it["when"].strip()
-            rec["then"] = it["then"].strip()
-            ops = [str(o) for o in (it.get("operations") or []) if str(o).strip()]
-            if ops:
-                rec["operations"] = ops
-            if not _TC.match(rec["id"]):
-                raise ToolError(f"만들어진 id 가 형식에 안 맞는다: {rec['id']} (doc·section 확인)")
-            out.append(rec)
         text = yaml_dump({"cases": out})
-        note = f"manual-tc.yaml 에 붙일 수동 TC 제안 — PRD/{doc} §{sec}"
+        note = f"manual-tc.yaml 에 붙일 수동 작성 TC 제안 — PRD/{doc} §{sec}"
         did = self.app.store.add_draft(operator=AGENT, source="hermes-chat", domain=str(domain), yaml_text=text, note=note, case_id=None,
                                        tc_ids=[r["id"] for r in out], validation={"status": "warn" if warnings else "ok", "warnings": warnings}, kind="tc")
         self.app.store.add_event(operator=AGENT, action="draft.generate", target=did, detail={"source": "hermes-chat", "kind": "tc", "tc_ids": [r["id"] for r in out]})
         return {"id": did, "kind": "tc", "tc_ids": [r["id"] for r in out], "yaml": text, "warnings": warnings, "url": self._url(f"/drafts/{did}"),
                 "_hint": {"created": [did], "tc": len(out)},
-                "next": "사람이 초안 화면에서 검토·승인한 뒤 qa-platform/catalog/manual-tc.yaml 에 붙여 PR 을 연다. 승인 전에는 기준이 아니다."}
+                "next": "사람이 초안 화면에서 검토·승인한 뒤 qa-platform/catalog/manual-tc.yaml 에 붙여 PR 을 연다. 승인 전에는 TC 가 아니다."}
 
 
 def yaml_dump(obj) -> str:
