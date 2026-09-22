@@ -96,7 +96,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 스크립트"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("explorer", "/explorer", "API 호출"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("explorer", "/explorer", "API 호출"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -441,7 +441,7 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
     warns = "".join(f'<li class="small">{e(w)}</li>' for w in catalog.warnings)
     c = catalog.counts()
     v = catalog.versions
-    return (f'<h1>테스트 스크립트 (TC) 목록 <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
+    return (f'<h1>테스트 케이스 (TC) 목록 <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
             f' TC 소스 버전: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"}</p>'
