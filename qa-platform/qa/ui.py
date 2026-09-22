@@ -45,7 +45,7 @@ a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-
 .seg{display:inline-flex;background:#eef0f3;border-radius:9px;padding:3px}.seg button{border:0;background:transparent;color:var(--mut);padding:4px 12px;border-radius:7px;font-weight:600;font-size:13px}.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .m{display:inline-block;min-width:52px;text-align:center;padding:2px 8px;border-radius:6px;font:700 11px/16px ui-monospace,Menlo,monospace;color:#fff;background:var(--gray);vertical-align:middle}
 .m.get{background:#2563eb}.m.post{background:#16a34a}.m.put,.m.patch{background:#d97706}.m.delete{background:#dc2626}
-/* API 호출: 왼쪽 목록 + 오른쪽 호출 카드 (Normal | Swagger). 좁으면 1열 */
+/* API 호출: 왼쪽 목록 + 오른쪽 입력 폼 (Normal | Swagger). 좁으면 1열 */
 /* 실행 결과 요약 (Tossion 식): 요약 카드 · 도넛 · 도메인별 진행 막대 */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 .stat .l{color:var(--mut);font-size:12px}.stat b{display:block;font-size:26px;line-height:1.2;margin:4px 0 2px}.stat .s{font-size:12px;color:var(--mut)}.stat.ok b{color:var(--ok)}.stat.bad b{color:var(--bad)}
@@ -104,12 +104,12 @@ def run_badge(r: dict) -> str:
 
 
 TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "수동 실행",
-              "draft-check": "초안 시험 실행", "explorer": "API 호출", "setup": "준비 작업"}
+              "draft-check": "초안 시험 실행", "explorer": "API 호출", "setup": "테스트 데이터 만들기"}
 ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 실행 취소", "run.triage": "Hermes 실패 분석", "release.decide": "릴리스 판단",
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "setup.run": "준비 작업 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "setup.run": "테스트 데이터 만들기 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -120,7 +120,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "준비 작업"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -523,7 +523,7 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
             f' TC 소스 버전: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"}</p>'
-            f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 에 걸린 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
+            f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
             f'<div class="tabs">{tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
             f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
             f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
@@ -663,15 +663,15 @@ def _path_param_values(template: str, path: str) -> dict:
 def qa_badge(qa: dict | None, op_id: str) -> str:
     """호출 카드 머리의 검증 상태 한 줄 — "TC 5 · 자동화 3/5 · 마지막 pass 09-21". 클릭하면 그 API 의 TC 목록."""
     if qa is None:
-        return '<span class="qab none" title="TC 목록을 만들지 못했다">TC ?</span>'
+        return '<span class="qab none" title="TC 목록을 만들지 못했다">TC 목록 없음</span>'
     if not qa["tc"]:
-        return f'<a class="qab none" href="/apis/{e(op_id)}" title="이 API 에 걸린 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
+        return f'<a class="qab none" href="/apis/{e(op_id)}" title="이 API 에 해당하는 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
     denom = qa["tc"] - qa["excluded"]
     cls = "ok" if denom and qa["covered"] == denom else ("warn" if qa["uncovered"] else "none")
     last = qa.get("last")
     tail = f' · 마지막 {badge(last["verdict"])} <span class="small">{kst(last["created_at"])}</span>' if last else " · 실행 기록 없음"
     ex = f' (제외 {qa["excluded"]})' if qa["excluded"] else ""
-    return (f'<a class="qab {cls}" href="/apis/{e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화 {qa["covered"]}/{denom}{ex}{tail}</a>')
+    return (f'<a class="qab {cls}" href="/apis/{e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화됨 {qa["covered"]}/{denom}{ex}{tail}</a>')
 
 
 EXPLORER_JS = r"""
@@ -725,7 +725,7 @@ EXPLORER_JS = r"""
   // ---- 응답에서 id 자동 수집 → 다음 호출의 최근 값 ----
   var R=window.XRESP; var saved=[]; 
   (function walk(o,d){ if(!o||typeof o!=='object'||d>3) return; Object.keys(o).forEach(function(k){ var v=o[k]; if((/Id$/.test(k)||k==='id')&&(typeof v==='string'||typeof v==='number')){ remember(k,String(v)); saved.push(k+'='+v); } else if(v&&typeof v==='object') walk(v,d+1); }); })(R&&R.data,0);
-  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='다음 호출을 위해 기억한 값 (이 브라우저에만): '+saved.join(' · ');
+  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='응답에서 뽑아 기억한 id (다음 입력칸에 최근에 넣은 값으로 뜬다, 이 브라우저에만): '+saved.join(' · ');
 })();
 """
 
@@ -755,11 +755,11 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
     left = (f'<div class="card opl"><form method="get"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약)" style="width:100%"></form>'
             f'<details id="favs" open style="display:none"><summary>즐겨찾기 <span id="favn" class="mut small"></span></summary><div id="favbox"></div></details>'
             f'<div class="oplist">{lists}</div></div>')
-    head = ('<h1>API 호출 <span class="small mut">OpenAPI 로 만든 카드에서 dev 에 요청 하나를 보내 본다. '
+    head = ('<h1>API 호출 <span class="small mut">OpenAPI 로 만든 입력 폼에서 dev 에 요청 하나를 보내 본다. '
             'Normal 은 값만 넣는 폼, Swagger 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 둘은 같은 값이다. 보낸 것은 실행 기록에 남는다</span></h1>')
     if not op:
         right = ('<div class="card"><p class="mut" style="margin:0">왼쪽에서 API 를 고르면 카드가 열린다. ☆ 로 즐겨찾기에 올릴 수 있고, '
-                 '한 번 넣은 path·query 값은 이 브라우저에 기억돼 다음 카드에 뜬다.</p></div>')
+                 '한 번 넣은 path·query 값은 이 브라우저에 기억돼 다음 입력칸에 뜬다.</p></div>')
         return f'{head}<div class="xgrid">{left}{right}</div><script>{EXPLORER_JS}</script>'
 
     # ---- 카드: 값의 정본은 하나 — path·query 는 Normal 의 입력칸(name=p_·q_), 본문은 Swagger 의 JSON 칸(name=body) ----
@@ -818,8 +818,8 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
     card = (f'<form method="post" action="/explorer/send" id="callf" class="card call" data-path="{e(op.path)}" data-view="{e(view)}">'
             f'<input type="hidden" name="op" value="{e(op.id)}">'
             f'<div class="callhead"><div><b>{e(op.summary or op.id)}</b> <span class="mono mut small">{e(op.id)}</span><br>{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
-            f'<div class="seg" id="seg"><button type="button" data-v="normal">Normal</button><button type="button" data-v="swagger">Swagger</button></div></div>'
-            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 에 걸린 TC 와 자동화 상태 — 클릭하면 API 모아 보기</span></div>'
+            f'<div class="seg" id="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·파라미터·JSON)">Swagger</button></div></div>'
+            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 의 TC 수와 자동화 상태 — 클릭하면 이 API 의 상세</span></div>'
             f'<div id="nv" class="view">{normal}</div><div id="sv" class="view" hidden>{swagger}</div>'
             f'<div class="callfoot"><div class="field"><label>테스트 계정 <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
             f'<div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
@@ -873,7 +873,7 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
     link = lambda d, o: f'/apis?domain={e(d)}{("&only=" + e(o)) if o else ""}{("&q=" + e(q)) if q else ""}'  # noqa: E731
     tabs = "".join(f'<a href="{link(d, only)}" class="{"on" if d == domain else ""}">{e(d)}</a>' for d in domains)
     otabs = "".join(f'<a href="{link(domain, o)}" class="{"on" if (only or "") == o else ""}">{lab}</a>'
-                    for o, lab in (("", "모두"), ("noscript", "부르는 스크립트 없음"), ("uncovered", "미자동화 TC 있음"), ("noerrors", "문서화된 에러 없음")))
+                    for o, lab in (("", "모두"), ("noscript", "호출하는 스크립트 없음"), ("uncovered", "미자동화 TC 있음"), ("noerrors", "문서화된 에러 없음")))
     trs = ""
     n = 0
     for r in rows:
@@ -895,19 +895,19 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
         lc = r.get("last")
         last = (f'<a href="/runs/{e(lc["run_id"])}">{_call_verdict(lc)}</a> <span class="small mut">{kst(lc["created_at"])}</span>') if lc else '<span class="mut">–</span>'
         ly = r["layers"]
-        tc = (f'{r["tc"]} <span class="small mut">계약 {ly.get("contract", 0)} · 규칙 {ly.get("policy", 0)} · 수동 {ly.get("manual", 0)}</span>') if r["tc"] else '<span class="mut">0</span>'
+        tc = (f'{r["tc"]} <span class="small mut">API 계약 {ly.get("contract", 0)} · 비즈니스 규칙 {ly.get("policy", 0)} · 수동 작성 {ly.get("manual", 0)}</span>') if r["tc"] else '<span class="mut">0</span>'
         trs += (f'<tr><td><a href="/apis/{e(r["id"])}">{method_badge(r["method"])} <span class="mono">{e(r["path"])}</span></a><br><span class="small mut">{e(r["summary"])} · <span class="mono">{e(r["id"])}</span></span></td>'
                 f'<td>{tc}</td><td>{auto}</td><td>{r["scripts"] or "<span class=\"mut\">0</span>"}</td><td>{last}</td><td class="small">{r["errors"] or "<span class=\"mut\">0</span>"}</td></tr>')
     if not trs:
         trs = '<tr><td colspan="6" class="mut">해당 없음</td></tr>'
     return (f'<h1>API <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> · 출처 {e(spec_source or "–")}'
-            f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · 태그가 전부 v1 이라 경로로 도메인을 나눴다</p>'
+            f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · OpenAPI 의 tags 가 전부 v1 이라 URL 경로로 도메인을 나눴다</p>'
             f'<form method="get" style="margin:0 0 8px"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약) — 검색 중엔 모든 도메인" style="width:100%"></form>'
             f'<div class="tabs">{tabs}</div><div class="tabs">{otabs}</div></div>'
-            f'<div class="card"><table><tr><th>API ({n})</th><th>TC</th><th>자동화</th><th>부르는 스크립트</th><th>마지막 호출</th><th>에러 코드</th></tr>{trs}</table>'
-            f'<p class="hint">TC = 그 API 에 걸린 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
-            f'부르는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 부른 가장 최근 단계(API 호출 화면 전송 포함).</p></div>')
+            f'<div class="card"><table><tr><th>API ({n})</th><th>TC</th><th>자동화됨</th><th>호출하는 스크립트</th><th>마지막 호출</th><th>에러 코드</th></tr>{trs}</table>'
+            f'<p class="hint">TC = 그 API 에 해당하는 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화됨 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
+            f'호출하는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 호출한 가장 최근 단계(API 호출 화면 전송 포함).</p></div>')
 
 
 def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) -> str:
@@ -943,19 +943,19 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
         if items:
             sections += f'<h3>{badge(layer)} {e(lab)} <span class="mut small">{len(items)}</span></h3><table><tr><th>TC</th><th>내용</th><th>자동화 · 검증하는 스크립트</th></tr>{tc_rows(items)}</table>'
     ops = "".join(f'<option value="{e(x)}" {"selected" if x == operator else ""}>{e(x)}</option>' for x in operators)
-    tcs = (f'<h2>이 API 의 TC <span class="small mut">{qa["tc"]}건 · 자동화 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
+    tcs = (f'<h2>이 API 의 TC <span class="small mut">{qa["tc"]}건 · 자동화됨 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
            f'<form method="post" action="/drafts/generate"><div class="card">'
-           + (sections or '<p class="mut">이 API 에 걸린 TC 가 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
+           + (sections or '<p class="mut">이 API 에 해당하는 TC 가 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
            + (f'<div class="actions"><select name="operator" required><option value="">— 담당자 —</option>{ops}</select>'
               f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 스크립트 초안 생성 (Hermes)</button>'
               f'<span class="small mut">같은 도메인 1~10건</span></div>' if sections else "") + '</div></form>')
     # 부르는 스크립트
     srows = "".join(
-        f'<tr><td><a href="/cases/{e(s["id"])}" class="mono">{e(s["id"])}</a>{(" <span class=\"small mut\" title=\"operations: 에 선언했지만 이 API 를 부르는 단계가 없다\">선언만</span>") if not s["steps"] else (" <span class=\"small mut\" title=\"단계는 부르는데 operations: 에 선언이 없다\">선언 없음</span>" if not s["declared"] else "")}</td>'
+        f'<tr><td><a href="/cases/{e(s["id"])}" class="mono">{e(s["id"])}</a>{(" <span class=\"small mut\" title=\"스크립트의 operations: 목록에는 있지만 이 API 를 호출하는 단계가 없다\">operations 에만 있음</span>") if not s["steps"] else (" <span class=\"small mut\" title=\"단계는 호출하는데 스크립트의 operations: 목록에 없다\">operations 에 없음</span>" if not s["declared"] else "")}</td>'
         f'<td>{e(s["title"])}</td><td class="small">{e(" · ".join(s["steps"]))}</td><td>{badge(s["suite"])}</td>'
         f'<td>{(("<a href=\"/runs/" + e(s["last"]["run_id"]) + "\">" + badge(s["last"]["verdict"]) + "</a> <span class=\"small mut\">" + kst(s["last"]["created_at"]) + "</span>") if s.get("last") else "<span class=\"mut\">–</span>")}</td></tr>'
-        for s in d["scripts"]) or '<tr><td colspan="5" class="mut">이 API 를 부르는 스크립트가 없다 — 커버리지 공백</td></tr>'
-    scripts = f'<h2>부르는 스크립트 <span class="small mut">{len(d["scripts"])}건</span></h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>이 API 를 부르는 단계</th><th>스위트</th><th>마지막 결과</th></tr>{srows}</table></div>'
+        for s in d["scripts"]) or '<tr><td colspan="5" class="mut">이 API 를 호출하는 스크립트가 없다 — 테스트 커버리지가 비는 곳</td></tr>'
+    scripts = f'<h2>호출하는 스크립트 <span class="small mut">{len(d["scripts"])}건</span></h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>이 API 를 호출하는 단계</th><th>스위트</th><th>마지막 결과</th></tr>{srows}</table></div>'
     # 최근 호출
     crows = ""
     for c in d["recent_calls"]:
@@ -973,9 +973,9 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
         crows += (f'<tr><td class="small">{kst(c["created_at"])}</td><td><a href="/runs/{e(c["run_id"])}" class="mono small">{e(c["run_id"])}</a><br><span class="small mut">{e(TRIGGER_KO.get(c["trigger"], c["trigger"]))} · {e(c["operator"])}</span></td>'
                   f'<td>{who}{(" <span class=\"small mut\">" + e(c["actor"]) + "</span>") if c.get("actor") else ""}</td><td>{_call_verdict(c)}{note}</td><td class="small">{c.get("duration_ms") or 0} ms</td>'
                   f'<td><a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 열기</a></td></tr>')
-    recent = (f'<h2>최근 호출 <span class="small mut">이 API 를 부른 단계 최근 {len(d["recent_calls"])}건 — 스크립트 실행과 API 호출 화면 전송 모두</span></h2>'
+    recent = (f'<h2>최근 호출 <span class="small mut">이 API 를 호출한 단계 최근 {len(d["recent_calls"])}건 — 스크립트 실행과 API 호출 화면 전송 모두</span></h2>'
               f'<div class="card"><table><tr><th>시각</th><th>실행 기록</th><th>스크립트 · 단계</th><th>판정 · status</th><th>소요</th><th></th></tr>'
-              f'{crows or "<tr><td colspan=\"6\" class=\"mut\">아직 부른 기록이 없다</td></tr>"}</table></div>')
+              f'{crows or "<tr><td colspan=\"6\" class=\"mut\">아직 호출한 기록이 없다</td></tr>"}</table></div>')
     return head + spec + tcs + scripts + recent
 
 
@@ -991,18 +991,18 @@ SETUP_JS = r"""
     setView(ls('qa_view','normal'));
     F.addEventListener('submit',function(){ var b=F.querySelector('button.primary'); if(b){b.disabled=true;b.textContent='실행 중…'} });
   });
-  // 결과값을 API 호출 카드의 최근 값으로 기억 (브라우저에만)
+  // 결과값을 API 호출 화면 입력칸의 "최근에 넣은 값" 으로 기억 (브라우저에만)
   var R=window.SETUP_OUT||{}; var saved=[];
   Object.keys(R).forEach(function(k){ var v=R[k]; if(v==null||v==='') return; var key='qa_recent.'+k; var vals=ls(key,[]).filter(function(x){return x!==String(v)}); vals.unshift(String(v)); lsset(key,vals.slice(0,5)); saved.push(k); });
-  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='API 호출 카드에 최근 값으로 뜬다 (이 브라우저에만): '+saved.join(', ');
+  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다 (이 브라우저에만): '+saved.join(', ');
   document.querySelectorAll('button[data-copy]').forEach(function(b){ b.addEventListener('click',function(){ navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy); b.textContent='복사됨'; setTimeout(function(){b.textContent='복사'},1200); }); });
 })();
 """
 
 
 def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str]) -> str:
-    head = ('<h1>준비 작업 <span class="small mut">버튼 하나로 dev 에 테스트 데이터를 만든다 — "어떤 API 를 어떤 값으로 어떤 순서로" 를 카드가 대신 안다. '
-            '만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
+    head = ('<h1>테스트 데이터 만들기 <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
+            'Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문. 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
     res = ""
     if result:
         run, rc, steps, outs = result["run"], result["case"], result["steps"], result["outputs"]
@@ -1013,9 +1013,9 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
         srows = "".join(f'<tr><td>{e(s["name"])}</td><td>{badge(s["verdict"])} <span class="mono small">{e((s.get("response") or {}).get("status") or "")}</span></td>'
                         f'<td class="small" style="color:var(--bad)">{e(s.get("error") or "")}</td></tr>' for s in steps)
         res = (f'<div class="card"><h3 style="margin-top:0">결과 {badge(v)} <span class="small mut">{e(rc["case_title"] if rc else "")} · 실행 기록 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> · {kst(run["created_at"])}</span></h3>'
-               + (f'<table><tr><th>값</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">돌려줄 값이 없다</p>')
+               + (f'<table><tr><th>결과값</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">결과값이 없다</p>')
                + (f'<details {"open" if bad else ""}><summary class="small mut">단계 {len(steps)}개</summary><table><tr><th>단계</th><th>판정</th><th>오류</th></tr>{srows}</table></details>')
-               + f'<div class="actions"><a class="btn primary" href="/explorer">API 호출 카드로</a> <a class="btn" href="/runs/{e(run["id"])}">실행 상세</a></div></div>'
+               + f'<div class="actions"><a class="btn primary" href="/explorer">API 호출 화면으로</a> <a class="btn" href="/runs/{e(run["id"])}">실행 상세</a></div></div>'
                + f'<script>window.SETUP_OUT={json.dumps({k: v for k, v in outs.items() if v not in (None, "")}, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>')
     errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
     ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
@@ -1041,15 +1041,15 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
         actor_ok = (not c.needs_actor()) or all((a in actors) for a in {c.actor, *[s.get("actor") for s in c.steps]} if a)
         cards += (f'<form method="post" action="/setup/run" class="card call"><input type="hidden" name="case_id" value="{e(c.id)}">'
                   f'<div class="callhead"><div><b>{e(c.title)}</b> <span class="mono mut small">{e(c.id)}</span><br><span class="small mut">{e(c.description)}</span></div>'
-                  f'<div class="seg"><button type="button" data-v="normal">Normal</button><button type="button" data-v="swagger">Swagger</button></div></div>'
-                  f'<div class="view nv">{fields}<p class="hint">돌려주는 값: <span class="mono">{e(outs)}</span> · 단계 {len(c.steps)}개'
+                  f'<div class="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·본문)">Swagger</button></div></div>'
+                  f'<div class="view nv">{fields}<p class="hint">결과값: <span class="mono">{e(outs)}</span> · 단계 {len(c.steps)}개'
                   f'{(" · 테스트 계정 " + e(", ".join(sorted({a for a in [c.actor, *[s.get("actor") for s in c.steps]] if a})))) if c.needs_actor() else ""}</p></div>'
                   f'<div class="view sv" hidden>{sw}<p class="hint">💡 실제로 나가는 요청을 순서대로 보여 준다. <span class="mono">{{{{input.x}}}}</span> 는 Normal 의 입력값으로, 나머지 치환은 실행 때 채워진다. 여기서는 고칠 수 없다 — 스크립트 파일(<span class="mono">cases/setup.yaml</span>)이 원본</p></div>'
                   f'<div class="callfoot"><div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
                   f'{"" if actor_ok else "<p class=\"hint bad\">테스트 계정이 설정돼 있지 않다 (QA_ACTORS) — 실행하면 skipped 로 남는다</p>"}'
                   f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>실행 — dev 에 실제로 만든다</button></div></form>')
     if not cards:
-        cards = '<div class="card"><p class="mut" style="margin:0">준비 작업 스크립트가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
+        cards = '<div class="card"><p class="mut" style="margin:0">테스트 데이터 만들기 스크립트(suite setup)가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
     return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div><script>{SETUP_JS}</script>'
 
 
@@ -1092,9 +1092,9 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/catalog">테스트 케이스</a></td><td>커버리지 확인 · 초안 만들 때</td><td>도메인×층 TC 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). TC 를 골라 [스크립트 초안 생성]</td></tr>
 <tr><td><a href="/drafts">스크립트 초안</a></td><td>스크립트 늘릴 때</td><td>Hermes·API 호출가 만든 스크립트 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
-<tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 걸린 TC(층별, 자동화 여부), 부르는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "부르는 스크립트 없음" 필터가 커버리지 공백</td></tr>
-<tr><td><a href="/setup">준비 작업</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 카드의 최근 값으로 기억된다. 만든 데이터는 지우지 않는다(제목 [QA]). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
-<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 카드에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 폼, <b>Swagger</b> 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 카드 머리의 QA 배지가 그 API 의 TC·자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
+<tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 해당하는 TC(층별, 자동화 여부), 호출하는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "호출하는 스크립트 없음" 필터가 테스트 커버리지가 비는 API</td></tr>
+<tr><td><a href="/setup">테스트 데이터 만들기</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 지우지 않는다(제목 [QA]). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
+<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 입력 폼에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 입력 폼, <b>Swagger</b> 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 폼 위의 배지가 그 API 의 TC 수와 자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
     s4 = """
@@ -1147,6 +1147,9 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><b>검증 항목</b></td><td>단계마다 응답을 비교하는 조건. status · result · error_code · json 경로 · 존재 여부</td><td>assertion · <span class="mono">expect</span></td></tr>
 <tr><td><b>테스트 계정 · 픽스처</b></td><td>dev 에 있는 QA 전용 회원 · 스크립트가 참조하는 dev 데이터 id(공고 id 등). 값은 SSM 에만</td><td><span class="mono">actor</span> · fixture</td></tr>
 <tr><td><b>스크립트 초안</b></td><td>아직 스크립트가 아닌 YAML. Hermes 나 API 호출 화면이 만들고, 사람이 검토·승인해 PR 로 올려야 스크립트가 된다</td><td>draft</td></tr>
+<tr><td><b>Normal · Swagger 보기</b></td><td>같은 요청을 두 모양으로 본다. Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON 본문, 편집 가능). 토스 QA 플랫폼의 용례를 따랐다</td><td>view</td></tr>
+<tr><td><b>테스트 데이터 만들기</b></td><td>여러 API 를 순서대로 호출해 dev 에 데이터(룸 등)를 만드는 스크립트를 버튼 하나로 돌리는 것. 입력칸(<span class="mono">inputs</span>)과 결과값(<span class="mono">outputs</span>)이 있고 만든 데이터는 지우지 않는다</td><td>suite <span class="mono">setup</span></td></tr>
+<tr><td><b>최근 호출</b></td><td>어떤 API 를 호출한 단계들을 최신순으로 모은 것 — 스크립트 실행과 API 호출 화면 전송 모두. "이 API 지난번에 어땠나" 의 답</td><td><span class="mono">run_steps.op_id</span></td></tr>
 <tr><td><b>담당자</b></td><td>버튼을 누른 사람. 팀 세션은 공용이라 본인이 고른다(자기 신고)</td><td><span class="mono">operator</span></td></tr>
 <tr><td><b>감사 로그</b></td><td>누가 언제 무엇을 했는지 전부. Hermes 가 부른 도구도 <span class="mono">hermes</span> 이름으로 남는다</td><td>audit log · <span class="mono">events</span></td></tr></table>"""
     return (intro + _sec("용어", s_terms) + _sec("1. 실행 버튼을 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)

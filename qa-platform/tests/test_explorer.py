@@ -99,7 +99,7 @@ class OpQaTest(unittest.TestCase):
         cov = self.app.coverage(self.cat)
         ids = self.cat.by_operation()["createRoom"]
         h = ui.catalog_list(self.cat, cov, {}, domain="room", layer="", only="", changes={}, wiki_available=True, op="createRoom", op_ids=ids)
-        self.assertIn("에 걸린 TC 만 보인다", h)
+        self.assertIn("의 TC 만 보인다", h)
         for i in ids:
             self.assertIn(ui.tc_link(i), h)
         self.assertNotIn("op.termsList:200", h)

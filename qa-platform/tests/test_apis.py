@@ -97,13 +97,13 @@ class ApiViewTest(unittest.TestCase):
         used = [r for r in rows if r["scripts"]]
         self.assertTrue(gap and used)
         h = ui.apis_list(rows, domains=cat.domains(), domain="", only="noscript", q="/", spec_hash="abc", spec_source="file", docs_url="https://d/")
-        self.assertIn("부르는 스크립트 없음", h)
+        self.assertIn("호출하는 스크립트 없음", h)
         self.assertIn(f'/apis/{gap[0]["id"]}"', h)
         self.assertNotIn(f'/apis/{used[0]["id"]}"', h)
         self._send("termsList")
         d = self.app.api_detail("termsList")
         h = ui.api_detail(d, operators=["bebe"], operator="bebe", hermes=False)
-        for frag in ("호출해 보기", "/chat/new?op=termsList", "이 API 의 TC", "부르는 스크립트", "최근 호출", "같은 요청으로 열기", "catalog.terms"):
+        for frag in ("호출해 보기", "/chat/new?op=termsList", "이 API 의 TC", "호출하는 스크립트", "최근 호출", "같은 요청으로 열기", "catalog.terms"):
             self.assertIn(frag, h)
 
     def test_mcp_tool_and_chat_context(self):
