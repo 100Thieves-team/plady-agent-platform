@@ -1110,6 +1110,52 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
              '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(TC)</b> 을 뽑고 '
              '그 TC 를 검증하는 <b>스크립트</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
 
+    # ---- 0. 개발 과정에서 이렇게 쓴다 (사용자 요청 2026-09-22: 개발 프로세스 기준 + 예시 시나리오 하나. 일반 QA 용어만, 첫 등장에 풀이) ----
+    s_howto = """
+<p class="small mut" style="margin-top:0">기획 → 구현 → PR → dev 배포 → 확인 → 스프린트 마감 → 릴리스. 이 순서에서 플랫폼이 등장하는 곳은 다섯 군데다. 처음 나오는 말은 그 자리에서 풀이하고, 아래 <a href="#terms">용어</a> 표에도 모아 두었다.</p>
+<table><tr><th style="width:150px">단계</th><th style="width:70px">누가</th><th>플랫폼에서 하는 일</th><th>결과</th></tr>
+<tr><td><b>1. 기획 확정</b></td><td>기획</td><td>위키의 기획 문서(PRD)와 정책 규칙표(SSOT — 기능마다 "누가 · 어떤 조건이면 · 무엇이 바뀐다"를 적은 표)를 고친다. 플랫폼은 여기서 <b>테스트 케이스(TC, "무엇을 확인해야 하는가" 한 건)</b>를 자동으로 뽑는다</td><td><a href="/catalog">테스트 케이스 (TC)</a> 화면에 확인 항목이 생긴다. 사람이 플랫폼에서 TC 를 손으로 쓰지 않는다 — 빠졌으면 위키를 고친다</td></tr>
+<tr><td><b>2. 구현 · PR · dev 머지</b></td><td>개발</td><td><b>평소와 같다.</b> 새 API 가 생겼으면 API 문서(OpenAPI)에 응답 예시·에러 코드가 실리게 하고, 규칙표의 기능과 API 를 잇는 표(API 매핑, <span class="mono">catalog/bindings.yaml</span>)에 한 줄 더한다</td><td>TC 화면에 "API 계약" TC 가 생긴다</td></tr>
+<tr class="ex"><td>dev 자동 배포</td><td>자동</td><td>없음 — 플랫폼은 배포를 <b>감지만</b> 한다</td><td><a href="/">대시보드</a>에 그 배포가 <span class="b warn">미검증</span> 으로 뜬다</td></tr>
+<tr><td><b>3. 배포 검증</b></td><td>개발</td><td>대시보드에서 [검증]. 플랫폼이 PR 이 바꾼 파일에서 도메인(룸·신청·회원 같은 기능 영역)을 읽어 그 도메인의 <b>sanity 테스트 스크립트</b>(바뀐 부분 위주로 dev 에 요청을 보내 확인하는 것)를 제안한다. 담당자를 고르고 실행</td><td>Slack 에 결과. 통과하면 배포에 ✓. 실패하면 실행 상세의 [Hermes 실패 분석] — 팀 AI 비서 Hermes 가 <b>버그 / 스크립트 노후 / 환경 문제</b> 중 무엇인지 근거와 함께 제안</td></tr>
+<tr><td><b>4. 테스트 스크립트 늘리기</b></td><td>개발 · QA</td><td>새 기능의 TC 가 <span class="b uncovered">미자동화</span>(확인하는 스크립트가 없음)로 남아 있다. <a href="/apis">API</a> 화면에서 그 API 를 열어 TC 를 고르고 [고른 TC 로 스크립트 초안 생성] → <a href="/drafts">스크립트 초안</a>에서 [한 번 실행해 보기] → 승인 → YAML 을 <span class="mono">qa-platform/cases/</span> 에 붙여 PR</td><td>승인 없이 스크립트가 되는 길은 없다</td></tr>
+<tr><td><b>5. 스프린트 마감 · 릴리스</b></td><td>QA</td><td>스프린트(Linear 사이클, 7일)마다 [스프린트 smoke 실행] — 핵심 기능이 죽지 않았는지 전체를 빠르게 확인하는 읽기 위주 묶음. 릴리스 전 [릴리스 QA] + 체크리스트 + GO / NO-GO <b>기록</b></td><td>안 돌리면 대시보드 배지와 Slack 리마인드(자동 실행은 없다). main 승격은 사람이 따로 — 플랫폼은 막지 않고 근거만 남긴다</td></tr></table>
+
+<h3 style="margin-top:18px">예시 — 참가 신청 반려에 사유를 붙인다</h3>
+<p class="small mut">방장이 참가 신청을 반려할 때 사유(직무 불일치 등)를 고르게 하는 기능. 규칙표에는 이미 "방장만 반려할 수 있다", "대기 중인 신청만 반려된다"가 있고, 이번에 "사유는 정해진 값 중 하나여야 한다"가 더해진다. 기획자 A, 개발자 B, QA 담당 C 가 한 스프린트 안에서 이렇게 움직인다.</p>
+<table><tr><th style="width:110px">언제</th><th>무슨 일</th></tr>
+<tr><td><b>월</b><br><span class="small mut">기획</span></td><td><ul style="margin:0;padding-left:18px">
+<li><b>A</b> 가 위키 PRD 「룸 참여 및 참여자 관리」에 반려 사유 항목을 적고, 규칙표(SSOT)의 "신청 반려"에 "사유는 선택지 중 하나" 조건을 더한다.</li>
+<li>플랫폼이 규칙표를 다시 읽어 TC 화면에 새 TC(<span class="mono">G.application.reject#3</span> "선택지에 없는 사유는 거절")를 만든다. 기존 반려 스크립트에 <span class="b drift">TC 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
+<tr><td><b>화</b><br><span class="small mut">구현·배포</span></td><td><ul style="margin:0;padding-left:18px">
+<li><b>B</b> 가 구현. 반려 API(<span class="mono">POST /v1/rooms/{roomId}/applications/{applicationId}/reject</span>)가 본문에 <span class="mono">reason</span> 을 받고, 없는 값이면 400 <span class="mono">E400</span>. 선택지 조회 API(<span class="mono">GET /v1/rooms/reject-reasons</span>)가 새로 생긴다. REST Docs 테스트에 요청 예시와 400 예시를 넣는다.</li>
+<li>PR → 리뷰 → dev 머지 → 자동 배포. 대시보드에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" TC(<span class="mono">op.rejectApplication:E400</span>)가 생긴다.</li></ul></td></tr>
+<tr><td><b>화 오후</b><br><span class="small mut">배포 검증</span></td><td><ul style="margin:0;padding-left:18px">
+<li><b>B</b> 가 [검증]. PR 변경 파일 → 도메인 <span class="mono">application</span> → sanity 3개 제안. 실행. <span class="b fail">2 통과 · 1 실패</span> — 기존 반려 스크립트의 반려 단계가 400 을 받았다.</li>
+<li>[Hermes 실패 분석] → "스크립트 노후: 반려 요청에 <span class="mono">reason</span> 이 필수가 됐는데 스크립트가 안 보낸다. 버그 아님." B 가 동의.</li>
+<li>스크립트 상세의 [바뀐 TC 에 맞게 Hermes 가 고치기 → 초안]. 초안에서 원본과의 차이(diff)를 보고 [한 번 실행해 보기] → 통과 → 승인 → YAML PR → 머지.</li>
+<li>다시 [검증] → <span class="b pass">3/3 통과</span>. 배포에 ✓. Slack: "B 가 PR #131 배포 검증 → 3/3 통과".</li></ul></td></tr>
+<tr><td><b>수</b><br><span class="small mut">스크립트 추가</span></td><td><ul style="margin:0;padding-left:18px">
+<li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. TC 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#3</span>). 둘을 체크 → [고른 TC 로 스크립트 초안 생성]. Hermes 초안이 형식·TC 일치 검사를 통과해 초안 화면에 들어온다.</li>
+<li>손으로도 한 번 본다. <a href="/setup">테스트 데이터 만들기</a>에서 "신청이 하나 들어온 룸" 실행 → 결과값 <span class="mono">roomId</span>·<span class="mono">applicationId</span>. <a href="/explorer">API 호출</a>에서 <span class="mono">rejectApplication</span> 을 열면 그 값이 입력칸에 이미 들어 있다. Normal(값만 넣는 입력 폼)에 <span class="mono">reason</span> 을 엉뚱한 값으로 넣고 보내기 → 400 <span class="mono">E400</span> 확인. Swagger(실제로 나가는 요청 원문)로 보낸 JSON 도 확인.</li>
+<li>초안 승인 → YAML PR → 머지. 다음 배포부터 sanity 에 실린다. TC 화면의 <span class="mono">application</span> 도메인 자동화 수가 올라간다.</li></ul></td></tr>
+<tr><td><b>금</b><br><span class="small mut">스프린트 마감</span></td><td><ul style="margin:0;padding-left:18px">
+<li><b>C</b> 가 [스프린트 smoke 실행]. 실행 상세에 요약 카드(전체·완료·통과율·실패)와 도메인별 막대. <span class="b pass">전부 통과</span>. Slack 에 결과.</li>
+<li>스크립트 목록의 "최근 5회 통과율 80%" 로 화요일 실패가 스크립트 노후였음을 다시 확인. <span class="b warn">불안정 (flaky)</span> 표시(스크립트를 안 고쳤는데 결과가 오락가락함)는 없다 — 고친 뒤로는 계속 통과.</li></ul></td></tr>
+<tr><td><b>릴리스 전</b></td><td><ul style="margin:0;padding-left:18px">
+<li><b>C</b> 가 [릴리스 QA] → 통과. 체크리스트(백엔드 <span class="mono">release-checklist.md</span>)를 확인하고 <b>GO</b> 와 사유를 기록. 필요하면 [위키에 보고서 게시]. main 승격은 팀이 따로.</li>
+<li><a href="/activity">감사 로그</a>에 이 주의 모든 클릭이 남아 있다 — 누가 언제 검증했고, 어떤 초안을 승인했고, 릴리스를 GO 했는지.</li></ul></td></tr></table>
+
+<h3 style="margin-top:18px">플랫폼이 하지 않는 것</h3>
+<ul style="margin:0;padding-left:18px">
+<li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 배지와 Slack 알림까지만.</li>
+<li>live(운영) 서버를 건드리지 않는다. 확인 대상은 항상 dev.</li>
+<li>TC 를 플랫폼 안에서 만들지 않는다. 확인 항목이 빠졌으면 위키(규칙표·기획 문서)나 API 문서를 고친다.</li>
+<li>AI 가 실행·승인·발행하지 않는다. Hermes 는 초안과 분석과 답변까지.</li>
+<li>스크립트가 만든 데이터는 스크립트가 지운다. 예외는 "테스트 데이터 만들기" — 남기는 게 목적이라 제목을 <span class="mono">[QA]</span> 로 시작해 사람이 지운다.</li></ul>
+<p class="small mut" style="margin:10px 0 0">화면 하나하나는 아래 "화면별로 무엇을 하나", 실행 버튼을 눌렀을 때 벌어지는 일은 "1. 실행 버튼을 누르면" 절.</p>
+"""
+
     s1 = f"""
 <ol>
 <li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [수동 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
@@ -1190,6 +1236,8 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><b>스펙 불일치 경고</b></td><td>API 매핑이 가리키는 operation 이나 에러 코드가 OpenAPI 에 없을 때</td><td>catalog warnings</td></tr>
 <tr><td><b>테스트 실행</b></td><td>사람이 버튼을 눌러 스크립트 묶음을 dev 에 한 번 돌린 기록. 결과·단계별 요청·응답이 남고 바뀌지 않는다</td><td>test run · <span class="mono">/runs</span></td></tr>
 <tr><td><b>실행 종류</b></td><td>배포 검증 · 스프린트 smoke · 릴리스 QA · 수동 실행 · 초안 시험 실행 · API 호출</td><td>trigger</td></tr>
+<tr><td><b>도메인</b></td><td>기능 영역. 룸 · 신청 · 참여 · 회원 · 이력서 · 질문 … PR 변경 파일과 API 경로에서 읽는다</td><td>domain</td></tr>
+<tr><td><b>Hermes</b></td><td>팀 AI 비서. 여기서는 실패 원인 분석·스크립트 초안·질문 답변만 한다. 실행·승인·발행은 사람</td><td>hermes-gateway</td></tr>
 <tr><td><b>스위트</b></td><td>스크립트 묶음. smoke(읽기 전용, 빠름) · sanity(쓰기 포함, 도메인별) · manual(직접 고를 때만)</td><td>suite</td></tr>
 <tr><td><b>검증 항목</b></td><td>단계마다 응답을 비교하는 조건. status · result · error_code · json 경로 · 존재 여부</td><td>assertion · <span class="mono">expect</span></td></tr>
 <tr><td><b>테스트 계정 · 픽스처</b></td><td>dev 에 있는 QA 전용 회원 · 스크립트가 참조하는 dev 데이터 id(공고 id 등). 값은 SSM 에만</td><td><span class="mono">actor</span> · fixture</td></tr>
@@ -1200,7 +1248,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><b>최근 호출</b></td><td>어떤 API 를 호출한 단계들을 최신순으로 모은 것 — 스크립트 실행과 API 호출 화면 전송 모두. "이 API 지난번에 어땠나" 의 답</td><td><span class="mono">run_steps.op_id</span></td></tr>
 <tr><td><b>담당자</b></td><td>버튼을 누른 사람. 팀 세션은 공용이라 본인이 고른다(자기 신고)</td><td><span class="mono">operator</span></td></tr>
 <tr><td><b>감사 로그</b></td><td>누가 언제 무엇을 했는지 전부. Hermes 가 부른 도구도 <span class="mono">hermes</span> 이름으로 남는다</td><td>audit log · <span class="mono">events</span></td></tr></table>"""
-    return (intro + _sec("용어", s_terms) + _sec("1. 실행 버튼을 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
+    return (intro + _sec("개발 과정에서 이렇게 쓴다 — 예시 하나와 함께", s_howto) + '<div id="terms"></div>' + _sec("용어", s_terms) + _sec("1. 실행 버튼을 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
             + _sec("6. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("7. 자주 묻는 것", s6))
