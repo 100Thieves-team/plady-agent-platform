@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import yaml
 import re
 import sys
 import traceback
@@ -823,6 +824,15 @@ class Handler(BaseHTTPRequestHandler):
             if m.group(1):
                 return self._json(200, {"run": run, "cases": [dict(rc, steps=steps[rc["id"]]) for rc in rcs]})
             checklist = app.github.release_checklist() if run["trigger"] == "release" else []
+            # 도메인별 진행 막대(docs/qa-platform-api.md §5.7)는 스냅샷의 domains 로 — 지금 파일이 아니라 그때 돌린 스크립트 기준
+            # 검증(parse_one)이 아니라 YAML 만 읽는다 — covers 가 필수이기 전의 옛 스냅샷도 도메인은 있다
+            domains_by_rc = {}
+            for rc in rcs:
+                try:
+                    d = yaml.safe_load(rc["case_yaml"]) or {}
+                    domains_by_rc[rc["id"]] = [str(x) for x in (d.get("domains") or [])]
+                except Exception:
+                    domains_by_rc[rc["id"]] = []
             flash = None
             if run["meta"].get("_flash"):
                 flash = tuple(run["meta"]["_flash"])
@@ -831,7 +841,8 @@ class Handler(BaseHTTPRequestHandler):
                 run["meta"] = m2
             return self._page(f"실행 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
                                                         checklist=checklist, public_url=app.cfg.public_url,
-                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token)), "runs", flash=flash, context={"run": rid})
+                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token), domains_by_rc=domains_by_rc, f_verdict=g("verdict")),
+                              "runs", flash=flash, context={"run": rid})
 
         m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide|publish)$", path)
         if m and method == "POST":

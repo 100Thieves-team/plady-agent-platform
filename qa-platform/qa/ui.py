@@ -46,6 +46,13 @@ a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-
 .m{display:inline-block;min-width:52px;text-align:center;padding:2px 8px;border-radius:6px;font:700 11px/16px ui-monospace,Menlo,monospace;color:#fff;background:var(--gray);vertical-align:middle}
 .m.get{background:#2563eb}.m.post{background:#16a34a}.m.put,.m.patch{background:#d97706}.m.delete{background:#dc2626}
 /* API 호출: 왼쪽 목록 + 오른쪽 호출 카드 (Normal | Swagger). 좁으면 1열 */
+/* 실행 결과 요약 (Tossion 식): 요약 카드 · 도넛 · 도메인별 진행 막대 */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat .l{color:var(--mut);font-size:12px}.stat b{display:block;font-size:26px;line-height:1.2;margin:4px 0 2px}.stat .s{font-size:12px;color:var(--mut)}.stat.ok b{color:var(--ok)}.stat.bad b{color:var(--bad)}
+.sumgrid{display:grid;grid-template-columns:200px 1fr;gap:20px;align-items:center}@media(max-width:700px){.sumgrid{grid-template-columns:1fr}}
+.legend{list-style:none;padding:0;margin:0}.legend li{display:flex;align-items:center;gap:8px;padding:3px 0}.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--graybg);min-width:120px}.bar i{display:block;height:100%}.bar .p{background:#16a34a}.bar .f{background:#dc2626}.bar .s{background:#9ca3af}.bar .r{background:#f59e0b}
+.dom{display:grid;grid-template-columns:130px 1fr 90px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}.dom:last-child{border-bottom:0}
 .xgrid{display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start}.setup-grid{grid-template-columns:repeat(auto-fit,minmax(480px,1fr));align-items:start}@media(max-width:560px){.setup-grid{grid-template-columns:1fr}}@media(max-width:860px){.xgrid{grid-template-columns:1fr}}
 .opl .oplist{max-height:70vh;overflow:auto;margin-top:8px}.opl details{margin:2px 0}.opl summary{font-weight:600;padding:4px 0}
 .opi{display:flex;align-items:center;gap:6px;padding:3px 0 3px 4px;border-radius:6px}.opi.on{background:#eef2ff}.opi a{white-space:nowrap}.opi .small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -258,8 +265,54 @@ def _checks_html(checks: list[dict]) -> str:
         for c in checks)
 
 
+def _donut(pct: float, label: str, size: int = 150) -> str:
+    """통과율 도넛 — SVG 하나, JS 없음. stroke-dasharray 로 채운다."""
+    r = 42
+    circ = 2 * 3.14159265 * r
+    filled = circ * max(0.0, min(1.0, pct / 100.0))
+    color = "var(--ok)" if pct >= 80 else ("var(--warn)" if pct >= 50 else "var(--bad)")
+    return (f'<svg viewBox="0 0 120 120" width="{size}" height="{size}" role="img" aria-label="통과율 {pct:.0f}%">'
+            f'<circle cx="60" cy="60" r="{r}" fill="none" stroke="var(--graybg)" stroke-width="14"/>'
+            f'<circle cx="60" cy="60" r="{r}" fill="none" stroke="{color}" stroke-width="14" stroke-dasharray="{filled:.2f} {circ:.2f}" stroke-linecap="butt" transform="rotate(-90 60 60)"/>'
+            f'<text x="60" y="58" text-anchor="middle" font-size="22" font-weight="700" fill="var(--ink)">{pct:.0f}%</text>'
+            f'<text x="60" y="76" text-anchor="middle" font-size="10" fill="var(--mut)">{e(label)}</text></svg>')
+
+
+def run_summary(run: dict, cases: list[dict], domains_by_rc: dict[int, list[str]], *, f_verdict: str = "") -> str:
+    """실행 결과 요약 (docs/qa-platform-api.md §5.7, Tossion 캡처): 요약 카드 4 · 통과율 도넛 · 도메인별 진행 막대 · 판정 필터."""
+    total = len(cases)
+    n = {k: sum(1 for c in cases if c["verdict"] == k) for k in ("pass", "fail", "error", "skipped", "queued", "running", "canceled")}
+    done = total - n["queued"] - n["running"]
+    bad = n["fail"] + n["error"]
+    pct = (n["pass"] / total * 100) if total else 0.0
+    live = run["status"] in ("queued", "running")
+    stats = (f'<div class="stats"><div class="stat"><div class="l">전체 스크립트</div><b>{total}</b><div class="s">{e(TRIGGER_KO.get(run["trigger"], run["trigger"]))}</div></div>'
+             f'<div class="stat"><div class="l">실행 완료</div><b>{done}</b><div class="s">{(done * 100 // total) if total else 0}% 완료{" · 진행 중" if live else ""}</div></div>'
+             f'<div class="stat ok"><div class="l">통과</div><b>{n["pass"]}</b><div class="s">{pct:.0f}% 통과율</div></div>'
+             f'<div class="stat {"bad" if bad else ""}"><div class="l">실패 · 오류</div><b>{bad}</b><div class="s">skip {n["skipped"]}{(" · 취소 " + str(n["canceled"])) if n["canceled"] else ""}</div></div></div>')
+    legend = "".join(f'<li><i style="background:{col}"></i> {lab} <span class="mut">{cnt}건 ({(cnt * 100 // total) if total else 0}%)</span></li>'
+                     for lab, cnt, col in (("통과", n["pass"], "#16a34a"), ("실패 · 오류", bad, "#dc2626"), ("skip", n["skipped"], "#9ca3af"), ("대기 · 진행 중", n["queued"] + n["running"], "#f59e0b")) if cnt or lab == "통과")
+    # 도메인별: 스크립트가 여러 도메인이면 각 도메인에 센다
+    dom: dict[str, dict] = {}
+    for c in cases:
+        for d in (domains_by_rc.get(c["id"]) or ["(도메인 없음)"]):
+            cell = dom.setdefault(d, {"p": 0, "f": 0, "s": 0, "r": 0, "t": 0})
+            cell["t"] += 1
+            cell["p" if c["verdict"] == "pass" else ("f" if c["verdict"] in ("fail", "error") else ("s" if c["verdict"] in ("skipped", "canceled") else "r"))] += 1
+    def bar(cell):
+        t = cell["t"] or 1
+        return '<div class="bar">' + "".join(f'<i class="{k}" style="width:{cell[k] * 100 / t:.1f}%" title="{lab} {cell[k]}"></i>' for k, lab in (("p", "통과"), ("f", "실패·오류"), ("s", "skip"), ("r", "대기")) if cell[k]) + '</div>'
+    doms = "".join(f'<div class="dom"><span>{e(d)} <span class="mut small">{cell["t"]}</span></span>{bar(cell)}<span class="small right">{cell["p"]}/{cell["t"]} 통과</span></div>'
+                   for d, cell in sorted(dom.items(), key=lambda kv: (-kv[1]["t"], kv[0])))
+    tabs = "".join(f'<a href="/runs/{e(run["id"])}{("?verdict=" + v) if v else ""}" class="{"on" if (f_verdict or "") == v else ""}">{lab} {cnt}</a>'
+                   for v, lab, cnt in (("", "모두", total), ("pass", "통과", n["pass"]), ("fail", "실패 · 오류", bad), ("skipped", "skip", n["skipped"])))
+    return (f'{stats}<div class="card"><div class="sumgrid"><div style="text-align:center">{_donut(pct, "통과율")}</div>'
+            f'<div><ul class="legend">{legend}</ul><h4 style="margin:12px 0 4px">도메인별</h4>{doms or "<p class=\"hint\">도메인 정보 없음</p>"}</div></div></div>'
+            f'<h2>스크립트별 결과 <span class="small mut">판정으로 거르기</span></h2><div class="tabs">{tabs}</div>')
+
+
 def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]], *, operators: list[str], operator: str,
-               checklist: list[str], public_url: str, can_publish: bool = False) -> str:
+               checklist: list[str], public_url: str, can_publish: bool = False, domains_by_rc: dict | None = None, f_verdict: str = "") -> str:
     live = run["status"] in ("queued", "running")
     refresh = '<meta http-equiv="refresh" content="4">' if live else ""
     meta = run.get("meta") or {}
@@ -287,7 +340,10 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                     f'<span class="small mut">wiki/qa/ 에 generated 페이지로. 사람이 누를 때만 · UUID 마스킹</span>')
 
     body_cases = ""
-    for rc in cases:
+    shown = [rc for rc in cases if not f_verdict or (rc["verdict"] in ("fail", "error") if f_verdict == "fail" else rc["verdict"] == f_verdict)]
+    if not shown:
+        body_cases = '<div class="card"><p class="mut" style="margin:0">해당 판정의 스크립트가 없다</p></div>'
+    for rc in shown:
         steps = steps_by_case.get(rc["id"], [])
         st = ""
         for s in steps:
@@ -330,7 +386,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
 
     return (f'{refresh}<h1>테스트 실행 <span class="mono">{e(run["id"])}</span> {run_badge(run)} <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></h1>'
             f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a></div></div>'
-            f'{release}<h2>스크립트별 결과</h2>{body_cases}')
+            f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{body_cases}')
 
 
 # ---- 케이스 --------------------------------------------------------------------------------------
