@@ -1177,7 +1177,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
 <h3 style="margin-top:18px">플랫폼이 하지 않는 것</h3>
 <ul style="margin:0;padding-left:18px">
-<li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 배지와 Slack 알림까지만.</li>
+<li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 대시보드 표시와 Slack 알림까지만.</li>
 <li>live(운영) 서버를 건드리지 않는다. 확인 대상은 항상 dev.</li>
 <li>TC 를 플랫폼 안에서 만들지 않는다. 확인 항목이 빠졌으면 위키(규칙표·기획 문서)나 API 문서를 고친다.</li>
 <li>AI 가 실행·승인·발행하지 않는다. Hermes 는 초안과 분석과 답변까지.</li>
@@ -1207,7 +1207,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <p><b>TC 가 바뀌면.</b> 위키 SSOT 나 OpenAPI 가 바뀌면 TC 목록이 다시 계산되고(읽기라 자동), 검증하는 TC 가 바뀐 스크립트에 <span class="b drift">TC 변경</span> 배지가 붙는다. 스크립트를 다시 본 뒤 <span class="mono">reviewed: {{at, by}}</span> 를 적으면 그 이후 변경만 배지로 뜬다. 스크립트를 자동으로 고치거나 테스트를 자동으로 돌리지는 않는다.</p>"""
 
     s3 = """
-<table><tr><th>화면</th><th>언제</th><th>무엇</th></tr>
+<table><tr><th>화면</th><th>언제 여나</th><th>하는 일</th></tr>
 <tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, TC 커버리지 매트릭스, 최근 테스트 실행</td></tr>
 <tr><td><a href="/runs">실행 기록</a></td><td>실행 후</td><td>테스트 실행 목록·상세(단계별 요청·응답·검증 항목(assertion)), Hermes 실패 분석, 릴리스 판단 기록</td></tr>
 <tr><td><a href="/cases">테스트 스크립트</a></td><td>스크립트 관리</td><td>원본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 정합성·TC 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
