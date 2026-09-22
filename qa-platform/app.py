@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from qa import ui  # noqa: E402
-from qa.cases import audit as audit_cases, load_dir, select  # noqa: E402
+from qa.cases import CaseError, bake_inputs, audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import domain_of_path, CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa import chat as chatmod  # noqa: E402
@@ -38,7 +38,7 @@ from qa.spec import Spec  # noqa: E402
 from qa.store import Store, now_iso  # noqa: E402
 from qa.wiki import Wiki  # noqa: E402
 
-TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check", "explorer")
+TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check", "explorer", "setup")
 HIDDEN_TRIGGERS = ("explorer",)          # 테스트 실행 목록 기본 숨김 (API 직접 호출은 건수가 많다)
 
 
@@ -424,6 +424,49 @@ class App:
                              detail={"op": op_id, "method": op.method, "path": path, "actor": actor})
         self.runner.execute_now(rid)
         return rid
+
+    # ---- 준비 작업 (docs/qa-platform-api.md §5.4) ------------------------------------
+    def setup_cases(self) -> list:
+        return sorted((c for c in self.cases.values() if c.suite == "setup"), key=lambda c: (len(c.steps), c.id))   # 단순한 것부터
+
+    def setup_run(self, case_id: str, values: dict, *, operator: str, session_hash: str | None, ip: str | None) -> str:
+        """버튼 하나로 테스트 데이터 만들기. 입력을 스크립트에 박아(스냅샷에 값이 남는다) 바로 실행한다 — 실행 기록·감사 로그는 남고 Slack 은 안 보낸다."""
+        c = self.cases.get(case_id)
+        if not c or c.suite != "setup":
+            raise BadRequest("준비 작업 스크립트가 아니다")
+        try:
+            baked = bake_inputs(c, values)
+        except CaseError as e:
+            raise BadRequest(str(e))
+        rid = self.create_run(trigger="setup", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None, deploy_run_id=None,
+                              reason="", basis="준비 작업", extra={"setup": {"case": c.id, "inputs": baked.raw.get("input_values") or {}}},
+                              session_hash=session_hash, ip=ip, cases_override=[baked], notify=False, enqueue=False)
+        self.store.add_event(operator=operator, action="setup.run", target=rid, session_hash=session_hash, ip=ip,
+                             detail={"case": c.id, "inputs": baked.raw.get("input_values") or {}})
+        self.runner.execute_now(rid)
+        return rid
+
+    def setup_outputs(self, run: dict) -> dict:
+        """준비 작업이 돌려줄 값 — 스냅샷의 save 경로를 단계 응답에서 다시 읽는다 (러너의 변수 상태는 저장하지 않으므로)."""
+        from qa.cases import parse_one
+        from qa.templating import get_path
+        rcs = self.store.list_run_cases(run["id"])
+        if not rcs:
+            return {}
+        try:
+            case = parse_one(rcs[0]["case_yaml"], "run")
+        except Exception:
+            return {}
+        steps = self.store.list_steps(rcs[0]["id"])
+        out: dict = {}
+        for i, st in enumerate(case.steps):
+            resp = (steps[i].get("response") or {}) if i < len(steps) else {}
+            for var, path in (st.get("save") or {}).items():
+                if var in case.outputs:
+                    out[var] = get_path(resp.get("json"), path) if resp.get("json") is not None else None
+        for var in case.outputs:
+            out.setdefault(var, None)
+        return out
 
     def explorer_to_draft(self, rid: str, operator: str, session_hash: str | None, ip: str | None) -> str:
         """API 호출 기록 하나를 초안(단계 1개, 관측한 status·error_code 를 기대로)으로 담는다. covers 는 사람이 채운다."""
@@ -907,6 +950,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, d)
             return self._page(f"{d['op']['method']} {d['op']['path']}", ui.api_detail(d, operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key)),
                               "apis", context={"op": d["op"]["id"]})
+
+        # ---------- 준비 작업 (docs/qa-platform-api.md §5.4) ----------
+        if path == "/setup" and method == "GET":
+            run = app.store.get_run(g("run")) if g("run") else None
+            result = None
+            if run and run["trigger"] == "setup":
+                rcs = app.store.list_run_cases(run["id"])
+                result = {"run": run, "case": rcs[0] if rcs else None, "steps": app.store.list_steps(rcs[0]["id"]) if rcs else [],
+                          "outputs": app.setup_outputs(run)}
+            return self._page("준비 작업", ui.setup_page(app.setup_cases(), actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+                                                       operator=self._operator(), result=result, errors=[x for x in app.case_errors if "setup" in x]), "setup",
+                              context={"run": run["id"]} if run else None)
+        if path == "/setup/run" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("담당자를 목록에서 골라야 한다")
+            values = {k[6:]: str(v[0]) for k, v in f.items() if k.startswith("input.")}
+            rid = app.setup_run(str(fv("case_id")), values, operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200, {"run": app.store.get_run(rid), "outputs": app.setup_outputs(app.store.get_run(rid))})
+            return self._redirect(f"/setup?run={rid}", set_operator=operator)
 
         # ---------- 탐색기 (docs/qa-platform-tc.md §8) ----------
         if path == "/explorer" and method == "GET":

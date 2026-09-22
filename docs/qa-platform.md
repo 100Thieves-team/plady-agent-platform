@@ -380,7 +380,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | P2 ✅ | TC 카탈로그(SSOT·OpenAPI·서술 파생)·`covers` 검증·커버리지·드리프트 배지·Hermes 초안 생성·케이스 초안·탐색기(Swagger 모드)·위키 보고서 발행 버튼·가이드 화면 — 설계·구현 결과 [`qa-platform-tc.md`](qa-platform-tc.md) |
 | P3 | 커버리지 공백 화면 ✅(P2 기준 화면) · 스프린트 리마인더 Slack ✅(알림만, `qa/reminder.py`) · Linear 코멘트(연결 인증 후). live 읽기 전용 smoke 는 **뺐다** — QA 는 live 와 무관하게 간다(사용자 결정 2026-09-21) |
 | P4 | QA MCP 도구 ✅(P4a, `qa/mcp_server.py` — Hermes 가 기준·케이스·런을 읽고 초안을 낸다) · Hermes 채팅창 ✅(P4b, `/chat`, `qa/chat.py`, Hermes `/v1/responses`) · 바뀐 TC 에 맞게 스크립트 다시 쓰기 ✅(P4c, `POST /cases/{id}/revise`, 초안 source hermes-revise + diff) · PRD 절에서 수동 작성 TC 제안 ✅(P4d, `POST /catalog/propose-tc`, 초안 kind tc) — 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) |
-| P5 | 토스식 호출 카드 ✅(P5a, Normal 폼 / Swagger 요청 원문 토글, `/explorer` 재구성, op 별 QA 배지, CSS 손질) · 실행 결과 요약(카드·도넛·도메인별 진행 막대) · API 별로 TC·스크립트·최근 호출을 모아 보는 화면 ✅(P5b, `/apis`, `run_steps.op_id`, MCP `qa_api_get`), API 호출 화면 마찰 줄이기 ✅(P5a 에 포함: 최근 값·즐겨찾기·프리필), 버튼 하나로 테스트 데이터 만들기(`/setup`, suite setup), 통과율·flaky 배지 — 설계 [`qa-platform-api.md`](qa-platform-api.md) (토스 QA Platform·Tossion 참고) |
+| P5 | 토스식 호출 카드 ✅(P5a, Normal 폼 / Swagger 요청 원문 토글, `/explorer` 재구성, op 별 QA 배지, CSS 손질) · 실행 결과 요약(카드·도넛·도메인별 진행 막대) · API 별로 TC·스크립트·최근 호출을 모아 보는 화면 ✅(P5b, `/apis`, `run_steps.op_id`, MCP `qa_api_get`), API 호출 화면 마찰 줄이기 ✅(P5a 에 포함: 최근 값·즐겨찾기·프리필), 버튼 하나로 테스트 데이터 만들기 ✅(P5c, `/setup`, suite setup·inputs·outputs, 시드 3개 — 확정 시드는 dev 미확인), 통과율·flaky 배지 — 설계 [`qa-platform-api.md`](qa-platform-api.md) (토스 QA Platform·Tossion 참고) |
 
 P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 

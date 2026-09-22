@@ -9,13 +9,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-SUITES = ("smoke", "sanity", "manual")
+SUITES = ("smoke", "sanity", "manual", "setup")   # setup = 준비 작업(버튼 하나로 테스트 데이터 만들기, docs/qa-platform-api.md §5.4)
+_INPUT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_INPUT_EXPR = re.compile(r"\{\{\s*input\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
 _ID = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
@@ -40,6 +43,8 @@ class Case:
     description: str = ""
     covers: list = field(default_factory=list)       # 케이스가 덮는 TC id (단계 covers 의 합집합 포함)
     reviewed: dict | None = None                     # {at: ISO 날짜, by: 운영자} — 드리프트 배지를 이 시각 이후 변경만 보이게
+    inputs: dict = field(default_factory=dict)       # setup 전용: 화면 입력 {name: {label, default, required}} → {{input.name}}
+    outputs: list = field(default_factory=list)      # setup 전용: 끝나면 화면에 돌려줄 save 변수 이름
     raw: dict = field(default_factory=dict)
     file: str = ""
     hash: str = ""
@@ -115,6 +120,44 @@ def _validate(d: dict, file: str) -> Case:
     if suite in ("smoke", "sanity") and not covers:
         raise CaseError(f"{file}:{cid}: {suite} 케이스는 covers(덮는 TC id)가 하나 이상 필요하다")
     d["covers"] = covers
+    # ---- 준비 작업(setup): inputs · outputs (docs/qa-platform-api.md §5.4). 다른 스위트는 사람 입력 없이 돌아야 하므로 inputs 금지
+    inputs_raw = d.get("inputs") or None       # 빈 맵은 없는 것과 같다 (스냅샷 재검증이 걸리지 않게)
+    if inputs_raw is not None and suite != "setup":
+        raise CaseError(f"{file}:{cid}: inputs 는 suite setup 에서만 쓴다 (다른 스위트는 사람 입력 없이 돌아야 한다)")
+    inputs: dict = {}
+    if inputs_raw is not None:
+        if not isinstance(inputs_raw, dict):
+            raise CaseError(f"{file}:{cid}: inputs 는 이름→{{label, default, required}} 맵")
+        for name, spec in inputs_raw.items():
+            if not isinstance(name, str) or not _INPUT_NAME.match(name):
+                raise CaseError(f"{file}:{cid}: inputs 이름은 영문·숫자·밑줄: {name!r}")
+            if not isinstance(spec, dict):
+                spec = {"default": spec}
+            bad = [k for k in spec if k not in ("label", "default", "required", "hint")]
+            if bad:
+                raise CaseError(f"{file}:{cid}: inputs.{name} 에 모르는 키 {bad} (허용: label, default, required, hint)")
+            inputs[name] = {"label": str(spec.get("label") or name), "default": spec.get("default"), "required": bool(spec.get("required", False)),
+                            "hint": str(spec.get("hint") or "")}
+    used = {m.group(1) for s in steps for m in _INPUT_EXPR.finditer(json.dumps(s, ensure_ascii=False, default=str))}
+    missing = sorted(used - set(inputs))
+    if missing:
+        raise CaseError(f"{file}:{cid}: 단계가 쓰는 {{{{input.*}}}} 가 inputs 에 없다: {missing}")
+    if inputs:
+        d["inputs"] = inputs
+    else:
+        d.pop("inputs", None)
+    outputs_raw = d.get("outputs") or []
+    if not isinstance(outputs_raw, list):
+        raise CaseError(f"{file}:{cid}: outputs 는 save 변수 이름 목록")
+    saved = {k for s in steps for k in (s.get("save") or {})}
+    outputs = [str(x) for x in outputs_raw]
+    unknown = [x for x in outputs if x not in saved]
+    if unknown:
+        raise CaseError(f"{file}:{cid}: outputs 는 어떤 단계의 save 에 있는 변수여야 한다: {unknown}")
+    if outputs:
+        d["outputs"] = outputs
+    else:
+        d.pop("outputs", None)
     reviewed = d.get("reviewed")
     if reviewed is not None:
         if not isinstance(reviewed, dict) or not reviewed.get("at"):
@@ -125,8 +168,61 @@ def _validate(d: dict, file: str) -> Case:
         id=cid, title=title.strip(), suite=suite, steps=steps,
         domains=d["domains"], operations=d["operations"], source=d["source"],
         actor=d.get("actor"), description=str(d.get("description") or ""), covers=covers, reviewed=reviewed,
+        inputs=inputs, outputs=outputs,
         raw=d, file=file, hash=hashlib.sha256(canonical).hexdigest()[:16],
     )
+
+
+def _coerce_input(raw: str, default):
+    """폼은 문자열만 준다 — 기본값의 타입(정수·실수·불린)을 따라 되돌린다. 안 맞으면 문자열 그대로."""
+    if isinstance(default, bool):
+        return raw.strip().lower() in ("true", "1", "yes", "on")
+    if isinstance(default, int):
+        try:
+            return int(raw.strip())
+        except ValueError:
+            return raw
+    if isinstance(default, float):
+        try:
+            return float(raw.strip())
+        except ValueError:
+            return raw
+    return raw
+
+
+def bake_inputs(case: Case, values: dict) -> Case:
+    """준비 작업의 화면 입력을 스크립트에 박아 새 Case 를 만든다 — 실행 기록의 스냅샷에 실제 값이 남는다(docs/qa-platform-api.md §5.4).
+    `{{input.x}}` 가 값 전체면 타입을 지키고, 문자열 일부면 문자열로 끼운다. 다른 치환(`{{roomId}}` 등)은 건드리지 않는다."""
+    if case.suite != "setup":
+        raise CaseError(f"{case.id}: 준비 작업(setup) 스크립트가 아니다")
+    final: dict = {}
+    for name, spec in case.inputs.items():
+        raw = values.get(name)
+        raw = "" if raw is None else str(raw)
+        if raw.strip() == "":
+            if spec["required"] and spec["default"] in (None, ""):
+                raise CaseError(f"{case.id}: 입력 '{spec['label']}' 은 필수다")
+            final[name] = spec["default"] if spec["default"] is not None else ""
+        else:
+            final[name] = _coerce_input(raw, spec["default"])
+
+    def walk(v):
+        if isinstance(v, str):
+            m = _INPUT_EXPR.fullmatch(v.strip())
+            if m:
+                return final[m.group(1)]
+            return _INPUT_EXPR.sub(lambda mm: str(final[mm.group(1)]), v)
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        if isinstance(v, dict):
+            return {k: walk(x) for k, x in v.items()}
+        return v
+
+    raw = json.loads(json.dumps(case.raw, ensure_ascii=False, default=str))
+    raw["steps"] = walk(raw["steps"])
+    raw.pop("inputs", None)
+    raw["input_values"] = final       # 스냅샷에 남기는 입력값 (사람이 실행 기록에서 본다)
+    return _validate(raw, f"setup:{case.id}")
 
 
 def _tc_list(v, where: str) -> list[str]:

@@ -278,3 +278,11 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - **호출 카드 QA 배지** 링크를 `/catalog?op=` 에서 `/apis/{op}` 로 옮겼다(op 필터는 남겨 둔다).
 - **검증**: 테스트 6건 추가(op_id 기록·최근 호출·NULL 폴백·목록 집계·상세 구조·화면·MCP·대화 첨부), 전체 69건. 브라우저: `/apis?domain=room` 목록·필터, `createRoom` 상세(TC 15 층별), `termsList` 상세(부르는 스크립트 1·최근 호출 4건 중 폴백 3건), 콘솔 오류 없음.
 - **남은 것**: 통계(통과율·평균·flaky)는 P5e. 목록의 "마지막 호출" 은 op_id 있는 행 우선, 없으면 폴백 300건 안에서만.
+
+### 11.3 P5c — 준비 작업 (2026-09-22)
+
+- **들어간 것**: 스크립트 형식에 `suite: setup` · `inputs`(이름 → `{label, default, required, hint}`, 스칼라 축약 허용) · `outputs`(어떤 단계의 `save` 변수여야 함) · `{{input.x}}` 치환. 로더가 검증: inputs 는 setup 에서만, 단계가 쓰는 `{{input.*}}` 는 전부 선언돼야 하고, outputs 는 save 에 있어야 한다. setup 은 covers 가 없어도 된다. nav "준비 작업" → `/setup`: 스크립트마다 카드(제목·설명·Normal 입력 폼 | Swagger 단계별 요청 원문 읽기 전용·담당자·꽉 찬 [실행]). `POST /setup/run` → `cases.bake_inputs` 가 입력을 스크립트에 박아(값 전체면 기본값의 타입을 지키고, 문자열 일부면 끼움) `create_run(trigger="setup", cases_override, notify=False)` + `execute_now`. 스냅샷 `input_values` 에 입력값이 남고 감사 로그 `setup.run`. 끝나면 `/setup?run=` 결과 카드: 판정 · 돌려준 값 표(복사 버튼) · 단계별 판정·오류 · [API 호출 카드로]. `App.setup_outputs` 가 스냅샷의 save 경로를 단계 응답에서 다시 읽는다(러너 변수는 저장하지 않으므로). 결과값은 JS 가 localStorage `qa_recent.<name>` 에 넣어 API 호출 카드의 최근 값으로 뜬다.
+- **시드 `cases/setup.yaml` 3개**: `setup.room-open`(룸 생성, 입력: 제목·최소/최대 인원·며칠 뒤) · `setup.room-with-application`(생성 + qa-guest 신청, 출력 roomId·applicationId) · `setup.room-confirmed`(생성 → 신청 → 방장 수락 → 진행 확정). 요청 본문은 dev 에서 통과한 `room.yaml` sanity 와 같다. **셋째는 dev 에서 아직 안 돌렸다** — 최소 인원 2 를 방장 포함으로 세는지에 따라 확정이 E1421 로 막힐 수 있고, 그러면 SSOT 의 인원 계산을 확인한다(카드 설명에 적어 두었다).
+- **로컬에서 못 본 것**: 테스트 계정(SSM `qa-actors`)이 로컬에 없어 실행은 `skipped` 로 끝난다. 결과 카드·값 표·복사·최근 값 기억은 가짜 dev 로 테스트했고, 실제 dev 는 배포된 플랫폼에서 버튼을 눌러 본다.
+- **설계에서 달라진 것**: `/runs/new` 의 스위트 묶음(sanity·smoke·manual)에 setup 은 안 뜬다(설계대로). 실행 기록 목록에는 보인다(explorer 처럼 숨기지 않음). 대시보드 카운트는 setup 을 포함한다.
+- **검증**: 테스트 6건 추가(로더 3·박기·실행·화면), 전체 75건. 브라우저: 카드 3장(단순한 것부터), Normal/Swagger 토글, 실행 → 결과 카드(로컬은 skipped), 콘솔 오류 없음.

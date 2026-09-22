@@ -23,7 +23,7 @@ tr:last-child td{border-bottom:0}.mut{color:var(--mut)}.small{font-size:12px}.mo
 .b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:18px}
 .b.pass,.b.finished-pass{color:var(--ok);background:var(--okbg)}.b.fail,.b.error,.b.finished-fail,.b.finished-error{color:var(--bad);background:var(--badbg)}
 .b.skipped,.b.canceled,.b.queued,.b.finished-skipped,.b.finished-canceled{color:var(--gray);background:var(--graybg)}.b.running{color:var(--warn);background:var(--warnbg)}
-.b.smoke{color:var(--info);background:var(--infobg)}.b.sanity{color:#6d28d9;background:#ede9fe}.b.manual{color:var(--gray);background:var(--graybg)}
+.b.smoke{color:var(--info);background:var(--infobg)}.b.sanity{color:#6d28d9;background:#ede9fe}.b.manual{color:var(--gray);background:var(--graybg)}.b.setup{color:#0f766e;background:#ccfbf1}
 .b.warn{color:var(--warn);background:var(--warnbg)}.b.ok{color:var(--ok);background:var(--okbg)}
 button,.btn{display:inline-block;border:1px solid #d1d5db;background:#fff;color:var(--ink);border-radius:7px;padding:6px 12px;font:inherit;cursor:pointer}
 button.primary,.btn.primary{background:var(--info);color:#fff;border-color:var(--info)}button.primary:hover{background:#1e40af}button.wide{display:block;width:100%;padding:11px 14px;font-weight:600;font-size:15px;border-radius:9px;margin-top:6px}button.danger{color:var(--bad);border-color:#fca5a5}
@@ -46,7 +46,7 @@ a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-
 .m{display:inline-block;min-width:52px;text-align:center;padding:2px 8px;border-radius:6px;font:700 11px/16px ui-monospace,Menlo,monospace;color:#fff;background:var(--gray);vertical-align:middle}
 .m.get{background:#2563eb}.m.post{background:#16a34a}.m.put,.m.patch{background:#d97706}.m.delete{background:#dc2626}
 /* API 호출: 왼쪽 목록 + 오른쪽 호출 카드 (Normal | Swagger). 좁으면 1열 */
-.xgrid{display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start}@media(max-width:860px){.xgrid{grid-template-columns:1fr}}
+.xgrid{display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start}.setup-grid{grid-template-columns:repeat(auto-fit,minmax(480px,1fr));align-items:start}@media(max-width:560px){.setup-grid{grid-template-columns:1fr}}@media(max-width:860px){.xgrid{grid-template-columns:1fr}}
 .opl .oplist{max-height:70vh;overflow:auto;margin-top:8px}.opl details{margin:2px 0}.opl summary{font-weight:600;padding:4px 0}
 .opi{display:flex;align-items:center;gap:6px;padding:3px 0 3px 4px;border-radius:6px}.opi.on{background:#eef2ff}.opi a{white-space:nowrap}.opi .small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .star{border:0;background:transparent;color:#cbd5e1;padding:0 2px;cursor:pointer;font-size:14px}.star.on{color:#f59e0b}
@@ -97,12 +97,12 @@ def run_badge(r: dict) -> str:
 
 
 TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "수동 실행",
-              "draft-check": "초안 시험 실행", "explorer": "API 호출"}
+              "draft-check": "초안 시험 실행", "explorer": "API 호출", "setup": "준비 작업"}
 ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 실행 취소", "run.triage": "Hermes 실패 분석", "release.decide": "릴리스 판단",
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "setup.run": "준비 작업 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -113,7 +113,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "스크립트 초안"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "준비 작업"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -923,6 +923,80 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
     return head + spec + tcs + scripts + recent
 
 
+# ---- 준비 작업 — 버튼 하나로 테스트 데이터 만들기 (docs/qa-platform-api.md §5.4) -----------------------------
+SETUP_JS = r"""
+(function(){
+  function ls(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
+  function lsset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+  document.querySelectorAll('.call').forEach(function(F){
+    var nv=F.querySelector('.view.nv'), sv=F.querySelector('.view.sv'), seg=F.querySelector('.seg');
+    function setView(v){ nv.hidden=(v!=='normal'); sv.hidden=(v!=='swagger'); seg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.v===v)}); lsset('qa_view',v); }
+    seg.addEventListener('click',function(ev){var b=ev.target.closest('button[data-v]'); if(b) setView(b.dataset.v)});
+    setView(ls('qa_view','normal'));
+    F.addEventListener('submit',function(){ var b=F.querySelector('button.primary'); if(b){b.disabled=true;b.textContent='실행 중…'} });
+  });
+  // 결과값을 API 호출 카드의 최근 값으로 기억 (브라우저에만)
+  var R=window.SETUP_OUT||{}; var saved=[];
+  Object.keys(R).forEach(function(k){ var v=R[k]; if(v==null||v==='') return; var key='qa_recent.'+k; var vals=ls(key,[]).filter(function(x){return x!==String(v)}); vals.unshift(String(v)); lsset(key,vals.slice(0,5)); saved.push(k); });
+  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='API 호출 카드에 최근 값으로 뜬다 (이 브라우저에만): '+saved.join(', ');
+  document.querySelectorAll('button[data-copy]').forEach(function(b){ b.addEventListener('click',function(){ navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy); b.textContent='복사됨'; setTimeout(function(){b.textContent='복사'},1200); }); });
+})();
+"""
+
+
+def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str]) -> str:
+    head = ('<h1>준비 작업 <span class="small mut">버튼 하나로 dev 에 테스트 데이터를 만든다 — "어떤 API 를 어떤 값으로 어떤 순서로" 를 카드가 대신 안다. '
+            '만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
+    res = ""
+    if result:
+        run, rc, steps, outs = result["run"], result["case"], result["steps"], result["outputs"]
+        v = run.get("verdict") or run["status"]
+        orows = "".join(f'<tr><td class="mono">{e(k)}</td><td class="mono">{e(val) if val not in (None, "") else "<span class=\"mut\">(없음)</span>"}</td>'
+                        f'<td>{("<button type=\"button\" data-copy=\"" + e(val) + "\">복사</button>") if val not in (None, "") else ""}</td></tr>' for k, val in outs.items())
+        bad = [s for s in steps if s["verdict"] not in ("pass",)]
+        srows = "".join(f'<tr><td>{e(s["name"])}</td><td>{badge(s["verdict"])} <span class="mono small">{e((s.get("response") or {}).get("status") or "")}</span></td>'
+                        f'<td class="small" style="color:var(--bad)">{e(s.get("error") or "")}</td></tr>' for s in steps)
+        res = (f'<div class="card"><h3 style="margin-top:0">결과 {badge(v)} <span class="small mut">{e(rc["case_title"] if rc else "")} · 실행 기록 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> · {kst(run["created_at"])}</span></h3>'
+               + (f'<table><tr><th>값</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">돌려줄 값이 없다</p>')
+               + (f'<details {"open" if bad else ""}><summary class="small mut">단계 {len(steps)}개</summary><table><tr><th>단계</th><th>판정</th><th>오류</th></tr>{srows}</table></details>')
+               + f'<div class="actions"><a class="btn primary" href="/explorer">API 호출 카드로</a> <a class="btn" href="/runs/{e(run["id"])}">실행 상세</a></div></div>'
+               + f'<script>window.SETUP_OUT={json.dumps({k: v for k, v in outs.items() if v not in (None, "")}, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>')
+    errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    cards = ""
+    for c in cases:
+        fields = ""
+        for name, spec in c.inputs.items():
+            d = spec.get("default")
+            fields += (f'<div class="field"><label>{e(spec["label"])}{"<i class=\"req\"></i>" if spec["required"] else ""}'
+                       f'{(" <span class=\"hint\">" + e(spec["hint"]) + "</span>") if spec.get("hint") else ""}</label>'
+                       f'<input name="input.{e(name)}" value="{e("" if d is None else d)}" {"required" if spec["required"] and d in (None, "") else ""} autocomplete="off"></div>')
+        if not fields:
+            fields = '<p class="hint">넣을 값이 없다 — 그대로 실행하면 된다</p>'
+        outs = ", ".join(c.outputs) or "없음"
+        sw = ""
+        for i, st in enumerate(c.steps, 1):
+            req = st["request"]
+            body = f'<pre style="margin:4px 0 0">{e(_fmt_json(req["body"]))}</pre>' if req.get("body") is not None else ""
+            who = st.get("actor", c.actor)
+            sw += (f'<div class="sline"><span class="mut small">{i}.</span> {method_badge(req["method"])} <span class="mono">{e(req["path"])}</span> '
+                   f'<span class="small mut">{e(st["name"])}{(" · " + e(who)) if who else " · 비로그인"}</span>'
+                   f'{(" <span class=\"small mut\">→ " + e(", ".join(st["save"].keys())) + "</span>") if st.get("save") else ""}{body}</div>')
+        actor_ok = (not c.needs_actor()) or all((a in actors) for a in {c.actor, *[s.get("actor") for s in c.steps]} if a)
+        cards += (f'<form method="post" action="/setup/run" class="card call"><input type="hidden" name="case_id" value="{e(c.id)}">'
+                  f'<div class="callhead"><div><b>{e(c.title)}</b> <span class="mono mut small">{e(c.id)}</span><br><span class="small mut">{e(c.description)}</span></div>'
+                  f'<div class="seg"><button type="button" data-v="normal">Normal</button><button type="button" data-v="swagger">Swagger</button></div></div>'
+                  f'<div class="view nv">{fields}<p class="hint">돌려주는 값: <span class="mono">{e(outs)}</span> · 단계 {len(c.steps)}개'
+                  f'{(" · 테스트 계정 " + e(", ".join(sorted({a for a in [c.actor, *[s.get("actor") for s in c.steps]] if a})))) if c.needs_actor() else ""}</p></div>'
+                  f'<div class="view sv" hidden>{sw}<p class="hint">💡 실제로 나가는 요청을 순서대로 보여 준다. <span class="mono">{{{{input.x}}}}</span> 는 Normal 의 입력값으로, 나머지 치환은 실행 때 채워진다. 여기서는 고칠 수 없다 — 스크립트 파일(<span class="mono">cases/setup.yaml</span>)이 원본</p></div>'
+                  f'<div class="callfoot"><div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
+                  f'{"" if actor_ok else "<p class=\"hint bad\">테스트 계정이 설정돼 있지 않다 (QA_ACTORS) — 실행하면 skipped 로 남는다</p>"}'
+                  f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>실행 — dev 에 실제로 만든다</button></div></form>')
+    if not cards:
+        cards = '<div class="card"><p class="mut" style="margin:0">준비 작업 스크립트가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
+    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div><script>{SETUP_JS}</script>'
+
+
 # ---- 가이드 --------------------------------------------------------------------------------------
 def _sec(title: str, body: str) -> str:
     return f'<h2>{title}</h2><div class="card">{body}</div>'
@@ -963,6 +1037,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/drafts">스크립트 초안</a></td><td>스크립트 늘릴 때</td><td>Hermes·API 호출가 만든 스크립트 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
 <tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 걸린 TC(층별, 자동화 여부), 부르는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "부르는 스크립트 없음" 필터가 커버리지 공백</td></tr>
+<tr><td><a href="/setup">준비 작업</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 카드의 최근 값으로 기억된다. 만든 데이터는 지우지 않는다(제목 [QA]). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
 <tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 카드에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 폼, <b>Swagger</b> 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 카드 머리의 QA 배지가 그 API 의 TC·자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 

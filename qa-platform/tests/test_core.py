@@ -294,7 +294,7 @@ class CatalogTest(unittest.TestCase):
         audit(cases, cat)
         bad = {cid: c.audit for cid, c in cases.items() if c.audit["status"] != "ok"}
         self.assertEqual(bad, {})
-        self.assertTrue(all(c.covers for c in cases.values()))
+        self.assertTrue(all(c.covers for c in cases.values() if c.suite != "setup"))   # 준비 작업(setup)은 covers 가 없다
         # 캐시가 남고 같은 입력이면 재계산하지 않는다
         self.assertTrue((Path(self.tmp.name) / "catalog" / "latest.json").is_file())
         self.assertIs(self.svc.get(force=False), cat)

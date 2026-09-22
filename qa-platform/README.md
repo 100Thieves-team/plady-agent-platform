@@ -44,3 +44,4 @@ steps:
 - 치환은 `{{var}}`(save) · `{{actor.X.memberId}}` · `{{fixture.key}}` · `{{date:+N}}` · `{{uuid}}` · `{{rand}}`.
 - 쓰기 케이스는 자기가 만든 데이터를 자기가 닫는다. 제목 접두 `[QA]`.
 - 파일을 고친 뒤 UI 의 케이스 화면에서 [파일에서 다시 읽기].
+- **준비 작업**(`suite: setup`, [`cases/setup.yaml`](cases/setup.yaml)): 버튼 하나로 dev 에 테스트 데이터를 만드는 스크립트. `inputs:`(화면 입력칸, `{{input.x}}` 로 치환) · `outputs:`(끝나고 돌려줄 `save` 변수)이 더 있고 `covers` 는 없다. 만든 데이터는 지우지 않는다 — 제목 `[QA]`. 화면은 `/setup`.
