@@ -141,6 +141,7 @@ class App:
         scripts = self.scripts_by_op()
         last = self.store.last_call_by_op()
         old = self._resolve_unresolved_calls()
+        recent = self.store.recent_op_results(20)
         rows = []
         for op in sorted(spec.ops.values(), key=lambda o: (o.path, o.method)):
             if not (op.path.startswith("/v1/") or op.path.startswith("/actuator")):
@@ -161,7 +162,8 @@ class App:
                 lc = old[op.id][0]
             rows.append({"id": op.id, "method": op.method, "path": op.path, "summary": op.summary, "domain": domain_of_path(op.path),
                          "tc": len(ids), "layers": layers, "covered": covered, "excluded": excluded, "uncovered": len(ids) - covered - excluded,
-                         "scripts": len(sc["calls"]), "errors": len(op.errors), "last": lc})
+                         "scripts": len(sc["calls"]), "errors": len(op.errors), "last": lc,
+                         "stats": ui.stats_of(recent.get(op.id) or [], same_hash=False)})
         return rows, cat
 
     def api_detail(self, op_id: str) -> dict | None:
@@ -200,6 +202,7 @@ class App:
                        "request_example": op.request_example, "success": op.success,
                        "errors": {code: {"status": i.get("status"), "message": i.get("message")} for code, i in op.errors.items()}},
                 "qa": qa, "tcs": tcs, "scripts": scripts, "recent_calls": recent,
+                "stats": ui.stats_of(self.store.recent_op_results(20).get(op.id) or [], same_hash=False),
                 "docs_url": (self.cfg.spec_docs_url + "#" + ui.restdocs_anchor(op.summary)) if (self.cfg.spec_docs_url and op.summary) else None,
                 "spec_hash": spec.hash}
 
@@ -1114,7 +1117,9 @@ class Handler(BaseHTTPRequestHandler):
             app.current_catalog()
             cs = sorted(app.cases.values(), key=lambda c: c.id)
             drift = {c.id: app.drift_of(c) for c in cs}
-            return self._page("스크립트", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift), "cases")
+            recent = app.store.recent_case_results(20)
+            stats = {cid: ui.stats_of(rows) for cid, rows in recent.items()}
+            return self._page("스크립트", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift, stats=stats), "cases")
         if path == "/cases/reload" and method == "POST":
             n, errs = app.reload_cases()
             app.store.add_event(operator=self._operator() or "(미선택)", action="cases.reload", target=None, detail={"cases": n, "errors": len(errs)})
@@ -1127,7 +1132,8 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
             return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c),
-                                                 revise={"operator": self._operator(), "operators": app.cfg.operators, "hermes": bool(app.cfg.hermes_key)}), "cases", context={"case": c.id})
+                                                 revise={"operator": self._operator(), "operators": app.cfg.operators, "hermes": bool(app.cfg.hermes_key)},
+                                                 stats=ui.stats_of(app.store.recent_case_results(20).get(c.id) or [])), "cases", context={"case": c.id})
         m = re.match(r"^/cases/([a-z0-9][a-z0-9.\-]*)/revise$", path)
         if m and method == "POST":
             f = self._form()

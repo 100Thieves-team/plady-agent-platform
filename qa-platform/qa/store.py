@@ -229,6 +229,28 @@ class Store:
             (case_id, limit),
         )
 
+    def recent_case_results(self, limit: int = 20) -> dict[str, list[dict]]:
+        """스크립트별 최근 N회 결과(최신순): verdict · duration_ms · case_hash. 통계 배지(docs/qa-platform-api.md §5.5) 재료. 대기·진행 중은 뺀다."""
+        rows = self._q(
+            "SELECT case_id, verdict, duration_ms, case_hash FROM ("
+            " SELECT case_id, verdict, duration_ms, case_hash, ROW_NUMBER() OVER (PARTITION BY case_id ORDER BY id DESC) AS rn"
+            " FROM run_cases WHERE verdict NOT IN ('queued','running')) WHERE rn<=? ORDER BY case_id, rn", (limit,))
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            out.setdefault(r["case_id"], []).append(r)
+        return out
+
+    def recent_op_results(self, limit: int = 20) -> dict[str, list[dict]]:
+        """API(op_id)별 최근 N회 단계 결과(최신순). op_id 가 박힌 단계만(옛 NULL 행은 제외)."""
+        rows = self._q(
+            "SELECT op_id, verdict, duration_ms FROM ("
+            " SELECT op_id, verdict, duration_ms, ROW_NUMBER() OVER (PARTITION BY op_id ORDER BY id DESC) AS rn"
+            " FROM run_steps WHERE op_id IS NOT NULL) WHERE rn<=? ORDER BY op_id, rn", (limit,))
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            out.setdefault(r["op_id"], []).append(r)
+        return out
+
     def last_verdicts(self) -> dict[str, dict]:
         """케이스별 마지막 판정 (목록 화면용)."""
         rows = self._q(

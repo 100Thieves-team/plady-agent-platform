@@ -389,6 +389,46 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
             f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{body_cases}')
 
 
+# ---- 통계 배지 (docs/qa-platform-api.md §5.5): 최근 N회 통과율 · 평균 소요 · 불안정(flaky) --------------------
+FLAKY_WINDOW = 10      # 최근 몇 회 안에서
+FLAKY_FLIPS = 2        # 통과↔실패가 몇 번 뒤집히면 불안정으로 보나
+
+
+def stats_of(rows: list[dict], *, same_hash: bool = True) -> dict | None:
+    """최신순 결과 목록 → {n, passed, failed, skipped, pass_rate(%|None), avg_ms|None, flaky(bool), flips}.
+    통과율·평균은 pass·fail·error 만(skip 은 뺀다). 불안정은 최근 FLAKY_WINDOW 회 안에서 통과↔실패·오류가 FLAKY_FLIPS 번 이상 뒤집힐 때 —
+    same_hash 면 가장 최근 것과 스크립트 해시가 같은 회차만 본다(스크립트를 고친 뒤 결과가 달라진 것은 불안정이 아니다)."""
+    if not rows:
+        return None
+    judged = [r for r in rows if r["verdict"] in ("pass", "fail", "error")]
+    passed = sum(1 for r in judged if r["verdict"] == "pass")
+    durs = [r["duration_ms"] for r in judged if r.get("duration_ms") is not None]
+    window = rows[:FLAKY_WINDOW]
+    if same_hash and rows and rows[0].get("case_hash"):
+        window = [r for r in window if r.get("case_hash") == rows[0]["case_hash"]]
+    seq = ["p" if r["verdict"] == "pass" else "f" for r in window if r["verdict"] in ("pass", "fail", "error")]
+    flips = sum(1 for a, b in zip(seq, seq[1:]) if a != b)
+    return {"n": len(rows), "passed": passed, "failed": len(judged) - passed, "skipped": len(rows) - len(judged),
+            "pass_rate": (round(passed * 100 / len(judged)) if judged else None),
+            "avg_ms": (round(sum(durs) / len(durs)) if durs else None), "flaky": flips >= FLAKY_FLIPS, "flips": flips}
+
+
+def stats_badge(st: dict | None, *, what: str = "실행") -> str:
+    """한 줄 배지. 예: "최근 5회 통과율 80% · 평균 312 ms · 불안정"."""
+    if not st:
+        return '<span class="small mut">기록 없음</span>'
+    rate = f'{st["pass_rate"]}%' if st["pass_rate"] is not None else "–"
+    cls = "ok" if (st["pass_rate"] or 0) >= 80 else ("warn" if (st["pass_rate"] or 0) >= 50 else "none")
+    out = (f'<span class="qab {cls}" title="최근 {st["n"]}회 중 통과 {st["passed"]} · 실패·오류 {st["failed"]} · skip {st["skipped"]} (skip 은 통과율에서 뺀다)">'
+           f'최근 {st["n"]}회 통과율 {rate}</span>')
+    if st["avg_ms"] is not None:
+        out += f' <span class="small mut">평균 {st["avg_ms"]} ms</span>'
+    if st["flaky"]:
+        out += (f' <span class="b warn" title="결과가 오락가락한다: 스크립트를 안 고쳤는데 최근 {FLAKY_WINDOW}회 안에서 통과↔실패가 {st["flips"]}번 뒤집혔다. '
+                f'dev 데이터·타이밍 문제일 수 있다">불안정 (flaky)</span>')
+    return out
+
+
 # ---- 케이스 --------------------------------------------------------------------------------------
 def audit_badge(c, drift: list | None = None) -> str:
     st = c.audit.get("status", "unchecked")
@@ -400,25 +440,28 @@ def audit_badge(c, drift: list | None = None) -> str:
     return out
 
 
-def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None) -> str:
+def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None, stats: dict | None = None) -> str:
     drift = drift or {}
+    stats = stats or {}
     rows = "".join(
         f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a></td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
         f'<td class="small">{e(", ".join(c.domains))}</td><td class="small">{e(c.actor or "–")}</td>'
         f'<td class="small">{len(c.covers)} {audit_badge(c, drift.get(c.id))}</td>'
-        f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut small\">–</span>")}</td></tr>'
+        f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut small\">–</span>")}'
+        f'<br>{stats_badge(stats.get(c.id)) if c.id in stats else ""}</td></tr>'
         for c in cases)
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
     blocked = [c.id for c in cases if c.blocked]
     return (f'<h1>테스트 스크립트 <span class="small mut">{len(cases)}개 · 원본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
             f'{("<div class=\"flash err\"><b>로드 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
             f'{("<div class=\"flash err\"><b>TC 정합성 불일치</b> — covers 선언이 TC 목록와 맞지 않아 스위트에서 빠진 스크립트: " + e(", ".join(blocked)) + "</div>") if blocked else ""}'
-            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>검증하는 TC · 정합성</th><th>마지막 결과</th></tr>{rows}</table>'
-            f'<p class="small mut">정합성 = covers 의 TC 가 TC 목록에 있고 단계의 method·path·기대 코드가 계약과 맞는지. TC 변경 = 검증하는 TC 가 마지막 검토(reviewed) 이후 바뀜.</p>'
+            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>검증하는 TC · 정합성</th><th>마지막 결과 · 최근 통계</th></tr>{rows}</table>'
+            f'<p class="small mut">정합성 = covers 의 TC 가 TC 목록에 있고 단계의 method·path·기대 코드가 계약과 맞는지. TC 변경 = 검증하는 TC 가 마지막 검토(reviewed) 이후 바뀜. '
+            f'최근 통계 = 최근 20회 통과율(skip 제외)·평균 소요. 불안정(flaky) = 스크립트를 안 고쳤는데 최근 {FLAKY_WINDOW}회 안에서 통과↔실패가 {FLAKY_FLIPS}번 이상 뒤집힘.</p>'
             f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button></form></div>')
 
 
-def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None, revise: dict | None = None) -> str:
+def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None, revise: dict | None = None, stats: dict | None = None) -> str:
     tc_records = tc_records or {}
     revise_html = ""
     if drift and revise is not None:
@@ -449,7 +492,8 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
             f'<h2>검증하는 TC (covers)</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
             f'<h2>정의</h2><pre>{e(c.to_yaml())}</pre>'
-            f'<h2>실행 이력</h2><div class="card"><table><tr><th>실행</th><th>결과</th><th>실행 종류</th><th>담당자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
+            f'<h2>실행 이력 <span class="small mut">최근 통계: {stats_badge(stats) if stats else "기록 없음"}</span></h2>'
+            f'<div class="card"><table><tr><th>실행</th><th>결과</th><th>실행 종류</th><th>담당자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
 
 
 # ---- 활동(감사 로그) ----------------------------------------------------------------------------
@@ -894,6 +938,8 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
                 + (f' <span class="small mut">(제외 {r["excluded"]})</span>' if r["excluded"] else "")) if r["tc"] else '<span class="mut">–</span>'
         lc = r.get("last")
         last = (f'<a href="/runs/{e(lc["run_id"])}">{_call_verdict(lc)}</a> <span class="small mut">{kst(lc["created_at"])}</span>') if lc else '<span class="mut">–</span>'
+        if r.get("stats"):
+            last += f'<br>{stats_badge(r["stats"], what="호출")}'
         ly = r["layers"]
         tc = (f'{r["tc"]} <span class="small mut">API 계약 {ly.get("contract", 0)} · 비즈니스 규칙 {ly.get("policy", 0)} · 수동 작성 {ly.get("manual", 0)}</span>') if r["tc"] else '<span class="mut">0</span>'
         trs += (f'<tr><td><a href="/apis/{e(r["id"])}">{method_badge(r["method"])} <span class="mono">{e(r["path"])}</span></a><br><span class="small mut">{e(r["summary"])} · <span class="mono">{e(r["id"])}</span></span></td>'
@@ -907,14 +953,15 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
             f'<div class="tabs">{tabs}</div><div class="tabs">{otabs}</div></div>'
             f'<div class="card"><table><tr><th>API ({n})</th><th>TC</th><th>자동화됨</th><th>호출하는 스크립트</th><th>마지막 호출</th><th>에러 코드</th></tr>{trs}</table>'
             f'<p class="hint">TC = 그 API 에 해당하는 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화됨 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
-            f'호출하는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 호출한 가장 최근 단계(API 호출 화면 전송 포함).</p></div>')
+            f'호출하는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 호출한 가장 최근 단계(API 호출 화면 전송 포함). '
+            f'그 아래 통계 = 이 API 를 호출한 최근 20회 단계의 통과율(skip 제외)·평균 소요 — 이 배포 이후 기록만.</p></div>')
 
 
 def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) -> str:
     o, qa = d["op"], d["qa"]
     denom = qa["tc"] - qa["excluded"]
     head = (f'<h1>{method_badge(o["method"])} <span class="mono">{e(o["path"])}</span> <span class="small mut">{e(o["id"])} · {e(o["domain"])}</span></h1>'
-            f'<div class="card"><div class="callhead"><div><b>{e(o["summary"] or o["id"])}</b><div class="qaline" style="margin:8px 0 0">{qa_badge(qa, o["id"])}</div></div>'
+            f'<div class="card"><div class="callhead"><div><b>{e(o["summary"] or o["id"])}</b><div class="qaline" style="margin:8px 0 0">{qa_badge(qa, o["id"])} {stats_badge(d.get("stats"), what="호출") if d.get("stats") else ""}</div></div>'
             f'<div class="actions" style="margin:0"><a class="btn primary" href="/explorer?op={e(o["id"])}">호출해 보기</a> <a class="btn" href="/chat/new?op={e(o["id"])}">Hermes 와 이야기</a>'
             f'{(" <a class=\"btn\" href=\"" + e(d["docs_url"]) + "\">REST Docs</a>") if d.get("docs_url") else ""}</div></div></div>')
     # 스펙
@@ -1149,6 +1196,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><b>스크립트 초안</b></td><td>아직 스크립트가 아닌 YAML. Hermes 나 API 호출 화면이 만들고, 사람이 검토·승인해 PR 로 올려야 스크립트가 된다</td><td>draft</td></tr>
 <tr><td><b>Normal · Swagger 보기</b></td><td>같은 요청을 두 모양으로 본다. Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON 본문, 편집 가능). 토스 QA 플랫폼의 용례를 따랐다</td><td>view</td></tr>
 <tr><td><b>테스트 데이터 만들기</b></td><td>여러 API 를 순서대로 호출해 dev 에 데이터(룸 등)를 만드는 스크립트를 버튼 하나로 돌리는 것. 입력칸(<span class="mono">inputs</span>)과 결과값(<span class="mono">outputs</span>)이 있고 만든 데이터는 지우지 않는다</td><td>suite <span class="mono">setup</span></td></tr>
+<tr><td><b>최근 통계 · 불안정 (flaky)</b></td><td>스크립트나 API 의 최근 20회 통과율(skip 은 뺀다)과 평균 소요. 불안정 = 스크립트를 안 고쳤는데 최근 10회 안에서 통과↔실패가 2번 이상 뒤집힘 — dev 데이터·타이밍 문제를 의심한다</td><td>pass rate · flaky</td></tr>
 <tr><td><b>최근 호출</b></td><td>어떤 API 를 호출한 단계들을 최신순으로 모은 것 — 스크립트 실행과 API 호출 화면 전송 모두. "이 API 지난번에 어땠나" 의 답</td><td><span class="mono">run_steps.op_id</span></td></tr>
 <tr><td><b>담당자</b></td><td>버튼을 누른 사람. 팀 세션은 공용이라 본인이 고른다(자기 신고)</td><td><span class="mono">operator</span></td></tr>
 <tr><td><b>감사 로그</b></td><td>누가 언제 무엇을 했는지 전부. Hermes 가 부른 도구도 <span class="mono">hermes</span> 이름으로 남는다</td><td>audit log · <span class="mono">events</span></td></tr></table>"""
