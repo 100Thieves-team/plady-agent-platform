@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from qa import help as helpmod  # noqa: E402
 from qa import ui  # noqa: E402
 from qa.cases import CaseError, bake_inputs, audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import domain_of_path, CatalogService  # noqa: E402
@@ -626,7 +627,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _operator(self) -> str:
         c = self._cookies()
-        return c["qa_operator"].value if "qa_operator" in c else ""
+        op = c["qa_operator"].value if "qa_operator" in c else ""
+        return op if op in self.app.cfg.operators else ""     # 목록에서 빠진 이름은 없는 것으로 — 다시 고르게 한다
 
     def _session_hash(self) -> str | None:
         c = self._cookies()
@@ -752,6 +754,26 @@ class Handler(BaseHTTPRequestHandler):
             if resp is None:
                 return self._send(HTTPStatus.ACCEPTED, "")
             return self._json(status, resp)
+
+        # ---------- 담당자 고르기 (처음 들어올 때, 사용자 요청 2026-09-22) ----------
+        if path == "/static/help.js" and method == "GET":
+            return self._send(200, helpmod.js(), "application/javascript; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
+        if path == "/whoami":
+            if method == "POST":
+                f = self._form()
+                op = str((f.get("operator") or [""])[0]).strip()
+                nxt = str((f.get("next") or ["/"])[0]) or "/"
+                if op not in app.cfg.operators:
+                    raise BadRequest("담당자를 목록에서 골라야 한다")
+                if not nxt.startswith("/") or nxt.startswith("//"):
+                    nxt = "/"
+                app.store.add_event(operator=op, action="operator.pick", target=None, session_hash=self._session_hash(), ip=self._ip(), detail={})
+                return self._redirect(nxt, set_operator=op)
+            return self._page("누구세요?", ui.whoami_page(app.cfg.operators, current=self._operator(), next_url=g("next") or "/"), "")
+        # HTML 화면인데 담당자 쿠키가 없으면 먼저 고르게 한다 (API·정적 파일·MCP 는 제외)
+        if method == "GET" and not self._operator() and not path.startswith(("/api/", "/static/")) and "application/json" not in self.headers.get("Accept", ""):
+            from urllib.parse import quote
+            return self._redirect(f"/whoami?next={quote(self.path, safe='')}")
 
         # ---------- 대시보드 ----------
         if path == "/" and method == "GET":

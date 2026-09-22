@@ -38,6 +38,14 @@ details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-colum
 .b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
 tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
 a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;font-weight:500;text-decoration:none;vertical-align:middle}
+/* 도움말 '?' 와 모달 (qa/help.py) */
+.help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;margin:0 0 0 4px;border:1px solid #b6c2d0;border-radius:50%;background:#fff;color:#5b6b7c;font:600 11px/1 ui-monospace,Menlo,monospace;cursor:pointer;vertical-align:middle}
+.help:hover{background:var(--infobg);color:var(--info);border-color:var(--info)}th .help,h1 .help,h2 .help,h3 .help{font-weight:600}
+#help-modal{position:fixed;inset:0;z-index:60;background:rgba(17,24,39,.45);display:none;align-items:center;justify-content:center;padding:16px}#help-modal.open{display:flex}
+.hm-box{background:var(--card);color:var(--ink);border-radius:14px;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.hm-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}.hm-head b{flex:1;font-size:15px}.hm-x{border:0;background:transparent;font-size:16px;cursor:pointer;color:var(--mut)}
+.hm-body{padding:14px 18px;font-size:14px;line-height:1.6}.hm-body p{margin:0 0 10px}.hm-body p:last-child{margin:0}.hm-foot{padding:10px 18px;border-top:1px solid var(--line);font-size:12px}
+nav .op a{color:#9ca3af;margin-left:6px}nav .op .help{border-color:#4b5563;background:transparent;color:#9ca3af}
 /* 폼 부품 (토스 카드식): 라벨 위 · 칸은 가로로 꽉 · 필수는 빨간 점 · 칸 아래 회색 힌트 */
 .field{margin:0 0 12px}.field>label{display:block;font-weight:500;margin-bottom:4px}.field>input,.field>select,.field>textarea{width:100%}.field textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .req::after{content:'•';color:var(--bad);margin-left:3px;font-weight:700}.hint{color:var(--mut);font-size:12px;margin:4px 0 0}.hint.bad{color:var(--bad)}.field>label .hint{display:inline;margin-left:6px;font-weight:400}
@@ -92,6 +100,11 @@ def kst(iso: str | None) -> str:
         return iso
 
 
+def h(key: str) -> str:
+    """기능 옆 '?' 도움말 버튼 — 내용은 qa/help.py 의 HELP[key], 모달은 /static/help.js."""
+    return f'<button type="button" class="help" data-help="{e(key)}" aria-label="도움말" title="이게 뭐지? 어떻게 쓰지?">?</button>'
+
+
 def badge(v: str | None, extra: str = "") -> str:
     v = v or "–"
     return f'<span class="b {e(v)} {extra}">{e(v)}</span>'
@@ -109,7 +122,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "setup.run": "테스트 데이터 만들기 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -128,9 +141,10 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     inline = f'<div id="hx-inline"></div>' if inline_chat else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{e(title)} · QA</title><style>{CSS}</style></head><body>'
-            f'<nav><span class="brand">Plady QA</span>{nav}<span class="op">{("담당자: " + e(operator)) if operator else "담당자 미선택"}</span></nav>'
+            f'<nav><span class="brand">Plady QA</span>{nav}<span class="op">{("담당자: <b style=\"color:#fff\">" + e(operator) + "</b>") if operator else "담당자 미선택"}'
+            f'<a href="/whoami" onclick="this.href=\'/whoami?next=\'+encodeURIComponent(location.pathname+location.search)">{"바꾸기" if operator else "고르기"}</a>{h("whoami")}</span></nav>'
             f'<main>{fl}{body}{inline}</main>'
-            f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script></body></html>')
+            f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script></body></html>')
 
 
 # ---- 대시보드 ------------------------------------------------------------------------------
@@ -160,7 +174,7 @@ def coverage_card(catalog, coverage: dict | None, error: str | None) -> str:
                 tot[k] += c[k]
         rows += f'<tr><td><a href="/catalog?domain={e(d)}">{e(d)}</a></td>{cells}</tr>'
     v = catalog.versions
-    return (f'<div class="card"><h3 style="margin-top:0">TC 커버리지 <span class="small mut">자동화됨 {tot["covered"]} / {tot["total"] - tot["excluded"]} (자동화 제외 {tot["excluded"]})</span></h3>'
+    return (f'<div class="card"><h3 style="margin-top:0">TC 커버리지{h("dash.coverage")} <span class="small mut">자동화됨 {tot["covered"]} / {tot["total"] - tot["excluded"]} (자동화 제외 {tot["excluded"]})</span></h3>'
             f'<table class="mx"><tr><th>도메인</th>{head}</tr>{rows}</table>'
             f'<p class="small mut" style="margin-bottom:0">SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · {kst(catalog.built_at)} 계산'
             f'{(" · <b style=\"color:var(--warn)\">경고 " + str(len(catalog.warnings)) + "</b>") if catalog.warnings else ""}</p></div>')
@@ -179,7 +193,7 @@ def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], rec
         else:
             state = badge("미검증", "warn")
         btn = (f'<a class="btn" href="/runs/new?trigger=deploy-sanity&sha={e(d["sha"])}&deploy_run_id={e(d["run_id"])}'
-               f'{"&pr=" + str(pr["number"]) if pr.get("number") else ""}">검증</a>')
+               f'{"&pr=" + str(pr["number"]) if pr.get("number") else ""}">검증</a>{h("dash.verify")}')
         rows += (f'<tr><td class="mono"><a href="{e(d["url"])}">{e((d["sha"] or "")[:8])}</a></td>'
                  f'<td>{("<a href=\"" + e(pr["url"]) + "\">#" + str(pr["number"]) + "</a> ") if pr.get("number") else ""}{e(pr.get("title") or d.get("title"))}</td>'
                  f'<td class="small mut">{kst(d["at"])}</td><td>{state}</td><td class="right">{btn}</td></tr>')
@@ -189,10 +203,10 @@ def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], rec
 
     s_state = ("이번 스프린트 smoke: " + " ".join(f'<a href="/runs/{e(r["id"])}">{run_badge(r)}</a>' for r in sprint_runs[:3])) if sprint_runs \
         else badge("이번 스프린트 smoke 미실행", "warn")
-    sprint_card = (f'<div class="card"><h3 style="margin-top:0">스프린트 Cycle {sprint["number"]} '
+    sprint_card = (f'<div class="card"><h3 style="margin-top:0">스프린트 Cycle {sprint["number"]}{h("dash.sprint")} '
                    f'<span class="small mut">{sprint["starts_at"].astimezone(KST).strftime("%m-%d")} ~ {(sprint["ends_at"] - timedelta(days=1)).astimezone(KST).strftime("%m-%d")}</span></h3>'
-                   f'<p>{s_state}</p><div class="actions"><a class="btn primary" href="/runs/new?trigger=sprint-smoke">스프린트 smoke 실행</a>'
-                   f'<a class="btn" href="/runs/new?trigger=release">릴리스 검증</a><a class="btn" href="/runs/new?trigger=manual">수동 실행</a></div></div>')
+                   f'<p>{s_state}</p><div class="actions"><a class="btn primary" href="/runs/new?trigger=sprint-smoke">스프린트 smoke 실행</a>{h("dash.sprint")}'
+                   f'<a class="btn" href="/runs/new?trigger=release">릴리스 QA</a>{h("dash.release")}<a class="btn" href="/runs/new?trigger=manual">수동 실행</a>{h("dash.manual")}</div></div>')
 
     cfg_lines = (f'대상 <span class="mono">{e(cfg_summary["target"])}</span> · 스크립트 {case_count}개 · 테스트 계정 {", ".join(cfg_summary["actors"]) or "<b style=\"color:var(--warn)\">없음</b>"}'
                  f' · Hermes {"on" if cfg_summary["hermes"] else "off"} · Slack {"on" if cfg_summary["slack"] else "off"}'
@@ -207,10 +221,10 @@ def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], rec
         for r in recent) or '<tr><td colspan="6" class="mut">아직 실행 기록이 없다</td></tr>'
 
     return (f'<h1>대시보드</h1><div class="grid">{sprint_card}{status_card}</div>{coverage_card(catalog, coverage, catalog_error)}'
-            f'<h2>dev 배포 {badge(f"미검증 {unverified}", "warn" if unverified else "ok")}</h2><div class="card">'
+            f'<h2>dev 배포 {badge(f"미검증 {unverified}", "warn" if unverified else "ok")}{h("dash.deploys")}</h2><div class="card">'
             f'<table><tr><th>SHA</th><th>PR</th><th>배포</th><th>검증</th><th></th></tr>{rows}</table>'
             f'<p class="small mut">GitHub Actions 의 성공한 dev 배포를 읽어 표시한다. 검증은 사람이 [검증] 을 눌러야 시작된다.</p></div>'
-            f'<h2>최근 테스트 실행</h2><div class="card"><table><tr><th>ID</th><th>실행 종류</th><th>담당자</th><th>대상</th><th>결과</th><th>시각</th></tr>{rec}</table></div>')
+            f'<h2>최근 테스트 실행{h("runs.list")}</h2><div class="card"><table><tr><th>ID</th><th>실행 종류{h("runs.trigger")}</th><th>담당자</th><th>대상</th><th>결과{h("run.verdict")}</th><th>시각</th></tr>{rec}</table></div>')
 
 
 # ---- 런 생성(확인 화면) ------------------------------------------------------------------------
@@ -253,13 +267,13 @@ def runs_list(runs: list[dict], show_all: bool = False) -> str:
         f'<td>{run_badge(r)}</td><td class="small">{r["passed"]} / {r["failed"]} / {r["errored"]} / {r["skipped"]}</td>'
         f'<td class="small mut">{kst(r["created_at"])}</td></tr>' for r in runs) or '<tr><td colspan="7" class="mut">실행 기록이 없다</td></tr>'
     toggle = '<a href="/runs">API 직접 호출 숨기기</a>' if show_all else '<a href="/runs?all=1">API 직접 호출도 보기</a>'
-    return f'<h1>테스트 실행 <span class="small mut">{toggle}</span></h1><div class="card"><table><tr><th>ID</th><th>실행 종류</th><th>담당자</th><th>대상</th><th>결과</th><th>통과/실패/오류/skip</th><th>시각</th></tr>{rows}</table></div>'
+    return f'<h1>테스트 실행{h("runs.list")} <span class="small mut">{toggle}</span></h1><div class="card"><table><tr><th>ID</th><th>실행 종류{h("runs.trigger")}</th><th>담당자</th><th>대상</th><th>결과</th><th>통과/실패/오류/skip</th><th>시각</th></tr>{rows}</table></div>'
 
 
 def _checks_html(checks: list[dict]) -> str:
     if not checks:
         return ""
-    return "".join(
+    return f'<div class="small mut">검증 항목{h("run.checks")}</div>' + "".join(
         f'<div class="small">{"✅" if c["ok"] else "❌"} {e(c["check"])}{(" <span class=\"mono\">" + e(c["path"]) + "</span>") if c.get("path") else ""}'
         f' 기대 <span class="mono">{e(json.dumps(c["expected"], ensure_ascii=False))}</span> 실제 <span class="mono">{e(json.dumps(c["actual"], ensure_ascii=False))}</span></div>'
         for c in checks)
@@ -286,7 +300,7 @@ def run_summary(run: dict, cases: list[dict], domains_by_rc: dict[int, list[str]
     bad = n["fail"] + n["error"]
     pct = (n["pass"] / total * 100) if total else 0.0
     live = run["status"] in ("queued", "running")
-    stats = (f'<div class="stats"><div class="stat"><div class="l">전체 스크립트</div><b>{total}</b><div class="s">{e(TRIGGER_KO.get(run["trigger"], run["trigger"]))}</div></div>'
+    stats = (f'<div class="stats"><div class="stat"><div class="l">전체 스크립트{h("run.summary")}</div><b>{total}</b><div class="s">{e(TRIGGER_KO.get(run["trigger"], run["trigger"]))}</div></div>'
              f'<div class="stat"><div class="l">실행 완료</div><b>{done}</b><div class="s">{(done * 100 // total) if total else 0}% 완료{" · 진행 중" if live else ""}</div></div>'
              f'<div class="stat ok"><div class="l">통과</div><b>{n["pass"]}</b><div class="s">{pct:.0f}% 통과율</div></div>'
              f'<div class="stat {"bad" if bad else ""}"><div class="l">실패 · 오류</div><b>{bad}</b><div class="s">skip {n["skipped"]}{(" · 취소 " + str(n["canceled"])) if n["canceled"] else ""}</div></div></div>')
@@ -307,8 +321,8 @@ def run_summary(run: dict, cases: list[dict], domains_by_rc: dict[int, list[str]
     tabs = "".join(f'<a href="/runs/{e(run["id"])}{("?verdict=" + v) if v else ""}" class="{"on" if (f_verdict or "") == v else ""}">{lab} {cnt}</a>'
                    for v, lab, cnt in (("", "모두", total), ("pass", "통과", n["pass"]), ("fail", "실패 · 오류", bad), ("skipped", "skip", n["skipped"])))
     return (f'{stats}<div class="card"><div class="sumgrid"><div style="text-align:center">{_donut(pct, "통과율")}</div>'
-            f'<div><ul class="legend">{legend}</ul><h4 style="margin:12px 0 4px">도메인별</h4>{doms or "<p class=\"hint\">도메인 정보 없음</p>"}</div></div></div>'
-            f'<h2>스크립트별 결과 <span class="small mut">판정으로 거르기</span></h2><div class="tabs">{tabs}</div>')
+            f'<div><ul class="legend">{legend}</ul><h4 style="margin:12px 0 4px">도메인별{h("run.domains")}</h4>{doms or "<p class=\"hint\">도메인 정보 없음</p>"}</div></div></div>'
+            f'<h2>스크립트별 결과{h("run.steps")} <span class="small mut">판정으로 거르기{h("run.filter")}</span></h2><div class="tabs">{tabs}</div>')
 
 
 def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]], *, operators: list[str], operator: str,
@@ -324,11 +338,11 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         "TC 소스 버전": (f'SSOT <span class="mono">{e((meta.get("catalog") or {}).get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e((meta.get("catalog") or {}).get("openapi") or "–")}</span>'
                    f' · 검증하는 TC {len(meta.get("covers") or [])}') if meta.get("catalog") else "–",
         "시각": f'{kst(run["created_at"])} 생성 · {kst(run.get("started_at"))} 시작 · {kst(run.get("finished_at"))} 종료',
-        "결과": f'{run_badge(run)} 통과 {run["passed"]} · 실패 {run["failed"]} · 오류 {run["errored"]} · skip {run["skipped"]} / {run["total"]}',
+        "결과": f'{run_badge(run)}{h("run.verdict")} 통과 {run["passed"]} · 실패 {run["failed"]} · 오류 {run["errored"]} · skip {run["skipped"]} / {run["total"]}',
     }
     kvh = "".join(f'<div>{k}</div><div>{v}</div>' for k, v in kv.items())
     cancel = (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/cancel"><input type="hidden" name="operator" value="{e(operator)}">'
-              f'<button class="danger" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>취소</button></form>') if live else ""
+              f'<button class="danger" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>취소</button>{h("run.cancel")}</form>') if live else ""
     publish = ""
     if not live and run["trigger"] in ("sprint-smoke", "release", "deploy-sanity"):
         pub = meta.get("published")
@@ -336,7 +350,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
             publish = f'<span class="small">위키에 게시됨 · <a href="{e(pub.get("url"))}" class="mono">{e(pub.get("slug"))}</a> · {e(pub.get("by"))} {kst(pub.get("at"))}</span> '
         dis = "" if (operator and can_publish) else ("disabled title=\"담당자를 먼저 고르세요\"" if can_publish else "disabled title=\"LLM_WIKI_MCP_* 미설정\"")
         publish += (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/publish"><input type="hidden" name="operator" value="{e(operator)}">'
-                    f'<button {dis}>{"다시 " if pub else ""}위키에 보고서 게시</button> <button name="dry" value="1" {dis}>dry-run</button></form>'
+                    f'<button {dis}>{"다시 " if pub else ""}위키에 보고서 게시</button> <button name="dry" value="1" {dis}>dry-run</button>{h("run.publish")}</form>'
                     f'<span class="small mut">wiki/qa/ 에 generated 페이지로. 사람이 누를 때만 · UUID 마스킹</span>')
 
     body_cases = ""
@@ -360,7 +374,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         tri = ""
         if rc["verdict"] in ("fail", "error"):
             tri = (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/triage"><input type="hidden" name="run_case_id" value="{rc["id"]}">'
-                   f'<input type="hidden" name="operator" value="{e(operator)}"><button {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>Hermes 실패 분석</button></form>')
+                   f'<input type="hidden" name="operator" value="{e(operator)}"><button {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>Hermes 실패 분석</button>{h("run.triage")}</form>')
             if rc.get("triage"):
                 tri += f'<div class="card" style="margin-top:8px;background:#f8fafc"><div class="small mut">Hermes 실패 분석 · {kst(rc.get("triaged_at"))}</div><pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{e(rc["triage"])}</pre></div>'
         body_cases += (f'<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">{badge(rc["verdict"])} {badge(rc["case_suite"])} '
@@ -373,19 +387,19 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         dec = meta.get("release")
         if dec:
             done = "".join(f'<li>{"☑" if i in dec.get("checked", []) else "☐"} {e(i)}</li>' for i in dec.get("items", []))
-            release = (f'<h2>릴리스 판단</h2><div class="card">{badge("GO" if dec["decision"] == "go" else "NO-GO", "ok" if dec["decision"] == "go" else "warn")} '
+            release = (f'<h2>릴리스 판단{h("run.release")}</h2><div class="card">{badge("GO" if dec["decision"] == "go" else "NO-GO", "ok" if dec["decision"] == "go" else "warn")} '
                        f'{e(dec["operator"])} · {kst(dec["at"])}<p>{e(dec.get("reason") or "")}</p><ul>{done}</ul></div>')
         else:
             items = "".join(f'<label class="chk"><input type="checkbox" name="checked" value="{e(i)}"> {e(i)}</label>' for i in checklist) or '<p class="mut">체크리스트를 가져오지 못했다 (backend docs/knowledge/release-checklist.md)</p>'
             ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
-            release = (f'<h2>릴리스 판단</h2><div class="card"><form method="post" action="/runs/{e(run["id"])}/decide">'
+            release = (f'<h2>릴리스 판단{h("run.release")}</h2><div class="card"><form method="post" action="/runs/{e(run["id"])}/decide">'
                        f'<p class="small mut">항목은 백엔드 <span class="mono">docs/knowledge/release-checklist.md</span> 에서 읽어 온다. 판단은 기록만 하고 승격을 막지 않는다 (설계 §13-5).</p>'
                        f'{items}<p><select name="decision"><option value="go">GO — 승격해도 된다</option><option value="no-go">NO-GO — 보류</option></select> '
                        f'<select name="operator" required><option value="">— 담당자 —</option>{ops}</select></p><p><textarea name="reason" placeholder="판단 사유"></textarea></p>'
                        f'<button class="primary" {"disabled" if live else ""}>판단 기록</button></form></div>')
 
     return (f'{refresh}<h1>테스트 실행 <span class="mono">{e(run["id"])}</span> {run_badge(run)} <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></h1>'
-            f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a></div></div>'
+            f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a>{h("run.json")}</div></div>'
             f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{body_cases}')
 
 
@@ -452,13 +466,13 @@ def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dic
         for c in cases)
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
     blocked = [c.id for c in cases if c.blocked]
-    return (f'<h1>테스트 스크립트 <span class="small mut">{len(cases)}개 · 원본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
+    return (f'<h1>테스트 스크립트{h("cases.list")} <span class="small mut">{len(cases)}개 · 원본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
             f'{("<div class=\"flash err\"><b>로드 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
             f'{("<div class=\"flash err\"><b>TC 정합성 불일치</b> — covers 선언이 TC 목록와 맞지 않아 스위트에서 빠진 스크립트: " + e(", ".join(blocked)) + "</div>") if blocked else ""}'
-            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트</th><th>도메인</th><th>테스트 계정</th><th>검증하는 TC · 정합성</th><th>마지막 결과 · 최근 통계</th></tr>{rows}</table>'
+            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트{h("cases.suite")}</th><th>도메인</th><th>테스트 계정{h("x.actor")}</th><th>검증하는 TC{h("cases.covers")} · 정합성{h("cases.audit")}</th><th>마지막 결과 · 최근 통계{h("cases.last")}</th></tr>{rows}</table>'
             f'<p class="small mut">정합성 = covers 의 TC 가 TC 목록에 있고 단계의 method·path·기대 코드가 계약과 맞는지. TC 변경 = 검증하는 TC 가 마지막 검토(reviewed) 이후 바뀜. '
             f'최근 통계 = 최근 20회 통과율(skip 제외)·평균 소요. 불안정(flaky) = 스크립트를 안 고쳤는데 최근 {FLAKY_WINDOW}회 안에서 통과↔실패가 {FLAKY_FLIPS}번 이상 뒤집힘.</p>'
-            f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button></form></div>')
+            f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button>{h("cases.reload")}</form></div>')
 
 
 def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None, revise: dict | None = None, stats: dict | None = None) -> str:
@@ -469,7 +483,7 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
         ops = "".join(f'<option value="{e(o)}" {"selected" if o == op else ""}>{e(o)}</option>' for o in revise.get("operators") or [])
         dis = "" if (op and revise.get("hermes")) else ("disabled title=\"담당자를 먼저 고르세요\"" if revise.get("hermes") else "disabled title=\"HERMES_API_KEY 없음\"")
         revise_html = (f'<form method="post" action="/cases/{e(c.id)}/revise" class="actions" style="margin-top:10px" onsubmit="this.querySelector(\'button\').disabled=true;this.querySelector(\'button\').textContent=\'Hermes 가 고치는 중…\'">'
-                       f'<input type="hidden" name="operator" value="{e(op)}"><button class="primary" {dis}>바뀐 TC 에 맞게 Hermes 가 고치기 → 초안</button>'
+                       f'<input type="hidden" name="operator" value="{e(op)}"><button class="primary" {dis}>바뀐 TC 에 맞게 Hermes 가 고치기 → 초안</button>{h("case.revise")}'
                        f'<select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 담당자 —</option>{ops}</select>'
                        f'<span class="small mut">현재 YAML 과 바뀐 TC 의 전/후·새 PRD 절을 Hermes 에게 주고 바뀐 부분만 고치게 한다. 결과는 같은 id 의 초안으로 들어가고, 원본 파일은 사람이 승인 뒤 PR 로 바꾼다.</span></form>')
     changed = {d["id"]: d for d in (drift or [])}
@@ -490,9 +504,9 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
-            f'<h2>검증하는 TC (covers)</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
-            f'<h2>정의</h2><pre>{e(c.to_yaml())}</pre>'
-            f'<h2>실행 이력 <span class="small mut">최근 통계: {stats_badge(stats) if stats else "기록 없음"}</span></h2>'
+            f'<h2>검증하는 TC (covers){h("cases.covers")}{h("case.drift")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
+            f'<h2>정의{h("case.yaml")}</h2><pre>{e(c.to_yaml())}</pre>'
+            f'<h2>실행 이력{h("case.history")} <span class="small mut">최근 통계: {stats_badge(stats) if stats else "기록 없음"}{h("cases.last")}</span></h2>'
             f'<div class="card"><table><tr><th>실행</th><th>결과</th><th>실행 종류</th><th>담당자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
 
 
@@ -505,7 +519,7 @@ def activity(events: list[dict], operators: list[str], actions: list[str], f_op:
         for ev in events) or '<tr><td colspan="6" class="mut">기록 없음</td></tr>'
     ops = "".join(f'<option value="{e(o)}" {"selected" if o == f_op else ""}>{e(o)}</option>' for o in operators)
     acts = "".join(f'<option value="{e(a)}" {"selected" if a == f_act else ""}>{e(ACTION_KO.get(a, a))}</option>' for a in actions)
-    return (f'<h1>감사 로그</h1><form class="card" method="get"><select name="operator"><option value="">담당자 전체</option>{ops}</select> '
+    return (f'<h1>감사 로그{h("activity.filter")}</h1><form class="card" method="get"><select name="operator"><option value="">담당자 전체</option>{ops}</select> '
             f'<select name="action"><option value="">행위 전체</option>{acts}</select> <button>필터</button>'
             f' <span class="small mut">모든 사람 행위의 감사 로그. 담당자는 자기 신고, 세션 해시·IP 는 확인용.</span></form>'
             f'<div class="card"><table><tr><th>시각</th><th>담당자</th><th>행위</th><th>대상</th><th>상세</th><th>세션/IP</th></tr>{rows}</table></div>')
@@ -563,20 +577,20 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
     warns = "".join(f'<li class="small">{e(w)}</li>' for w in catalog.warnings)
     c = catalog.counts()
     v = catalog.versions
-    return (f'<h1>테스트 케이스 (TC) 목록 <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
+    return (f'<h1>테스트 케이스 (TC) 목록{h("tc.layers")} <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
-            f' TC 소스 버전: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
+            f' TC 소스 버전{h("tc.versions")}: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"}</p>'
             f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
-            f'<div class="tabs">{tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
-            f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
+            f'<div class="tabs">{h("tc.filter")} {tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
+            f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목" + h("tc.warnings") + "</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
             f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
             f'<select name="operator" required><option value="">— 담당자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
-            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 스크립트 초안 생성 (Hermes)</button>'
+            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 스크립트 초안 생성 (Hermes)</button>{h("tc.draft")}'
             f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 스크립트 초안에 들어간다 (§7)</span></div>'
-            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>API 매핑</th><th>스크립트 · 마지막 결과</th></tr>{rows}</table></div></form>'
+            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>API 매핑{h("tc.mapping")}</th><th>자동화 · 스크립트 · 마지막 결과{h("tc.state")}</th></tr>{rows}</table></div></form>'
             f'<form method="post" action="/catalog/propose-tc" class="card" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'Hermes 가 읽는 중…\'">'
-            f'<h3 style="margin-top:0">PRD 절에서 수동 작성 TC 제안 (Hermes)</h3>'
+            f'<h3 style="margin-top:0">PRD 절에서 수동 작성 TC 제안 (Hermes){h("tc.propose")}</h3>'
             f'<p class="small mut">SSOT 로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라낸다. 결과는 스크립트 초안 화면에 "수동 TC 제안" 으로 들어가고, 사람이 승인해 <span class="mono">catalog/manual-tc.yaml</span> 에 붙여 PR 을 연다.</p>'
             f'<p><input name="doc" placeholder="PRD 문서 이름 (예: 룸 탐색)" required style="width:220px"> <input name="section" placeholder="절 번호 (예: 4.2)" required style="width:120px"> '
             f'<input name="domain" placeholder="도메인 (선택, 예: room)" style="width:160px"> <input type="hidden" name="operator" value="{e(operator)}">'
@@ -602,7 +616,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
         f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut\">–</span>")}</td></tr>'
         for c in covering) or '<tr><td colspan="4" class="mut">이 TC 를 검증하는 스크립트 없음</td></tr>'
     state = "자동화 제외" if rec.get("excluded") else ("자동화됨" if covering else "미자동화")
-    return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))} <a class="btn" href="/chat/new?tc={e(rec["id"])}">Hermes 와 이야기</a>'
+    return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))} <a class="btn" href="/chat/new?tc={e(rec["id"])}">Hermes 와 이야기</a>{h("tc.detail")}{h("tc.state")}'
             f'{(" <span class=\"b drift\">" + e(change["kind"]) + " " + kst(change["at"]) + "</span>") if change else ""}</h1>'
             f'<div class="card"><b>{e(rec["title"])}</b>'
             f'{("<p class=\"small\" style=\"color:var(--mut)\">자동화 제외: " + e(rec["excluded"]) + "</p>") if rec.get("excluded") else ""}'
@@ -627,9 +641,9 @@ def drafts_list(drafts: list[dict], counts: dict, status: str) -> str:
         f'<td class="small">{e((d.get("validation") or {}).get("status") or "–")}{(" · 경고 " + str(len((d.get("validation") or {}).get("warnings") or []))) if (d.get("validation") or {}).get("warnings") else ""}</td>'
         f'<td class="small">{e(d["source"])} · {e(d["operator"])}</td><td class="small mut">{kst(d["created_at"])}</td></tr>'
         for d in drafts) or '<tr><td colspan="7" class="mut">스크립트 초안 없음 — 테스트 스크립트 화면에서 TC 를 골라 [스크립트 초안 생성]</td></tr>'
-    return (f'<h1>스크립트 초안 <span class="small mut">아직 스크립트가 아닌 것 — Hermes 나 API 호출 화면에서 만든 YAML 을 사람이 검토해 승인하면 PR 로 스크립트가 된다</span></h1><div class="card"><div class="tabs">{tabs}</div>'
+    return (f'<h1>스크립트 초안{h("drafts.status")} <span class="small mut">아직 스크립트가 아닌 것 — Hermes 나 API 호출 화면에서 만든 YAML 을 사람이 검토해 승인하면 PR 로 스크립트가 된다</span></h1><div class="card"><div class="tabs">{tabs}</div>'
             f'<p class="small mut" style="margin-bottom:0">승인은 스위트 편입이 아니다. 승인된 YAML 을 <span class="mono">qa-platform/cases/</span> 에 붙여 PR 로 리뷰한다. 플랫폼은 git 에 쓰지 않는다.</p></div>'
-            f'<div class="card"><table><tr><th>ID</th><th>상태</th><th>스크립트 id</th><th>검증하는 TC</th><th>검증</th><th>출처 · 만든 사람</th><th>시각</th></tr>{rows}</table></div>')
+            f'<div class="card"><table><tr><th>ID</th><th>상태{h("drafts.status")}</th><th>스크립트 id</th><th>검증하는 TC{h("cases.covers")}</th><th>검증{h("draft.edit")}</th><th>출처 · 만든 사람</th><th>시각</th></tr>{rows}</table></div>')
 
 
 def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str, original_yaml: str | None = None) -> str:
@@ -639,7 +653,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
         import difflib
         lines = list(difflib.unified_diff(original_yaml.splitlines(), (d["yaml"] or "").splitlines(), fromfile=f"cases/{d.get('case_id')} (현재)", tofile="초안", lineterm="", n=2))
         body = "".join(f'<div style="color:{("var(--ok)" if l.startswith("+") and not l.startswith("+++") else ("var(--bad)" if l.startswith("-") and not l.startswith("---") else "var(--mut)"))}">{e(l)}</div>' for l in lines)
-        diff_html = (f'<h2>원본 스크립트와의 차이</h2><div class="card"><p class="small mut" style="margin-top:0">{e(d.get("note") or "")}</p>'
+        diff_html = (f'<h2>원본 스크립트와의 차이{h("draft.diff")}</h2><div class="card"><p class="small mut" style="margin-top:0">{e(d.get("note") or "")}</p>'
                      f'<pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{body or "(차이 없음)"}</pre>'
                      f'<p class="small mut">승인 뒤에는 이 YAML 로 <span class="mono">qa-platform/cases/</span> 의 원본 항목을 바꿔 PR 을 연다. reviewed 의 at 도 오늘로 올린다.</p></div>')
     problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in v.get("errors") or []) + \
@@ -654,14 +668,14 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
     dis = "disabled" if not operator else ""
     is_tc = (d.get("kind") or "case") == "tc"
     check_form = "" if is_tc else (
-        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button></form>')
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button>{h("draft.check")}</form>')
     forms = "" if decided else (
         f'<form method="post" action="/drafts/{e(d["id"])}/save"><input type="hidden" name="operator" value="{e(operator)}">'
-        f'<textarea name="yaml" style="min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(d["yaml"])}</textarea>'
+        f'<div class="small mut">YAML 편집{h("draft.edit")}</div><textarea name="yaml" style="min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(d["yaml"])}</textarea>'
         f'<div class="actions"><button {dis}>저장하고 다시 검증</button></div></form>'
         f'<div class="actions">'
         f'{check_form}'
-        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/approve"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="메모 (선택)"> <button class="primary" {dis} {"disabled" if v.get("errors") else ""}>승인</button></form>'
+        f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/approve"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="메모 (선택)"> <button class="primary" {dis} {"disabled" if v.get("errors") else ""}>승인</button>{h("draft.approve")}</form>'
         f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/reject"><input type="hidden" name="operator" value="{e(operator)}"><input name="note" placeholder="반려 사유"> <button class="danger" {dis}>반려</button></form>'
         f'</div><p class="small mut">담당자: <select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 선택 —</option>{ops}</select> (버튼은 담당자를 고른 뒤 활성화된다)</p>')
     approved_html = ""
@@ -721,10 +735,11 @@ def qa_badge(qa: dict | None, op_id: str) -> str:
 EXPLORER_JS = r"""
 (function(){
   var F=document.getElementById('callf'); var LS=window.localStorage;
+  var OP=(window.QA&&window.QA.operator)||''; var SFX=OP?(':'+OP):'';   // 담당자별로 따로 저장 (사용자 요청: 즐겨찾기·최근 값을 사람별로)
   function ls(k,d){try{var v=LS.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
   function lsset(k,v){try{LS.setItem(k,JSON.stringify(v))}catch(e){}}
-  // ---- 즐겨찾기 (브라우저에만) ----
-  var favs=ls('qa_fav',[]); var favbox=document.getElementById('favbox');
+  // ---- 즐겨찾기 (브라우저·담당자별) ----
+  var favs=ls('qa_fav'+SFX,[]); var favbox=document.getElementById('favbox');
   function renderFavs(){
     if(!favbox) return; favbox.innerHTML='';
     var n=0; favs.forEach(function(id){var it=document.querySelector('.opi[data-op="'+id+'"]'); if(!it) return; n++; favbox.appendChild(it.cloneNode(true));});
@@ -733,7 +748,7 @@ EXPLORER_JS = r"""
     document.querySelectorAll('.star').forEach(function(b){b.textContent=favs.indexOf(b.dataset.op)>=0?'★':'☆'; b.classList.toggle('on',favs.indexOf(b.dataset.op)>=0)});
     favbox.querySelectorAll('.star').forEach(bindStar);
   }
-  function bindStar(b){b.addEventListener('click',function(ev){ev.preventDefault(); var id=b.dataset.op; var i=favs.indexOf(id); if(i>=0) favs.splice(i,1); else favs.unshift(id); lsset('qa_fav',favs); renderFavs();});}
+  function bindStar(b){b.addEventListener('click',function(ev){ev.preventDefault(); var id=b.dataset.op; var i=favs.indexOf(id); if(i>=0) favs.splice(i,1); else favs.unshift(id); lsset('qa_fav'+SFX,favs); renderFavs();});}
   document.querySelectorAll('.opl .star').forEach(bindStar); renderFavs();
   if(!F) return;
   // ---- Normal | Swagger 보기 (같은 값을 두 모양으로) ----
@@ -760,7 +775,7 @@ EXPLORER_JS = r"""
   F.querySelectorAll('[data-bk]').forEach(function(f){ f.addEventListener('input',function(){fromNormal(f)}); });
   if(bodyt){ bodyt.addEventListener('input',toNormal); if(F.querySelector('[data-bk]')) toNormal(); }
   // ---- 최근 값 (파라미터 이름별, 브라우저에만) ----
-  function recentKey(n){return 'qa_recent.'+n}
+  function recentKey(n){return 'qa_recent'+SFX+'.'+n}
   F.querySelectorAll('input[name^="p_"],input[name^="q_"]').forEach(function(i){ var n=i.name.slice(2); var vals=ls(recentKey(n),[]); if(!vals.length) return;
     var dl=document.createElement('datalist'); dl.id='dl_'+n; vals.forEach(function(v){var o=document.createElement('option'); o.value=v; dl.appendChild(o)}); F.appendChild(dl); i.setAttribute('list',dl.id);
     if(!i.value&&i.dataset.autofill!=='0'){ i.value=vals[0]; i.dispatchEvent(new Event('input')); } });
@@ -797,9 +812,10 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
         f'<details {"open" if (ql or d == cur_dom) else ""}><summary>{e(d)} <span class="mut small">{len(os_)}</span></summary>{"".join(item(o) for o in os_)}</details>'
         for d, os_ in groups.items()) or '<span class="mut">없음</span>'
     left = (f'<div class="card opl"><form method="get"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약)" style="width:100%"></form>'
-            f'<details id="favs" open style="display:none"><summary>즐겨찾기 <span id="favn" class="mut small"></span></summary><div id="favbox"></div></details>'
+            f'<p class="hint" style="margin:6px 0 0">☆ 즐겨찾기{h("x.fav")} · 한 번 넣은 값은 기억된다{h("x.recent")}</p>'
+            f'<details id="favs" open style="display:none"><summary>즐겨찾기 <span id="favn" class="mut small"></span>{h("x.fav")}</summary><div id="favbox"></div></details>'
             f'<div class="oplist">{lists}</div></div>')
-    head = ('<h1>API 호출 <span class="small mut">OpenAPI 로 만든 입력 폼에서 dev 에 요청 하나를 보내 본다. '
+    head = ('<h1>API 호출' + h("x.views") + ' <span class="small mut">OpenAPI 로 만든 입력 폼에서 dev 에 요청 하나를 보내 본다. '
             'Normal 은 값만 넣는 폼, Swagger 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 둘은 같은 값이다. 보낸 것은 실행 기록에 남는다</span></h1>')
     if not op:
         right = ('<div class="card"><p class="mut" style="margin:0">왼쪽에서 API 를 고르면 카드가 열린다. ☆ 로 즐겨찾기에 올릴 수 있고, '
@@ -862,12 +878,12 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
     card = (f'<form method="post" action="/explorer/send" id="callf" class="card call" data-path="{e(op.path)}" data-view="{e(view)}">'
             f'<input type="hidden" name="op" value="{e(op.id)}">'
             f'<div class="callhead"><div><b>{e(op.summary or op.id)}</b> <span class="mono mut small">{e(op.id)}</span><br>{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
-            f'<div class="seg" id="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·파라미터·JSON)">Swagger</button></div></div>'
-            f'<div class="qaline">{qa_badge(qa, op.id)} <span class="small mut">이 API 의 TC 수와 자동화 상태 — 클릭하면 이 API 의 상세</span></div>'
+            f'<div class="seg" id="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·파라미터·JSON)">Swagger</button>{h("x.views")}</div></div>'
+            f'<div class="qaline">{qa_badge(qa, op.id)}{h("x.badge")} <span class="small mut">이 API 의 TC 수와 자동화 상태 — 클릭하면 이 API 의 상세</span></div>'
             f'<div id="nv" class="view">{normal}</div><div id="sv" class="view" hidden>{swagger}</div>'
-            f'<div class="callfoot"><div class="field"><label>테스트 계정 <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
+            f'<div class="callfoot"><div class="field"><label>테스트 계정{h("x.actor")} <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
             f'<div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
-            f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>보내기 — dev 에 실제로 나간다 (쓰기 API 도 그대로)</button></div>'
+            f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>보내기 — dev 에 실제로 나간다 (쓰기 API 도 그대로)</button><div class="right" style="margin-top:4px">{h("x.send")}</div></div>'
             f'<details><summary class="small mut">문서화된 에러 코드</summary><ul class="small">{errs}</ul></details></form>')
 
     result = ""
@@ -894,7 +910,7 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
                   f'<details><summary class="small mut">보낸 요청</summary><pre>{e(_fmt_json({k: v for k, v in req.items() if k in ("url", "query", "body", "headers", "actor")}))}</pre></details>'
                   f'<p id="saved" class="hint"></p>'
                   f'<form method="post" action="/explorer/draft" class="actions"><input type="hidden" name="run" value="{e(run["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-                  f'<button {"" if operator else "disabled"}>스크립트 단계로 담기 (스크립트 초안)</button> <a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 다시 열기</a>'
+                  f'<button {"" if operator else "disabled"}>스크립트 단계로 담기 (스크립트 초안)</button>{h("x.draft")} <a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 다시 열기</a>{h("x.again")}'
                   f'<span class="small mut">담기: 관측한 status·error_code 를 기대로 채운 manual 초안. covers 는 사람이 채운다</span></form></div>')
     xresp = f'<script>window.XRESP={json.dumps(resp_json, ensure_ascii=False).replace("</", "<\\/") if resp_json is not None else "null"}</script>'
     return f'{head}<div class="xgrid">{left}<div>{result}{card}</div></div>{xresp}<script>{EXPLORER_JS}</script>'
@@ -946,12 +962,12 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
                 f'<td>{tc}</td><td>{auto}</td><td>{r["scripts"] or "<span class=\"mut\">0</span>"}</td><td>{last}</td><td class="small">{r["errors"] or "<span class=\"mut\">0</span>"}</td></tr>')
     if not trs:
         trs = '<tr><td colspan="6" class="mut">해당 없음</td></tr>'
-    return (f'<h1>API <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
+    return (f'<h1>API{h("apis.list")} <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> · 출처 {e(spec_source or "–")}'
             f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · OpenAPI 의 tags 가 전부 v1 이라 URL 경로로 도메인을 나눴다</p>'
             f'<form method="get" style="margin:0 0 8px"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약) — 검색 중엔 모든 도메인" style="width:100%"></form>'
-            f'<div class="tabs">{tabs}</div><div class="tabs">{otabs}</div></div>'
-            f'<div class="card"><table><tr><th>API ({n})</th><th>TC</th><th>자동화됨</th><th>호출하는 스크립트</th><th>마지막 호출</th><th>에러 코드</th></tr>{trs}</table>'
+            f'<div class="tabs">{tabs}</div><div class="tabs">{h("apis.filter")} {otabs}</div></div>'
+            f'<div class="card"><table><tr><th>API ({n})</th><th>TC{h("apis.tc")}</th><th>자동화됨{h("apis.auto")}</th><th>호출하는 스크립트{h("apis.scripts")}</th><th>마지막 호출{h("apis.last")}</th><th>에러 코드{h("apis.errors")}</th></tr>{trs}</table>'
             f'<p class="hint">TC = 그 API 에 해당하는 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화됨 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
             f'호출하는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 호출한 가장 최근 단계(API 호출 화면 전송 포함). '
             f'그 아래 통계 = 이 API 를 호출한 최근 20회 단계의 통과율(skip 제외)·평균 소요 — 이 배포 이후 기록만.</p></div>')
@@ -962,13 +978,13 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
     denom = qa["tc"] - qa["excluded"]
     head = (f'<h1>{method_badge(o["method"])} <span class="mono">{e(o["path"])}</span> <span class="small mut">{e(o["id"])} · {e(o["domain"])}</span></h1>'
             f'<div class="card"><div class="callhead"><div><b>{e(o["summary"] or o["id"])}</b><div class="qaline" style="margin:8px 0 0">{qa_badge(qa, o["id"])} {stats_badge(d.get("stats"), what="호출") if d.get("stats") else ""}</div></div>'
-            f'<div class="actions" style="margin:0"><a class="btn primary" href="/explorer?op={e(o["id"])}">호출해 보기</a> <a class="btn" href="/chat/new?op={e(o["id"])}">Hermes 와 이야기</a>'
+            f'<div class="actions" style="margin:0"><a class="btn primary" href="/explorer?op={e(o["id"])}">호출해 보기</a>{h("api.try")} <a class="btn" href="/chat/new?op={e(o["id"])}">Hermes 와 이야기</a>{h("hermes.attach")}'
             f'{(" <a class=\"btn\" href=\"" + e(d["docs_url"]) + "\">REST Docs</a>") if d.get("docs_url") else ""}</div></div></div>')
     # 스펙
     prow = "".join(f'<tr><td class="mono">{e(x["name"])}{"<i class=\"req\"></i>" if x["required"] else ""}</td><td class="small mut">{e(x["in"])}</td><td class="small">{e(x["description"])}</td></tr>' for x in o["params"])
     succ = "".join(f'<details><summary class="small">{e(st)} 응답 예시</summary><pre>{e(_fmt_json(ex))}</pre></details>' for st, ex in (o.get("success") or {}).items())
     errs = "".join(f'<tr><td class="mono">{e(code)}</td><td>{e(i.get("status"))}</td><td>{e(i.get("message"))}</td></tr>' for code, i in (o.get("errors") or {}).items())
-    spec = (f'<h2>스펙 <span class="small mut">OpenAPI 에 적힌 것 — Swagger 가 보여 주는 것과 같다</span></h2><div class="card">'
+    spec = (f'<h2>스펙{h("api.spec")} <span class="small mut">OpenAPI 에 적힌 것 — Swagger 가 보여 주는 것과 같다</span></h2><div class="card">'
             f'<h4>Parameters</h4>{("<table class=\"params\"><tr><th>Name</th><th>In</th><th>설명</th></tr>" + prow + "</table>") if prow else "<p class=\"hint\">없음</p>"}'
             f'{("<h4>Request Body 예시</h4><pre>" + e(_fmt_json(o["request_example"])) + "</pre>") if o.get("request_example") is not None else ""}'
             f'<h4>성공 응답</h4>{succ or "<p class=\"hint\">예시 없음</p>"}'
@@ -990,7 +1006,7 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
         if items:
             sections += f'<h3>{badge(layer)} {e(lab)} <span class="mut small">{len(items)}</span></h3><table><tr><th>TC</th><th>내용</th><th>자동화 · 검증하는 스크립트</th></tr>{tc_rows(items)}</table>'
     ops = "".join(f'<option value="{e(x)}" {"selected" if x == operator else ""}>{e(x)}</option>' for x in operators)
-    tcs = (f'<h2>이 API 의 TC <span class="small mut">{qa["tc"]}건 · 자동화됨 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
+    tcs = (f'<h2>이 API 의 TC{h("api.tcs")}{h("tc.state")} <span class="small mut">{qa["tc"]}건 · 자동화됨 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
            f'<form method="post" action="/drafts/generate"><div class="card">'
            + (sections or '<p class="mut">이 API 에 해당하는 TC 가 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
            + (f'<div class="actions"><select name="operator" required><option value="">— 담당자 —</option>{ops}</select>'
@@ -1002,7 +1018,7 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
         f'<td>{e(s["title"])}</td><td class="small">{e(" · ".join(s["steps"]))}</td><td>{badge(s["suite"])}</td>'
         f'<td>{(("<a href=\"/runs/" + e(s["last"]["run_id"]) + "\">" + badge(s["last"]["verdict"]) + "</a> <span class=\"small mut\">" + kst(s["last"]["created_at"]) + "</span>") if s.get("last") else "<span class=\"mut\">–</span>")}</td></tr>'
         for s in d["scripts"]) or '<tr><td colspan="5" class="mut">이 API 를 호출하는 스크립트가 없다 — 테스트 커버리지가 비는 곳</td></tr>'
-    scripts = f'<h2>호출하는 스크립트 <span class="small mut">{len(d["scripts"])}건</span></h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>이 API 를 호출하는 단계</th><th>스위트</th><th>마지막 결과</th></tr>{srows}</table></div>'
+    scripts = f'<h2>호출하는 스크립트{h("api.scripts")} <span class="small mut">{len(d["scripts"])}건</span></h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>이 API 를 호출하는 단계</th><th>스위트</th><th>마지막 결과</th></tr>{srows}</table></div>'
     # 최근 호출
     crows = ""
     for c in d["recent_calls"]:
@@ -1020,7 +1036,7 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
         crows += (f'<tr><td class="small">{kst(c["created_at"])}</td><td><a href="/runs/{e(c["run_id"])}" class="mono small">{e(c["run_id"])}</a><br><span class="small mut">{e(TRIGGER_KO.get(c["trigger"], c["trigger"]))} · {e(c["operator"])}</span></td>'
                   f'<td>{who}{(" <span class=\"small mut\">" + e(c["actor"]) + "</span>") if c.get("actor") else ""}</td><td>{_call_verdict(c)}{note}</td><td class="small">{c.get("duration_ms") or 0} ms</td>'
                   f'<td><a class="btn" href="/explorer?{e(urlencode(again))}">같은 요청으로 열기</a></td></tr>')
-    recent = (f'<h2>최근 호출 <span class="small mut">이 API 를 호출한 단계 최근 {len(d["recent_calls"])}건 — 스크립트 실행과 API 호출 화면 전송 모두</span></h2>'
+    recent = (f'<h2>최근 호출{h("api.calls")} <span class="small mut">이 API 를 호출한 단계 최근 {len(d["recent_calls"])}건 — 스크립트 실행과 API 호출 화면 전송 모두</span></h2>'
               f'<div class="card"><table><tr><th>시각</th><th>실행 기록</th><th>스크립트 · 단계</th><th>판정 · status</th><th>소요</th><th></th></tr>'
               f'{crows or "<tr><td colspan=\"6\" class=\"mut\">아직 호출한 기록이 없다</td></tr>"}</table></div>')
     return head + spec + tcs + scripts + recent
@@ -1031,6 +1047,7 @@ SETUP_JS = r"""
 (function(){
   function ls(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
   function lsset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+  var OP=(window.QA&&window.QA.operator)||''; var SFX=OP?(':'+OP):'';
   document.querySelectorAll('.call').forEach(function(F){
     var nv=F.querySelector('.view.nv'), sv=F.querySelector('.view.sv'), seg=F.querySelector('.seg');
     function setView(v){ nv.hidden=(v!=='normal'); sv.hidden=(v!=='swagger'); seg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.v===v)}); lsset('qa_view',v); }
@@ -1040,7 +1057,7 @@ SETUP_JS = r"""
   });
   // 결과값을 API 호출 화면 입력칸의 "최근에 넣은 값" 으로 기억 (브라우저에만)
   var R=window.SETUP_OUT||{}; var saved=[];
-  Object.keys(R).forEach(function(k){ var v=R[k]; if(v==null||v==='') return; var key='qa_recent.'+k; var vals=ls(key,[]).filter(function(x){return x!==String(v)}); vals.unshift(String(v)); lsset(key,vals.slice(0,5)); saved.push(k); });
+  Object.keys(R).forEach(function(k){ var v=R[k]; if(v==null||v==='') return; var key='qa_recent'+SFX+'.'+k; var vals=ls(key,[]).filter(function(x){return x!==String(v)}); vals.unshift(String(v)); lsset(key,vals.slice(0,5)); saved.push(k); });
   var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다 (이 브라우저에만): '+saved.join(', ');
   document.querySelectorAll('button[data-copy]').forEach(function(b){ b.addEventListener('click',function(){ navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy); b.textContent='복사됨'; setTimeout(function(){b.textContent='복사'},1200); }); });
 })();
@@ -1048,7 +1065,7 @@ SETUP_JS = r"""
 
 
 def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str]) -> str:
-    head = ('<h1>테스트 데이터 만들기 <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
+    head = ('<h1>테스트 데이터 만들기' + h("setup.cards") + ' <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
             'Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문. 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
     res = ""
     if result:
@@ -1060,7 +1077,7 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
         srows = "".join(f'<tr><td>{e(s["name"])}</td><td>{badge(s["verdict"])} <span class="mono small">{e((s.get("response") or {}).get("status") or "")}</span></td>'
                         f'<td class="small" style="color:var(--bad)">{e(s.get("error") or "")}</td></tr>' for s in steps)
         res = (f'<div class="card"><h3 style="margin-top:0">결과 {badge(v)} <span class="small mut">{e(rc["case_title"] if rc else "")} · 실행 기록 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> · {kst(run["created_at"])}</span></h3>'
-               + (f'<table><tr><th>결과값</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">결과값이 없다</p>')
+               + (f'<table><tr><th>결과값{h("setup.outputs")}</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">결과값이 없다</p>')
                + (f'<details {"open" if bad else ""}><summary class="small mut">단계 {len(steps)}개</summary><table><tr><th>단계</th><th>판정</th><th>오류</th></tr>{srows}</table></details>')
                + f'<div class="actions"><a class="btn primary" href="/explorer">API 호출 화면으로</a> <a class="btn" href="/runs/{e(run["id"])}">실행 상세</a></div></div>'
                + f'<script>window.SETUP_OUT={json.dumps({k: v for k, v in outs.items() if v not in (None, "")}, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>')
@@ -1088,7 +1105,7 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
         actor_ok = (not c.needs_actor()) or all((a in actors) for a in {c.actor, *[s.get("actor") for s in c.steps]} if a)
         cards += (f'<form method="post" action="/setup/run" class="card call"><input type="hidden" name="case_id" value="{e(c.id)}">'
                   f'<div class="callhead"><div><b>{e(c.title)}</b> <span class="mono mut small">{e(c.id)}</span><br><span class="small mut">{e(c.description)}</span></div>'
-                  f'<div class="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·본문)">Swagger</button></div></div>'
+                  f'<div class="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·본문)">Swagger</button>{h("setup.swagger")}</div></div>'
                   f'<div class="view nv">{fields}<p class="hint">결과값: <span class="mono">{e(outs)}</span> · 단계 {len(c.steps)}개'
                   f'{(" · 테스트 계정 " + e(", ".join(sorted({a for a in [c.actor, *[s.get("actor") for s in c.steps]] if a})))) if c.needs_actor() else ""}</p></div>'
                   f'<div class="view sv" hidden>{sw}<p class="hint">💡 실제로 나가는 요청을 순서대로 보여 준다. <span class="mono">{{{{input.x}}}}</span> 는 Normal 의 입력값으로, 나머지 치환은 실행 때 채워진다. 여기서는 고칠 수 없다 — 스크립트 파일(<span class="mono">cases/setup.yaml</span>)이 원본</p></div>'
@@ -1098,6 +1115,18 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
     if not cards:
         cards = '<div class="card"><p class="mut" style="margin:0">테스트 데이터 만들기 스크립트(suite setup)가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
     return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div><script>{SETUP_JS}</script>'
+
+
+# ---- 담당자 고르기 (처음 들어올 때) -----------------------------------------------------------------
+def whoami_page(operators: list[str], *, current: str, next_url: str) -> str:
+    """처음 들어오면 본인을 고른다(자기 신고). 담당자 자동 선택·감사 로그 이름·즐겨찾기/최근 값/대화(브라우저에만)가 이 이름별로 나뉜다."""
+    btns = "".join(f'<form method="post" action="/whoami" class="inline"><input type="hidden" name="next" value="{e(next_url)}"><input type="hidden" name="operator" value="{e(o)}">'
+                   f'<button class="{"primary" if o == current else ""}" style="min-width:140px;padding:12px 18px;font-size:15px">{e(o)}</button></form>' for o in operators)
+    return (f'<h1>누구세요?{h("whoami")}</h1><div class="card" style="max-width:640px">'
+            f'<p>이 플랫폼은 팀 공용 비밀번호로 들어오기 때문에 본인을 직접 고른다. 고른 이름은 버튼을 누를 때 담당자로 자동 선택되고 감사 로그에 남는다. '
+            f'즐겨찾기·최근에 넣은 값·열어 둔 Hermes 대화도 이 이름별로 이 브라우저에 따로 저장된다.</p>'
+            f'<div class="actions" style="gap:10px">{btns}</div>'
+            f'<p class="hint">목록에 없는 이름은 <span class="mono">QA_OPERATORS</span> 설정(compose)에 더한다. 언제든 오른쪽 위 [바꾸기].</p></div>')
 
 
 # ---- 가이드 --------------------------------------------------------------------------------------
@@ -1280,17 +1309,18 @@ def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, o
         f'<td>{badge("닫힘", "skipped") if c["status"] != "open" else (badge("오래됨", "skipped") if stale.get(c["id"]) else badge("열림", "pass"))}</td>'
         f'<td class="right">{c["turns"]}</td><td class="right">{c["drafts"]}</td><td>{e(c["operator"])}</td><td class="small mut">{kst(c["updated_at"])}</td></tr>'
         for c in chats) or '<tr><td colspan="7" class="mut">대화 없음</td></tr>'
-    return (f'<h1>Hermes <span class="small mut">QA 를 아는 Hermes 와 이야기한다 — 테스트 케이스·스크립트·실행 기록을 읽고, 스크립트 초안을 내고, 실패를 해석한다</span></h1>{warn}'
+    return (f'<h1>Hermes{h("hermes.widget")}{h("hermes.list")} <span class="small mut">QA 를 아는 Hermes 와 이야기한다 — 테스트 케이스·스크립트·실행 기록을 읽고, 스크립트 초안을 내고, 실패를 해석한다</span></h1>{warn}'
             f'<div class="card"><div class="actions"><a class="btn" href="/chat/new">새 대화</a> <span class="small mut">실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 열면 그 객체가 첨부된다. '
             f'실행·발행·승인은 Hermes 가 못 한다 — 사람이 버튼을 누른다.</span></div></div>'
-            f'<div class="card"><table><tr><th>제목</th><th>첨부</th><th>상태</th><th>턴</th><th>초안</th><th>담당자</th><th>마지막</th></tr>{rows}</table></div>')
+            f'<div class="card"><table><tr><th>제목</th><th>첨부{h("hermes.attach")}</th><th>상태</th><th>턴</th><th>초안</th><th>담당자</th><th>마지막</th></tr>{rows}</table></div>')
 
 
 # ---- Hermes 위젯 스크립트 (/static/hermes.js). 표준 라이브러리 서버라 문자열로 낸다 ---------------------------
-HERMES_JS_VERSION = "3"
+HERMES_JS_VERSION = "4"
+HELP_JS_VERSION = "1"
 HERMES_JS = r"""
 (function(){
-  var Q = window.QA || {}; var LS_ID='qa_chat_id', LS_OPEN='qa_chat_open';
+  var Q = window.QA || {}; var SFX = Q.operator ? (':'+Q.operator) : ''; var LS_ID='qa_chat_id'+SFX, LS_OPEN='qa_chat_open'+SFX;   // 담당자별
   var st = {id:null, view:'thread', busy:false, chat:null};
   function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function el(tag, cls, html){var x=document.createElement(tag); if(cls) x.className=cls; if(html!=null) x.innerHTML=html; return x;}

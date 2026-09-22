@@ -1,0 +1,186 @@
+"""기능 옆 "?" 도움말 (사용자 요청 2026-09-22: "작은 기능이라도 어떻게 활용하는지 옆에 가이드 모달"). 무엇인지 · 언제 쓰는지 · 어떻게 하는지 세 줄.
+
+키는 화면.기능. ui.h("키") 가 버튼을 그리고, /static/help.js 가 이 표를 JSON 으로 싣고 모달을 띄운다. 일반 QA 용어만, 새 말은 그 자리에서 풀이한다.
+"""
+from __future__ import annotations
+
+import json
+
+# (제목, 본문 HTML). 본문은 <p> 두세 개 — "무엇" · "언제" · "어떻게". 링크는 플랫폼 안 경로만.
+HELP: dict[str, tuple[str, str]] = {
+    # ---- 담당자 ----
+    "whoami": ("담당자 — 나는 누구인가",
+               "<p><b>무엇.</b> 이 플랫폼은 팀 공용 비밀번호 하나로 들어오므로 서버는 누가 왔는지 모른다. 그래서 들어올 때 본인을 고른다(자기 신고).</p>"
+               "<p><b>어디에 쓰나.</b> 버튼을 누를 때 담당자로 자동 선택되고, 감사 로그에 이름으로 남는다. 즐겨찾기·최근에 넣은 값·열어 둔 Hermes 대화도 이 이름별로 이 브라우저에 따로 저장된다.</p>"
+               "<p><b>바꾸기.</b> 오른쪽 위 이름 옆 [바꾸기]. 목록에 없는 이름은 <span class=\"mono\">QA_OPERATORS</span> 설정(compose)에 더한다.</p>"),
+    # ---- 대시보드 ----
+    "dash.deploys": ("dev 배포 — 미검증 배포",
+                     "<p><b>무엇.</b> 백엔드 CI 가 dev 에 배포한 기록(GitHub Actions)을 읽어 온 목록. 플랫폼은 배포를 <b>감지만</b> 하고 실행하지 않는다.</p>"
+                     "<p><b>미검증</b> = 그 배포 뒤에 배포 검증(테스트 실행)이 한 번도 없었다는 뜻. 통과한 실행이 있으면 ✓ 가 붙는다.</p>"
+                     "<p><b>어떻게.</b> 배포 옆 [검증] → 플랫폼이 PR 이 바꾼 도메인의 sanity 스크립트를 제안 → 담당자 고르고 실행.</p>"),
+    "dash.verify": ("검증 — 배포 검증",
+                    "<p><b>무엇.</b> 방금 배포된 dev 가 바뀐 부분에서 기획·API 문서대로 동작하는지 확인하는 실행. sanity(바뀐 부분 위주, 쓰기 포함) 스크립트를 돈다.</p>"
+                    "<p><b>언제.</b> 내 PR 이 dev 에 머지·배포된 직후. 개발자가 누른다.</p>"
+                    "<p><b>어떻게.</b> [검증] → 확인 화면에서 제안된 스크립트를 보고 더하거나 빼기 → 담당자 → [실행]. 결과는 Slack 과 실행 기록에.</p>"),
+    "dash.sprint": ("스프린트 smoke",
+                    "<p><b>무엇.</b> 핵심 기능이 죽지 않았는지 전체를 빠르게 확인하는 읽기 위주 스크립트 묶음(smoke). 스프린트(Linear 사이클, 7일)마다 한 번.</p>"
+                    "<p><b>배지.</b> 이번 스프린트에 smoke 실행이 없으면 대시보드에 표시되고 Slack 리마인드가 간다. 자동으로 돌지는 않는다.</p>"
+                    "<p><b>어떻게.</b> [스프린트 smoke 실행] → 확인 → 실행. 보통 QA 담당이 스프린트 마감에 누른다.</p>"),
+    "dash.release": ("릴리스 QA",
+                     "<p><b>무엇.</b> main 으로 승격하기 전에 smoke 전체를 돌리고, 백엔드 릴리스 체크리스트를 확인해 GO / NO-GO 를 <b>기록</b>하는 실행.</p>"
+                     "<p><b>주의.</b> 플랫폼이 승격을 막지는 않는다. 근거를 남길 뿐이다. 승격은 사람이 따로 한다.</p>"
+                     "<p><b>어떻게.</b> [릴리스 QA] → 실행 → 실행 상세의 릴리스 판단 카드에서 체크리스트와 판단·사유 기록.</p>"),
+    "dash.manual": ("수동 실행",
+                    "<p><b>무엇.</b> 스크립트를 직접 골라 돌린다. 특정 스크립트만 다시 보고 싶을 때.</p>"
+                    "<p><b>어떻게.</b> [수동 실행] → 목록에서 체크 → 담당자 → [실행]. 테스트 데이터 만들기(setup) 스크립트는 여기 안 뜬다 — 전용 화면에서.</p>"),
+    "dash.coverage": ("TC 커버리지 — 도메인 × 종류",
+                      "<p><b>무엇.</b> 테스트 케이스(TC, 확인해야 할 항목) 중 확인하는 스크립트가 있는 것의 비율. 칸 = <b>자동화됨 / 전체 (제외 n)</b>. 세로는 도메인(기능 영역), 가로는 TC 종류(비즈니스 규칙 · API 계약 · 수동 작성).</p>"
+                      "<p><b>어떻게 올리나.</b> 칸을 클릭하면 그 도메인의 TC 목록으로 간다. 미자동화 TC 를 골라 [고른 TC 로 스크립트 초안 생성] → 초안 승인 → YAML PR. 자세한 길은 TC 화면의 ? 를 본다.</p>"),
+    # ---- 실행 기록 ----
+    "runs.list": ("실행 기록",
+                  "<p><b>무엇.</b> 사람이 버튼을 눌러 돌린 테스트 실행 하나하나. 언제 누가 무엇을 돌렸고 결과가 어땠는지. 기록은 바뀌지 않는다.</p>"
+                  "<p><b>안 보이는 것.</b> API 호출 화면에서 보낸 요청도 실행으로 남지만 건수가 많아 기본 숨김 — [숨긴 것도 보기].</p>"),
+    "runs.trigger": ("실행 종류",
+                     "<p>배포 검증(sanity) · 스프린트 smoke · 릴리스 QA · 수동 실행 · 초안 시험 실행(스크립트 초안을 한 번 돌려 봄) · API 호출(입력 폼에서 한 번 보냄) · 테스트 데이터 만들기. 무엇을 왜 돌렸는지 한눈에 구분하려는 표시다.</p>"),
+    "run.verdict": ("판정 — pass · fail · error · skipped",
+                    "<p><b>pass</b> 응답이 기대와 같다. <b>fail</b> 응답이 기대와 다르다(버그거나 스크립트가 낡았거나). <b>error</b> 요청 자체가 실패(네트워크·예외). <b>skipped</b> 테스트 계정이나 픽스처(dev 데이터 id)가 설정에 없어 건너뜀 — 실패가 아니라 설정 문제.</p>"
+                    "<p><b>실행 전체</b>는 하나라도 fail/error 면 fail. skipped 만 있으면 통과로 치지 않고 skipped 로 남긴다.</p>"),
+    "run.summary": ("결과 요약 카드",
+                    "<p>전체 스크립트 수, 실행 완료 수, 통과 수와 통과율, 실패·오류 수. 통과율 = 통과 / 전체(skip 포함). 도넛은 같은 숫자를 그림으로.</p>"),
+    "run.domains": ("도메인별 진행",
+                    "<p>스크립트를 도메인(기능 영역)별로 묶어 통과·실패·skip 비율을 막대로. 한 스크립트가 두 도메인이면 둘 다에 센다. 어느 영역이 깨졌는지 먼저 보는 용도.</p>"),
+    "run.filter": ("판정으로 거르기",
+                   "<p>아래 스크립트별 결과를 통과 · 실패·오류 · skip 만 보이게 거른다. 실패만 보고 싶을 때.</p>"),
+    "run.triage": ("Hermes 실패 분석",
+                   "<p><b>무엇.</b> 실패한 스크립트의 요청·응답·기대와 관련 TC·API 문서를 팀 AI 비서 Hermes 에게 주고 원인을 셋 중 하나로 분류하게 한다 — <b>버그</b>(백엔드가 틀림) / <b>스크립트 노후</b>(기획·API 가 바뀌어 스크립트가 낡음) / <b>환경</b>(dev 데이터·설정 문제).</p>"
+                   "<p><b>다음 행동.</b> 버그 → Linear 이슈. 스크립트 노후 → 스크립트 상세의 [바뀐 TC 에 맞게 Hermes 가 고치기] 또는 직접 YAML 수정 PR. 환경 → SSM 픽스처나 dev 데이터 정리.</p>"
+                   "<p>분석은 제안이다. 판단과 조치는 사람이 한다.</p>"),
+    "run.cancel": ("취소", "<p>대기 중이거나 진행 중인 실행을 멈춘다. 이미 보낸 요청은 되돌리지 않는다. 감사 로그에 남는다.</p>"),
+    "run.publish": ("위키에 보고서 게시",
+                    "<p><b>무엇.</b> 이 실행의 요약(대상·판정·건수·커버리지·실패와 분석)을 팀 위키 <span class=\"mono\">wiki/qa/</span> 에 페이지로 만든다. 회원 UUID 는 가린다.</p>"
+                    "<p><b>언제.</b> 스프린트 smoke·릴리스 QA 결과를 팀에 남기고 싶을 때. 사람이 누를 때만. [dry-run] 은 만들지 않고 내용만 본다.</p>"),
+    "run.release": ("릴리스 판단",
+                    "<p>백엔드 <span class=\"mono\">docs/knowledge/release-checklist.md</span> 항목을 하나씩 확인하고 GO(승격해도 된다) / NO-GO(보류) 와 사유를 기록한다. 기록만 하고 승격을 막지 않는다. 감사 로그와 Slack 에 남는다.</p>"),
+    "run.json": ("JSON", "<p>이 실행 기록 전체를 JSON 으로. 다른 도구에서 읽거나 Hermes 에게 붙일 때.</p>"),
+    "run.steps": ("스크립트별 결과 · 단계",
+                  "<p>스크립트마다 단계(요청 하나)가 순서대로. 각 단계를 펼치면 보낸 요청(인증 토큰은 가림)·받은 응답(8 KB 까지)·검증 항목이 보인다. 실패한 단계는 펼쳐진 채로 나온다.</p>"
+                  "<p>스크립트 버전(해시)은 그때 돌린 YAML 그대로 — 지금 파일이 바뀌어도 이 기록은 그대로다.</p>"),
+    "run.checks": ("검증 항목 (assertion)",
+                   "<p>단계마다 응답을 비교한 조건과 결과. 종류 다섯: <span class=\"mono\">status</span>(HTTP 상태) · <span class=\"mono\">result</span>(SUCCESS/ERROR) · <span class=\"mono\">error_code</span>(E1402 같은 코드) · <span class=\"mono\">json</span>(경로→값) · <span class=\"mono\">exists</span>(경로 존재). 기대와 실제가 나란히 보인다.</p>"),
+    # ---- 테스트 스크립트 ----
+    "cases.list": ("테스트 스크립트",
+                   "<p><b>무엇.</b> TC 를 실제로 확인하는 실행 단위. dev 에 보낼 요청과 기대 응답을 적은 YAML 이고 원본은 git <span class=\"mono\">qa-platform/cases/</span>.</p>"
+                   "<p><b>늘리려면.</b> 손으로 YAML 을 써서 PR 하거나, TC·API 화면에서 Hermes 초안을 받아 승인 → PR. 어느 쪽이든 PR 리뷰·머지 뒤 다음 배포에 실린다.</p>"),
+    "cases.suite": ("스위트 — smoke · sanity · manual · setup",
+                    "<p><b>smoke</b> 읽기 위주, 빠름, 스프린트·릴리스 때 전체. <b>sanity</b> 쓰기 포함, 도메인별, 배포 검증 때 바뀐 도메인만. <b>manual</b> 직접 고를 때만. <b>setup</b> 테스트 데이터 만들기 전용(검증이 아니라 데이터 생성).</p>"),
+    "cases.audit": ("정합성 — 정합 · 경고 · 불일치",
+                    "<p><b>무엇.</b> 스크립트가 \"이 TC 를 확인한다\" 고 적은 선언(<span class=\"mono\">covers</span>)이 TC 목록·API 문서와 맞는지 플랫폼이 검사한 결과.</p>"
+                    "<p><b>불일치</b>면 선언이 거짓이라 스위트에서 빠진다(실행되지 않는다). 사유를 보고 YAML 을 고쳐 PR. <b>경고</b>는 실행되지만 확인할 것이 있다는 뜻.</p>"),
+    "cases.covers": ("검증하는 TC",
+                     "<p>이 스크립트가 확인한다고 선언한 TC 목록. 커버리지의 근거다. smoke·sanity 는 하나 이상 있어야 한다. TC id 는 TC 화면에서 찾는다.</p>"),
+    "cases.last": ("마지막 결과 · 최근 통계",
+                   "<p>가장 최근 실행의 판정과 시각, 그 아래 최근 20회 통과율(skip 제외)·평균 소요. <b>불안정 (flaky)</b> = 스크립트를 안 고쳤는데 최근 10회 안에서 통과↔실패가 2번 이상 뒤집힘 — dev 데이터·타이밍 문제를 의심한다.</p>"),
+    "cases.reload": ("파일에서 다시 읽기",
+                     "<p>서버가 <span class=\"mono\">cases/*.yaml</span> 을 다시 읽는다. 배포되면 자동으로 읽으니 보통은 필요 없고, 로컬에서 파일을 고쳤을 때 쓴다.</p>"),
+    "case.revise": ("바뀐 TC 에 맞게 Hermes 가 고치기 → 초안",
+                    "<p><b>언제.</b> 이 스크립트에 <b>TC 변경</b> 표시가 있을 때 — 기획(규칙표)이나 API 문서가 바뀌어 확인 기준이 달라졌다.</p>"
+                    "<p><b>무엇.</b> 현재 YAML 과 바뀐 TC 의 전/후, 새 PRD 절을 Hermes 에게 주고 바뀐 부분만 고치게 한다. 결과는 같은 id 의 <b>초안</b>으로 들어온다.</p>"
+                    "<p><b>그 다음.</b> 초안 화면에서 원본과의 차이(diff)를 보고 [한 번 실행해 보기] → 승인 → YAML PR.</p>"),
+    "case.drift": ("TC 변경",
+                   "<p>이 스크립트가 확인하는 TC 가 마지막 검토 이후 바뀌었다(추가·변경·삭제). 스크립트가 낡았을 수 있으니 다시 본다. 표시를 지우려면 YAML 에 <span class=\"mono\">reviewed: {at: 날짜, by: 이름}</span> 을 적어 PR — \"이 시점까지 확인했다\" 는 뜻.</p>"),
+    "case.yaml": ("정의 (YAML)",
+                  "<p>스크립트 원문. 단계(<span class=\"mono\">steps</span>)마다 요청·기대(<span class=\"mono\">expect</span>)·저장(<span class=\"mono\">save</span>). <span class=\"mono\">{{roomId}}</span> 같은 치환은 앞 단계가 저장한 값, <span class=\"mono\">{{fixture.x}}</span> 는 dev 데이터 id, <span class=\"mono\">{{actor.qa-host.memberId}}</span> 는 테스트 계정. 형식은 가이드 참고.</p>"),
+    "case.history": ("실행 이력", "<p>이 스크립트가 들어간 실행들(최신순)과 그때 판정·오류. 실행 id 를 누르면 단계별 요청·응답으로.</p>"),
+    # ---- 테스트 케이스 (TC) ----
+    "tc.layers": ("TC 의 세 종류",
+                  "<p><b>비즈니스 규칙</b> 위키의 정책 규칙표(SSOT)에서 뽑음 — \"방장만 반려할 수 있다\" 같은 조건과 그 거절. <b>API 계약</b> API 문서(OpenAPI)에서 뽑음 — API 마다 성공 응답 하나와 문서화된 에러 코드 하나씩. <b>수동 작성</b> 사람이 <span class=\"mono\">catalog/manual-tc.yaml</span> 에 적은 것 — 규칙표에 없는 확인 항목.</p>"
+                  "<p>플랫폼 안에서 TC 를 만들거나 고치지 않는다. 빠졌으면 위키나 API 문서를 고친다.</p>"),
+    "tc.state": ("자동화됨 · 미자동화 · 자동화 제외",
+                 "<p><b>자동화됨</b> 이 TC 를 확인하는 스크립트가 있다(YAML 의 <span class=\"mono\">covers</span> 에 이 TC id 가 적혀 있다). <b>미자동화</b> 아직 없다. <b>자동화 제외</b> 자동으로 확인할 수 없어 사유와 함께 뺀 것(<span class=\"mono\">catalog/exclusions.yaml</span>) — 분모에서 빠지고 회색으로 남는다.</p>"
+                 "<p><b>미자동화를 자동화되게 만들려면.</b> ① 이 화면에서 미자동화 TC 를 체크(같은 도메인 1~10건) → [고른 TC 로 스크립트 초안 생성] — Hermes 가 TC·API 문서·PRD 절을 근거로 YAML 초안을 쓰고 플랫폼이 형식·TC 일치를 검사한다. ② 스크립트 초안 화면에서 [한 번 실행해 보기] 로 dev 에 돌려 보고 ③ [승인] → YAML 을 <span class=\"mono\">qa-platform/cases/</span> 에 붙여 PR → 머지. 다음 배포부터 이 TC 가 자동화됨으로 바뀐다. 손으로 YAML 을 써도 된다 — 핵심은 <span class=\"mono\">covers</span> 에 TC id 를 적는 것.</p>"
+                 "<p><b>자동화가 불가능하면.</b> 시간 경과 조건처럼 dev 에서 재현할 수 없는 것은 <span class=\"mono\">exclusions.yaml</span> 에 사유와 함께 적어 PR — 그러면 자동화 제외로 표시된다.</p>"),
+    "tc.filter": ("도메인 · 종류 · 상태로 거르기",
+                  "<p>첫 줄은 도메인(기능 영역), 둘째 줄은 TC 종류, 셋째 줄은 상태. \"미자동화만\" 을 고르면 스크립트를 늘릴 후보만 남는다. \"경고만\" 은 스펙 불일치 경고가 붙은 것.</p>"),
+    "tc.warnings": ("스펙 불일치 경고",
+                    "<p>API 매핑이 가리키는 API 나 에러 코드가 API 문서에 없거나, 규칙표의 거절 조건에 해당하는 에러 응답 예시가 문서에 빠졌을 때. 대개 백엔드 REST Docs 에 예시가 없는 것 — 백엔드에서 예시를 추가하면 사라진다. 값이 틀린 것(인원 범위 등)은 여기서 못 잡고 스크립트 실패로 잡힌다.</p>"),
+    "tc.versions": ("TC 소스 버전",
+                    "<p>지금 TC 목록을 만든 재료의 버전 — 규칙표(SSOT) 해시, API 문서(OpenAPI) 해시, 위키 커밋. 실행 기록에도 그때 버전이 적혀 있어 \"어느 기준으로 확인했나\" 를 맞춰 볼 수 있다.</p>"),
+    "tc.mapping": ("API 매핑",
+                   "<p>규칙표의 기능(command)과 API 문서의 API(operationId), 거절 조건과 에러 코드를 잇는 표 <span class=\"mono\">catalog/bindings.yaml</span>. 1:1 이 아니라 사람이 적는다. 새 API 가 생기면 여기 한 줄 더해야 비즈니스 규칙 TC 가 그 API 와 연결된다. \"API 없음\" 은 아직 안 이은 것.</p>"),
+    "tc.draft": ("고른 TC 로 스크립트 초안 생성 (Hermes)",
+                 "<p>체크한 TC(같은 도메인 1~10건)를 확인하는 스크립트 YAML 을 Hermes 가 쓴다. 플랫폼이 TC·API 문서(요청 예시·에러 코드)·PRD 절을 근거로 넣고, 돌아온 YAML 을 형식·TC 일치·테스트 계정으로 검사해 통과한 것만 초안에 넣는다. 승인은 사람이 초안 화면에서.</p>"),
+    "tc.propose": ("PRD 절에서 수동 작성 TC 제안 (Hermes)",
+                   "<p>규칙표로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라 준다. 결과는 초안 화면에 \"수동 TC 제안\" 으로 들어오고, 승인하면 사람이 <span class=\"mono\">catalog/manual-tc.yaml</span> 에 붙여 PR. 문서 이름은 위키 PRD 제목(예: 룸 탐색), 절 번호는 4.2 처럼.</p>"),
+    "tc.detail": ("TC 상세",
+                  "<p>이 확인 항목의 근거(규칙표 검사·API 문서·PRD 절 본문), 기대 결과, 이 TC 를 확인하는 스크립트와 마지막 결과. [Hermes 와 이야기] 로 이 TC 를 첨부한 대화를 연다.</p>"),
+    # ---- 스크립트 초안 ----
+    "drafts.status": ("초안 상태 — 검토 대기 · dev 확인됨 · 승인 · 반려",
+                      "<p><b>검토 대기</b> 막 생김. <b>dev 확인됨</b> [한 번 실행해 보기] 로 dev 에 돌려 통과. <b>승인</b> 사람이 OK — 이제 YAML 을 <span class=\"mono\">qa-platform/cases/</span> 에 붙여 PR 한다(플랫폼이 파일을 쓰지 않는다). <b>반려</b> 버림.</p>"),
+    "draft.check": ("한 번 실행해 보기",
+                    "<p>초안 YAML 을 dev 에 한 번 돌려 본다(실행 종류 \"초안 시험 실행\"). 통과하면 dev 확인됨. 실패하면 오류를 보고 편집한다. 스위트에는 들어가지 않는다.</p>"),
+    "draft.approve": ("승인 · 반려",
+                      "<p><b>승인</b>은 \"이 YAML 을 스크립트로 올려도 된다\" 는 사람의 결정. 승인해도 파일은 안 바뀐다 — YAML 을 복사해 <span class=\"mono\">cases/&lt;도메인&gt;.yaml</span> 에 붙이고 PR. 수동 TC 제안이면 <span class=\"mono\">catalog/manual-tc.yaml</span>. <b>반려</b>는 버리는 것. 둘 다 감사 로그에.</p>"),
+    "draft.diff": ("원본과의 차이",
+                   "<p>\"바뀐 TC 에 맞게 고치기\" 로 만든 초안은 원본 스크립트와 같은 id 다. 무엇이 바뀌었는지 줄 단위로 보여 준다. 승인하면 원본 파일의 그 스크립트를 이 YAML 로 바꿔 PR.</p>"),
+    "draft.edit": ("초안 편집",
+                   "<p>YAML 을 고치고 저장하면 형식·TC 일치·테스트 계정 검사를 다시 한다. 검사 결과가 아래에. 승인·반려된 초안은 못 고친다.</p>"),
+    # ---- API ----
+    "apis.list": ("API — API 별로 모아 보기",
+                  "<p><b>무엇.</b> API 문서(OpenAPI)의 API 하나하나를 축으로 그 API 의 TC·스크립트·실행 기록을 모은다. \"이 API 는 검증이 어디까지 됐고 지난번엔 어땠나\" 에 답하는 화면.</p>"
+                  "<p>도메인은 API 문서의 tags 가 전부 v1 이라 URL 경로로 나눴다.</p>"),
+    "apis.tc": ("TC 수", "<p>이 API 에 해당하는 테스트 케이스 수와 종류별 내역. API 계약 TC 는 그 API 의 응답·에러 코드에서, 비즈니스 규칙 TC 는 API 매핑으로, 수동 작성 TC 는 <span class=\"mono\">operations</span> 로 이어진다. 0 이면 API 문서에 응답 예시가 없거나 매핑이 안 된 것.</p>"),
+    "apis.auto": ("자동화됨 n/m", "<p>이 API 의 TC 중 확인하는 스크립트가 있는 수 / 제외를 뺀 전체. 올리는 방법은 TC 화면의 \"자동화됨 · 미자동화\" 도움말과 같다 — 상세 화면에서 TC 를 체크해 초안을 만들 수 있다.</p>"),
+    "apis.scripts": ("호출하는 스크립트", "<p>단계의 method·경로가 이 API 인 스크립트 수. 0 이면 어떤 스크립트도 이 API 를 안 부른다 — 테스트 커버리지가 비는 곳. 필터 \"호출하는 스크립트 없음\" 으로 모아 볼 수 있다.</p>"),
+    "apis.last": ("마지막 호출 · 최근 통계",
+                  "<p>이 API 를 호출한 가장 최근 단계의 판정·HTTP 상태·시각(스크립트 실행과 API 호출 화면 전송 모두). 그 아래 최근 20회 통과율·평균 소요 — 이 배포 이후 기록만.</p>"),
+    "apis.errors": ("에러 코드 수", "<p>API 문서에 문서화된 에러 응답 예시 수. 0 이면 거절 조건이 있어도 API 계약 TC 가 성공 하나뿐이다 — 백엔드 REST Docs 에 4xx 예시를 추가하면 TC 가 생긴다.</p>"),
+    "apis.filter": ("거르기", "<p><b>호출하는 스크립트 없음</b> 커버리지 빈 곳. <b>미자동화 TC 있음</b> 스크립트를 늘릴 후보. <b>문서화된 에러 없음</b> API 문서에 에러 예시가 빠진 API.</p>"),
+    "api.spec": ("스펙", "<p>API 문서에 적힌 것 그대로 — 파라미터, 요청 본문 예시, 성공 응답 예시, 문서화된 에러 코드. Swagger 문서가 보여 주는 것과 같다. [REST Docs] 는 백엔드가 만든 사람용 API 문서로 간다.</p>"),
+    "api.tcs": ("이 API 의 TC", "<p>종류별로 나눈 TC 와 자동화 상태·확인하는 스크립트. 미자동화를 체크해 [고른 TC 로 스크립트 초안 생성] — TC 화면의 도움말과 같은 길.</p>"),
+    "api.scripts": ("호출하는 스크립트",
+                    "<p>이 API 를 호출하는 단계가 있는 스크립트. <b>operations 에만 있음</b> = YAML 의 <span class=\"mono\">operations:</span> 목록에는 있는데 실제로 호출하는 단계가 없다. <b>operations 에 없음</b> = 호출은 하는데 목록에 안 적었다. 둘 다 YAML 을 맞춰 두면 좋다.</p>"),
+    "api.calls": ("최근 호출", "<p>이 API 를 호출한 단계 최근 20건 — 시각·실행 기록·스크립트(또는 API 호출)·판정·HTTP 상태·소요. [같은 요청으로 열기] 는 그 요청을 API 호출 입력 폼에 채워 준다(보내지는 않는다).</p>"),
+    "api.try": ("호출해 보기", "<p>API 호출 화면을 이 API 로 연다. 값을 넣어 dev 에 한 번 보내 본다.</p>"),
+    # ---- API 호출 ----
+    "x.views": ("Normal · Swagger 보기",
+                "<p>같은 요청을 두 모양으로 본다. <b>Normal</b> 은 값만 넣는 입력 폼 — path·query 파라미터와 본문의 키가 각각 칸으로. <b>Swagger</b> 는 실제로 나가는 요청 원문 — 메서드·경로·파라미터 표·JSON 본문(편집 가능). 한쪽을 고치면 다른 쪽도 바뀐다. JSON 이 깨지면 Normal 이 잠기고 이유가 뜬다. 토스 QA 플랫폼의 용례를 따랐다.</p>"),
+    "x.fav": ("즐겨찾기 ☆", "<p>자주 쓰는 API 를 목록 맨 위에 고정. 이 브라우저, 이 담당자 이름에만 저장된다.</p>"),
+    "x.recent": ("최근에 넣은 값", "<p>path·query 칸에 한 번 넣은 값과 응답에서 나온 id(roomId 등)를 이름별로 기억해 다음 입력 폼에 자동으로 채운다. 이 브라우저, 이 담당자 이름에만. 테스트 데이터 만들기의 결과값도 여기 들어온다.</p>"),
+    "x.actor": ("테스트 계정", "<p>dev 의 QA 전용 회원(qa-host · qa-guest). 고르면 플랫폼이 dev-sessions 로 토큰을 받아 Authorization 헤더에 넣는다. 비로그인은 헤더 없이. 회원 UUID 는 서버(SSM)에만 있다.</p>"),
+    "x.send": ("보내기", "<p>dev 에 실제로 요청이 나간다. 쓰기 API 도 그대로 — 만드는 데이터의 title 은 [QA] 로. 전송은 실행 기록(실행 종류 \"API 호출\")과 감사 로그에 남는다.</p>"),
+    "x.draft": ("스크립트 단계로 담기", "<p>방금 보낸 요청과 받은 응답(status·error_code)을 기대로 삼아 단계 하나짜리 스크립트 초안을 만든다. 초안 화면에서 <span class=\"mono\">covers</span>(확인하는 TC)와 스위트를 채우고 승인 → PR.</p>"),
+    "x.again": ("같은 요청으로 다시 열기", "<p>이 요청의 path·query·본문·테스트 계정을 입력 폼에 다시 채운다. 보내지는 않는다.</p>"),
+    "x.badge": ("TC · 자동화 배지", "<p>이 API 의 TC 수와 그중 자동화된 수, 마지막 실행 판정. 클릭하면 이 API 의 상세(모아 보기).</p>"),
+    # ---- 테스트 데이터 만들기 ----
+    "setup.cards": ("테스트 데이터 만들기",
+                    "<p><b>무엇.</b> 여러 API 를 순서대로 호출해 dev 에 데이터(모집 중인 룸, 신청 들어온 룸 …)를 만드는 일을 버튼 하나로. 화면을 손으로 볼 데이터가 필요할 때.</p>"
+                    "<p><b>어떻게.</b> 입력 몇 개 넣고 [실행] → 결과 카드에 결과값(roomId 등). 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행 기록에 남고 Slack 은 안 간다.</p>"
+                    "<p><b>늘리려면.</b> <span class=\"mono\">cases/setup.yaml</span> 에 <span class=\"mono\">suite: setup</span> 스크립트를 적어 PR — <span class=\"mono\">inputs</span>(입력칸) · <span class=\"mono\">outputs</span>(결과값) · <span class=\"mono\">{{input.x}}</span> 치환.</p>"),
+    "setup.outputs": ("결과값", "<p>스크립트가 저장(<span class=\"mono\">save</span>)한 값 중 <span class=\"mono\">outputs</span> 에 적힌 것. [복사] 하거나, API 호출 입력 폼에 최근에 넣은 값으로 자동으로 뜬다.</p>"),
+    "setup.swagger": ("Swagger 보기 (읽기 전용)", "<p>실제로 나가는 요청을 단계 순서대로. <span class=\"mono\">{{input.x}}</span> 는 Normal 의 입력값으로, 나머지 치환은 실행 때 채워진다. 여기서는 못 고친다 — 원본은 <span class=\"mono\">cases/setup.yaml</span>.</p>"),
+    # ---- Hermes ----
+    "hermes.widget": ("Hermes — 팀 AI 비서",
+                      "<p><b>무엇.</b> 어느 화면에서나 오른쪽 아래 버튼. TC·스크립트·실행 기록·커버리지·API 문서·PRD 절을 읽는 도구(<span class=\"mono\">qa_*</span>)로 답한다. 스크립트를 쓰거나 고치면 <b>초안</b>으로, PRD 절에서 뽑은 확인 항목은 \"수동 TC 제안\" 으로 낸다.</p>"
+                      "<p><b>못 하는 것.</b> 실행·API 직접 호출·위키 게시·초안 승인. \"돌려 줘\" 하면 어디서 누르는지 링크를 준다. 부른 도구는 전부 감사 로그에 hermes 이름으로.</p>"),
+    "hermes.attach": ("첨부", "<p>상세 화면(실행·스크립트·TC·API)에서 [Hermes 와 이야기] 를 누르면 그 객체가 대화에 첨부된다 — Hermes 가 먼저 그것을 읽고 답한다.</p>"),
+    "hermes.list": ("대화 목록", "<p>팀의 Hermes 대화 전부(누가 언제 무엇을). 30일 지난 대화는 이어 쓰지 못하고 새로 연다. 대화당 40턴.</p>"),
+    # ---- 감사 로그 ----
+    "activity.filter": ("감사 로그", "<p>누가 언제 무엇을 했는지 전부 — 실행 시작·취소, 초안 승인·반려, 릴리스 판단, 위키 게시, API 호출, Hermes 도구 호출. 담당자와 행위로 거른다. 지워지지 않는다.</p>"),
+}
+
+
+def js() -> str:
+    """/static/help.js — 표를 JSON 으로 싣고 '?' 버튼 클릭에 모달을 띄운다."""
+    data = json.dumps({k: {"t": t, "b": b} for k, (t, b) in HELP.items()}, ensure_ascii=False).replace("</", "<\\/")
+    return r"""
+(function(){
+  var H=%s;
+  var m=document.createElement('div'); m.id='help-modal'; m.innerHTML='<div class="hm-box" role="dialog" aria-modal="true"><div class="hm-head"><b class="hm-t"></b><button type="button" class="hm-x" aria-label="닫기">✕</button></div><div class="hm-body"></div><div class="hm-foot"><a href="/guide">가이드 전체 보기</a></div></div>';
+  document.body.appendChild(m);
+  function open(key){ var d=H[key]; if(!d){ return; } m.querySelector('.hm-t').textContent=d.t; m.querySelector('.hm-body').innerHTML=d.b; m.classList.add('open'); m.querySelector('.hm-x').focus(); }
+  function close(){ m.classList.remove('open'); }
+  document.addEventListener('click',function(ev){ var b=ev.target.closest && ev.target.closest('.help'); if(b){ ev.preventDefault(); ev.stopPropagation(); open(b.dataset.help); return; } if(ev.target===m||ev.target.closest('.hm-x')) close(); });
+  document.addEventListener('keydown',function(ev){ if(ev.key==='Escape') close(); });
+  document.querySelectorAll('.help').forEach(function(b){ if(!H[b.dataset.help]) b.title='도움말 준비 중: '+b.dataset.help; });
+})();
+""" % data
