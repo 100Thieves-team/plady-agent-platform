@@ -309,7 +309,8 @@ class App:
         self.store.add_event(operator=operator, action="chat.create", target=cid, session_hash=session_hash, ip=ip, detail={"context": context})
         return cid
 
-    def chat_send(self, chat: dict, text: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+    def chat_check(self, chat: dict, text: str, *, operator: str) -> None:
+        """보내기 전 검사 — 스트림을 열기 전에 400 으로 돌려줄 수 있게 따로 둔다."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("운영자를 목록에서 골라야 한다")
         if not text.strip():
@@ -322,7 +323,10 @@ class App:
             raise BadRequest(f"대화당 {self.cfg.chat_max_turns}턴까지 — 새 대화를 연다")
         if self.chat_stale(chat):
             raise BadRequest(f"{self.cfg.chat_stale_days}일 넘게 조용했던 대화다 — 새 대화를 연다")
-        return chatmod.send(self, chat, text, operator=operator, session_hash=session_hash, ip=ip)
+
+    def chat_send(self, chat: dict, text: str, *, operator: str, session_hash: str | None, ip: str | None, emit=None) -> dict:
+        self.chat_check(chat, text, operator=operator)
+        return chatmod.send(self, chat, text, operator=operator, session_hash=session_hash, ip=ip, emit=emit)
 
     def chat_stale(self, chat: dict) -> bool:
         try:
@@ -431,8 +435,29 @@ class Handler(BaseHTTPRequestHandler):
             h["Set-Cookie"] = f"qa_operator={set_operator}; Path=/; Max-Age=31536000; SameSite=Lax"
         self._send(HTTPStatus.SEE_OTHER, "", headers=h)
 
-    def _page(self, title, body, active="", flash=None, status=200):
-        self._send(status, ui.page(title, body, active=active, operator=self._operator(), flash=flash))
+    def _page(self, title, body, active="", flash=None, status=200, context=None, autostart=None, inline_chat=None):
+        self._send(status, ui.page(title, body, active=active, operator=self._operator(), flash=flash, context=context, hermes=bool(self.app.cfg.hermes_key),
+                                   operators=self.app.cfg.operators, autostart=autostart, inline_chat=inline_chat))
+
+    # -- SSE (Hermes 위젯) --
+    def _sse_start(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _sse(self, event: str, data) -> bool:
+        try:
+            if event == "keepalive":
+                self.wfile.write(b": keepalive\n\n")
+            else:
+                self.wfile.write(f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8"))
+            self.wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return False
 
     def _wants_json(self) -> bool:
         return self.path.startswith("/api/") or "application/json" in self.headers.get("Accept", "")
@@ -572,7 +597,7 @@ class Handler(BaseHTTPRequestHandler):
                 run["meta"] = m2
             return self._page(f"런 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
                                                         checklist=checklist, public_url=app.cfg.public_url,
-                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token)), "runs", flash=flash)
+                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token)), "runs", flash=flash, context={"run": rid})
 
         m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide|publish)$", path)
         if m and method == "POST":
@@ -660,7 +685,7 @@ class Handler(BaseHTTPRequestHandler):
             for ref in rec.get("prd") or []:
                 text = app.wiki.prd_section(ref["doc"], ref["section"], max_lines=40) if app.wiki.available else None
                 excerpts.append((ref, text))
-            return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"])), "catalog")
+            return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"])), "catalog", context={"tc": rec["id"]})
         if path == "/api/catalog" and method == "GET":
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
@@ -800,56 +825,72 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(404, "케이스가 없다")
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
-            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases")
+            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases", context={"case": c.id})
 
-        # ---------- Hermes 대화 (docs/qa-platform-hermes.md §3.2) ----------
+        # ---------- Hermes 대화 (docs/qa-platform-hermes.md §3.2) — 위젯 스크립트 + JSON/SSE API + 기록 화면 ----------
+        if path == "/static/hermes.js" and method == "GET":
+            return self._send(200, ui.HERMES_JS, "application/javascript; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
         if path == "/chat" and method == "GET":
             chats = app.store.list_chats(100)
             return self._page("Hermes", ui.chats_list(chats, stale={c["id"]: app.chat_stale(c) for c in chats}, hermes=bool(app.cfg.hermes_key),
                                                      operator=self._operator(), operators=app.cfg.operators), "chat")
         if path == "/chat/new" and method == "GET":
+            # 상세 화면의 [Hermes 와 이야기] — 위젯을 그 객체를 첨부한 새 대화로 연다
             ctx = {k: g(k) for k in ("run", "case", "tc") if g(k)}
-            attach, label = chatmod.context_block(app, ctx)
-            return self._page("새 대화", ui.chat_new(ctx, label, attach, operator=self._operator(), operators=app.cfg.operators, hermes=bool(app.cfg.hermes_key)), "chat")
-        if path == "/chat" and method == "POST":
-            f = self._form()
-            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
-            operator = str(fv("operator")).strip()
-            ctx = {k: str(fv(k)) for k in ("run", "case", "tc") if fv(k)}
-            sh, ip = self._session_hash(), self._ip()
-            cid = app.chat_create(operator=operator, context=ctx, session_hash=sh, ip=ip)
-            text = str(fv("text"))
-            if text.strip():
-                app.chat_send(app.store.get_chat(cid), text, operator=operator, session_hash=sh, ip=ip)
-            return self._json(200, {"id": cid}) if self._wants_json() else self._redirect(f"/chat/{cid}", set_operator=operator)
+            chats = app.store.list_chats(100)
+            return self._page("Hermes", ui.chats_list(chats, stale={c["id"]: app.chat_stale(c) for c in chats}, hermes=bool(app.cfg.hermes_key),
+                                                     operator=self._operator(), operators=app.cfg.operators), "chat", autostart=ctx or {"new": True})
         m = re.match(r"^/chat/(c-[0-9a-f]+)$", path)
         if m and method == "GET":
             chat = app.store.get_chat(m.group(1))
             if not chat:
                 return self._error(404, "대화가 없다")
-            msgs = app.store.list_chat_messages(chat["id"])
-            drafts = {d: app.store.get_draft(d) for mm in msgs for d in mm["draft_ids"]}
-            if self._wants_json():
-                return self._json(200, {"chat": chat, "messages": msgs})
-            return self._page(f"대화 {chat['id']}", ui.chat_detail(chat, msgs, drafts, stale=app.chat_stale(chat), max_turns=app.cfg.chat_max_turns,
-                                                                 timeout=app.cfg.chat_timeout, operator=self._operator(), operators=app.cfg.operators), "chat")
-        m = re.match(r"^/chat/(c-[0-9a-f]+)/(send|close)$", path)
-        if m and method == "POST":
+            head = (f'<h1>{ui.e(chat.get("title") or "대화")} <span class="small mut mono">{ui.e(chat["id"])}</span> <a class="btn" href="/chat">목록</a></h1>'
+                    f'<p class="small mut">운영자 {ui.e(chat["operator"])} · {ui.kst(chat["created_at"])} · 초안 {chat["drafts"]}건(승인은 <a href="/drafts">케이스 초안</a> 화면에서)</p>')
+            return self._page(f"대화 {chat['id']}", head, "chat", inline_chat=chat["id"])
+        if path == "/api/chats" and method == "GET":
+            chats = app.store.list_chats(50)
+            return self._json(200, {"chats": [dict(c, stale=app.chat_stale(c)) for c in chats]})
+        if path == "/api/chats" and method == "POST":
+            f = self._form()
+            ctx = {k: str((f.get(k) or [""])[0]) for k in ("run", "case", "tc") if (f.get(k) or [""])[0]}
+            cid = app.chat_create(operator=self._operator(), context=ctx, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, {"id": cid, "chat": app.store.get_chat(cid)})
+        m = re.match(r"^/api/chats/(c-[0-9a-f]+)(?:/(send|close))?$", path)
+        if m:
             chat = app.store.get_chat(m.group(1))
             if not chat:
-                return self._error(404, "대화가 없다")
-            f = self._form()
-            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
-            operator = str(fv("operator")).strip()
-            if not operator or operator not in app.cfg.operators:
-                raise BadRequest("운영자를 목록에서 골라야 한다")
+                return self._json(404, {"error": "대화가 없다"})
+            action = m.group(2)
+            if not action and method == "GET":
+                msgs = app.store.list_chat_messages(chat["id"])
+                drafts = {}
+                for mm in msgs:
+                    for d in mm["draft_ids"]:
+                        dd = app.store.get_draft(d)
+                        drafts[d] = ui.DRAFT_KO.get(dd["status"], dd["status"]) if dd else None
+                return self._json(200, {"chat": chat, "messages": msgs, "drafts": drafts, "stale": app.chat_stale(chat), "max_turns": app.cfg.chat_max_turns})
+            operator = self._operator()
             sh, ip = self._session_hash(), self._ip()
-            if m.group(2) == "close":
+            if action == "close" and method == "POST":
+                if not operator or operator not in app.cfg.operators:
+                    raise BadRequest("운영자를 목록에서 골라야 한다")
                 app.store.update_chat(chat["id"], status="closed")
                 app.store.add_event(operator=operator, action="chat.close", target=chat["id"], session_hash=sh, ip=ip, detail={"turns": chat["turns"]})
-                return self._json(200, {"ok": True}) if self._wants_json() else self._redirect("/chat", set_operator=operator)
-            reply = app.chat_send(chat, str(fv("text")), operator=operator, session_hash=sh, ip=ip)
-            return self._json(200, reply) if self._wants_json() else self._redirect(f"/chat/{chat['id']}#end", set_operator=operator)
+                return self._json(200, {"ok": True})
+            if action == "send" and method == "POST":
+                f = self._form()
+                text = str((f.get("text") or [""])[0])
+                app.chat_check(chat, text, operator=operator)          # 한도·운영자 검사는 스트림을 열기 전에 (400 으로)
+                if "text/event-stream" not in self.headers.get("Accept", ""):
+                    return self._json(200, app.chat_send(chat, text, operator=operator, session_hash=sh, ip=ip))
+                self._sse_start()
+                alive = {"ok": True}
+                def emit(kind, data):
+                    if alive["ok"] and not self._sse(kind, data):
+                        alive["ok"] = False        # 브라우저가 떠나도 Hermes 스트림은 끝까지 읽어 기록한다
+                app.chat_send(chat, text, operator=operator, session_hash=sh, ip=ip, emit=emit)
+                return
 
         # ---------- 가이드 ----------
         if path == "/guide" and method == "GET":

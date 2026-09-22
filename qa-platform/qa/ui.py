@@ -38,8 +38,18 @@ details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-colum
 .b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
 tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
 a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;font-weight:500;text-decoration:none;vertical-align:middle}
-.msg{padding:10px 14px;border-radius:10px;margin:8px 0;max-width:92%;white-space:pre-wrap;word-break:break-word}.msg.user{background:#eef2ff;margin-left:auto}.msg.assistant{background:var(--card);border:1px solid var(--line)}.msg.err{background:var(--badbg);color:var(--bad)}
-.msg .who{font-size:11px;color:var(--mut);margin-bottom:4px}.tools{font-size:12px;margin:6px 0 0}.tools pre{max-height:220px;overflow:auto;font-size:11px;margin:4px 0}
+/* Hermes 위젯 (채널톡처럼 어느 화면에서나) */
+#hx-btn{position:fixed;right:22px;bottom:22px;z-index:50;border:0;border-radius:999px;background:#111827;color:#fff;font-weight:600;padding:12px 18px;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer;font-size:14px}
+#hx{position:fixed;right:22px;bottom:80px;z-index:51;width:400px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 100px);background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:none;flex-direction:column;overflow:hidden}
+#hx.open{display:flex}#hx.inline{position:static;width:100%;max-width:none;height:70vh;max-height:none;display:flex;box-shadow:none}
+.hx-head{display:flex;align-items:center;gap:6px;padding:10px 12px;background:#111827;color:#fff;font-weight:600}.hx-head .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.hx-head button{background:transparent;border:1px solid #374151;color:#d1d5db;border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer}.hx-head button:hover{color:#fff;border-color:#9ca3af}
+.hx-body{flex:1;overflow:auto;padding:12px;background:var(--bg);display:flex;flex-direction:column}.hx-body .msg{max-width:94%}
+.msg{padding:9px 12px;border-radius:10px;margin:6px 0;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.45}.msg.user{background:#eef2ff;align-self:flex-end}.msg.assistant{background:var(--card);border:1px solid var(--line);align-self:flex-start}.msg.err{background:var(--badbg);color:var(--bad)}
+.msg .who{font-size:11px;color:var(--mut);margin-bottom:3px}.msg .cur::after{content:'▍';color:var(--mut);animation:hxb 1s infinite}@keyframes hxb{50%{opacity:0}}
+.tc{display:inline-block;font:11px ui-monospace,Menlo,monospace;background:var(--graybg);color:var(--gray);border-radius:6px;padding:2px 7px;margin:4px 4px 0 0;cursor:pointer}.tc.run{background:var(--warnbg);color:var(--warn)}.tc pre{display:none;white-space:pre-wrap;max-height:200px;overflow:auto;margin:4px 0 0;font-size:11px;background:#fff;padding:6px;border-radius:4px;color:var(--ink)}.tc.on pre{display:block}
+.hx-foot{border-top:1px solid var(--line);padding:8px 10px;background:var(--card)}.hx-foot textarea{width:100%;min-height:44px;max-height:140px;resize:vertical;font-size:13px}.hx-foot .row{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:var(--mut)}.hx-foot .row button{margin-left:auto}
+.hx-list a{display:block;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);margin-bottom:6px;color:var(--ink)}.hx-list a small{display:block;color:var(--mut)}.hx-note{font-size:12px;color:var(--mut);padding:8px 0}
 .mx{font-size:12px}.mx td,.mx th{padding:4px 6px;text-align:center}.mx td:first-child{text-align:left}
 """
 
@@ -79,16 +89,24 @@ ACTION_KO = {"run.create": "런 생성", "run.cancel": "런 취소", "run.triage
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
-def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None) -> str:
+def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None,
+         context: dict | None = None, hermes: bool = False, operators: list | tuple = (), autostart: dict | None = None,
+         inline_chat: str | None = None) -> str:
+    """모든 화면의 껍데기. Hermes 위젯(채널톡처럼 오른쪽 아래)이 어느 화면에나 붙는다 — context 는 그 화면의 객체(run·case·tc),
+    autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
         for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "런"), ("cases", "/cases", "케이스"), ("catalog", "/catalog", "기준"), ("drafts", "/drafts", "케이스 초안"), ("chat", "/chat", "Hermes"), ("explorer", "/explorer", "탐색기"), ("activity", "/activity", "활동"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
+    qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
+          "autostart": autostart, "inline": inline_chat}
+    inline = f'<div id="hx-inline"></div>' if inline_chat else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{e(title)} · QA</title><style>{CSS}</style></head><body>'
             f'<nav><span class="brand">Plady QA</span>{nav}<span class="op">{("운영자: " + e(operator)) if operator else "운영자 미선택"}</span></nav>'
-            f'<main>{fl}{body}</main></body></html>')
+            f'<main>{fl}{body}{inline}</main>'
+            f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script></body></html>')
 
 
 # ---- 대시보드 ------------------------------------------------------------------------------
@@ -683,62 +701,129 @@ def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, o
             f'<div class="card"><table><tr><th>제목</th><th>첨부</th><th>상태</th><th>턴</th><th>초안</th><th>운영자</th><th>마지막</th></tr>{rows}</table></div>')
 
 
-def _send_js() -> str:
-    return ('onsubmit="var b=this.querySelector(\'button[type=submit]\');b.disabled=true;b.textContent=\'Hermes 가 도구를 쓰는 중…\';'
-            'var w=document.getElementById(\'wait\');if(w)w.style.display=\'block\'"')
+# ---- Hermes 위젯 스크립트 (/static/hermes.js). 표준 라이브러리 서버라 문자열로 낸다 ---------------------------
+HERMES_JS_VERSION = "2"
+HERMES_JS = r"""
+(function(){
+  var Q = window.QA || {}; var LS_ID='qa_chat_id', LS_OPEN='qa_chat_open';
+  var st = {id:null, view:'thread', busy:false, chat:null};
+  function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function el(tag, cls, html){var x=document.createElement(tag); if(cls) x.className=cls; if(html!=null) x.innerHTML=html; return x;}
+  function kst(iso){ if(!iso) return ''; var d=new Date(iso); return isNaN(d)?'':d.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}); }
+  function linkify(t){ return h(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1">$1</a>').replace(/\b(d-[0-9a-f]{8})\b/g,'<a href="/drafts/$1" class="mono">$1</a>'); }
+  function ctxLabel(c){ c=c||{}; if(c.run) return '런 <a href="/runs/'+h(c.run)+'" class="mono">'+h(c.run)+'</a>'; if(c.case) return '케이스 <a href="/cases/'+h(c.case)+'" class="mono">'+h(c.case)+'</a>'; if(c.tc) return 'TC <a href="/catalog/tc?id='+encodeURIComponent(c.tc)+'" class="mono">'+h(c.tc)+'</a>'; return ''; }
 
+  // ---- DOM ----
+  var inline = !!Q.inline, root = inline ? document.getElementById('hx-inline') : document.body;
+  var btn = null;
+  if(!inline){ btn = el('button','', 'Hermes'); btn.id='hx-btn'; document.body.appendChild(btn); btn.onclick=function(){ toggle(); }; }
+  var box = el('div', inline ? 'inline' : ''); box.id='hx';
+  box.innerHTML = '<div class="hx-head"><span class="t">Hermes</span><button data-a="list" title="대화 목록">목록</button><button data-a="new">새 대화</button>'+(inline?'':'<button data-a="close" title="닫기">×</button>')+'</div>'
+    + '<div class="hx-body"></div>'
+    + '<div class="hx-foot"><textarea placeholder="Hermes 에게 물어본다. Enter 전송, Shift+Enter 줄바꿈" rows="2"></textarea><div class="row"><span class="st"></span><button class="primary">보내기</button></div></div>';
+  root.appendChild(box);
+  var body = box.querySelector('.hx-body'), ta = box.querySelector('textarea'), sendBtn = box.querySelector('.hx-foot button'), stEl = box.querySelector('.st'), title = box.querySelector('.t');
+  box.querySelector('.hx-head').onclick = function(ev){ var a = ev.target.getAttribute && ev.target.getAttribute('data-a'); if(a==='close') toggle(false); if(a==='list') showList(); if(a==='new') startNew(Q.context); };
+  sendBtn.onclick = send; ta.onkeydown = function(ev){ if((ev.key==='Enter' || ev.keyCode===13) && !ev.shiftKey && !ev.isComposing){ ev.preventDefault(); send(); } };
 
-def chat_new(ctx: dict, label: str | None, attach: str, *, operator: str, operators: list[str], hermes: bool) -> str:
-    if not hermes:
-        return '<h1>새 대화</h1><div class="flash err">HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다.</div>'
-    hidden = "".join(f'<input type="hidden" name="{k}" value="{e(v)}">' for k, v in ctx.items())
-    attach_html = f'<div class="card"><div class="small mut">첨부 — 첫 메시지 앞에 붙는다</div><pre>{e(attach)}</pre></div>' if attach else ""
-    dis = "" if operator else "disabled"
-    return (f'<h1>새 대화 <span class="small mut">{("첨부: " + e(label)) if label else "첨부 없음"}</span></h1>{attach_html}'
-            f'<form class="card" method="post" action="/chat" {_send_js()}>{hidden}<input type="hidden" name="operator" value="{e(operator)}">'
-            f'<textarea name="text" required placeholder="예: room 도메인에서 아직 안 덮은 정책 TC 중 지금 케이스로 만들 수 있는 것 골라 줘" style="min-height:100px"></textarea>'
-            f'<div class="actions"><button type="submit" class="primary" {dis}>보내기</button> {_operator_select(operator, operators)} '
-            f'<span class="small mut">응답은 동기다 — 도구를 여러 번 부르면 수십 초 걸린다</span></div>'
-            f'<div id="wait" class="small mut" style="display:none">Hermes 가 도구를 쓰는 중… 화면을 닫지 말고 기다린다.</div></form>')
+  function toggle(on){ if(inline) return; var open = on==null ? !box.classList.contains('open') : on; box.classList.toggle('open', open); try{localStorage.setItem(LS_OPEN, open?'1':'');}catch(e){} if(open && !st.loaded){ st.loaded=true; if(st.id) loadThread(st.id); else showNew(Q.context); } if(open) ta.focus(); }
+  function note(msg, cls){ body.innerHTML=''; body.appendChild(el('div','hx-note'+(cls?' '+cls:''), msg)); }
+  function status(t){ stEl.textContent = t||''; }
+  function setBusy(b){ st.busy=b; sendBtn.disabled=b; ta.disabled=b; }
 
+  // ---- 운영자·Hermes 없음 ----
+  function guard(){
+    if(!Q.hermes){ note('HERMES_API_KEY 가 없어 Hermes 와 이야기할 수 없다.'); return false; }
+    if(!Q.operator){ var ops=(Q.operators||[]).map(function(o){return '<option value="'+h(o)+'">'+h(o)+'</option>';}).join('');
+      note('먼저 운영자를 고른다 — 대화와 초안이 이 이름으로 남는다.<p><select id="hx-op"><option value="">— 운영자 —</option>'+ops+'</select></p>');
+      body.querySelector('#hx-op').onchange=function(){ if(this.value){ document.cookie='qa_operator='+encodeURIComponent(this.value)+';path=/;max-age=31536000'; location.reload(); } };
+      return false; }
+    return true;
+  }
 
-def _tool_calls_html(calls: list[dict]) -> str:
-    if not calls:
-        return ""
-    items = ""
-    for c in calls:
-        args = c.get("arguments")
-        args_s = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
-        out = c.get("output")
-        out_s = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False)
-        items += (f'<details><summary><span class="mono">{e(c.get("name"))}</span> <span class="mut">{e((args_s or "")[:120])}</span></summary>'
-                  f'<div class="small mut">인자</div><pre>{e((args_s or "")[:1500])}</pre><div class="small mut">결과</div><pre>{e((out_s or "–")[:2500])}</pre></details>')
-    return f'<div class="tools"><b>도구 호출 {len(calls)}건</b>{items}</div>'
+  // ---- 화면 ----
+  function showNew(ctx){
+    st.id=null; st.chat=null; st.view='new'; st.ctx = ctx||{}; title.textContent='새 대화';
+    if(!guard()) return;
+    var lab = ctxLabel(st.ctx);
+    body.innerHTML = '<div class="hx-note">QA 를 아는 Hermes 다 — 기준·케이스·런을 읽고, 케이스 초안을 내고, 실패를 해석한다. 실행·발행·승인은 못 한다(사람이 버튼).'+
+      (lab ? '<p><label><input type="checkbox" id="hx-attach" checked> 이 화면의 '+lab+' 을 첨부</label></p>' : '')+'</div>';
+    setBusy(false); status(''); ta.focus();
+  }
+  function startNew(ctx){ try{localStorage.removeItem(LS_ID);}catch(e){} showNew(ctx); }
+  function showList(){
+    st.view='list'; title.textContent='대화 목록'; if(!guard()) return; note('불러오는 중…');
+    fetch('/api/chats').then(function(r){return r.json();}).then(function(d){
+      var wrap = el('div','hx-list');
+      if(!d.chats.length) wrap.appendChild(el('div','hx-note','대화 없음'));
+      d.chats.forEach(function(c){ var a = el('a','', h(c.title||'(제목 없음)')+'<small>'+(c.status!=='open'?'닫힘 · ':(c.stale?'오래됨 · ':''))+c.turns+'턴 · 초안 '+c.drafts+' · '+h(c.operator)+' · '+kst(c.updated_at)+'</small>'); a.href='#'; a.onclick=function(ev){ev.preventDefault(); loadThread(c.id);}; wrap.appendChild(a); });
+      body.innerHTML=''; body.appendChild(wrap);
+    }).catch(function(e){ note('목록을 못 읽었다: '+h(e)); });
+  }
+  function loadThread(id){
+    st.view='thread'; if(!guard()) return; note('불러오는 중…');
+    fetch('/api/chats/'+id).then(function(r){ if(!r.ok) throw new Error('없는 대화'); return r.json(); }).then(function(d){
+      st.id=id; st.chat=d.chat; try{localStorage.setItem(LS_ID,id);}catch(e){}
+      title.textContent = d.chat.title || '대화';
+      body.innerHTML=''; var lab = ctxLabel(d.chat.context); if(lab) body.appendChild(el('div','hx-note','첨부: '+lab));
+      d.messages.forEach(function(m){ renderMsg(m, d.drafts||{}); });
+      var closed = d.chat.status!=='open' || d.stale || d.chat.turns>=d.max_turns;
+      setBusy(closed); status(closed ? (d.chat.status!=='open'?'닫힌 대화':(d.stale?'오래된 대화 — 새 대화를 연다':'턴 한도 — 새 대화를 연다')) : d.chat.turns+'/'+d.max_turns+' 턴');
+      body.scrollTop = body.scrollHeight;
+    }).catch(function(e){ try{localStorage.removeItem(LS_ID);}catch(x){} showNew(Q.context); });
+  }
+  function renderMsg(m, drafts){
+    var d = el('div','msg '+m.role+(m.error?' err':''));
+    d.innerHTML = '<div class="who">'+(m.role==='user'?h((st.chat&&st.chat.operator)||Q.operator||'나'):'Hermes')+' · '+kst(m.at)+(m.ms?' · '+Math.round(m.ms/1000)+'초':'')+'</div><div class="tx">'+linkify(m.content)+'</div>';
+    (m.tool_calls||[]).forEach(function(c){ d.appendChild(chip(c.name, c.arguments, c.output)); });
+    if(m.draft_ids && m.draft_ids.length){ d.appendChild(el('div','small','만든 초안: '+m.draft_ids.map(function(x){ return '<a href="/drafts/'+h(x)+'" class="mono">'+h(x)+'</a>'+(drafts[x]?' ('+h(drafts[x])+')':''); }).join(' '))); }
+    body.appendChild(d); return d;
+  }
+  function chip(name, args, out){
+    var a = typeof args==='string'?args:JSON.stringify(args||{}); var o = out==null?null:(typeof out==='string'?out:JSON.stringify(out));
+    var c = el('span','tc'+(o==null?' run':''), h(name)+'<pre>'+h('인자 '+(a||'').slice(0,1500)+'\n결과 '+(o==null?'(진행 중)':o.slice(0,2500)))+'</pre>');
+    c.onclick=function(){ c.classList.toggle('on'); }; return c;
+  }
 
+  // ---- 전송 (SSE) ----
+  function send(){
+    if(st.busy || !guard()) return; var text = ta.value.trim(); if(!text) return;
+    var go = function(){ ta.value=''; setBusy(true); status('Hermes 에게 보냈다…');
+      var um = renderMsg({role:'user', content:text, at:new Date().toISOString()}, {});
+      var am = el('div','msg assistant'); am.innerHTML='<div class="who">Hermes</div><div class="tx cur"></div>'; body.appendChild(am);
+      var tx = am.querySelector('.tx'), chips = {}, buf='';
+      body.scrollTop = body.scrollHeight;
+      fetch('/api/chats/'+st.id+'/send', {method:'POST', headers:{'Content-Type':'application/json','Accept':'text/event-stream'}, body:JSON.stringify({text:text})})
+      .then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error(t||r.status); }); var rd = r.body.getReader(), dec = new TextDecoder(), acc='';
+        function pump(){ return rd.read().then(function(x){ if(x.done){ return; } acc += dec.decode(x.value,{stream:true}); var parts = acc.split('\n\n'); acc = parts.pop();
+          parts.forEach(function(fr){ var ev='message', data=''; fr.split('\n').forEach(function(l){ if(l.indexOf('event:')===0) ev=l.slice(6).trim(); else if(l.indexOf('data:')===0) data+=l.slice(5).trim(); });
+            if(!data) return; var d; try{ d=JSON.parse(data);}catch(e){return;} on(ev,d); });
+          return pump(); }); }
+        return pump(); })
+      .catch(function(e){ tx.classList.remove('cur'); am.classList.add('err'); tx.textContent='전송 실패: '+e.message; setBusy(false); status(''); });
+      function on(ev, d){
+        if(ev==='delta'){ buf += d.text; tx.innerHTML = linkify(buf); body.scrollTop = body.scrollHeight; }
+        else if(ev==='tool'){ status('도구를 쓰는 중: '+d.name); var c = chip(d.name, d.arguments, null); chips[d.call_id]=c; am.appendChild(c); body.scrollTop = body.scrollHeight; }
+        else if(ev==='tool_result'){ var c2 = chips[d.call_id]; if(c2){ c2.classList.remove('run'); c2.querySelector('pre').textContent = c2.querySelector('pre').textContent.replace('(진행 중)', d.output||''); } status('생각하는 중…'); }
+        else if(ev==='done'){ tx.classList.remove('cur'); if(d.error){ am.classList.add('err'); tx.textContent=d.content; } else if(!buf) tx.innerHTML=linkify(d.content);
+          if(d.draft_ids && d.draft_ids.length) am.appendChild(el('div','small','만든 초안: '+d.draft_ids.map(function(x){return '<a href="/drafts/'+h(x)+'" class="mono">'+h(x)+'</a>';}).join(' ')));
+          if(d.title && st.chat){ st.chat.title=d.title; title.textContent=d.title; } setBusy(false); status((d.turns||'')+' 턴'); ta.focus(); body.scrollTop = body.scrollHeight; }
+        else if(ev==='error'){ tx.classList.remove('cur'); am.classList.add('err'); tx.textContent = d.message||'오류'; setBusy(false); status(''); }
+      }
+    };
+    if(st.id) return go();
+    var attach = body.querySelector('#hx-attach'); var ctx = (attach && attach.checked) ? st.ctx : {};
+    setBusy(true); status('대화를 연다…');
+    fetch('/api/chats',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ctx)}).then(function(r){ if(!r.ok) return r.text().then(function(t){throw new Error(t);}); return r.json(); })
+      .then(function(d){ st.id=d.id; st.chat=d.chat; st.view='thread'; try{localStorage.setItem(LS_ID,d.id);}catch(e){} title.textContent=d.chat.title||'대화'; body.innerHTML=''; var lab=ctxLabel(d.chat.context); if(lab) body.appendChild(el('div','hx-note','첨부: '+lab)); go(); })
+      .catch(function(e){ setBusy(false); status('대화를 못 열었다: '+e.message); });
+  }
 
-def chat_detail(chat: dict, messages: list[dict], drafts: dict, *, stale: bool, max_turns: int, timeout: int, operator: str, operators: list[str]) -> str:
-    closed = chat["status"] != "open" or stale or chat["turns"] >= max_turns
-    why = ("닫힌 대화" if chat["status"] != "open" else ("오래된 대화 — 새 대화를 연다" if stale else (f"{max_turns}턴 한도 — 새 대화를 연다" if chat["turns"] >= max_turns else "")))
-    body = ""
-    for m in messages:
-        if m["role"] == "user":
-            body += f'<div class="msg user"><div class="who">{e(chat["operator"])} · {kst(m["at"])}</div>{e(m["content"])}</div>'
-            continue
-        links = "".join(f' <a href="/drafts/{e(d)}" class="mono">{e(d)}</a>{(" " + badge(DRAFT_KO.get(drafts[d]["status"], drafts[d]["status"]), drafts[d]["status"])) if drafts.get(d) else ""}'
-                        for d in m["draft_ids"])
-        body += (f'<div class="msg assistant{" err" if m.get("error") else ""}"><div class="who">Hermes · {kst(m["at"])}{(" · " + str(m["ms"] // 1000) + "초") if m.get("ms") else ""}</div>'
-                 f'{e(m["content"])}{_tool_calls_html(m["tool_calls"])}'
-                 f'{("<div class=\"small\" style=\"margin-top:6px\">만든 초안:" + links + "</div>") if links else ""}</div>')
-    dis = "" if operator else "disabled"
-    form = (f'<div class="card mut small">{e(why)}</div>' if closed else
-            f'<form class="card" method="post" action="/chat/{e(chat["id"])}/send" {_send_js()}><input type="hidden" name="operator" value="{e(operator)}">'
-            f'<textarea name="text" required placeholder="메시지" style="min-height:80px"></textarea>'
-            f'<div class="actions"><button type="submit" class="primary" {dis}>보내기</button> {_operator_select(operator, operators)} '
-            f'<span class="small mut">{chat["turns"]}/{max_turns} 턴 · 타임아웃 {timeout}초</span></div>'
-            f'<div id="wait" class="small mut" style="display:none">Hermes 가 도구를 쓰는 중… 화면을 닫지 말고 기다린다.</div></form>')
-    close = ("" if chat["status"] != "open" else
-             f'<form class="inline" method="post" action="/chat/{e(chat["id"])}/close"><input type="hidden" name="operator" value="{e(operator)}"><button {dis}>대화 닫기</button></form>')
-    return (f'<h1>{e(chat.get("title") or "대화")} <span class="small mut mono">{e(chat["id"])}</span></h1>'
-            f'<div class="card"><div class="kv"><div>첨부</div><div>{_ctx_label(chat["context"])}</div><div>운영자</div><div>{e(chat["operator"])} · {kst(chat["created_at"])}</div>'
-            f'<div>초안</div><div>{chat["drafts"]}건 — 승인은 <a href="/drafts">케이스 초안</a> 화면에서</div></div><div class="actions">{close}<a class="btn" href="/chat">목록</a></div></div>'
-            f'{body}<div id="end"></div>{form}')
+  // ---- 시작 ----
+  try{ st.id = localStorage.getItem(LS_ID)||null; }catch(e){}
+  if(inline){ st.loaded=true; loadThread(Q.inline); }
+  else if(Q.autostart){ st.loaded=true; box.classList.add('open'); try{localStorage.setItem(LS_OPEN,'1');}catch(e){} startNew(Q.autostart); }
+  else { var open=false; try{ open = localStorage.getItem(LS_OPEN)==='1'; }catch(e){} if(open) toggle(true); }
+  window.QA.open = function(ctx){ toggle(true); if(ctx) startNew(ctx); };
+})();
+"""

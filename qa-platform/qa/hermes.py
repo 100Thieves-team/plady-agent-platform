@@ -1,8 +1,9 @@
 """Hermes 호출 — UI 의 AI 는 전부 여기로. 플랫폼은 모델 키를 갖지 않는다.
 
 - `chat()`: chat completions 한 번. 실패 진단(triage)과 초안 생성(qa/drafts.py)이 쓴다. 도구 호출은 기대하지 않는다.
-- `respond()`: `/v1/responses` 한 턴. 채팅창(qa/chat.py)이 쓴다. 응답 output 에 도구 호출 트레이스(function_call ·
-  function_call_output)가 그대로 오고, previous_response_id 로 서버가 대화를 잇는다 (hermes-agent v2026.6.19 api_server.py 확인).
+- `stream_respond()`: `/v1/responses` 한 턴을 SSE 로 받는다. 채팅 위젯(qa/chat.py)이 쓴다. 본문 델타·도구 호출·도구 결과가
+  이벤트로 오고 마지막 `response.completed` 에 전체 응답이 온다. previous_response_id 로 서버가 대화를 잇는다
+  (hermes-agent v2026.6.19 api_server.py `_write_sse_responses` 확인).
 """
 from __future__ import annotations
 
@@ -44,30 +45,83 @@ class HermesNotFound(RuntimeError):
     """previous_response_id 가 서버 저장소(LRU 100건)에서 밀려났다 — 호출 쪽이 기록으로 다시 잇는다."""
 
 
-def respond(cfg: Config, text: str, *, instructions: str | None = None, previous_response_id: str | None = None,
-            history: list[dict] | None = None, session_key: str | None = None, timeout: int | None = None) -> dict:
-    """/v1/responses 한 턴. 반환 {id, text, tool_calls: [{call_id, name, arguments, output}], usage}.
+def _text_of(output) -> str:
+    """function_call_output.output — 비스트리밍은 문자열, 스트리밍은 [{type: input_text, text}] 목록."""
+    if isinstance(output, list):
+        return "".join(str(p.get("text") or "") for p in output if isinstance(p, dict))
+    return "" if output is None else str(output)
 
-    history 가 있으면 그것으로(서버 저장소 대신), 없으면 previous_response_id 로 잇는다. 둘 다 없으면 새 대화.
-    instructions 는 첫 턴에 넣으면 서버가 previous_response_id 체인을 따라 이어 준다; history 로 이을 때는 다시 넣어야 한다."""
+
+def stream_respond(cfg: Config, text: str, *, instructions: str | None = None, previous_response_id: str | None = None,
+                   history: list[dict] | None = None, session_key: str | None = None, timeout: int | None = None):
+    """/v1/responses 한 턴을 SSE 로. 제너레이터가 (kind, data) 를 낸다:
+      ("delta", str) · ("tool", {call_id, name, arguments}) · ("tool_result", {call_id, output}) · ("keepalive", None) ·
+      ("done", parse_response(전체 응답)) · ("failed", 메시지)
+
+    history 가 있으면 그것으로(서버 저장소 대신), 없으면 previous_response_id 로 잇는다. instructions 는 첫 턴에 넣으면
+    서버가 체인을 따라 이어 준다; history 로 이을 때는 다시 넣어야 한다. 밀려난 previous_response_id 는 HermesNotFound."""
     if not cfg.hermes_key:
         raise RuntimeError("HERMES_API_KEY 가 없어 Hermes 를 호출할 수 없다")
-    body: dict = {"model": cfg.hermes_model, "input": text, "store": True, "stream": False}
+    body: dict = {"model": cfg.hermes_model, "input": text, "store": True, "stream": True}
     if instructions:
         body["instructions"] = instructions
     if history:
         body["conversation_history"] = history
     elif previous_response_id:
         body["previous_response_id"] = previous_response_id
-    headers = {"Authorization": "Bearer " + cfg.hermes_key}
+    headers = {"Authorization": "Bearer " + cfg.hermes_key, "Accept": "text/event-stream"}
     if session_key:
         headers["X-Hermes-Session-Key"] = session_key
-    r = httpx.request("POST", f"{cfg.hermes_url}/v1/responses", headers=headers, body=body, timeout=timeout or cfg.hermes_timeout)
-    if r.status == 404 and previous_response_id and not history:
-        raise HermesNotFound(f"이전 응답 {previous_response_id} 을 Hermes 가 더는 갖고 있지 않다")
-    if r.status != 200 or not isinstance(r.json, dict):
-        raise RuntimeError(f"Hermes 응답 오류: status={r.status} {r.error or (r.text or '')[:300]}")
-    return parse_response(r.json)
+    try:
+        lines = httpx.stream("POST", f"{cfg.hermes_url}/v1/responses", headers=headers, body=body, timeout=timeout or cfg.hermes_timeout)
+        yield from _parse_sse(lines)
+    except httpx.HttpError as e:
+        if e.status == 404 and previous_response_id and not history:
+            raise HermesNotFound(f"이전 응답 {previous_response_id} 을 Hermes 가 더는 갖고 있지 않다") from None
+        raise RuntimeError(f"Hermes 응답 오류: {e}") from None
+
+
+def _parse_sse(lines):
+    """SSE 프레임(event:/data:/빈 줄) → (kind, data). 서버 이벤트 이름은 OpenAI Responses 규격."""
+    event, data = None, []
+    for line in lines:
+        if line.startswith(":"):
+            yield "keepalive", None
+            continue
+        if line == "":
+            if data:
+                yield from _sse_frame(event, "\n".join(data))
+            event, data = None, []
+            continue
+        if line.startswith("event:"):
+            event = line[6:].strip()
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip())
+    if data:
+        yield from _sse_frame(event, "\n".join(data))
+
+
+def _sse_frame(event, payload: str):
+    try:
+        d = json.loads(payload)
+    except ValueError:
+        return
+    if not isinstance(d, dict):
+        return
+    t = d.get("type") or event or ""
+    if t == "response.output_text.delta":
+        yield "delta", str(d.get("delta") or "")
+    elif t == "response.output_item.added":
+        item = d.get("item") or {}
+        if item.get("type") == "function_call":
+            yield "tool", {"call_id": str(item.get("call_id") or ""), "name": str(item.get("name") or ""), "arguments": item.get("arguments")}
+        elif item.get("type") == "function_call_output":
+            yield "tool_result", {"call_id": str(item.get("call_id") or ""), "output": _text_of(item.get("output"))}
+    elif t == "response.completed":
+        yield "done", parse_response(d.get("response") or {})
+    elif t == "response.failed":
+        err = (d.get("response") or {}).get("error") or {}
+        yield "failed", str(err.get("message") if isinstance(err, dict) else err) or "Hermes 실패"
 
 
 def parse_response(data: dict) -> dict:
@@ -89,7 +143,7 @@ def parse_response(data: dict) -> dict:
             if c is None:
                 c = {"call_id": str(item.get("call_id") or ""), "name": "?", "arguments": None, "output": None}
                 calls.append(c)
-            c["output"] = item.get("output")
+            c["output"] = _text_of(item.get("output"))
         elif t == "message":
             for part in item.get("content") or []:
                 if isinstance(part, dict) and part.get("type") in ("output_text", "text") and part.get("text"):

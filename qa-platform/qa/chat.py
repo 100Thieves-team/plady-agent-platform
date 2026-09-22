@@ -1,19 +1,22 @@
-"""Hermes 채팅창 — 사람이 Hermes 와 QA 를 이야기한다. docs/qa-platform-hermes.md §3.2.
+"""Hermes 채팅 — 어느 화면에서나 뜨는 위젯(채널톡처럼)과 Hermes 사이. docs/qa-platform-hermes.md §3.2.
 
 플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(런·케이스·TC 요약)를 붙인다, (2) Hermes `/v1/responses` 를
-동기로 한 번 부른다(previous_response_id 로 서버가 대화를 잇고, 밀려났으면 여기 기록으로 다시 잇는다), (3) 응답 본문·도구 호출
-트레이스·그 턴에 생긴 초안 id 를 저장하고 감사 로그에 남긴다. 실행·발행·승인은 도구에 없으므로 채팅으로는 일어나지 않는다.
+SSE 로 한 번 부르며 델타·도구 호출·도구 결과를 그대로 브라우저로 흘린다(previous_response_id 로 서버가 대화를 잇고, 밀려났으면
+여기 기록으로 다시 잇는다), (3) 끝나면 응답 본문·도구 호출·그 턴에 생긴 초안 id 를 저장하고 감사 로그에 남긴다.
+실행·발행·승인은 도구에 없으므로 채팅으로는 일어나지 않는다.
 """
 from __future__ import annotations
 
 import re
 import time
+from typing import Callable
 
 from . import hermes
 from .config import Config
 
 DRAFT_ID = re.compile(r"\bd-[0-9a-f]{8}\b")
 DRAFT_TOOLS = ("qa_draft_create", "qa_draft_update", "qa_manual_tc_propose")
+Emit = Callable[[str, object], None]
 
 SYSTEM = (
     "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 기준(TC)·케이스·런·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
@@ -24,7 +27,7 @@ SYSTEM = (
     "3. 실행·탐색기 전송·위키 발행·초안 승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
     "4. 답은 도구로 읽은 사실에 근거하고, 모르는 것은 모른다고 한다. 회원 UUID 같은 식별값은 답에 옮기지 않는다.\n"
     "5. 이 QA 대화에서는 위키를 쓰지 않는다(wiki_apply 금지). 위키 읽기 도구는 PRD·SSOT 확인에만 쓴다.\n"
-    "6. 초안을 만들었으면 초안 id(d-…)와 링크를 답에 적는다."
+    "6. 초안을 만들었으면 초안 id(d-…)와 링크를 답에 적는다. 답은 짧게, 마크다운 없이 평문으로."
 )
 
 
@@ -89,27 +92,72 @@ def _history(messages: list[dict]) -> list[dict]:
     return [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] in ("user", "assistant") and not m.get("error") and m["content"]]
 
 
-def send(app, chat: dict, text: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
-    """사람 메시지 하나를 보내고 Hermes 응답을 기록한다. 반환: 저장된 assistant 메시지(dict)."""
+def _run(cfg: Config, sent: str, chat: dict, prior: list[dict], first: bool, emit: Emit) -> dict:
+    """스트림을 끝까지 소비하며 emit 으로 흘리고, 모은 결과를 돌려준다. 404 면 기록으로 한 번 다시 잇는다."""
+    def consume(gen) -> dict:
+        text_parts: list[str] = []
+        calls: list[dict] = []
+        by_id: dict[str, dict] = {}
+        final: dict | None = None
+        failed: str | None = None
+        for kind, data in gen:
+            if kind == "delta":
+                text_parts.append(data)
+                emit("delta", {"text": data})
+            elif kind == "tool":
+                c = dict(data, output=None)
+                calls.append(c)
+                if c["call_id"]:
+                    by_id[c["call_id"]] = c
+                emit("tool", {"name": c["name"], "arguments": c.get("arguments"), "call_id": c["call_id"]})
+            elif kind == "tool_result":
+                c = by_id.get(data["call_id"])
+                if c is None:
+                    c = {"call_id": data["call_id"], "name": "?", "arguments": None, "output": None}
+                    calls.append(c)
+                c["output"] = data["output"]
+                emit("tool_result", {"call_id": data["call_id"], "output": (data["output"] or "")[:2500]})
+            elif kind == "keepalive":
+                emit("keepalive", None)
+            elif kind == "done":
+                final = data
+            elif kind == "failed":
+                failed = data
+        if failed:
+            raise RuntimeError(failed)
+        if final is None:
+            raise RuntimeError("Hermes 스트림이 response.completed 없이 끝났다")
+        # 도구 호출 목록은 스트림에서 모은 것을 우선(결과 본문이 안 잘려 있다). 본문은 델타를 모은 것, 없으면 최종 응답의 것
+        text = "".join(text_parts).strip() or final.get("text") or ""
+        return {"id": final.get("id"), "text": text, "tool_calls": calls or final.get("tool_calls") or [], "usage": final.get("usage") or {}}
+
+    instructions = system_prompt(cfg) if first or not chat.get("last_response_id") else None
+    try:
+        return consume(hermes.stream_respond(cfg, sent, instructions=instructions, previous_response_id=chat.get("last_response_id"),
+                                             session_key=chat["session_key"], timeout=cfg.chat_timeout))
+    except hermes.HermesNotFound:
+        # 서버 저장소(LRU)에서 밀려남 — 우리 기록으로 다시 잇는다. 이때는 시스템 프롬프트도 다시 넣는다
+        return consume(hermes.stream_respond(cfg, sent, instructions=system_prompt(cfg), history=_history(prior),
+                                             session_key=chat["session_key"], timeout=cfg.chat_timeout))
+
+
+def send(app, chat: dict, text: str, *, operator: str, session_hash: str | None, ip: str | None, emit: Emit | None = None) -> dict:
+    """사람 메시지 하나를 보내고 Hermes 응답을 기록한다. emit 이 있으면 진행 이벤트를 흘린다. 반환: 저장된 assistant 메시지."""
     cfg: Config = app.cfg
     store = app.store
+    emit = emit or (lambda kind, data: None)
     prior = store.list_chat_messages(chat["id"])
     first = not any(m["role"] == "user" for m in prior)
     user_text = text.strip()
     attach, _ = context_block(app, chat.get("context") or {}) if first else ("", None)
     sent = (attach + "\n\n" + user_text) if attach else user_text
-    store.add_chat_message(chat["id"], role="user", content=user_text)
+    umid = store.add_chat_message(chat["id"], role="user", content=user_text)
+    emit("user", {"id": umid, "content": user_text})
     t0 = time.monotonic()
-    instructions = system_prompt(cfg) if first or not chat.get("last_response_id") else None
     err: str | None = None
     res: dict = {"id": None, "text": "", "tool_calls": [], "usage": {}}
     try:
-        try:
-            res = hermes.respond(cfg, sent, instructions=instructions, previous_response_id=chat.get("last_response_id"),
-                                 session_key=chat["session_key"], timeout=cfg.chat_timeout)
-        except hermes.HermesNotFound:
-            # 서버 저장소(LRU)에서 밀려남 — 우리 기록으로 다시 잇는다. 이때는 시스템 프롬프트도 다시 넣는다
-            res = hermes.respond(cfg, sent, instructions=system_prompt(cfg), history=_history(prior), session_key=chat["session_key"], timeout=cfg.chat_timeout)
+        res = _run(cfg, sent, chat, prior, first, emit)
     except Exception as ex:
         err = str(ex)[:500]
     ms = int((time.monotonic() - t0) * 1000)
@@ -125,4 +173,7 @@ def send(app, chat: dict, text: str, *, operator: str, session_hash: str | None,
     store.add_event(operator=operator, action="chat.send", target=chat["id"], session_hash=session_hash, ip=ip,
                     detail={"chars": len(user_text), "reply_chars": len(res["text"]), "tools": [c["name"] for c in res["tool_calls"]][:20],
                             "drafts": drafts, "ms": ms, "usage": res.get("usage") or {}, "attached": bool(attach), **({"error": err} if err else {})})
-    return {"id": mid, "content": content, "tool_calls": res["tool_calls"], "draft_ids": drafts, "ms": ms, "error": err}
+    reply = {"id": mid, "content": content, "tool_calls": res["tool_calls"], "draft_ids": drafts, "ms": ms, "error": err,
+             "turns": fields["turns"], "title": fields.get("title") or chat.get("title")}
+    emit("done", reply)
+    return reply

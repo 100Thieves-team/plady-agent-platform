@@ -69,13 +69,14 @@ P4 Hermes 연동
 
 인증: 내부 네트워크 + 정적 bearer `QA_MCP_TOKEN`. Caddy `@qa` 블록은 `/mcp` 를 **거부**한다(공개 경로 아님). Hermes 쪽 등록은 `hermes-config-init` 에 `mcp_servers.qa-platform` 을 더한다(`url: http://qa-platform:8800/mcp`, `headers.Authorization: Bearer ${QA_MCP_TOKEN}`, `tools.include` = 위 표). llm-wiki 와 같은 방식이라 문서 [`hermes-gateway.md`](hermes-gateway.md) 의 규칙(include 가 SSOT, 손으로 고친 건 다음 배포에 사라짐)이 그대로 적용된다.
 
-### 3.2 채팅창
+### 3.2 채팅 위젯 (2026-09-22 개정 — 사용자 지시: "어떤 페이지에서나 모달로, SSE 로, 채널톡 SDK 처럼")
 
-- `/chat`: 대화 목록(운영자·제목·시각·초안 수). [새 대화]. `/chat/{id}`: 메시지 스레드 + 입력창. 서버 렌더, 전송은 POST, 응답은 동기(스트리밍 없음 — Hermes 가 도구를 여러 번 부르면 수십 초 걸릴 수 있어 화면에 "Hermes 가 도구를 쓰는 중" 표시와 타임아웃 180초).
-- 대화 = `X-Hermes-Session-Key: qa-chat-<id>`. Hermes 가 세션 메모리를 갖고 있으니 플랫폼은 매 턴 전체 대화를 다시 보내지 않고 **새 메시지만** 보낸다. 시스템 프롬프트는 첫 턴에 넣는다(§3.4).
-- 컨텍스트 첨부: 런·케이스·TC 상세의 [Hermes 와 이야기] 는 `/chat/new?run=r-…` 처럼 열리고, 첫 메시지 앞에 그 객체의 id 와 요약을 붙인다. Hermes 는 필요하면 도구로 나머지를 읽는다.
-- 도구 호출 표시: Hermes 응답에 트레이스가 있으면 그것을, 없으면 그 턴 동안 플랫폼 `/mcp` 에 들어온 호출(events `mcp.call`)을 시각으로 묶어 보여 준다. 동시에 두 대화가 도구를 부르면 섞일 수 있다 — 3인 팀에서 드물고, 한계로 적어 둔다.
-- 초안이 생기면 메시지 아래에 링크. 승인은 케이스 초안 화면에서 사람이.
+- **어느 화면에나** 오른쪽 아래 [Hermes] 버튼. 누르면 채팅 패널(모달)이 뜬다. 열림 상태와 현재 대화는 브라우저(localStorage)에 남아 페이지를 옮겨도 같은 대화가 다시 열린다. `/chat` 은 대화 목록(기록), `/chat/{id}` 는 같은 패널을 본문에 크게 그린 것.
+- **첨부**: 런·케이스·TC 상세에서 패널을 열어 새 대화를 시작하면 "이 화면의 X 를 첨부" 체크박스가 켜져 있다. 상세의 [Hermes 와 이야기] 링크도 같은 일을 한다(`/chat/new?run=…`). 첨부는 첫 메시지 앞에 요약으로 붙고 Hermes 는 필요하면 도구로 나머지를 읽는다.
+- **SSE 스트리밍**: `POST /api/chats/{id}/send` 가 `text/event-stream` 으로 `delta`(본문 조각) · `tool`(도구 호출 시작: 이름·인자) · `tool_result`(결과) · `done`(저장된 메시지·초안 링크·턴 수) · `error` 를 흘린다. 패널은 본문을 타자 치듯 붙이고, 도구 호출은 칩으로 바로 보여 준다(클릭하면 인자·결과). 서버는 Hermes `/v1/responses` 를 `stream: true` 로 부르고 그 이벤트를 그대로 옮긴다. keepalive 는 Hermes 가 10초마다 보내는 것을 중계한다(ALB idle 60초 안).
+- **대화 연속성**: 대화 = `X-Hermes-Session-Key: qa-chat-<id>` + `previous_response_id` 체인. 시스템 프롬프트는 첫 턴에만. Hermes 저장소(LRU 100건)에서 밀려 404 가 나면 플랫폼이 보관한 사람·Hermes 본문을 `conversation_history` 로 보내 잇는다.
+- **브라우저가 떠나도** 서버는 Hermes 스트림을 끝까지 읽어 메시지를 저장한다 — 다시 열면 답이 있다.
+- 운영자 필수(쿠키). 없으면 패널이 먼저 운영자를 고르게 한다. 초안이 생기면 메시지 아래에 링크. 승인은 케이스 초안 화면에서 사람이.
 
 ### 3.3 [바뀐 기준으로 초안 다시 쓰기]
 
@@ -151,7 +152,7 @@ catalog changes.json  항목에 before 스냅샷
 | 1 | 채팅창에서 Hermes 가 `wiki_apply` 를 부를 수 있다(전제 3). 어떻게 할까 | **수용**: 팀 3명이 이미 Slack 에서 같은 권한을 갖고 있고, 위키 변경은 git 이라 되돌릴 수 있다. 채팅 기록에 남고, 시스템 프롬프트에 "QA 채팅에서는 위키를 쓰지 않는다" 를 넣는다(강제는 아님) | QA 전용 Hermes 인스턴스(별도 config, `wiki_apply` 제외) — 컨테이너·OAuth 세션이 하나 더 필요 |
 | 2 | QA MCP 인증 토큰 | **새 SSM `qa-mcp-token`** — 위키 토큰과 범위 분리. 사람 작업 1건(SSM 주입) | `MCP_BEARER_TOKEN` 재사용(작업 없음, 범위 섞임) |
 | 3 | 채팅으로 만든 초안의 근거 | **대화 기록 + 도구 호출 로그**로 충분하다고 본다. 버튼 경로의 프롬프트 해시 수준 재현성은 채팅에선 포기 | 채팅 초안을 금지하고 "초안 생성 버튼으로 가라" 만 안내 |
-| 4 | 스트리밍 | 없음. 동기 + 진행 표시 + 180초 | SSE 스트리밍(표준 라이브러리로 가능하나 Hermes 스트리밍 도구 트레이스 형식 미확인) |
+| 4 | 스트리밍 | ~~없음. 동기 + 진행 표시 + 180초~~ → **SSE 스트리밍**(2026-09-22 사용자 지시). Hermes `/v1/responses` 스트림 형식은 v2026.6.19 소스로 확인 | 동기(폐기) |
 | 5 | 대화 한도 | 대화당 40턴, 30일 지나면 닫힘 표시(삭제 안 함) | 무제한 |
 | 6 | Slack 의 Hermes 에도 QA 도구를 줄지 | **준다**(include 는 전역이라 자연히). 읽기·제안뿐이라 위험 없음 | qa-platform 서버를 채팅 세션에서만 노출 — Hermes config 로는 구분이 안 되어 사실상 불가 |
 
@@ -188,18 +189,16 @@ catalog changes.json  항목에 before 스냅샷
 
 **남은 확인 (P4b 전)** — 전제 5: Hermes API 응답이 도구 호출 트레이스를 담는지. 담지 않으면 §3.2 대로 `mcp.call` 시각대 상관으로 보여 준다(`store.events_between` 준비됨).
 
-### 10.2 P4b — 채팅창 (2026-09-21)
+### 10.2 P4b — 채팅 위젯 (2026-09-21 동기 화면 → 2026-09-22 모달·SSE 로 개정)
 
 | 항목 | 구현 | 설계 대비 |
 | --- | --- | --- |
-| 화면 | `/chat`(대화 목록) · `/chat/new?run=\|case=\|tc=`(첨부 미리보기 + 첫 메시지) · `/chat/{id}`(스레드·도구 호출·초안 링크·입력창) · `POST /chat`(만들고 첫 메시지 전송) · `POST /chat/{id}/send` · `POST /chat/{id}/close`. 운영자 필수. nav "Hermes" | §3.2·§6 대로. `/chat/new` 는 GET 미리보기 화면이고 만들기는 POST 하나로 |
-| Hermes 경로 | **`/v1/responses`** (전제 5 확인 결과). 첫 턴: `instructions`(시스템 프롬프트 §3.4 + 공개 URL + "위키 쓰지 않는다") + 첨부 + 메시지. 이후 턴: 새 메시지만 + `previous_response_id`. `X-Hermes-Session-Key: qa-chat-<id>`. 동기, 타임아웃 `QA_CHAT_TIMEOUT`(180초) | 설계는 chat completions + 시각대 상관이었다 → responses API 로 바꿨다. 도구 호출이 응답에 그대로 오고, 대화 연속성도 서버가 맡는다 |
-| 서버 저장소가 밀렸을 때 | `previous_response_id` 가 404 면 플랫폼이 보관한 사람·Hermes 본문(실패 턴 제외, 도구 호출 제외)을 `conversation_history` 로 보내고 시스템 프롬프트를 다시 넣는다 | 추가. Hermes 응답 저장소가 LRU 100건이라 3인이 쓰면 오래된 대화가 밀린다 |
-| 기록 | `chats`(id, operator, title, session_key, context, status, turns, drafts, last_response_id) · `chat_messages`(role, content, tool_calls, draft_ids, ms, error). 화면의 사람 메시지에는 첨부를 붙이지 않는다(첨부는 Hermes 에게만 간다; 미리보기는 `/chat/new` 에서) | §5 대로. `last_response_id` 추가 |
-| 초안 링크 | 그 턴의 `qa_draft_create`·`qa_draft_update`·`qa_manual_tc_propose` 결과 텍스트에서 `d-…` id 를 뽑아 존재하는 것만 링크. 승인은 케이스 초안 화면에서 | 같음 |
-| 한도 | 대화당 `QA_CHAT_MAX_TURNS`(40), `QA_CHAT_STALE_DAYS`(30)일 지나면 "오래됨" 표시 + 입력 막힘(삭제 안 함), 메시지 8000자 | §8-5 대로 |
-| 감사 로그 | `chat.create{context}` · `chat.send{chars, reply_chars, tools, drafts, ms, usage, error?}` · `chat.close`. 도구 호출 자체는 P4a 의 `mcp.call`(operator hermes) 로 따로 남는다 | 같음 |
-| 진행 표시 | 보내기를 누르면 버튼이 "Hermes 가 도구를 쓰는 중…" 으로 바뀌고 안내 문구가 뜬다(스트리밍 없음) | §8-4 대로 |
-| 검증 | 가짜 Hermes(`/v1/responses` 흉내, 실제 `/mcp` 를 두 번 부름)로 브라우저에서 첨부 → 도구 호출 표시 → 초안 링크 → 두 번째 턴 체이닝 → 활동 로그까지 확인. 테스트 `tests/test_chat.py` 6건(전체 44건) | – |
+| 위젯 | `ui.HERMES_JS`(`/static/hermes.js`, 표준 라이브러리 서버라 문자열) 를 `ui.page()` 가 모든 화면에 붙인다. 오른쪽 아래 [Hermes] 버튼 → 패널(목록 · 새 대화 · 스레드 · 입력). 열림 상태·현재 대화 id 는 localStorage | §3.2 개정판 대로 |
+| 첨부 | `page(context={"run"\|"case"\|"tc": id})` 로 그 화면의 객체를 위젯에 알려 주고, 새 대화 시작 시 "이 화면의 X 를 첨부" 체크박스(기본 켜짐). `/chat/new?run=…` 은 위젯을 그 첨부로 바로 연다 | 같음 |
+| API | `GET /api/chats` · `POST /api/chats {run\|case\|tc}` · `GET /api/chats/{id}` · `POST /api/chats/{id}/send {text}`(Accept 가 event-stream 이면 SSE, 아니면 JSON) · `POST /api/chats/{id}/close`. 운영자는 쿠키 | 폼 라우트는 없앴다 |
+| Hermes 경로 | `hermes.stream_respond()` — `/v1/responses` `stream: true`. `httpx.stream()` 이 줄 단위로 읽고 `_parse_sse()` 가 `response.output_text.delta` · `response.output_item.added/done`(function_call · function_call_output, 결과 `output` 은 파트 목록) · `response.completed` · `response.failed` 를 (kind, data) 로 낸다. 한도·운영자 검사는 스트림을 열기 전에 400 으로 | 전제 5 해소 |
+| 기록·감사 | 기존과 같다(`chats`·`chat_messages`, `chat.create`·`chat.send`·`chat.close`). 브라우저가 끊겨도 스트림을 끝까지 소비해 저장 | 같음 |
+| 한도 | `QA_CHAT_TIMEOUT`(읽기 한 번 180초) · `QA_CHAT_MAX_TURNS`(40) · `QA_CHAT_STALE_DAYS`(30) | §8-5 대로 |
+| 검증 | 가짜 Hermes(SSE, 실제 `/mcp` 호출, 델타를 천천히)로 브라우저에서: TC 화면에서 패널 열기 → 첨부 → 도구 칩이 진행 중에 뜸 → 본문 스트리밍 → 초안 링크 → 다른 화면으로 이동해도 같은 대화 → Enter 전송으로 2턴 체이닝 → `/chat/{id}` 인라인. 서버 오류 없음. 테스트 `tests/test_chat.py` 7건(전체 45건) | – |
 
-**사람이 할 일**: 없음 (P4a 의 SSM 주입이 곧 이 화면의 전제). 배포 뒤 실제 Hermes 로 첫 대화를 열어 응답 시간과 도구 이름 표기(MCP 접두 여부)를 본다 — 도구 이름은 그대로 표시하므로 접두가 붙어도 동작에는 영향 없다.
+**사람이 할 일**: 없음. 배포 뒤 실제 Hermes 로 첫 대화를 열어 (1) Caddy·ALB 를 지나서도 델타가 바로 보이는지(버퍼링), (2) 도구 이름에 MCP 접두가 붙는지 본다. (1) 이 안 되면 Caddy `@qa` 의 `reverse_proxy` 에 `flush_interval -1` 을 준다.
