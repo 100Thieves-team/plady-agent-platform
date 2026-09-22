@@ -2,7 +2,7 @@
 
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P4)
 - 선행: [`qa-platform.md`](qa-platform.md) (P0·P1), [`qa-platform-tc.md`](qa-platform-tc.md) (P2·P3)
-- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a·P4b 구현 완료**, P4c·P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
+- 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a·P4b·P4c 구현 완료**, P4d 진행 중. 구현 결과와 사람이 할 일은 §10.
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약
@@ -202,3 +202,17 @@ catalog changes.json  항목에 before 스냅샷
 | 검증 | 가짜 Hermes(SSE, 실제 `/mcp` 호출, 델타를 천천히)로 브라우저에서: TC 화면에서 패널 열기 → 첨부 → 도구 칩이 진행 중에 뜸 → 본문 스트리밍 → 초안 링크 → 다른 화면으로 이동해도 같은 대화 → Enter 전송으로 2턴 체이닝 → `/chat/{id}` 인라인. 서버 오류 없음. 테스트 `tests/test_chat.py` 7건(전체 45건) | – |
 
 **사람이 할 일**: 없음. 배포 뒤 실제 Hermes 로 첫 대화를 열어 (1) Caddy·ALB 를 지나서도 델타가 바로 보이는지(버퍼링), (2) 도구 이름에 MCP 접두가 붙는지 본다. (1) 이 안 되면 Caddy `@qa` 의 `reverse_proxy` 에 `flush_interval -1` 을 준다.
+
+### 10.3 P4c — 바뀐 TC 에 맞게 스크립트 다시 쓰기 (2026-09-22)
+
+| 항목 | 구현 | 설계 대비 |
+| --- | --- | --- |
+| 변경 전 스냅샷 | `changes.json` 항목에 `before`(title·expect_hint(example 제외)·binding·gate·command·source·prd·excluded). added 는 None. `catalog.snapshot()` | §3.3-1 대로 |
+| 버튼 | 스크립트 상세, 정합성 카드 아래, **TC 변경 배지가 있을 때만** [바뀐 TC 에 맞게 Hermes 가 고치기 → 초안]. 담당자 필수, HERMES_API_KEY 없으면 비활성 | §3.3-2 대로 |
+| 조립 | `drafts.assemble_revision()` — 현재 YAML · 바뀐 TC 마다 변경 전/후 레코드 · 사라진 TC 는 변경 전 + **대체 후보**(같은 변경 배치에서 추가됐고 id 앞부분이 같은 것, 없으면 지금 목록에서 앞부분 같은 것 6개까지) · 관련 OpenAPI 발췌 · 새 PRD 절 · **허용 covers**(현재 covers − 사라진 것 + 후보). 프롬프트 해시 저장 | 대체 후보 규칙은 구현에서 정함 |
+| Hermes 규칙 | 바뀐 부분만, id 불변, 사라진 id 는 covers 에서 제거, 근거에 없는 값은 바꾸지 않음, 맨 위 `# 변경:` 주석 한 줄 (`REVISE_SYSTEM`) | §3.3-2 대로 |
+| 검증·초안 | 출력의 id 를 원본 id 로 **강제**한 뒤 §7.2 검증(요청 TC = 허용 covers, 기존 id 충돌 예외). 통과 → 초안 source `hermes-revise`, `case_id` = 원본, note 에 어떤 TC 가 어떻게 바뀌었는지. 실패 → events `draft.rejected_by_validation` + 400 | §3.3-3 대로 |
+| 초안 화면 | source 가 hermes-revise 면 **원본 스크립트와의 unified diff** 를 보여 준다. 승인 문구는 "원본 항목을 바꿔 PR" | §3.3-4 대로 |
+| 테스트 | `tests/test_revise.py` 7건 (전체 52건) | – |
+
+**사람이 할 일**: 없음. 실제 TC 변경이 처음 생겼을 때(SSOT·OpenAPI 갱신 뒤) 스크립트 상세에서 버튼을 눌러 diff 가 말이 되는지 본다. `changes.json` 은 이 배포 이후의 변경부터 `before` 를 갖는다(이전 항목은 "(스냅샷 없음)" 으로 표시).

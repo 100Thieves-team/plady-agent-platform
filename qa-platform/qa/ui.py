@@ -345,8 +345,17 @@ def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dic
             f'<form method="post" action="/cases/reload" class="actions"><button>파일에서 다시 읽기</button></form></div>')
 
 
-def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None) -> str:
+def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: list | None = None, revise: dict | None = None) -> str:
     tc_records = tc_records or {}
+    revise_html = ""
+    if drift and revise is not None:
+        op = revise.get("operator") or ""
+        ops = "".join(f'<option value="{e(o)}" {"selected" if o == op else ""}>{e(o)}</option>' for o in revise.get("operators") or [])
+        dis = "" if (op and revise.get("hermes")) else ("disabled title=\"담당자를 먼저 고르세요\"" if revise.get("hermes") else "disabled title=\"HERMES_API_KEY 없음\"")
+        revise_html = (f'<form method="post" action="/cases/{e(c.id)}/revise" class="actions" style="margin-top:10px" onsubmit="this.querySelector(\'button\').disabled=true;this.querySelector(\'button\').textContent=\'Hermes 가 고치는 중…\'">'
+                       f'<input type="hidden" name="operator" value="{e(op)}"><button class="primary" {dis}>바뀐 TC 에 맞게 Hermes 가 고치기 → 초안</button>'
+                       f'<select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 담당자 —</option>{ops}</select>'
+                       f'<span class="small mut">현재 YAML 과 바뀐 TC 의 전/후·새 PRD 절을 Hermes 에게 주고 바뀐 부분만 고치게 한다. 결과는 같은 id 의 초안으로 들어가고, 원본 파일은 사람이 승인 뒤 PR 로 바꾼다.</span></form>')
     changed = {d["id"]: d for d in (drift or [])}
     covers_html = "".join(
         f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">TC 목록에 없음</span>"} {e(r["title"]) if r else ""}'
@@ -365,7 +374,7 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
-            f'<h2>검증하는 TC (covers)</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div></div>'
+            f'<h2>검증하는 TC (covers)</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
             f'<h2>정의</h2><pre>{e(c.to_yaml())}</pre>'
             f'<h2>실행 이력</h2><div class="card"><table><tr><th>실행</th><th>결과</th><th>실행 종류</th><th>담당자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
 
@@ -494,8 +503,16 @@ def drafts_list(drafts: list[dict], counts: dict, status: str) -> str:
             f'<div class="card"><table><tr><th>ID</th><th>상태</th><th>스크립트 id</th><th>검증하는 TC</th><th>검증</th><th>출처 · 만든 사람</th><th>시각</th></tr>{rows}</table></div>')
 
 
-def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str) -> str:
+def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str, original_yaml: str | None = None) -> str:
     v = d.get("validation") or {}
+    diff_html = ""
+    if original_yaml is not None:
+        import difflib
+        lines = list(difflib.unified_diff(original_yaml.splitlines(), (d["yaml"] or "").splitlines(), fromfile=f"cases/{d.get('case_id')} (현재)", tofile="초안", lineterm="", n=2))
+        body = "".join(f'<div style="color:{("var(--ok)" if l.startswith("+") and not l.startswith("+++") else ("var(--bad)" if l.startswith("-") and not l.startswith("---") else "var(--mut)"))}">{e(l)}</div>' for l in lines)
+        diff_html = (f'<h2>원본 스크립트와의 차이</h2><div class="card"><p class="small mut" style="margin-top:0">{e(d.get("note") or "")}</p>'
+                     f'<pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{body or "(차이 없음)"}</pre>'
+                     f'<p class="small mut">승인 뒤에는 이 YAML 로 <span class="mono">qa-platform/cases/</span> 의 원본 항목을 바꿔 PR 을 연다. reviewed 의 at 도 오늘로 올린다.</p></div>')
     problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in v.get("errors") or []) + \
         "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in v.get("warnings") or [])
     tcs = "".join(f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">TC 목록에 없음</span>"} {e(r["title"]) if r else ""}</li>'
@@ -533,7 +550,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
             f'<div>검증하는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
             f'<div>검증</div><div>{badge({"ok": "OK", "warn": "경고", "error": "오류"}.get(v.get("status"), v.get("status") or "–"), {"ok": "pass", "warn": "warn", "error": "fail"}.get(v.get("status"), ""))}'
             f'{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div></div>{run_html}</div>'
-            f'{approved_html}{forms}')
+            f'{diff_html}{approved_html}{forms}')
 
 
 # ---- 탐색기 (Swagger 모드) ------------------------------------------------------------------------

@@ -293,6 +293,19 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
     return Catalog(records=records, versions=versions, built_at=_now(), warnings=warnings)
 
 
+def snapshot(rec: dict | None) -> dict | None:
+    """변경 이력에 남길 레코드 요약 — 다시 쓰기(P4c)가 '전/후' 를 보여 줄 만큼만."""
+    if not rec:
+        return None
+    out = {k: rec.get(k) for k in ("layer", "domain", "title", "gate", "command", "binding", "source", "prd", "excluded") if rec.get(k) not in (None, [], {}, "")}
+    hint = rec.get("expect_hint")
+    if isinstance(hint, dict):
+        out["expect_hint"] = {k: v for k, v in hint.items() if k != "example"}
+    elif hint:
+        out["expect_hint"] = hint
+    return out
+
+
 def diff(prev: Catalog | None, cur: Catalog) -> dict:
     if prev is None:
         return {"changed": [], "added": [], "removed": []}
@@ -398,7 +411,9 @@ class CatalogService:
             at = cat.built_at
             for kind in ("changed", "removed", "added"):
                 for i in d[kind]:
-                    self.changes[i] = {"at": at, "kind": kind, "ssot": cat.versions.get("ssot"), "openapi": cat.versions.get("openapi")}
+                    # before = 변경 전 레코드 요약(added 는 없음). 다시 쓰기(P4c)가 Hermes 에게 전/후를 보여 주는 재료
+                    self.changes[i] = {"at": at, "kind": kind, "ssot": cat.versions.get("ssot"), "openapi": cat.versions.get("openapi"),
+                                       "before": snapshot(self._cur.records.get(i)) if kind != "added" else None}
             self._write_json(self.cache_dir / "changes.json", self.changes)
             self.last_diff = d
         self._cur = cat

@@ -193,6 +193,38 @@ class App:
                                      "accepted": len(ids), "rejected": len(res["rejected"]), "raw_chars": len(res["raw"])})
         return {"ids": ids, "rejected": res["rejected"], "prompt_hash": res["prompt_hash"]}
 
+    def revise_case(self, case_id: str, *, operator: str, session_hash: str | None, ip: str | None) -> str:
+        """TC 가 바뀐 스크립트를 Hermes 가 바뀐 만큼만 고쳐 초안(source hermes-revise, 같은 id)으로. docs/qa-platform-hermes.md §3.3."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        c = self.cases.get(case_id)
+        if not c:
+            raise BadRequest("없는 스크립트")
+        cat = self.current_catalog()
+        if cat is None:
+            raise BadRequest("TC 목록이 없어 다시 쓸 수 없다")
+        drift = self.drift_of(c)
+        if not drift:
+            raise BadRequest("바뀐 TC 가 없다 — 고칠 것이 없다")
+        try:
+            res = draftsmod.revise(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, case=c, drift=drift, changes=self.catalog.changes, existing_ids=set(self.cases))
+        except Exception as ex:
+            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-revise", "case_id": case_id, "error": str(ex)[:300]})
+            raise BadRequest(f"다시 쓰기 실패: {ex}")
+        summary = ", ".join(f"{d['id']} {d['kind']}" for d in drift[:8])
+        if not res["accepted"]:
+            self.store.add_event(operator=operator, action="draft.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-revise", "case_id": case_id, "errors": res["errors"][:6], "prompt_hash": res["prompt_hash"]})
+            raise BadRequest("Hermes 가 고친 스크립트가 검증을 못 넘겼다: " + "; ".join(res["errors"][:3]))
+        case, warnings = res["accepted"]
+        did = self.store.add_draft(operator=operator, source="hermes-revise", domain=(c.domains[0] if c.domains else None), yaml_text=case.to_yaml(),
+                                   note=f"바뀐 TC 에 맞게 다시 씀 — {summary}", case_id=c.id, tc_ids=case.covers,
+                                   validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"])
+        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip,
+                             detail={"source": "hermes-revise", "case_id": c.id, "drift": [d["id"] for d in drift], "allowed": res["allowed"], "model": res["model"],
+                                     "prompt_hash": res["prompt_hash"], "raw_chars": len(res["raw"]), "warnings": len(warnings)})
+        return did
+
     # ---- 탐색기 (docs/qa-platform-tc.md §8) ----------------------------------------
     def explorer_send(self, *, op_id: str, path_params: dict, query: dict, body_text: str, actor: str | None, operator: str,
                       session_hash: str | None, ip: str | None) -> str:
@@ -750,7 +782,9 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in d["tc_ids"]}
             run = app.store.get_run(d["run_id"]) if d.get("run_id") else None
-            return self._page(f"스크립트 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator()), "drafts")
+            orig = app.cases.get(d["case_id"]) if d.get("source") == "hermes-revise" and d.get("case_id") else None
+            return self._page(f"스크립트 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator(),
+                                                                     original_yaml=(orig.to_yaml() if orig else None)), "drafts")
         m = re.match(r"^/drafts/(d-[0-9a-f]+)/(save|check|approve|reject)$", path)
         if m and method == "POST":
             did, action = m.group(1), m.group(2)
@@ -825,7 +859,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(404, "스크립트가 없다")
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
-            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c)), "cases", context={"case": c.id})
+            return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c),
+                                                 revise={"operator": self._operator(), "operators": app.cfg.operators, "hermes": bool(app.cfg.hermes_key)}), "cases", context={"case": c.id})
+        m = re.match(r"^/cases/([a-z0-9][a-z0-9.\-]*)/revise$", path)
+        if m and method == "POST":
+            f = self._form()
+            operator = str((f.get("operator") or [""])[0]).strip()
+            did = app.revise_case(m.group(1), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
 
         # ---------- Hermes 대화 (docs/qa-platform-hermes.md §3.2) — 위젯 스크립트 + JSON/SSE API + 기록 화면 ----------
         if path == "/static/hermes.js" and method == "GET":

@@ -204,3 +204,112 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
         else:
             rejected.append((str(d.get("id") or "?"), errors))
     return {"prompt_hash": phash, "prompt_chars": len(prompt), "raw": raw, "accepted": accepted, "rejected": rejected, "model": cfg.hermes_model}
+
+
+# ---------------------------------------------------------------------------------------------
+# 바뀐 TC 에 맞게 스크립트 다시 쓰기 (docs/qa-platform-hermes.md §3.3, P4c)
+# ---------------------------------------------------------------------------------------------
+REVISE_SYSTEM = (
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 이미 있는 API 테스트 스크립트(YAML) 하나를, 그것이 검증하는 TC 가 바뀐 만큼만 고친다. 한국어로 쓴다.\n\n"
+    "규칙(어기면 버려진다):\n"
+    "1. 출력은 ```yaml 코드 블록 하나, 스크립트 맵 하나(`cases:` 목록 아님). id 는 바꾸지 않는다.\n"
+    "2. 바뀐 TC 와 관련된 단계·expect·covers 만 고친다. 바뀌지 않은 단계는 글자 하나도 건드리지 않는다.\n"
+    "3. 사라진 TC id 는 covers 에서 뺀다. 대체 후보가 주어지면 그중 맞는 것을 넣고, 없으면 그 단계의 covers 를 비운다.\n"
+    "4. 새 기대값(status·error_code 등)은 주어진 '변경 후' 레코드와 OpenAPI 발췌에서만 가져온다. 근거에 없는 것은 `TODO:` 주석 대신 값을 바꾸지 말고 그대로 둔다.\n"
+    "5. covers 는 주어진 허용 목록의 부분집합이어야 한다.\n"
+    "6. 고친 이유를 YAML 맨 위 주석 한 줄(`# 변경: …`)로 적는다."
+)
+
+
+def _candidates(removed: str, catalog, changes: dict) -> list[str]:
+    """사라진 TC 의 대체 후보 — 같은 변경 배치에서 추가됐고 id 앞부분(#·: 앞)이 같은 것. 없으면 지금 TC 목록에서 앞부분이 같은 것."""
+    stem = removed.split("#")[0] if "#" in removed else removed.rsplit(":", 1)[0]
+    at = (changes.get(removed) or {}).get("at")
+    same_batch = [i for i, ch in changes.items() if ch.get("kind") == "added" and ch.get("at") == at and i in catalog.records and (i.split("#")[0] if "#" in i else i.rsplit(":", 1)[0]) == stem]
+    if same_batch:
+        return sorted(same_batch)
+    return sorted(i for i in catalog.records if i != removed and (i.split("#")[0] if "#" in i else i.rsplit(":", 1)[0]) == stem)[:6]
+
+
+def assemble_revision(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict) -> tuple[str, str, list[str]]:
+    """(프롬프트, 근거 해시, 허용 covers). 허용 = 현재 covers − 사라진 TC + 대체 후보."""
+    removed = [d["id"] for d in drift if d.get("kind") == "removed"]
+    allowed = [t for t in case.covers if t not in removed]
+    parts = ["# 현재 스크립트 (이것을 고친다)\n```yaml\n" + case.to_yaml().strip() + "\n```"]
+    ops: list[str] = []
+    prd_refs: list[tuple[str, str]] = []
+    for d in drift:
+        tid = d["id"]
+        cur = catalog.records.get(tid)
+        before = d.get("before")
+        if d.get("kind") == "removed":
+            cands = _candidates(tid, catalog, changes)
+            for c in cands:
+                if c not in allowed:
+                    allowed.append(c)
+            parts.append(f"# 사라진 TC {tid}\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
+                         f"대체 후보: {', '.join(cands) or '없음 — 이 TC 를 검증하던 단계의 covers 를 비운다'}")
+            for c in cands:
+                r = catalog.records.get(c) or {}
+                parts.append(f"## 대체 후보 {c}\n```json\n{json.dumps(_slim(r), ensure_ascii=False, indent=1)}\n```")
+                _collect(r, ops, prd_refs)
+        else:
+            parts.append(f"# 바뀐 TC {tid} ({d.get('kind')})\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
+                         f"변경 후:\n```json\n{json.dumps(_slim(cur), ensure_ascii=False, indent=1) if cur else '(TC 목록에 없음)'}\n```")
+            _collect(cur or {}, ops, prd_refs)
+    if spec and ops:
+        parts.append("# OpenAPI 발췌 (dev 브랜치 계약)")
+        for o in ops:
+            op = spec.ops.get(o)
+            if not op:
+                parts.append(f"- {o}: OpenAPI 에 없음")
+                continue
+            block = {"operationId": op.id, "method": op.method, "path": op.path, "request_example": op.request_example,
+                     "success": dict(op.success), "errors": {code: {"status": i.get("status"), "message": i.get("message")} for code, i in op.errors.items()}}
+            parts.append("```json\n" + json.dumps(block, ensure_ascii=False, indent=1)[:6000] + "\n```")
+    seen: set = set()
+    prd_parts = []
+    for doc, sec in prd_refs:
+        if (doc, sec) in seen:
+            continue
+        seen.add((doc, sec))
+        text = wiki.prd_section(doc, sec, max_lines=80) if wiki.available else None
+        prd_parts.append(f"## PRD/{doc} §{sec}\n" + (text or "(본문 없음)"))
+    if prd_parts:
+        parts.append("# 새 PRD 절 본문 (기획 정본)\n" + "\n\n".join(prd_parts))
+    parts.append("# 허용되는 covers\n" + (", ".join(allowed) or "(없음)"))
+    parts.append("# 출력\n같은 id 의 스크립트 하나를 ```yaml 블록 하나로. 바뀐 부분만.")
+    text = "\n\n".join(parts)
+    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12], allowed
+
+
+def _slim(r: dict) -> dict:
+    out = {k: r.get(k) for k in ("id", "layer", "kind", "domain", "title", "gate", "command", "actor", "binding", "source", "prd") if r.get(k) not in (None, [], {}, "")}
+    hint = r.get("expect_hint")
+    if isinstance(hint, dict):
+        out["expect_hint"] = {k: v for k, v in hint.items() if k != "example"}
+    elif hint:
+        out["expect_hint"] = hint
+    return out
+
+
+def _collect(r: dict, ops: list, prd_refs: list) -> None:
+    b = r.get("binding") or {}
+    for o in (b.get("operations") or []):
+        if o not in ops:
+            ops.append(o)
+    for ref in r.get("prd") or []:
+        prd_refs.append((ref["doc"], ref["section"]))
+
+
+def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict, existing_ids: set[str]) -> dict:
+    """반환 {prompt_hash, raw, allowed, accepted: (Case, warnings)|None, errors, model}. id 는 원본으로 고정한다."""
+    prompt, phash, allowed = assemble_revision(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, case=case, drift=drift, changes=changes)
+    raw_text = hermes.chat(cfg, REVISE_SYSTEM, prompt, session_prefix="qa-revise", timeout=max(cfg.hermes_timeout, 180))
+    docs = parse_output(raw_text)
+    if not docs:
+        return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": None, "errors": ["출력에서 스크립트 YAML 을 찾지 못했다"], "model": cfg.hermes_model}
+    d = dict(docs[0])
+    d["id"] = case.id                      # 규칙 1 — 원본 id 유지 (사람이 파일을 바꿔치기한다)
+    c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id})
+    return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": (c, warnings) if c else None, "errors": errors, "model": cfg.hermes_model}
