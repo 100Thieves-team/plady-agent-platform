@@ -715,6 +715,7 @@ services:
             - qa_run_list
             - qa_run_get
             - qa_spec_op
+            - qa_api_get
             - qa_prd_section
             # 제안 — 케이스 초안(drafts)까지만. 승인은 사람이 화면에서
             - qa_draft_create
@@ -725,7 +726,6 @@ services:
         YAML
           yq -i '.mcp_servers."qa-platform" = load("/tmp/qa-platform.yaml")' "$$CONFIG"
           echo "hermes-config-init: merged mcp_servers.qa-platform (14 QA tools: read + draft proposals)"
-            - qa_api_get
         else
           yq -i 'del(.mcp_servers."qa-platform")' "$$CONFIG"
           echo "hermes-config-init: QA_MCP_TOKEN absent — mcp_servers.qa-platform not configured"
