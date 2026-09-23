@@ -40,6 +40,7 @@ class Config:
         self.spec_url = g("QA_SPEC_URL", "https://100thieves-team.github.io/moimyeon-backend/api/branches/dev/openapi/openapi3.yaml")
         self.request_timeout = int(g("QA_REQUEST_TIMEOUT", "30"))
         self.spec_file = g("QA_SPEC_FILE", "") or None          # 로컬·테스트: 파일에서 읽는다
+        self.spec_ttl = int(g("QA_SPEC_TTL", "600"))              # API 문서 캐시(초). 사람이 [API 문서 다시 읽기]로 언제든 앞당긴다
         # REST Docs HTML(사람이 읽는 API 문서). 기본은 스펙 URL 의 상위(…/branches/dev/). API 상세가 절 앵커로 링크한다
         self.spec_docs_url = g("QA_SPEC_DOCS_URL", "") or (self.spec_url.rsplit("/openapi/", 1)[0] + "/" if "/openapi/" in self.spec_url else "")
 

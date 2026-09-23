@@ -122,7 +122,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "spec.refresh": "API 문서 다시 읽기", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -580,7 +580,7 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
     return (f'<h1>테스트 케이스 (TC) 목록{h("tc.layers")} <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
             f' TC 소스 버전{h("tc.versions")}: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
-            f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"}</p>'
+            f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"} &nbsp; {refresh_form(operator=operator, next_url="/catalog?domain=" + domain, spec_hash=v.get("openapi"), fetched_ago=None)}</p>'
             f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
             f'<div class="tabs">{h("tc.filter")} {tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
             f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목" + h("tc.warnings") + "</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
@@ -790,7 +790,7 @@ EXPLORER_JS = r"""
 
 
 def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str], operators: list[str], operator: str, q: str,
-             domain_of=None, qa: dict | None = None, prefill: dict | None = None) -> str:
+             domain_of=None, qa: dict | None = None, prefill: dict | None = None, spec_hash: str | None = None, fetched_ago: int | None = None) -> str:
     """API 호출 화면 — 왼쪽 op 목록(도메인별·검색·즐겨찾기), 오른쪽 호출 카드(Normal 폼 | Swagger 요청 원문). docs/qa-platform-api.md §5.3·§5.6."""
     ql = (q or "").lower()
     pf = prefill or {}
@@ -816,7 +816,8 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
             f'<details id="favs" open style="display:none"><summary>즐겨찾기 <span id="favn" class="mut small"></span>{h("x.fav")}</summary><div id="favbox"></div></details>'
             f'<div class="oplist">{lists}</div></div>')
     head = ('<h1>API 호출' + h("x.views") + ' <span class="small mut">OpenAPI 로 만든 입력 폼에서 dev 에 요청 하나를 보내 본다. '
-            'Normal 은 값만 넣는 폼, Swagger 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 둘은 같은 값이다. 보낸 것은 실행 기록에 남는다</span></h1>')
+            'Normal 은 값만 넣는 폼, Swagger 는 실제로 나갈 요청 원문(메서드·경로·파라미터·JSON) — 둘은 같은 값이다. 보낸 것은 실행 기록에 남는다</span></h1>'
+            + f'<p class="small mut" style="margin:-6px 0 10px">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> &nbsp; {refresh_form(operator=operator, next_url="/explorer" + (("?op=" + op.id) if op else ""), spec_hash=spec_hash, fetched_ago=fetched_ago)}</p>')
     if not op:
         right = ('<div class="card"><p class="mut" style="margin:0">왼쪽에서 API 를 고르면 카드가 열린다. ☆ 로 즐겨찾기에 올릴 수 있고, '
                  '한 번 넣은 path·query 값은 이 브라우저에 기억돼 다음 입력칸에 뜬다.</p></div>')
@@ -928,7 +929,18 @@ def _call_verdict(c: dict) -> str:
     return badge(c["verdict"]) + (f' <span class="mono small">{e(c["status"])}</span>' if c.get("status") else "")
 
 
-def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q: str, spec_hash: str | None, spec_source: str | None, docs_url: str) -> str:
+def refresh_form(*, operator: str, next_url: str, spec_hash: str | None, fetched_ago: int | None) -> str:
+    """[API 문서 다시 읽기] — OpenAPI 캐시를 무시하고 다시 받아 TC 목록을 다시 계산한다. 새 API 를 배포한 직후 누른다."""
+    ago = "" if fetched_ago is None else (f"{fetched_ago // 60}분 전 읽음" if fetched_ago >= 60 else f"{fetched_ago}초 전 읽음")
+    dis = "" if operator else "disabled title=\"담당자를 먼저 고르세요\""
+    return (f'<form method="post" action="/spec/refresh" class="inline" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'읽는 중…\'">'
+            f'<input type="hidden" name="next" value="{e(next_url)}"><input type="hidden" name="operator" value="{e(operator)}">'
+            f'<button {dis}>API 문서 다시 읽기</button></form>{h("spec.refresh")}'
+            + (f' <span class="small mut">{e(ago)}</span>' if ago else ""))
+
+
+def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q: str, spec_hash: str | None, spec_source: str | None, docs_url: str,
+              operator: str = "", fetched_ago: int | None = None) -> str:
     ql = (q or "").lower()
     link = lambda d, o: f'/apis?domain={e(d)}{("&only=" + e(o)) if o else ""}{("&q=" + e(q)) if q else ""}'  # noqa: E731
     tabs = "".join(f'<a href="{link(d, only)}" class="{"on" if d == domain else ""}">{e(d)}</a>' for d in domains)
@@ -964,7 +976,7 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
         trs = '<tr><td colspan="6" class="mut">해당 없음</td></tr>'
     return (f'<h1>API{h("apis.list")} <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> · 출처 {e(spec_source or "–")}'
-            f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · OpenAPI 의 tags 가 전부 v1 이라 URL 경로로 도메인을 나눴다</p>'
+            f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · OpenAPI 의 tags 가 전부 v1 이라 URL 경로로 도메인을 나눴다 &nbsp; {refresh_form(operator=operator, next_url="/apis", spec_hash=spec_hash, fetched_ago=fetched_ago)}</p>'
             f'<form method="get" style="margin:0 0 8px"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약) — 검색 중엔 모든 도메인" style="width:100%"></form>'
             f'<div class="tabs">{tabs}</div><div class="tabs">{h("apis.filter")} {otabs}</div></div>'
             f'<div class="card"><table><tr><th>API ({n})</th><th>TC{h("apis.tc")}</th><th>자동화됨{h("apis.auto")}</th><th>호출하는 스크립트{h("apis.scripts")}</th><th>마지막 호출{h("apis.last")}</th><th>에러 코드{h("apis.errors")}</th></tr>{trs}</table>'

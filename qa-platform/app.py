@@ -56,7 +56,7 @@ class App:
         self.github = GitHub(cfg)
         # 기준 문서 (docs/qa-platform-tc.md): 위키 볼륨 + OpenAPI → TC 카탈로그. 읽기이므로 요청 시 갱신.
         self.wiki = Wiki(cfg.wiki_dir, cfg.wiki_branch, cfg.wiki_public_url)
-        self.spec = Spec(cfg.spec_url, cfg.data_dir / "catalog", file=cfg.spec_file)
+        self.spec = Spec(cfg.spec_url, cfg.data_dir / "catalog", file=cfg.spec_file, ttl=cfg.spec_ttl)
         self.catalog = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=cfg.catalog_dir, data_dir=cfg.data_dir)
         self.cases, self.case_errors = {}, []
         self.reload_cases()
@@ -453,6 +453,28 @@ class App:
                              detail={"case": c.id, "inputs": baked.raw.get("input_values") or {}})
         self.runner.execute_now(rid)
         return rid
+
+    def refresh_spec(self, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+        """[API 문서 다시 읽기] — 캐시를 무시하고 OpenAPI 를 다시 받아 TC 목록을 다시 계산한다. 새 API 가 배포된 직후 1시간(캐시)을 기다리지 않으려고.
+        읽기라 자동 실행 원칙 밖이지만 사람이 누른 것이라 감사 로그에 남긴다. 반환: {ok, before, after, added, removed, tc_added, tc_removed, error}."""
+        before = self.spec.get()
+        before_ops = set(before.ops) if before else set()
+        before_hash = before.hash if before else None
+        cat_before = self.catalog.current
+        tc_before = set(cat_before.records) if cat_before else set()
+        spec = self.spec.get(force=True)
+        cat = self.catalog.get(force=True) if spec else self.catalog.current
+        if cat is not None:
+            audit_cases(self.cases, cat)
+        after_ops = set(spec.ops) if spec else set()
+        tc_after = set(cat.records) if cat else set()
+        out = {"ok": bool(spec), "error": (None if spec else (self.spec.last_error or "OpenAPI 를 읽지 못했다")),
+               "before": before_hash, "after": (spec.hash if spec else None), "changed": bool(spec) and spec.hash != before_hash,
+               "added": sorted(after_ops - before_ops), "removed": sorted(before_ops - after_ops),
+               "tc_added": len(tc_after - tc_before), "tc_removed": len(tc_before - tc_after), "ops": len(after_ops)}
+        self.store.add_event(operator=operator, action="spec.refresh", target=out["after"], session_hash=session_hash, ip=ip,
+                             detail={k: v for k, v in out.items() if k != "ok"})
+        return out
 
     def all_actors(self) -> dict:
         """테스트 계정 이름 → 회원 UUID. SSM 고정 계정(qa-host·qa-guest) + 플랫폼이 만든 QA 회원(label)."""
@@ -992,7 +1014,7 @@ class Handler(BaseHTTPRequestHandler):
                                    changes=app.catalog.changes, wiki_available=app.wiki.available,
                                    operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key),
                                    op=g("op"), op_ids=cat.by_operation().get(g("op")) if g("op") else None)
-            return self._page("테스트 케이스", body, "catalog")
+            return self._page("테스트 케이스", body, "catalog", flash=("ok", g("msg")) if g("msg") else None)
         if path == "/catalog/tc" and method == "GET":
             cat = app.current_catalog()
             rec = cat.records.get(g("id")) if cat else None
@@ -1015,6 +1037,35 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             return self._json(200, cat.to_json() if cat else {"error": app.catalog.last_error})
 
+        # ---------- API 문서 다시 읽기 (사람이 누를 때만 — 캐시 무시) ----------
+        if path == "/spec/refresh" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip() or self._operator()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("담당자를 목록에서 골라야 한다")
+            res = app.refresh_spec(operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200 if res["ok"] else 502, res)
+            from urllib.parse import quote
+            nxt = str(fv("next") or "/apis")
+            if not nxt.startswith("/") or nxt.startswith("//"):
+                nxt = "/apis"
+            if not res["ok"]:
+                msg = f"API 문서를 다시 읽지 못했다 — {res['error']}. 이전 문서 그대로 쓴다"
+            elif not res["changed"]:
+                msg = f"API 문서가 그대로다 ({res['after']}, API {res['ops']}개). 백엔드 dev 배포와 문서 게시가 끝났는지 확인"
+            else:
+                parts = [f"API 문서를 다시 읽었다 {res['before'] or '–'} → {res['after']}"]
+                if res["added"]:
+                    parts.append(f"새 API {len(res['added'])}개: {', '.join(res['added'][:6])}{' …' if len(res['added']) > 6 else ''}")
+                if res["removed"]:
+                    parts.append(f"사라진 API {len(res['removed'])}개: {', '.join(res['removed'][:6])}")
+                parts.append(f"TC +{res['tc_added']} / -{res['tc_removed']}")
+                msg = " · ".join(parts)
+            sep = "&" if "?" in nxt else "?"
+            return self._redirect(f"{nxt}{sep}msg={quote(msg)}", set_operator=operator)
+
         # ---------- API 별로 모아 보기 (docs/qa-platform-api.md §5.1·§5.2) ----------
         if path == "/apis" and method == "GET":
             rows, cat = app.api_overview()
@@ -1024,7 +1075,8 @@ class Handler(BaseHTTPRequestHandler):
             known = cat.domains() if cat else []
             domains = [d for d in known if any(r["domain"] == d for r in rows)] + sorted({r["domain"] for r in rows} - set(known))
             return self._page("API", ui.apis_list(rows, domains=domains, domain=g("domain") or (domains[0] if domains else ""), only=g("only"), q=g("q"),
-                                                 spec_hash=spec.hash if spec else None, spec_source=spec.source if spec else None, docs_url=app.cfg.spec_docs_url), "apis")
+                                                 spec_hash=spec.hash if spec else None, spec_source=spec.source if spec else None, docs_url=app.cfg.spec_docs_url,
+                                                 operator=self._operator(), fetched_ago=app.spec.age_seconds()), "apis", flash=("ok", g("msg")) if g("msg") else None)
         m = re.match(r"^/(api/)?apis/([A-Za-z0-9_.\-]+)$", path)
         if m and method == "GET":
             d = app.api_detail(m.group(2))
@@ -1112,7 +1164,8 @@ class Handler(BaseHTTPRequestHandler):
                        "actor": g("actor"), "body": g("body"), "view": g("view")}
             return self._page("API 호출", ui.explorer(spec, op, run, steps, actors=sorted(app.all_actors()), operators=app.cfg.operators,
                                                  operator=self._operator(), q=g("q"), domain_of=domain_of_path,
-                                                 qa=app.op_qa(op.id) if op else None, prefill=prefill), "explorer")
+                                                 qa=app.op_qa(op.id) if op else None, prefill=prefill, spec_hash=spec.hash, fetched_ago=app.spec.age_seconds()), "explorer",
+                              flash=("ok", g("msg")) if g("msg") else None)
         if path == "/explorer/send" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731

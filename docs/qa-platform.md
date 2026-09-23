@@ -345,6 +345,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | `qa-github-token` | SSM, 선택 | 있으면 GitHub 조회 rate limit 완화. 없으면 미인증 + 캐시 |
 | `QA_TARGET_BASE_URL` | 평문 | `https://api.dev.moimyeon.plady.io` |
 | `QA_SPEC_URL` | 평문 | GitHub Pages `openapi3.yaml` (dev 브랜치) |
+| `QA_SPEC_TTL` | 평문(선택) | API 문서 캐시 초, 기본 600. 화면의 [API 문서 다시 읽기]가 캐시를 무시하고 앞당긴다 |
 | `QA_BACKEND_REPO` | 평문 | `100Thieves-team/moimyeon-backend` |
 | `QA_OPERATORS` | 평문 | 확인 화면 드롭다운 목록 (예 `bebe,중곤,dbwp031`) |
 | `HERMES_API_URL` / `HERMES_API_KEY` / `HERMES_MODEL` | 기존 재사용 | AI 호출 |

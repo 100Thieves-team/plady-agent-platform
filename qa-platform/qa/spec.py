@@ -151,6 +151,10 @@ class Spec:
         self._data: SpecData | None = None
         self.last_error: str | None = None
 
+    def age_seconds(self) -> int | None:
+        """마지막으로 문서를 읽은 뒤 지난 초. 화면의 "n분 전 읽음" 표시용."""
+        return int(time.monotonic() - self._data.fetched_at) if self._data else None
+
     @property
     def cache_path(self) -> Path:
         return self.cache_dir / "openapi.yaml"
