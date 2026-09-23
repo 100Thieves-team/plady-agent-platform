@@ -496,9 +496,9 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
     audit_html = (f'<div class="kv"><div>정합성</div><div>{audit_badge(c, drift)}{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div>'
                   f'<div>검토</div><div>{(e(c.reviewed.get("by") or "–") + " · " + e(c.reviewed.get("at"))) if c.reviewed else "<span class=\"mut\">기록 없음 — 스크립트에 reviewed: {at, by} 를 적으면 그 이후 변경만 배지로 뜬다</span>"}</div></div>')
     hist = "".join(
-        f'<tr><td><a href="/runs/{e(h["run_id"])}" class="mono">{e(h["run_id"])}</a></td><td>{badge(h["verdict"])}</td><td>{e(TRIGGER_KO.get(h["trigger"], h["trigger"]))}</td>'
-        f'<td>{e(h["operator"])}</td><td class="mono small">{e((h.get("sha") or "")[:8])}</td><td class="small mut">{kst(h["created_at"])}</td>'
-        f'<td class="small" style="color:var(--bad)">{e(h.get("error") or "")}</td></tr>' for h in history) or '<tr><td colspan="7" class="mut">실행 이력 없음</td></tr>'
+        f'<tr><td><a href="/runs/{e(hr["run_id"])}" class="mono">{e(hr["run_id"])}</a></td><td>{badge(hr["verdict"])}</td><td>{e(TRIGGER_KO.get(hr["trigger"], hr["trigger"]))}</td>'
+        f'<td>{e(hr["operator"])}</td><td class="mono small">{e((hr.get("sha") or "")[:8])}</td><td class="small mut">{kst(hr["created_at"])}</td>'
+        f'<td class="small" style="color:var(--bad)">{e(hr.get("error") or "")}</td></tr>' for hr in history) or '<tr><td colspan="7" class="mut">실행 이력 없음</td></tr>'
     src = "".join(f'<li>{e(s)}</li>' for s in c.source) or '<li class="mut">출처 미기재</li>'
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)} <a class="btn" href="/chat/new?case={e(c.id)}">Hermes 와 이야기</a></h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
@@ -598,9 +598,9 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
 
 
 def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: list, change: dict | None) -> str:
-    h = rec.get("expect_hint") or {}
+    expect = rec.get("expect_hint") or {}
     hint = "".join(f'<div>{e(k)}</div><div>{("<pre style=\"margin:0\">" + e(json.dumps(v, ensure_ascii=False, indent=1)) + "</pre>") if isinstance(v, (dict, list)) else e(v)}</div>'
-                   for k, v in h.items() if v not in (None, "", [], {}))
+                   for k, v in expect.items() if v not in (None, "", [], {}))
     b = rec.get("binding") or {}
     bind = ("op " + ", ".join(b.get("operations") or [])) if b.get("operations") else (("command " + ", ".join(b.get("commands") or [])) if b.get("commands") else "없음")
     if b.get("error_code"):

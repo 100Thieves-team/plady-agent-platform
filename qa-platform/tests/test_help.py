@@ -36,6 +36,26 @@ class HelpTest(unittest.TestCase):
         self.assertEqual(set(data), set(helpmod.HELP))
         self.assertIn("help-modal", js)
 
+    def test_nothing_shadows_help_function(self):
+        # ui.py 안에서 지역 변수 h 가 도움말 함수 h() 를 가리면 그 화면이 500 이 된다 (catalog_detail, 2026-09-23).
+        import ast
+        tree = ast.parse((ROOT / "qa" / "ui.py").read_text(encoding="utf-8"))
+        bad = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.Lambda)):
+                continue
+            for n in ast.walk(fn):
+                if (isinstance(n, ast.Name) and n.id == "h" and isinstance(n.ctx, ast.Store)) or (isinstance(n, ast.arg) and n.arg == "h"):
+                    bad.append((getattr(fn, "name", "lambda"), n.lineno))
+        self.assertEqual(bad, [])
+
+    def test_catalog_detail_renders_expect_hint(self):
+        rec = {"id": "room.create.ok", "layer": "policy", "title": "룸 생성", "domain": "room", "kind": "happy",
+               "expect_hint": {"status": 200, "json": {"data.status": "RECRUITING"}}, "binding": {"operations": ["createRoom"]}}
+        html = ui.catalog_detail(rec, [], {}, [], None)
+        self.assertIn("RECRUITING", html)
+        self.assertIn('data-help="tc.detail"', html)
+
     def test_button_and_whoami_page(self):
         self.assertIn('data-help="tc.state"', ui.h("tc.state"))
         h = ui.whoami_page(["bebe", "중곤"], current="bebe", next_url="/apis?domain=room")
