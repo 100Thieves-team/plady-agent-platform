@@ -69,7 +69,7 @@ class LoaderTest(unittest.TestCase):
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
         setups = [c for c in cases.values() if c.suite == "setup"]
-        self.assertEqual({c.id for c in setups}, {"setup.room-open", "setup.room-with-application", "setup.room-confirmed"})
+        self.assertEqual({c.id for c in setups}, {"setup.room-open", "setup.room-with-application", "setup.room-confirmed", "setup.room-reschedule", "setup.room-ready-to-start"})
         for c in setups:
             self.assertTrue(c.inputs and c.outputs and c.description)
             self.assertEqual(c.covers, [])

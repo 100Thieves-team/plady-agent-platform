@@ -119,3 +119,76 @@ cases:
       - name: 방장이 진행 확정
         request: { method: POST, path: "/v1/rooms/{{roomId}}/confirmation" }
         expect: { status: 200, result: SUCCESS }
+
+  # ---- dev 전용 QA API(백엔드 PR #135)를 쓰는 카드. /v1/dev/… 는 검증 대상이 아니라 TC 를 만들지 않는다 ----
+  - id: setup.room-reschedule
+    title: 룸 시작 시각 바꾸기 (진행 시작 가능하게)
+    suite: setup
+    description: 이미 있는 [QA] 룸의 진행 시작 시각을 옮긴다. 확정된 룸을 어제로 옮기면 공개 API 로 진행 시작 → 클로징 → 종료 → 후기까지 실제 경로로 갈 수 있다. 상태는 안 바뀐다. dev 전용 API(rescheduleQaRoom).
+    domains: [room]
+    operations: [rescheduleQaRoom]
+    actor: qa-host
+    inputs:
+      roomId: { label: 룸 id, required: true, hint: "[QA] 룸만 된다 (아니면 E2201)" }
+      daysFromNow: { label: 며칠 뒤로 옮기나, default: -1, hint: "음수면 과거 (-1 = 어제). 진행 시작은 시작 시각이 지나야 열린다" }
+      time: { label: 시각, default: "09:00:00" }
+    outputs: [roomId, startAt, roomStatus]
+    steps:
+      - name: 시작 시각 변경
+        request:
+          method: POST
+          path: "/v1/dev/rooms/{{input.roomId}}/schedule"
+          body: { startAt: "{{date:{{input.daysFromNow}}}}T{{input.time}}" }
+        expect: { status: 200, result: SUCCESS }
+        save: { roomId: data.roomId, startAt: data.startAt, roomStatus: data.status }
+
+  - id: setup.room-ready-to-start
+    title: 진행 시작 직전 상태의 룸 만들기 (확정 + 시작 시각 지남)
+    suite: setup
+    description: 룸 생성 → qa-guest 신청 → 방장 수락 → 진행 확정 → dev 전용 API 로 시작 시각을 어제로. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.
+    domains: [room, application, participation]
+    operations: [createRoom, submitRoomApplication, acceptApplication, confirmRoom, rescheduleQaRoom]
+    actor: qa-host
+    inputs:
+      title: { label: 룸 제목, default: "[QA] 진행 직전 룸", required: true }
+    outputs: [roomId, applicationId, startAt]
+    steps:
+      - name: 방장이 룸 생성
+        request:
+          method: POST
+          path: /v1/rooms
+          body:
+            postingId: "{{fixture.postingId}}"
+            jobRoleId: "{{fixture.jobRoleId}}"
+            round: FIRST
+            type: JOB
+            method: ONLINE
+            minParticipants: 2
+            maxParticipants: 4
+            schedule: { date: "{{date:+9}}", startTime: "10:00", durationMinutes: 60 }
+            title: "{{input.title}} {{rand}}"
+            resumeId: "{{fixture.qa-host.resumeId}}"
+            resumePublic: true
+        expect: { status: 200, result: SUCCESS }
+        save: { roomId: data.roomId }
+      - name: 참가자가 신청
+        actor: qa-guest
+        request:
+          method: POST
+          path: "/v1/rooms/{{roomId}}/applications"
+          body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] 진행 직전 룸 신청" }
+        expect: { status: 201, result: SUCCESS }
+        save: { applicationId: data.applicationId }
+      - name: 방장이 수락
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/applications/{{applicationId}}/accept" }
+        expect: { status: 200, result: SUCCESS }
+      - name: 방장이 진행 확정
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/confirmation" }
+        expect: { status: 200, result: SUCCESS }
+      - name: 시작 시각을 어제로 (dev 전용 API)
+        request:
+          method: POST
+          path: "/v1/dev/rooms/{{roomId}}/schedule"
+          body: { startAt: "{{date:-1}}T09:00:00" }
+        expect: { status: 200, result: SUCCESS, json: { "data.status": CONFIRMED } }
+        save: { startAt: data.startAt }

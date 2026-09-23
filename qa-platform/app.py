@@ -64,7 +64,8 @@ class App:
         self.reminder = Reminder(cfg, self.store, lambda text: slack(cfg.slack_webhook_url, text))
         # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 실행 도구는 없다
         self.mcp = McpServer(self, hidden_triggers=HIDDEN_TRIGGERS)
-        self.qadata = QaData(self)     # dev 전용 QA 데이터 API(삭제·초기화) 클라이언트
+        self.qadata = QaData(self)     # dev 전용 QA 데이터 API(삭제·초기화·회원 생성) 클라이언트
+        self.runner.actors.extra = self.store.qa_member_map   # 플랫폼이 만든 QA 회원도 테스트 계정 이름으로
 
     def start(self):
         self.runner.start()
@@ -399,7 +400,7 @@ class App:
         op = spec.ops.get(op_id) if spec else None
         if not op:
             raise BadRequest("OpenAPI 에 없는 operationId")
-        if actor and actor not in self.cfg.actors:
+        if actor and actor not in self.all_actors():
             raise BadRequest("없는 테스트 계정")
         path = op.path
         for prm in op.params:
@@ -453,23 +454,43 @@ class App:
         self.runner.execute_now(rid)
         return rid
 
+    def all_actors(self) -> dict:
+        """테스트 계정 이름 → 회원 UUID. SSM 고정 계정(qa-host·qa-guest) + 플랫폼이 만든 QA 회원(label)."""
+        return self.runner.actors.mapping()
+
+    def create_qa_member(self, label: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+        """QA 테스트 회원 만들기 카드. label 이 테스트 계정 이름이 된다 (스크립트 actor:, API 호출 화면 드롭다운)."""
+        label = label.strip()
+        if not re.match(r"^[a-z0-9][a-z0-9\-]{0,30}$", label):
+            raise BadRequest("이름은 소문자·숫자·하이픈 (예: qa-3)")
+        if label in self.all_actors():
+            raise BadRequest(f"이미 있는 테스트 계정 이름: {label}")
+        ok, data, status = self.qadata.create_member()
+        if ok:
+            self.store.add_qa_member(member_id=data["memberId"], label=label, nickname=data.get("nickname"), email=data.get("email"), operator=operator)
+        self.store.add_event(operator=operator, action="qa_data.create_member", target=label, session_hash=session_hash, ip=ip,
+                             detail={"ok": ok, "status": status, "error": (None if ok else data.get("code"))})
+        return {"ok": ok, "member": data if ok else None, "error": (None if ok else data)}
+
     def qa_data_action(self, action: str, target: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
         """정리 화면의 버튼 — delete_room(룸 id) · delete_all(호스트 테스트 계정 이름 또는 빈 값) · reset(테스트 계정 이름) · delete_member(회원 id).
         결과 {ok, deleted(dict)|error(dict)}. 감사 로그 events `qa_data.<action>`."""
         if action == "delete_room":
             ok, data, status = self.qadata.delete_room(target)
         elif action == "delete_all":
-            host = self.cfg.actors.get(target) if target else None
+            host = self.all_actors().get(target) if target else None
             if target and not host:
                 raise BadRequest("없는 테스트 계정")
             ok, data, status = self.qadata.delete_all(host)
         elif action == "reset":
-            mid = self.cfg.actors.get(target)
+            mid = self.all_actors().get(target)
             if not mid:
                 raise BadRequest("없는 테스트 계정")
             ok, data, status = self.qadata.reset_member(mid)
         elif action == "delete_member":
             ok, data, status = self.qadata.delete_member(target)
+            if ok:
+                self.store.delete_qa_member(target)      # 플랫폼이 만든 회원이면 테스트 계정 목록에서도 뺀다
         else:
             raise BadRequest("모르는 정리 동작")
         deleted = (data.get("deleted") or {}) if ok else {}
@@ -1027,10 +1048,26 @@ class Handler(BaseHTTPRequestHandler):
                 notice = ("ok", g("done"))
             elif g("err"):
                 notice = ("err", g("err"))
-            return self._page("테스트 데이터 만들기", ui.setup_page(app.setup_cases(), actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+            return self._page("테스트 데이터 만들기", ui.setup_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators,
+                                                       qa_members=app.store.list_qa_members(),
                                                        operator=self._operator(), result=result, errors=[x for x in app.case_errors if "setup" in x],
                                                        cleanup=app.qadata.snapshot()), "setup",
                               flash=notice, context={"run": run["id"]} if run else None)
+        if path == "/setup/member" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("담당자를 목록에서 골라야 한다")
+            res = app.create_qa_member(str(fv("label")), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200 if res["ok"] else 409, res)
+            from urllib.parse import quote
+            if res["ok"]:
+                m = res["member"]
+                return self._redirect(f"/setup?done={quote(f'QA 테스트 회원을 만들었다 — 테스트 계정 이름 {fv('label').strip()} (닉네임 {m.get('nickname')}, {m.get('email')}). 이제 스크립트 actor: 와 API 호출 화면에서 고를 수 있다')}#members", set_operator=operator)
+            e = res["error"] or {}
+            return self._redirect(f"/setup?err={quote(f'{e.get('code')}: {e.get('message')}')}#members", set_operator=operator)
         if path == "/setup/cleanup" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -1073,7 +1110,7 @@ class Handler(BaseHTTPRequestHandler):
             # 프리필 (docs/qa-platform-api.md §5.3): p.<path 파라미터> · q.<query> · actor · body · view — 채우기만 하고 보내지 않는다
             prefill = {"p": {k[2:]: v[0] for k, v in q.items() if k.startswith("p.")}, "q": {k[2:]: v[0] for k, v in q.items() if k.startswith("q.")},
                        "actor": g("actor"), "body": g("body"), "view": g("view")}
-            return self._page("API 호출", ui.explorer(spec, op, run, steps, actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+            return self._page("API 호출", ui.explorer(spec, op, run, steps, actors=sorted(app.all_actors()), operators=app.cfg.operators,
                                                  operator=self._operator(), q=g("q"), domain_of=domain_of_path,
                                                  qa=app.op_qa(op.id) if op else None, prefill=prefill), "explorer")
         if path == "/explorer/send" and method == "POST":

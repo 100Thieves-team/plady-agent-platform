@@ -122,7 +122,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -1088,7 +1088,7 @@ def cleanup_section(cu: dict | None, *, operators: list[str], operator: str) -> 
         for r in rooms) or '<tr><td colspan="7" class="mut">[QA] 룸이 없다</td></tr>'
     members = cu.get("members") or []
     mrows = "".join(
-        f'<tr><td class="mono small">{e(m["memberId"][:8])}…</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
+        f'<tr><td class="mono small">{e(m["memberId"][:8])}…{(" <b>" + e(m["label"]) + "</b>") if m.get("label") else ""}</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
         f'<td>{form("delete_member", m["memberId"], "삭제", cls="danger", confirm="QA 테스트 회원과 그 회원의 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
         for m in members)
     resets = " ".join(form("reset", a, f"{a} 초기화", confirm=f"테스트 계정 {a} 를 룸이 하나도 없는 처음 상태로 되돌린다 — 방장인 [QA] 룸과 신청·참여 행을 지운다. 회원·프로필·이력서는 남는다.") for a in cu.get("actors") or [])
@@ -1101,7 +1101,22 @@ def cleanup_section(cu: dict | None, *, operators: list[str], operator: str) -> 
             + '</div>')
 
 
-def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None) -> str:
+def members_section(qa_members: list[dict], *, actors: list[str], operators: list[str], operator: str, available: bool) -> str:
+    """QA 테스트 회원 만들기 — dev 전용 API 로 회원을 만들고, 그 이름을 테스트 계정처럼 쓴다(계정 2개 한계를 넘기려고)."""
+    dis = "" if (operator and available) else ("disabled title=\"담당자를 먼저 고르세요\"" if available else "disabled title=\"dev QA API 를 쓸 수 없다\"")
+    rows = "".join(f'<tr><td class="mono">{e(m["label"])}</td><td>{e(m.get("nickname") or "")}</td><td class="small mut">{e(m.get("email") or "")}</td>'
+                   f'<td class="small mut">{kst(m["created_at"])} · {e(m["operator"])}</td></tr>' for m in qa_members) or '<tr><td colspan="4" class="mut">아직 만든 회원이 없다</td></tr>'
+    return (f'<h2 id="members">QA 테스트 회원 만들기{h("setup.member")} <span class="small mut">고정 테스트 계정 2개(qa-host · qa-guest)로 모자랄 때 — 정원 채우기, 세 번째 참여자, 위임 시나리오</span></h2>'
+            f'<div class="card"><form method="post" action="/setup/member" class="actions" style="margin-top:0">'
+            f'<label>이름 <input name="label" placeholder="예: qa-3" pattern="[a-z0-9][a-z0-9\\-]{{0,30}}" required style="width:160px"></label>'
+            f'<input type="hidden" name="operator" value="{e(operator)}"><button class="primary" {dis}>회원 만들기</button>'
+            f'<span class="small mut">Google 로그인 없이 실제 가입 경로로 만든다. 이름이 테스트 계정 이름이 되어 스크립트 <span class="mono">actor:</span> 와 API 호출 화면 드롭다운에 바로 뜬다. 토큰은 저장하지 않는다 — 필요할 때 dev-sessions 로 받는다.</span></form>'
+            f'<table><tr><th>테스트 계정 이름</th><th>닉네임</th><th>이메일</th><th>만든 때</th></tr>{rows}</table>'
+            f'<p class="hint">지우는 건 아래 "QA 데이터 정리"의 QA 테스트 회원 표에서. 지금 쓸 수 있는 테스트 계정 전체: <span class="mono">{e(", ".join(actors) or "없음")}</span></p></div>')
+
+
+def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None,
+               qa_members: list[dict] | None = None) -> str:
     head = ('<h1>테스트 데이터 만들기' + h("setup.cards") + ' <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
             'Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문. 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
     res = ""
@@ -1151,7 +1166,8 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
                   f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>실행 — dev 에 실제로 만든다</button></div></form>')
     if not cards:
         cards = '<div class="card"><p class="mut" style="margin:0">테스트 데이터 만들기 스크립트(suite setup)가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
-    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div>{cleanup_section(cleanup, operators=operators, operator=operator)}<script>{SETUP_JS}</script>'
+    members = members_section(qa_members or [], actors=actors, operators=operators, operator=operator, available=bool(cleanup and cleanup.get("available"))) if cleanup is not None else ""
+    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div>{members}{cleanup_section(cleanup, operators=operators, operator=operator)}<script>{SETUP_JS}</script>'
 
 
 # ---- 담당자 고르기 (처음 들어올 때) -----------------------------------------------------------------

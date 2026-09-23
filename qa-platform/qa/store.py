@@ -59,6 +59,10 @@ DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "val
 # P5b: 단계가 부른 OpenAPI operationId. 기록 시점에 박아 두어 스펙이 바뀌어도 과거 기록의 해석이 안 바뀐다(런 불변).
 # 이전 행은 NULL — 조회 때 method/path 로 폴백 매칭(app.py), 백필하지 않는다. docs/qa-platform-api.md §6.
 STEP_COLUMNS = {"op_id": "TEXT"}
+# 플랫폼이 dev 전용 API(POST /v1/dev/members)로 만든 QA 테스트 회원. 이름(label)이 테스트 계정 이름처럼 쓰인다 — actor: qa-3
+QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
+  member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
+);"""
 
 
 def now_iso() -> str:
@@ -89,6 +93,7 @@ class Store:
                 if col not in have:
                     self._db.execute(f"ALTER TABLE run_steps ADD COLUMN {col} {decl}")
             self._db.execute("CREATE INDEX IF NOT EXISTS ix_run_steps_op ON run_steps(op_id, id)")
+            self._db.executescript(QA_MEMBERS_SQL)
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -250,6 +255,21 @@ class Store:
         for r in rows:
             out.setdefault(r["op_id"], []).append(r)
         return out
+
+    # ---- QA 테스트 회원 (dev 전용 API 로 만든 것) --------------------------------
+    def add_qa_member(self, *, member_id: str, label: str, nickname: str | None, email: str | None, operator: str) -> None:
+        self._x("INSERT OR REPLACE INTO qa_members(member_id,label,nickname,email,created_at,operator) VALUES(?,?,?,?,?,?)",
+                (member_id, label, nickname, email, now_iso(), operator))
+
+    def list_qa_members(self) -> list[dict]:
+        return self._q("SELECT * FROM qa_members ORDER BY created_at")
+
+    def qa_member_map(self) -> dict[str, str]:
+        """label → member_id. 테스트 계정 목록(cfg.actors)에 합쳐 쓴다."""
+        return {r["label"]: r["member_id"] for r in self._q("SELECT label, member_id FROM qa_members")}
+
+    def delete_qa_member(self, member_id: str) -> None:
+        self._x("DELETE FROM qa_members WHERE member_id=?", (member_id,))
 
     def last_verdicts(self) -> dict[str, dict]:
         """케이스별 마지막 판정 (목록 화면용)."""

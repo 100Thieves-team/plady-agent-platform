@@ -72,6 +72,13 @@ class QaData:
     def delete_member(self, member_id: str) -> tuple[bool, dict, int]:
         return self._call("DELETE", f"/v1/dev/members/{member_id}")
 
+    def create_member(self) -> tuple[bool, dict, int]:
+        """QA 테스트 회원 생성. 응답의 accessToken 은 쓰지 않는다 — 나중에 dev-sessions 로 memberId 만 있으면 토큰을 받는다."""
+        ok, data, status = self._call("POST", "/v1/dev/members")
+        if ok:
+            data = {k: v for k, v in data.items() if k != "accessToken"}
+        return ok, data, status
+
     # ---- 화면용 스냅샷 -----------------------------------------------------------
     def snapshot(self) -> dict:
         """정리 화면 한 장에 필요한 것: 가능 여부·목록·테스트 계정 이름 대응. 회원 UUID 는 이름으로 바꾸고 나머지는 앞 8자리만."""
@@ -81,9 +88,10 @@ class QaData:
         ok, data, status = self.list()
         if not ok:
             return {"available": True, "why": None, "error": data, "rooms": [], "members": [], "actors": list(self.app.cfg.actors)}
-        by_uuid = {v: k for k, v in self.app.cfg.actors.items()}
+        by_uuid = {v: k for k, v in self.app.all_actors().items()}
         rooms = []
         for r in data.get("rooms") or []:
             host = r.get("hostMemberId")
             rooms.append(dict(r, host_label=(by_uuid.get(host) or (host[:8] + "…" if host else "(방장 없음)"))))
-        return {"available": True, "why": None, "error": None, "rooms": rooms, "members": data.get("members") or [], "actors": list(self.app.cfg.actors)}
+        members = [dict(m, label=by_uuid.get(m.get("memberId"))) for m in (data.get("members") or [])]
+        return {"available": True, "why": None, "error": None, "rooms": rooms, "members": members, "actors": list(self.app.cfg.actors)}

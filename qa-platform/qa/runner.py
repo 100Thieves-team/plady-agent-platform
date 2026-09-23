@@ -27,9 +27,20 @@ class ActorPool:
         self.cfg = cfg
         self._tokens: dict[str, str] = {}
         self._lock = threading.Lock()
+        self.extra = None      # () -> {name: memberId} — 플랫폼이 만든 QA 테스트 회원(store.qa_members). App 이 꽂는다
+
+    def mapping(self) -> dict:
+        """이름 → 회원 UUID. SSM 의 고정 테스트 계정 + 플랫폼이 만든 QA 회원."""
+        out = dict(self.cfg.actors)
+        if self.extra:
+            try:
+                out.update(self.extra())
+            except Exception:
+                pass
+        return out
 
     def member_id(self, name: str) -> str | None:
-        return self.cfg.actors.get(name)
+        return self.mapping().get(name)
 
     def token(self, name: str, base_url: str | None = None) -> str:
         mid = self.member_id(name)
@@ -78,6 +89,18 @@ def _brief(v, limit: int = 120):
         return None
     s = v if isinstance(v, str) else str(v)
     return s if len(s) <= limit else s[:limit] + "…"
+
+
+_SECRET_KEYS = ("accessToken", "refreshToken", "token")
+
+
+def _mask_secrets(v, depth: int = 0):
+    """응답 본문의 토큰 값은 기록하지 않는다 (dev 전용 회원 생성 API 가 accessToken 을 돌려준다)."""
+    if isinstance(v, dict):
+        return {k: ("***" if k in _SECRET_KEYS and isinstance(val, str) else _mask_secrets(val, depth + 1)) for k, val in v.items()} if depth < 4 else v
+    if isinstance(v, list) and depth < 4:
+        return [_mask_secrets(x, depth + 1) for x in v]
+    return v
 
 
 def _truncate_text(t: str | None) -> str | None:
@@ -183,7 +206,7 @@ class Runner:
         except Exception as e:
             self.store.update_run_case(rcid, verdict="error", error=f"케이스 스냅샷 파싱 실패: {e}")
             return "error", 0, str(e)
-        ctx = Context(actors=self.cfg.actors, fixtures=self.cfg.fixtures)
+        ctx = Context(actors=self.actors.mapping(), fixtures=self.cfg.fixtures)
         total_ms = 0
         verdict, err = "pass", None
         for i, step in enumerate(case.steps):
@@ -226,7 +249,7 @@ class Runner:
         op_id = self._op_of(req["method"], req.get("path")) or op_id   # 치환된 경로가 더 정확하다
 
         r = httpx.request(req["method"], url, headers=headers, body=req.get("body"), timeout=self.cfg.request_timeout)
-        response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": r.json if r.json is not None else None,
+        response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": _mask_secrets(r.json) if r.json is not None else None,
                     "text": None if r.json is not None else _truncate_text(r.text), "error": r.error}
         if r.json is not None and len(r.text) > BODY_LIMIT:
             response["json"] = None
