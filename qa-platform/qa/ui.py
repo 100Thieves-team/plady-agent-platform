@@ -122,7 +122,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성", "draft.rejected_by_validation": "스크립트 초안 검증 탈락",
              "draft.save": "스크립트 초안 편집", "draft.check": "스크립트 초안 시험 실행 실행", "draft.approve": "스크립트 초안 승인", "draft.reject": "스크립트 초안 반려",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "검토 대기", "checked": "dev 확인됨", "approved": "승인", "rejected": "반려"}
 
 
@@ -1064,7 +1064,44 @@ SETUP_JS = r"""
 """
 
 
-def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str]) -> str:
+def cleanup_section(cu: dict | None, *, operators: list[str], operator: str) -> str:
+    """QA 데이터 정리 — dev 전용 API(PR #135)로 [QA] 룸과 QA 회원을 지우고 테스트 계정을 초기화한다. 실행 기록이 아니라 감사 로그에만 남는다."""
+    if cu is None:
+        return ""
+    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+    def form(action, target, label, *, cls="", confirm=""):
+        dis = "" if operator else "disabled title=\"담당자를 먼저 고르세요\""
+        return (f'<form method="post" action="/setup/cleanup" class="inline" onsubmit="return confirm({json.dumps(confirm or (label + "?"), ensure_ascii=False)})">'
+                f'<input type="hidden" name="action" value="{e(action)}"><input type="hidden" name="target" value="{e(target)}"><input type="hidden" name="operator" value="{e(operator)}">'
+                f'<button class="{cls}" {dis}>{e(label)}</button></form>')
+    head = (f'<h2 id="cleanup">QA 데이터 정리{h("setup.cleanup")} <span class="small mut">dev 에 남은 [QA] 데이터를 지운다 — 백엔드 dev 전용 API 라 진짜로 행이 없어진다</span></h2>')
+    if not cu.get("available"):
+        return head + f'<div class="card"><p class="mut" style="margin:0">지금은 쓸 수 없다: {e(cu.get("why") or "")}</p></div>'
+    if cu.get("error"):
+        er = cu["error"]
+        return head + f'<div class="card"><p class="mut" style="margin:0;color:var(--bad)">목록을 못 읽었다 — {e(er.get("code"))}: {e(er.get("message"))}</p></div>'
+    rooms = cu.get("rooms") or []
+    rrows = "".join(
+        f'<tr><td class="mono small">{e(r["roomId"][:8])}…</td><td>{e(r["title"])}</td><td>{badge(r.get("status"))}</td><td>{e(r.get("host_label"))}</td>'
+        f'<td class="small">신청 {(r.get("counts") or {}).get("applications", 0)} · 참여 {(r.get("counts") or {}).get("participants", 0)}</td><td class="small mut">{e((r.get("createdAt") or "")[:16].replace("T", " "))}</td>'
+        f'<td>{form("delete_room", r["roomId"], "삭제", cls="danger", confirm=f"[{r["title"]}] 룸과 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
+        for r in rooms) or '<tr><td colspan="7" class="mut">[QA] 룸이 없다</td></tr>'
+    members = cu.get("members") or []
+    mrows = "".join(
+        f'<tr><td class="mono small">{e(m["memberId"][:8])}…</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
+        f'<td>{form("delete_member", m["memberId"], "삭제", cls="danger", confirm="QA 테스트 회원과 그 회원의 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
+        for m in members)
+    resets = " ".join(form("reset", a, f"{a} 초기화", confirm=f"테스트 계정 {a} 를 룸이 하나도 없는 처음 상태로 되돌린다 — 방장인 [QA] 룸과 신청·참여 행을 지운다. 회원·프로필·이력서는 남는다.") for a in cu.get("actors") or [])
+    return (head + f'<div class="card"><p class="small mut" style="margin-top:0">지우는 건 백엔드가 제목 <span class="mono">[QA]</span> 로 시작하는 것만 허용한다(아니면 E2201). 모든 버튼은 감사 로그에 남는다. '
+            f'담당자: <select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 담당자 —</option>{ops}</select></p>'
+            f'<h4>[QA] 룸 {len(rooms)}개</h4><table><tr><th>id</th><th>제목</th><th>상태</th><th>방장</th><th>딸린 행</th><th>만든 시각</th><th></th></tr>{rrows}</table>'
+            f'<div class="actions">{form("delete_all", "", "[QA] 룸 전부 삭제", cls="danger", confirm=f"[QA] 룸 {len(rooms)}개와 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}{h("setup.delete_all")}'
+            f'<span class="small mut">테스트 계정 초기화{h("setup.reset")}:</span> {resets}</div>'
+            + (f'<h4>QA 테스트 회원 {len(members)}명{h("setup.members")}</h4><table><tr><th>id</th><th>닉네임</th><th>이메일</th><th></th></tr>{mrows}</table>' if members else "")
+            + '</div>')
+
+
+def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None) -> str:
     head = ('<h1>테스트 데이터 만들기' + h("setup.cards") + ' <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
             'Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문. 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
     res = ""
@@ -1114,7 +1151,7 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
                   f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>실행 — dev 에 실제로 만든다</button></div></form>')
     if not cards:
         cards = '<div class="card"><p class="mut" style="margin:0">테스트 데이터 만들기 스크립트(suite setup)가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
-    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div><script>{SETUP_JS}</script>'
+    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div>{cleanup_section(cleanup, operators=operators, operator=operator)}<script>{SETUP_JS}</script>'
 
 
 # ---- 담당자 고르기 (처음 들어올 때) -----------------------------------------------------------------
@@ -1215,7 +1252,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><a href="/drafts">스크립트 초안</a></td><td>스크립트 늘릴 때</td><td>Hermes·API 호출가 만든 스크립트 YAML 초안. 편집 → 재검증 → [한 번 실행해 보기] → 승인(YAML 복사 → PR) 또는 반려</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 만든 초안이 대화에 남는다</td></tr>
 <tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 해당하는 TC(층별, 자동화 여부), 호출하는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "호출하는 스크립트 없음" 필터가 테스트 커버리지가 비는 API</td></tr>
-<tr><td><a href="/setup">테스트 데이터 만들기</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 지우지 않는다(제목 [QA]). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
+<tr><td><a href="/setup">테스트 데이터 만들기</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 같은 화면 아래 "QA 데이터 정리"에서 지운다(dev 전용 API, [QA] 제목만). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
 <tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 입력 폼에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 입력 폼, <b>Swagger</b> 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 폼 위의 배지가 그 API 의 TC 수와 자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 

@@ -48,6 +48,7 @@ PATH_DOMAIN = {
     "comments": "guestbook", "reviews": "review", "review-skips": "review", "review-targets": "review", "received-reviews": "review",
     "terms": "catalog", "job-roles": "catalog", "regions": "catalog", "job-postings": "catalog", "companies": "catalog",
     "actuator": "platform",
+    "dev": "qa-dev",          # /v1/dev/… 백엔드 dev 전용 QA 데이터 API (PR #135) — TC 목록에는 안 넣고 API 호출 화면에만
 }
 
 
@@ -246,6 +247,8 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
         for op in spec.ops.values():
             if not op.path.startswith("/v1/") and not op.path.startswith("/actuator"):
                 continue
+            if op.path.startswith("/v1/dev/"):
+                continue     # dev 전용 QA 데이터 API 는 검증 대상이 아니다 — TC 를 만들지 않는다
             domain = domain_of_path(op.path)
             base = {"method": op.method, "path": op.path}
             for status, example in sorted(op.success.items()):

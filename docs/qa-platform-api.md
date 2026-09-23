@@ -303,3 +303,12 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - **설계에서 달라진 것**: 없음. 숫자(20회·10회·2번)는 코드 상수 `FLAKY_WINDOW`·`FLAKY_FLIPS` — 설정값으로 두지 않았다(§9-4).
 - **검증**: 테스트 4건(통과율·skip 제외·불안정 규칙(해시·창)·배지 문구·조회), 전체 81건. 브라우저: 스크립트 목록·상세, API 목록·상세에서 배지 확인.
 - **P5 전체 정리**: P5a 호출 입력 폼(Normal/Swagger) → P5b API 별 모아 보기 → P5c 테스트 데이터 만들기 → P5d 실행 결과 요약 → P5e 통계 배지. 토스 두 글에서 가져오기로 한 것(§2.1·§2.2)은 전부 들어갔다. 배포 뒤 사람이 볼 것: 테스트 데이터 만들기 첫째 시드 실행(roomId 반환), 셋째 시드(확정)의 E1421 여부, API 상세 REST Docs 링크 앵커가 맞는지.
+
+### 11.6 QA 데이터 정리 — 백엔드 dev 전용 API 연동 (2026-09-23)
+
+- **백엔드**: [moimyeon-backend PR #135](https://github.com/100Thieves-team/moimyeon-backend/pull/135) (MOI-534, dev 머지) 가 `/v1/dev/…` 아래에 dev 전용 QA API 를 열었다 — `listQaData`(`GET /v1/dev/qa-data`: `[QA]` 룸 + QA 생성 회원 목록) · `deleteQaRoom`(`DELETE /v1/dev/rooms/{id}`, 딸린 20개 테이블까지 하드 삭제) · `deleteQaData`(일괄, `hostMemberId`·`includeMembers`) · `resetQaMember`(`POST /v1/dev/members/{id}/reset`) · `deleteQaMember` · `createQaMember`(테스트 회원 생성 + 토큰) · `rescheduleQaRoom`(시작 시각 변경) · `completeQaResumeSummary`(이력서 요약 강제). 지우기는 제목 `[QA]` 만(E2201), 프로파일 `local·local-dev·dev` 에서만 빈 등록, 인증 필요(dev-sessions 토큰).
+- **플랫폼에 들어간 것**: `qa/qadata.py` — qa-host 토큰으로 dev API 를 부르는 클라이언트(`snapshot`·`delete_room`·`delete_all`·`reset_member`·`delete_member`). "테스트 데이터 만들기" 화면 아래 **"QA 데이터 정리"** 절: `[QA]` 룸 표(id·제목·상태·방장(테스트 계정 이름으로, 남은 UUID 는 앞 8자리)·딸린 행 수·시각·[삭제]), [`[QA]` 룸 전부 삭제], 테스트 계정별 [초기화], QA 테스트 회원 표([삭제]). 버튼마다 확인창. 결과는 지운 행 수로 플래시. `POST /setup/cleanup {action, target, operator}` → `App.qa_data_action` → 감사 로그 `qa_data.delete_room | delete_all | reset | delete_member`(ok·status·total·rooms·error). **실행 기록에는 안 남긴다** — 검증이 아니라 정리라서.
+- **TC·API 화면에서 제외**: `/v1/dev/` op 는 계약 TC 를 만들지 않고(`catalog.build`) API 모아 보기에도 안 나온다(`api_overview`). API 호출 화면에는 도메인 `qa-dev` 로 남는다(손으로 부를 수 있게 — 시작 시각 변경·회원 생성·요약 강제는 여기서).
+- **쓸 수 없을 때**: API 문서에 `listQaData` 가 없거나(배포 전) 테스트 계정이 없으면 절에 이유만 보인다. 로컬은 후자.
+- **아직 안 한 것**: `rescheduleQaRoom`(확정 룸의 시작 시각을 과거로 → 진행 화면까지 공개 API 로 도달)과 `createQaMember`·`completeQaResumeSummary` 를 테스트 데이터 만들기 카드로 감싸기. setup 스크립트가 dev-sessions 대신 만든 회원 토큰을 쓰려면 `actor` 개념 확장이 필요하다 — 별도 설계. PR 에 적힌 미결(임의 회원 토큰이면 누구나 삭제 가능, 비QA 룸의 참여 행도 초기화 때 지워짐)은 백엔드 결정 사항.
+- **검증**: 테스트 5건(제외·스냅샷과 이름 대응·삭제/초기화/일괄 호출과 감사 로그·거절 처리·불가 사유·화면·실제 스펙에 op 존재), 전체 90건. 실제 dev 삭제는 배포 뒤 사람이 첫 번째 [QA] 룸으로 확인한다.

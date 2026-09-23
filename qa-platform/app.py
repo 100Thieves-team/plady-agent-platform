@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from qa import help as helpmod  # noqa: E402
+from qa.qadata import QaData  # noqa: E402
 from qa import ui  # noqa: E402
 from qa.cases import CaseError, bake_inputs, audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import domain_of_path, CatalogService  # noqa: E402
@@ -63,6 +64,7 @@ class App:
         self.reminder = Reminder(cfg, self.store, lambda text: slack(cfg.slack_webhook_url, text))
         # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 실행 도구는 없다
         self.mcp = McpServer(self, hidden_triggers=HIDDEN_TRIGGERS)
+        self.qadata = QaData(self)     # dev 전용 QA 데이터 API(삭제·초기화) 클라이언트
 
     def start(self):
         self.runner.start()
@@ -145,7 +147,7 @@ class App:
         recent = self.store.recent_op_results(20)
         rows = []
         for op in sorted(spec.ops.values(), key=lambda o: (o.path, o.method)):
-            if not (op.path.startswith("/v1/") or op.path.startswith("/actuator")):
+            if not (op.path.startswith("/v1/") or op.path.startswith("/actuator")) or op.path.startswith("/v1/dev/"):
                 continue
             ids = by_op.get(op.id, [])
             layers = {"contract": 0, "policy": 0, "manual": 0}
@@ -450,6 +452,31 @@ class App:
                              detail={"case": c.id, "inputs": baked.raw.get("input_values") or {}})
         self.runner.execute_now(rid)
         return rid
+
+    def qa_data_action(self, action: str, target: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+        """정리 화면의 버튼 — delete_room(룸 id) · delete_all(호스트 테스트 계정 이름 또는 빈 값) · reset(테스트 계정 이름) · delete_member(회원 id).
+        결과 {ok, deleted(dict)|error(dict)}. 감사 로그 events `qa_data.<action>`."""
+        if action == "delete_room":
+            ok, data, status = self.qadata.delete_room(target)
+        elif action == "delete_all":
+            host = self.cfg.actors.get(target) if target else None
+            if target and not host:
+                raise BadRequest("없는 테스트 계정")
+            ok, data, status = self.qadata.delete_all(host)
+        elif action == "reset":
+            mid = self.cfg.actors.get(target)
+            if not mid:
+                raise BadRequest("없는 테스트 계정")
+            ok, data, status = self.qadata.reset_member(mid)
+        elif action == "delete_member":
+            ok, data, status = self.qadata.delete_member(target)
+        else:
+            raise BadRequest("모르는 정리 동작")
+        deleted = (data.get("deleted") or {}) if ok else {}
+        self.store.add_event(operator=operator, action=f"qa_data.{action}", target=target or None, session_hash=session_hash, ip=ip,
+                             detail={"ok": ok, "status": status, "total": deleted.get("total"), "rooms": deleted.get("rooms"),
+                                     "error": (None if ok else data.get("code"))})
+        return {"ok": ok, "deleted": deleted, "error": (None if ok else data)}
 
     def setup_outputs(self, run: dict) -> dict:
         """준비 작업이 돌려줄 값 — 스냅샷의 save 경로를 단계 응답에서 다시 읽는다 (러너의 변수 상태는 저장하지 않으므로)."""
@@ -995,9 +1022,31 @@ class Handler(BaseHTTPRequestHandler):
                 rcs = app.store.list_run_cases(run["id"])
                 result = {"run": run, "case": rcs[0] if rcs else None, "steps": app.store.list_steps(rcs[0]["id"]) if rcs else [],
                           "outputs": app.setup_outputs(run)}
-            return self._page("준비 작업", ui.setup_page(app.setup_cases(), actors=sorted(app.cfg.actors), operators=app.cfg.operators,
-                                                       operator=self._operator(), result=result, errors=[x for x in app.case_errors if "setup" in x]), "setup",
-                              context={"run": run["id"]} if run else None)
+            notice = None
+            if g("done"):
+                notice = ("ok", g("done"))
+            elif g("err"):
+                notice = ("err", g("err"))
+            return self._page("테스트 데이터 만들기", ui.setup_page(app.setup_cases(), actors=sorted(app.cfg.actors), operators=app.cfg.operators,
+                                                       operator=self._operator(), result=result, errors=[x for x in app.case_errors if "setup" in x],
+                                                       cleanup=app.qadata.snapshot()), "setup",
+                              flash=notice, context={"run": run["id"]} if run else None)
+        if path == "/setup/cleanup" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("담당자를 목록에서 골라야 한다")
+            res = app.qa_data_action(str(fv("action")), str(fv("target")).strip(), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200 if res["ok"] else 409, res)
+            from urllib.parse import quote
+            if res["ok"]:
+                d = res["deleted"]
+                msg = f"지웠다 — 총 {d.get('total', 0)}행 (룸 {d.get('rooms', 0)} · 신청 {d.get('applications', 0)} · 참여 {d.get('participants', 0)} · 회원 {d.get('members', 0)})"
+                return self._redirect(f"/setup?done={quote(msg)}#cleanup", set_operator=operator)
+            e = res["error"] or {}
+            return self._redirect(f"/setup?err={quote(f'{e.get('code')}: {e.get('message')}')}#cleanup", set_operator=operator)
         if path == "/setup/run" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
