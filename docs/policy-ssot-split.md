@@ -1,6 +1,6 @@
 # PRD 요구 id 와 SSOT 나누기 — 바뀐 곳을 문장 단위로 추적하기 (설계)
 
-> 상태: **설계 1판, 검토 대기 (2026-09-23)**. 사용자 결정: PRD 는 전체를 구조화하지 않고 중간안으로 간다("중간안으로 설계 문서 써줘").
+> 상태: **구현됨 (2026-09-23)**. 사용자 결정: PRD 는 전체를 구조화하지 않고 중간안으로 간다("중간안으로 설계 문서 써줘"). 검토 답은 §9, 구현 결과는 §10, 후속 작업은 §11.
 > 대상 레포: 대부분 **team-wiki-v2**(PRD·SSOT·렌더러·CI·AGENTS.md). 이 레포에서는 compose 의 `policy-renderer` 사이드카와 `qa-platform` 이 바뀐다.
 > 다음 작업: 이 설계가 끝나면 시나리오 관리(Hermes 가 만들고 사람이 고친다)를 이 위에 올린다.
 
@@ -246,10 +246,47 @@ PRD/룸 생성 R22 문장이 바뀌었다 (b71e04 → 55c0d1)
 - **렌더링**: 인라인 코드 `` `R22` `` 는 Hugo 에서 그대로 코드로 보인다. 확인이 필요하면 CSS 로 흐리게 한다.
 - **`raw/` 규칙**: AGENTS.md 는 `raw/` 를 create-only 라고 하지만 `raw/product` 는 `wiki.toml` 에서 `revisable` 로 선언돼 있다. PRD 수정은 지금도 되는 일이다.
 
-## 9. 검토 질문
+## 9. 검토 질문과 답 (2026-09-23)
 
-1. **요구 id 모양**: 줄 끝의 보이는 인라인 코드 `` `R22` `` 로 할까, 안 보이는 주석으로 할까? 설계는 보이는 쪽이다.
-2. **SSOT 나누기 기준**: 행동 규칙은 기능(PRD)별, 사실·파생값은 소유 대상별, 정책·연쇄·결정은 공통 — 이 섞인 기준이 괜찮은가?
-3. **조립본**: 한동안 `상태-SSOT.yaml` 을 생성물로 커밋해 두는 데 동의하나? 소비자를 모두 `ssot_load` 로 옮긴 뒤 없앨지는 그때 정한다.
-4. **게이트 검사 key(M5)**: 이번에 같이 할까, 따로 할까? 같이 하면 QA 스크립트 covers 를 한 번 옮겨야 한다.
-5. **PRD 를 쓰는 사람**: 8월 24일부터 PRD 정본이 위키다. 기획자가 직접 고치는지, 에이전트에게 시켜 고치는지에 따라 요구 id 관리 규칙(누가 `next_req` 를 올리나)의 무게가 달라진다.
+1. 요구 id 모양 → **보이는 쪽** (`` `R22` ``).
+2. SSOT 나누기 기준(행동 규칙은 기능별, 사실·파생값은 대상별, 정책·연쇄·결정은 공통) → **괜찮다**.
+3. 조립본을 생성물로 커밋 → **동의**.
+4. 게이트 검사 key(M5) → **같이 한다**.
+5. PRD 를 쓰는 사람 → **에이전트**. 그래서 요구 id 규칙(`next_req`, 번호 재사용 금지)을 AGENTS.md 절차로 강제한다.
+
+## 10. 구현 결과 (2026-09-23)
+
+team-wiki-v2 브랜치 `ssot-split`(worktree `team-wiki-v2-ssot`)와 이 레포에서 했다.
+
+| 단계 | 결과 |
+|---|---|
+| M1 나누기 | 조각 21개: 공통 · 결정 · 상태 9(룸·참여·참가 신청·출석·회원·이력서·질문·방명록·후기) · 기능 10(PRD 별). 항목 417개가 원본과 **데이터가 같다**(종류별 id 정렬 비교). 렌더된 정책 페이지 6개 중 5개와 manifest 가 원본과 글자까지 같고, 결정 로그 페이지만 미결 질문 목록의 **순서**가 바뀐다(게이트가 기능별로 묶여서). 여러 PRD 에 걸친 명령 7개는 일어나는 화면의 PRD 로 직접 정했다(`C.room.start` → 룸 진행 등). 명령 없는 조회 게이트 27개는 첫 인용 PRD 로 갔다 |
+| M2 요구 id | PRD 11개에 1,042개. 2·3·4·6장의 목록 항목·규칙 문단과 표 행(회원 §4.8 삭제 기한 표 R126~R128). 콜아웃·제목에는 없다. **설계와 다른 점**: "규칙 줄에만" 대신 해당 장의 본문 줄에 모두 달았다 — 규칙인지 판단은 인용하는 쪽이 하고, 빠뜨리는 것보다 낫다 |
+| M3 인용 | 절 인용 976건 중 936건(요구 id 가 있는 장)을 서브 에이전트 5개가 문장을 읽고 요구 id 로 좁혔다. 결과 인용: 요구 1,889 · 절 51 · 결정 19. 절 51 = 1·5·7·8장 인용 40 + 근거 문장이 지금 PRD 에 없는 11(§11-1) |
+| M4 시나리오 | 11개 PRD 모두 `### 시나리오 S1: …`. 분기 표시는 룸 생성 하나(`- 분기: 목록에 공고가 없으면…`). 룸 참여 PRD 의 콜아웃 뒤 번호를 4부터 이어 붙였다 |
+| M5 검사 key | 게이트 68개(검사 194개)에 key. TC id `G.x#key`. 이 레포는 스크립트·바인딩·자동화 제외·테스트를 새 id 로 옮기고, `catalog/tc-aliases.yaml`(새 key → 옛 번호) + 카탈로그 동적 별칭(옛 번호 → key)으로 **어느 쪽이 먼저 배포돼도** covers 가 풀린다. 이름만 바뀐 TC 는 변경 이력에서 삭제+추가로 보지 않는다 |
+
+**추적이 실제로 되는지**: 룸 생성 R54 "최대 모집 인원은 8명 이하" 를 6명으로 바꾸면 드리프트 검사가 "R54 문장이 바뀜 — 전/후 — 인용한 레코드: P.room.capacity" 를 낸다. 절 번호는 그대로라 예전 검사는 통과했을 변경이다. 상관없는 조각을 고쳐 다시 렌더돼도 기준 문장은 그대로 남고(`meta.기준_문서` 날짜가 바뀔 때만 새 문장으로 옮긴다), 날짜를 올리면 드리프트가 풀린다.
+
+**QA 플랫폼**: TC 레코드의 `prd` 에 요구 id·절·문장이 실리고 TC 상세의 "근거 PRD" 에 보인다. TC 변경 해시는 출처를 문서·장 단위로 줄여 계산해, 절 인용을 요구 인용으로 좁힌 것 같은 형식 변화는 변경으로 보지 않는다(이전 캐시 해시도 새 공식으로 다시 계산).
+
+**바꾼 파일**
+
+| 레포 | 파일 |
+|---|---|
+| team-wiki-v2 | `wiki/policy/_src/`(조각·index·조립본), `raw/product/*.md` 11개, `tools/policy-renderer/ssot_load.py`·`prd_reqs.py`(새로), `render_wiki.py`·`render_ssot.py`·`render_tests.py`, `.github/scripts/check_policy_refs.py`·`slack_drift_payload.py`, `.github/workflows/policy-drift-check.yml`, `AGENTS.md`, `wiki/policy/*`(다시 렌더) |
+| 이 레포 | `compose.ec2.yaml` policy-renderer(조각 폴더 감시, 예전 한 파일도 지원), `scripts/sync-policy.sh`, `qa-platform/qa/{wiki,catalog,cases,ui,help}.py`, `qa-platform/catalog/{bindings,exclusions,tc-aliases}.yaml`, `qa-platform/cases/room.yaml`, 테스트(`QA_TEST_WIKI_DIR` 로 위키 체크아웃을 고를 수 있다) |
+
+**배포 순서**: 둘 다 서로 없이도 동작한다. 사이드카는 조각 폴더가 없으면 예전처럼 파일 하나를 보고, QA 플랫폼은 별칭으로 두 id 체계를 다 읽는다. 권하는 순서는 team-wiki-v2 `ssot-split` 을 main 에 합친 뒤 이 레포를 push 하는 것이다. 합치기 전에 서버 쪽에서 SSOT 를 MCP 로 고치는 작업은 멈춘다(조각으로 옮긴 파일과 충돌).
+
+## 11. 후속 작업 — 옮기면서 드러난 SSOT·PRD 불일치
+
+서브 에이전트들이 인용을 좁히며 남긴 메모 48건을 묶었다. SSOT 내용 수정은 이번 범위 밖이라 그대로 두었다.
+
+1. **근거 문장이 지금 PRD 에 없어 절 인용으로 남은 것(11건)**: `G.room.start`(룸 진행 §4.1 은 블록 목록만), `F.member.mode_preference`·`F.member.offline_region`(현행 프로필 선택 항목에 없다), `F.question.answer_summary`·`answer_summary_author`·`answer_summary_round`(룸 진행 R40 이 답변 요약을 없앴다).
+2. **SSOT 가 PRD 보다 뒤처진 레코드**: 답변 요약 → 질문 메모(`G/C.question.record_answer_summary`, `F.question.comment_*` 값 이름 NOTE/GOOD/IMPROVE ↔ PRD MEMO/GOOD_POINT/IMPROVEMENT_POINT), 회당 평균 → 활동률 상위 %(`D.member.questions_per_room`·`feedbacks_per_room`), `D.member.attendance_tendency`(최근 3회로 확정), `D.member.absence_count` 표현, `F.member.job`(관심 직무 복수), `D.participation.round_record_listing`, `G.question.rate_closing`(공통 질문 개념 없어짐, R70), `G.question.write_comment`(최초 등록은 MEMO, R46), `D.review.already_written`(삭제되지 않은 후기만 막는다 — expr 에 조건 누락).
+3. **PRD 끼리 또는 SSOT 와 충돌 — decisions_pending 후보**: 진행 시작 권한(룸 진행 R26 "시각·방장 무관" ↔ `P.room.session_start` "+5분 전 방장만"), 진행 모드를 연 사람이 방장이 되는가(룸 진행 준비 R7 ↔ 마무리 R13·R24), 방장 이탈·자동 승계(룸 참여 R31~R35 ↔ `P.participation.exit`), 모집 중 일정 수정(룸 생성 R108 ↔ `P.room.schedule_deadline` open_question), 확정 후 취소(룸 참여 R58 만 "불가").
+4. **PRD 가 이미 답한 open_question**: `F.question.asked`(R36 해제 가능), `F.question.body`(준비 R38), `F.review.deleted_at`(R32 재작성 가능), `P.member.withdrawal`(승계 규칙 R31~R35 존재), `P.room.confirmation_freeze`.
+5. **근거가 약한 검사**: `G.question.create#not-own-cardset`, `G.question.create_followup#parent-question-active`.
+6. **QA 스크립트**: `room.create-and-cancel` 4단계가 `G.participation.cancel#participation-joined`(SSOT error E1419)를 covers 로 두고 E1410 을 기대한다 — 룸 재취소는 참여 취소 게이트가 아닐 수 있다. 최신 SSOT 로 카탈로그를 만들면 정합성 경고가 뜬다.
+7. **API 매핑**: `catalog/bindings.yaml` 의 `G.room.start#5` 는 그 게이트에 검사가 5개가 안 돼 가리키는 TC 가 없다(예전부터).

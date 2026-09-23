@@ -1327,8 +1327,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(404, "그 TC 가 TC 목록에 없다")
             cov = app.coverage(cat)
             covering = [app.cases[i] for i in cov["by_tc"].get(rec["id"], []) if i in app.cases]
-            excerpts = []
+            excerpts, seen_sec = [], set()
             for ref in rec.get("prd") or []:
+                if not ref.get("section") or (ref["doc"], ref["section"]) in seen_sec:
+                    continue          # 같은 절의 요구 여러 개를 인용해도 절 본문은 한 번
+                seen_sec.add((ref["doc"], ref["section"]))
                 text = app.wiki.prd_section(ref["doc"], ref["section"], max_lines=40) if app.wiki.available else None
                 excerpts.append((ref, text))
             src_link = None

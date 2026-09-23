@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -30,7 +31,8 @@ from qa.repo import RepoError, append_item, ids_in, item_spans, replace_item  # 
 from qa.spec import SpecData, parse  # noqa: E402
 
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
-WIKI_DIR = ROOT.parent / "wiki-workspace"
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")
 HAS_WIKI = (WIKI_DIR / "wiki/policy/_src/상태-SSOT.yaml").is_file()
 
 SAMPLE = """# 머리 주석

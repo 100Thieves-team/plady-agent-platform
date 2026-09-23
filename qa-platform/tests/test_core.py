@@ -5,6 +5,8 @@ import json
 import os
 import sys
 import tempfile
+
+import yaml
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from qa import httpx  # noqa: E402
 from qa.cases import CaseError, audit, load_dir, parse_one, select  # noqa: E402
-from qa.catalog import CatalogService, diff, domain_of_path  # noqa: E402
+from qa.catalog import CatalogService, build, diff, domain_of_path, load_inputs  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.github import domains_from_files  # noqa: E402
 from qa.runner import Runner, evaluate  # noqa: E402
@@ -23,7 +25,8 @@ from qa.store import Store  # noqa: E402
 from qa.templating import Context, TemplateError, get_path  # noqa: E402
 from qa.wiki import Wiki  # noqa: E402
 
-WIKI_DIR = ROOT.parent / "wiki-workspace"          # 레포 안의 team-wiki-v2 체크아웃 — 카탈로그 파생 회귀 테스트에 쓴다
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")          # 레포 안의 team-wiki-v2 체크아웃 — 카탈로그 파생 회귀 테스트에 쓴다
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
 
 
@@ -104,8 +107,8 @@ class CasesTest(unittest.TestCase):
             parse_one("id: a\ntitle: x\nsuite: smoke\ncovers: [room-create]\nsteps: [{request: {method: GET, path: /}}]")
         c = parse_one("id: a\ntitle: x\nsuite: sanity\ncovers: [C.room.create]\nsteps:\n"
                       "  - {covers: ['op.createRoom:200', C.room.create], request: {method: POST, path: /v1/rooms}}\n"
-                      "  - {covers: ['G.participation.cancel#2'], request: {method: POST, path: '/v1/rooms/{{roomId}}/cancellation'}}\n")
-        self.assertEqual(c.covers, ["C.room.create", "op.createRoom:200", "G.participation.cancel#2"])
+                      "  - {covers: ['G.participation.cancel#participation-joined'], request: {method: POST, path: '/v1/rooms/{{roomId}}/cancellation'}}\n")
+        self.assertEqual(c.covers, ["C.room.create", "op.createRoom:200", "G.participation.cancel#participation-joined"])
         m = parse_one("id: a\ntitle: x\nsuite: manual\nsteps: [{request: {method: GET, path: /}}]")
         self.assertEqual(m.covers, [])
 
@@ -281,18 +284,21 @@ class CatalogTest(unittest.TestCase):
         self.assertGreaterEqual(c["by_layer"]["contract"], 20)
         self.assertGreaterEqual(c["by_layer"]["manual"], 1)
         self.assertEqual(len(cat.versions["ssot"]), 12)
-        rec = cat.records["G.room.create#8"]
+        rec = cat.records["G.room.create#duplicate-slot-left"]
         self.assertEqual(rec["domain"], "room")
-        self.assertEqual(rec["binding"], {"operations": ["createRoom"], "error_code": "E1427", "error_source": "bindings"})
+        # 코드는 SSOT error 가 채워지면 그것이, 비었으면 bindings.checks 가 정본이다 (위키 판에 따라 둘 다 있다)
+        self.assertEqual({k: rec["binding"][k] for k in ("operations", "error_code")}, {"operations": ["createRoom"], "error_code": "E1427"})
+        self.assertIn(rec["binding"]["error_source"], ("ssot", "bindings"))
         self.assertEqual(rec["prd"][0]["doc"], "룸 생성")
         self.assertTrue(cat.records["C.room.autocancel_not_started"]["excluded"])   # actor: system 제외
-        self.assertEqual(rec["binding"]["error_source"], "bindings")                 # SSOT error 가 비어 있는 동안
         self.assertEqual(cat.records["op.createRoom:E1402"]["expect_hint"]["status"], 400)
         # 시드 케이스 13건은 카탈로그와 어긋나지 않는다
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
         audit(cases, cat)
-        bad = {cid: c.audit for cid, c in cases.items() if c.audit["status"] != "ok"}
+        # 오류(스위트에서 빠짐)는 없어야 한다. 경고는 위키 판에 따라 생길 수 있다 — 예: 최신 SSOT 가 G.participation.cancel 검사에
+        # error E1419 를 채워 room.create-and-cancel 4단계(E1410 기대)에 "바인딩 코드가 다르다" 경고가 붙는다
+        bad = {cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}
         self.assertEqual(bad, {})
         self.assertTrue(all(c.covers for c in cases.values() if c.suite != "setup"))   # 준비 작업(setup)은 covers 가 없다
         # 캐시가 남고 같은 입력이면 재계산하지 않는다
@@ -306,7 +312,7 @@ class CatalogTest(unittest.TestCase):
             "x.wrongcode": parse_one("id: x.wrongcode\ntitle: t\nsuite: smoke\nsteps:\n"
                                      "  - {covers: ['op.cancelRoom:E1410'], request: {method: POST, path: '/v1/rooms/{{r}}/cancellation'}, expect: {status: 409, error_code: E1420}}\n"),
             "x.wrongop": parse_one("id: x.wrongop\ntitle: t\nsuite: smoke\ncovers: ['op.createRoom:200']\nsteps: [{request: {method: GET, path: /v1/terms}, expect: {status: 200}}]"),
-            "x.policywarn": parse_one("id: x.policywarn\ntitle: t\nsuite: sanity\ncovers: ['G.room.create#8']\nsteps: [{request: {method: POST, path: /v1/rooms}, expect: {status: 409, error_code: E1425}}]"),
+            "x.policywarn": parse_one("id: x.policywarn\ntitle: t\nsuite: sanity\ncovers: ['G.room.create#duplicate-slot-left']\nsteps: [{request: {method: POST, path: /v1/rooms}, expect: {status: 409, error_code: E1425}}]"),
             "x.ok": parse_one("id: x.ok\ntitle: t\nsuite: smoke\ncovers: ['op.termsList:200']\nsteps: [{request: {method: GET, path: /v1/terms}, expect: {status: 200}}]"),
         }
         audit(cases, cat)
@@ -320,19 +326,53 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual([c.id for c in select(cases, suite="smoke")], ["x.ok"])          # 오류 케이스는 스위트에서 빠진다
         self.assertEqual(len(select(cases, ids=["x.ghost"])), 1)                          # 직접 고르면 들어간다
 
+    def test_key_ids_resolve_on_numeric_catalog(self):
+        """위키가 아직 게이트 검사 key 가 없는 판(G.x#5)이어도, key 로 옮긴 스크립트 covers 가 tc-aliases.yaml 로 풀려
+        스위트에서 빠지지 않는다. 반대로 key 판 카탈로그에서는 옛 번호 covers 가 별칭으로 풀리고 경고가 붙는다 (docs/policy-ssot-split.md §4.5)."""
+        import copy
+        wiki = Wiki(WIKI_DIR)
+        ssot, h = wiki.read_ssot()
+        rt = wiki.render_tests()
+        old = copy.deepcopy(ssot)
+        for g in old["gates"]:
+            for c in g.get("checks") or []:
+                if isinstance(c, dict):
+                    c.pop("key", None)
+        inputs = load_inputs(ROOT / "catalog")
+        spec = Spec("", Path(tempfile.mkdtemp()), file=str(SPEC_FIXTURE)).get()
+        cat_old = build(ssot=old, ssot_hash="old", rt_mod=rt, spec=spec, inputs=inputs, wiki=wiki)
+        self.assertIn("G.room.create#8", cat_old.records)
+        self.assertEqual(cat_old.canonical("G.room.create#duplicate-slot-left"), "G.room.create#8")
+        cases, _ = load_dir(ROOT / "cases")
+        audit(cases, cat_old)
+        self.assertEqual({cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}, {})
+        # 바인딩(key 로 옮김)도 번호 카탈로그에서 찾는다
+        self.assertEqual(cat_old.records["G.room.create#8"]["binding"]["error_code"], "E1427")
+        # key 판 카탈로그 + 옛 번호 covers → 풀리고 경고
+        cat_new = build(ssot=ssot, ssot_hash=h, rt_mod=rt, spec=spec, inputs=inputs, wiki=wiki)
+        c = parse_one(yaml.safe_dump({"id": "room.legacy", "title": "t", "suite": "sanity", "covers": ["G.room.create#8"],
+                                      "steps": [{"request": {"method": "POST", "path": "/v1/rooms"}, "expect": {"status": 409, "error_code": "E1427"}}]}))
+        audit({c.id: c}, cat_new)
+        self.assertEqual(c.covers, ["G.room.create#duplicate-slot-left"])
+        self.assertTrue(any("옛 TC id" in w for w in c.audit["warnings"]))
+        # 이름만 바뀐 TC 는 diff 에서 삭제+추가가 아니다
+        d = diff(cat_old, cat_new)
+        self.assertNotIn("G.room.create#duplicate-slot-left", d["added"])
+        self.assertNotIn("G.room.create#8", d["removed"])
+
     def test_diff_and_drift(self):
         cat = self.svc.get(force=True)
         import copy
         nxt = copy.deepcopy(cat)
-        nxt.records["G.room.create#8"]["hash"] = "changed"
+        nxt.records["G.room.create#duplicate-slot-left"]["hash"] = "changed"
         del nxt.records["op.termsList:200"]
         nxt.records["op.new:200"] = dict(nxt.records["op.regions:200"], id="op.new:200")
         d = diff(cat, nxt)
-        self.assertEqual(d, {"changed": ["G.room.create#8"], "added": ["op.new:200"], "removed": ["op.termsList:200"]})
-        self.svc.changes = {"G.room.create#8": {"at": "2026-09-22T00:00:00Z", "kind": "changed"}}
-        self.assertEqual(len(self.svc.drift_for(["G.room.create#8", "op.regions:200"], None)), 1)
-        self.assertEqual(self.svc.drift_for(["G.room.create#8"], "2026-09-23"), [])      # 검토 이후 변경 없음
-        self.assertEqual(len(self.svc.drift_for(["G.room.create#8"], "2026-09-21")), 1)
+        self.assertEqual(d, {"changed": ["G.room.create#duplicate-slot-left"], "added": ["op.new:200"], "removed": ["op.termsList:200"]})
+        self.svc.changes = {"G.room.create#duplicate-slot-left": {"at": "2026-09-22T00:00:00Z", "kind": "changed"}}
+        self.assertEqual(len(self.svc.drift_for(["G.room.create#duplicate-slot-left", "op.regions:200"], None)), 1)
+        self.assertEqual(self.svc.drift_for(["G.room.create#duplicate-slot-left"], "2026-09-23"), [])      # 검토 이후 변경 없음
+        self.assertEqual(len(self.svc.drift_for(["G.room.create#duplicate-slot-left"], "2026-09-21")), 1)
 
     def test_ssot_error_precedes_bindings(self):
         from qa.catalog import build, load_inputs
@@ -343,7 +383,7 @@ class CatalogTest(unittest.TestCase):
             if g["id"] == "G.room.create":
                 g["checks"][7]["error"] = "E9999"          # #8 에 SSOT 가 코드를 채운 상황 (bindings 는 E1427)
         cat = build(ssot=ssot2, ssot_hash=h, rt_mod=self.wiki.render_tests(), spec=self.spec.get(), inputs=load_inputs(ROOT / "catalog"), wiki=self.wiki)
-        b = cat.records["G.room.create#8"]["binding"]
+        b = cat.records["G.room.create#duplicate-slot-left"]["binding"]
         self.assertEqual((b["error_code"], b["error_source"]), ("E9999", "ssot"))
         self.assertTrue(any("SSOT error E9999" in w for w in cat.warnings))
 
@@ -369,10 +409,10 @@ cases:
     suite: sanity
     domains: [room]
     actor: qa-host
-    covers: ["G.room.create#8"]
+    covers: ["G.room.create#duplicate-slot-left"]
     steps:
       - name: 4번째 생성
-        covers: ["G.room.create#8"]
+        covers: ["G.room.create#duplicate-slot-left"]
         request: { method: POST, path: /v1/rooms, body: { postingId: "{{fixture.postingId}}", title: "[QA] x" } }
         expect: { status: 409, error_code: E1427 }
 ```"""
@@ -394,33 +434,33 @@ cases:
         self.tmp.cleanup()
 
     def test_assemble_contains_evidence_only(self):
-        text, h = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8", "op.createRoom:E1402"], example=None)
+        text, h = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#duplicate-slot-left", "op.createRoom:E1402"], example=None)
         self.assertEqual(len(h), 12)
-        self.assertIn("G.room.create#8", text)
+        self.assertIn("G.room.create#duplicate-slot-left", text)
         self.assertIn("must_pass_first", text)
         self.assertIn('"operationId": "createRoom"', text)
         self.assertIn("### 4.7", text)                       # PRD 절 본문이 들어간다
         self.assertIn("qa-host", text)
         self.assertNotIn("m1", text)                          # 회원 UUID 는 넣지 않는다
-        text2, h2 = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8", "op.createRoom:E1402"], example=None)
+        text2, h2 = self.drafts.assemble(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#duplicate-slot-left", "op.createRoom:E1402"], example=None)
         self.assertEqual(h, h2)                               # 같은 근거 → 같은 해시
 
     def test_parse_and_validate(self):
         items = self.drafts.parse_output(self.GOOD)
         self.assertEqual(len(items), 1)
-        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
         self.assertIsNotNone(case)
         self.assertEqual(errors, [])
         self.assertTrue(any("정리" in w for w in warnings))    # 쓰기인데 정리 단계 없음 → 경고
         # covers 가 요청 밖이면 버린다
-        bad = dict(items[0], covers=["G.room.create#9"])
-        bad["steps"] = [dict(bad["steps"][0], covers=["G.room.create#9"])]
-        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        bad = dict(items[0], covers=["G.room.create#participation-slot-left"])
+        bad["steps"] = [dict(bad["steps"][0], covers=["G.room.create#participation-slot-left"])]
+        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
         self.assertIsNone(case)
         self.assertIn("요청하지 않은", errors[0])
         # 없는 테스트 계정 → 버린다
         bad = dict(items[0], actor="qa-nobody")
-        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
+        case, errors, _ = self.drafts.validate(bad, requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
         self.assertIsNone(case)
         self.assertTrue(any("테스트 계정" in x for x in errors))
         # 계약 TC 를 덮는다면서 코드가 다르면 버린다
@@ -429,7 +469,7 @@ cases:
         case, errors, _ = self.drafts.validate(bad, requested=["op.createRoom:E1402"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
         self.assertIsNone(case)
         # 기존 id 와 겹치면 -draft 접미
-        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#8"], catalog=self.cat, cfg=self.cfg, existing_ids={"room.create-limit-reject"})
+        case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids={"room.create-limit-reject"})
         self.assertEqual(case.id, "room.create-limit-reject-draft")
 
     def test_generate_flow_with_fake_hermes(self):
@@ -441,7 +481,7 @@ cases:
             return httpx.HttpResult(200, {}, json.dumps({"choices": [{"message": {"content": content}}]}), 1)
 
         httpx.request = fake
-        res = self.drafts.generate(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#8"], example=None, existing_ids=set())
+        res = self.drafts.generate(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#duplicate-slot-left"], example=None, existing_ids=set())
         self.assertEqual(seen["url"], "http://hermes:8642/v1/chat/completions")
         self.assertEqual(seen["body"]["messages"][0]["content"][:20], self.drafts.DRAFT_SYSTEM[:20])
         self.assertGreaterEqual(seen["timeout"], 180)
@@ -453,7 +493,7 @@ cases:
         did = st.add_draft(operator="bebe", source="hermes", domain="room", yaml_text=c.to_yaml(), note=None, case_id=c.id, tc_ids=c.covers,
                            validation={"status": "warn", "warnings": w}, prompt_hash=res["prompt_hash"])
         d = st.get_draft(did)
-        self.assertEqual(d["tc_ids"], ["G.room.create#8"])
+        self.assertEqual(d["tc_ids"], ["G.room.create#duplicate-slot-left"])
         self.assertEqual(d["validation"]["status"], "warn")
         st.update_draft(did, status="approved", decided_by="bebe")
         self.assertEqual(st.draft_counts(), {"approved": 1})

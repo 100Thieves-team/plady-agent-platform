@@ -18,7 +18,8 @@ from app import App  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.mcp_server import TOOLS  # noqa: E402
 
-WIKI_DIR = ROOT.parent / "wiki-workspace"
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
 
 GOOD_CASE = """
@@ -27,10 +28,10 @@ title: 활성 룸이 3개면 네 번째 생성은 E1427 로 거절된다
 suite: sanity
 domains: [room]
 actor: qa-host
-covers: ["G.room.create#8"]
+covers: ["G.room.create#duplicate-slot-left"]
 steps:
   - name: 4번째 생성
-    covers: ["G.room.create#8"]
+    covers: ["G.room.create#duplicate-slot-left"]
     request: { method: POST, path: /v1/rooms, body: { postingId: "{{fixture.postingId}}", title: "[QA] x" } }
     expect: { status: 409, error_code: E1427 }
 """
@@ -131,15 +132,15 @@ class McpServerTest(unittest.TestCase):
         self.assertTrue(all("createroom" in (it["id"] + json.dumps(it.get("binding") or {})).lower() for it in res["items"]))
         res, _ = self.call("qa_catalog_search", only="covered", limit=200)
         self.assertTrue(all(it["covered_by"] for it in res["items"]))
-        res, err = self.call("qa_tc_get", id="G.room.create#8")
+        res, err = self.call("qa_tc_get", id="G.room.create#duplicate-slot-left")
         self.assertFalse(err)
-        self.assertEqual(res["record"]["id"], "G.room.create#8")
-        self.assertEqual(res["url"], "https://qa.test/catalog/tc?id=G.room.create#8")
+        self.assertEqual(res["record"]["id"], "G.room.create#duplicate-slot-left")
+        self.assertEqual(res["url"], "https://qa.test/catalog/tc?id=G.room.create#duplicate-slot-left")
         self.assertTrue(res["prd"] and res["prd"][0]["text"], "PRD 절 본문이 붙어야 한다")
         text, err = self.call("qa_tc_get", id="G.room.create")
         self.assertTrue(err)
         self.assertIn("비슷한 id", text)
-        self.assertIn("G.room.create#8", text)
+        self.assertIn("G.room.create#duplicate-slot-left", text)
 
     def test_coverage_changes_cases(self):
         res, err = self.call("qa_coverage")
@@ -202,9 +203,9 @@ class McpServerTest(unittest.TestCase):
         did = res["created"][0]["id"]
         d = self.app.store.get_draft(did)
         self.assertEqual((d["source"], d["operator"], d["kind"], d["note"], d["status"]), ("hermes-chat", "hermes", "case", "테스트", "draft"))
-        self.assertEqual(d["tc_ids"], ["G.room.create#8"])
+        self.assertEqual(d["tc_ids"], ["G.room.create#duplicate-slot-left"])
         # 요청하지 않은/없는 TC → 버림
-        bad = GOOD_CASE.replace('covers: ["G.room.create#8"]', 'covers: ["G.room.create#99"]')
+        bad = GOOD_CASE.replace('covers: ["G.room.create#duplicate-slot-left"]', 'covers: ["G.room.create#99"]')
         res, err = self.call("qa_draft_create", yaml=bad)
         self.assertFalse(err)
         self.assertEqual(len(res["created"]), 0)

@@ -41,8 +41,11 @@ for arg in "$@"; do
   esac
 done
 
-SSOT_YAML="$WIKI_DIR/wiki/policy/_src/상태-SSOT.yaml"
-[ -f "$SSOT_YAML" ] || { echo "상태-SSOT.yaml 이 없다: $SSOT_YAML" >&2; exit 1; }
+# 상태 SSOT 는 조각 폴더(wiki/policy/_src/, index.yaml)다. 렌더러가 폴더를 받으면 조립본(상태-SSOT.yaml)을 다시 쓰고 렌더한다.
+# 조각으로 나누기 전의 체크아웃이면 예전처럼 파일 하나를 넘긴다. docs/policy-ssot-split.md
+SSOT_SRC="$WIKI_DIR/wiki/policy/_src"
+if [ -f "$SSOT_SRC/index.yaml" ]; then SSOT_YAML="$SSOT_SRC"; else SSOT_YAML="$SSOT_SRC/상태-SSOT.yaml"; fi
+[ -e "$SSOT_YAML" ] || { echo "상태 SSOT 가 없다: $SSOT_YAML" >&2; exit 1; }
 [ -d "$WIKI_DIR/.git" ] || { echo "wiki-workspace 가 git checkout 이 아니다: $WIKI_DIR" >&2; exit 1; }
 
 # ── 1. 렌더 (PRD § 참조 드리프트 검증 포함; [drift] 경고는 stderr 로 나온다) ──
@@ -54,7 +57,7 @@ python3 "$DESIGN_DIR/render_wiki.py" \
 
 # ── 2. 게시 (커밋/푸시) ──
 cd "$WIKI_DIR"
-git add wiki/policy
+git add wiki/policy    # 렌더 결과 + 조립본(_src/상태-SSOT.yaml)
 if git diff --cached --quiet; then
   echo "변경 없음 — 게시 생략"
   exit 0

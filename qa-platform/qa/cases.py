@@ -22,8 +22,9 @@ _INPUT_EXPR = re.compile(r"\{\{\s*input\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
 _ID = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
-# TC id: G.room.create#8 · C.room.create · op.createRoom:E1402 · op.createRoom:200 · PRD.룸-탐색.4.2#1
-_TC = re.compile(r"^(?:[GC]\.[a-z_]+\.[a-z_]+(?:#\d+)?|op\.[A-Za-z0-9_]+:(?:E\d{3,4}|\d{3})|(?:PRD|OPS)\.[^\s#]+#\d+)$")
+# TC id: G.room.create#duplicate-slot-left · C.room.create · op.createRoom:E1402 · op.createRoom:200 · PRD.룸-탐색.4.2#1
+# 게이트 검사는 key(G.room.create#offline-region-required, 2026-09-23~) 또는 예전 순서 번호(G.room.create#5)
+_TC = re.compile(r"^(?:[GC]\.[a-z_]+\.[a-z_]+(?:#(?:\d+|[a-z][a-z0-9]*(?:-[a-z0-9]+)*))?|op\.[A-Za-z0-9_]+:(?:E\d{3,4}|\d{3})|(?:PRD|OPS)\.[^\s#]+#\d+)$")
 
 
 class CaseError(ValueError):
@@ -320,6 +321,15 @@ def audit(cases: dict[str, Case], catalog) -> None:
         errors: list[str] = []
         warnings: list[str] = []
         recs = catalog.records
+        # 다른 이름으로 적힌 TC(게이트 검사의 옛 순서 번호 ↔ key)를 지금 카탈로그 id 로 맞춘다 (docs/policy-ssot-split.md §4.5)
+        canon = getattr(catalog, "canonical", None)
+        if canon:
+            legacy = sorted({t for t in c.covers + [x for s in c.steps for x in s["covers"]] if t not in recs and canon(t) in recs and re.search(r"#\d+$", t)})
+            c.covers = list(dict.fromkeys(canon(t) for t in c.covers))
+            for s in c.steps:
+                s["covers"] = list(dict.fromkeys(canon(t) for t in s["covers"]))
+            if legacy:
+                warnings.append(f"covers 의 옛 TC id {', '.join(legacy)} 를 key id 로 읽었다 — 스크립트를 새 id 로 고친다")
         for step_i, step in enumerate(c.steps, 1):
             for tid in step["covers"]:
                 rec = recs.get(tid)

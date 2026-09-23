@@ -60,7 +60,7 @@ smoke·sanity 케이스가 "무엇을 검증하는지"의 정본을 케이스 �
 
 | 층 | 형식 | 예 | 뜻 |
 | --- | --- | --- | --- |
-| 정책·거절 | `{gate}#{n}` | `G.room.create#8` | 게이트의 n 번째 검사가 걸려 거절된다. n 은 SSOT 의 검사 순서(먼저 걸리는 사유가 먼저) |
+| 정책·거절 | `{gate}#{key}` | `G.room.create#duplicate-slot-left` | 게이트의 그 검사가 걸려 거절된다. key 는 SSOT 검사의 `key`(2026-09-23~). 예전에는 순서 번호(`G.room.create#8`)였고, 옛 번호는 `catalog/tc-aliases.yaml` 로 새 id 로 읽힌다 — [policy-ssot-split.md](policy-ssot-split.md) §4.5. 이 문서의 아래 예시들은 옛 번호 형식 그대로 둔다 |
 | 정책·성공 | `{command}` | `C.room.create` | 게이트를 다 통과해 전이가 일어나고 `writes` 가 반영된다 |
 | 계약·성공 | `op.{operationId}:{status}` | `op.createRoom:200` | 문서화된 성공 응답 |
 | 계약·오류 | `op.{operationId}:{code}` | `op.createRoom:E1402` | 문서화된 에러 코드 |

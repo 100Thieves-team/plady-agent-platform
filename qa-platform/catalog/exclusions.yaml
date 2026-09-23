@@ -27,7 +27,7 @@ exclusions:
   - prefix: C.review.hide
     reason: 운영자 전용
 
-  - id: "G.room.create#7"
+  - id: "G.room.create#schedule-not-passed"
     reason: 지난 시각 조건. 케이스가 과거 날짜를 보내면 재현 가능하므로 제외를 풀 후보 — 우선 표시만
   - prefix: G.room.appear_in_list
     reason: 목록 노출 규칙은 상태별 룸이 동시에 있어야 검증된다. 픽스처가 갖춰지면 푼다

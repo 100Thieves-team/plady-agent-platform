@@ -2,7 +2,7 @@
 
 세 층:
   policy    상태-SSOT.yaml → render_tests.cases() (team-wiki-v2 의 함수를 import, 복제 없음)
-              거절 `G.room.create#8` · 성공 `C.room.create`
+              거절 `G.room.create#duplicate-slot-left` · 성공 `C.room.create`
   contract  OpenAPI → op 별 성공 응답 `op.createRoom:200` · 문서화된 에러 코드 `op.createRoom:E1402`
   manual    사람이 적은 서술 TC `PRD.룸-탐색.4.2#1` · `OPS.platform.health#1` (qa-platform/catalog/manual-tc.yaml)
 
@@ -76,6 +76,7 @@ class Inputs:
     bindings: dict = field(default_factory=dict)     # {"commands": {cmd: op|[op]}, "checks": {"G.x#n": "E####"}}
     exclusions: list = field(default_factory=list)   # [{id|prefix|match, reason}]
     manual: list = field(default_factory=list)       # [{id, doc?, section?, title, given, when, then, source?}]
+    aliases: dict = field(default_factory=dict)      # tc-aliases.yaml — 새 key id → 옛 순서 번호 id (게이트 검사 key 전환 동안)
     hashes: dict = field(default_factory=dict)
     errors: list = field(default_factory=list)
 
@@ -102,6 +103,12 @@ def load_inputs(catalog_dir: Path) -> Inputs:
             inp.exclusions = [x for x in (doc.get("exclusions") or []) if isinstance(x, dict) and x.get("reason")]
         else:
             inp.manual = [x for x in (doc.get("cases") or []) if isinstance(x, dict) and x.get("id")]
+    ap = Path(catalog_dir) / "tc-aliases.yaml"
+    if ap.is_file():
+        try:
+            inp.aliases = {str(k): str(v) for k, v in ((yaml.safe_load(ap.read_text(encoding="utf-8")) or {}).get("aliases") or {}).items()}
+        except (OSError, yaml.YAMLError) as e:
+            inp.errors.append(f"tc-aliases.yaml: {e}")
     return inp
 
 
@@ -114,6 +121,12 @@ class Catalog:
     versions: dict                     # {ssot, openapi, bindings, exclusions, manual, wiki_head}
     built_at: str
     warnings: list = field(default_factory=list)   # 바인딩 노후·스펙 누락 등 (구조 불일치, §6.4)
+    # 다른 이름 → 지금 카탈로그의 id. 게이트 검사가 순서 번호(G.x#5)에서 key(G.x#offline-region-required)로 바뀌는 동안
+    # 스크립트 covers·바인딩이 어느 쪽 이름을 써도 같은 TC 를 가리키게 한다 (docs/policy-ssot-split.md §4.5)
+    aliases: dict = field(default_factory=dict)
+
+    def canonical(self, tid: str) -> str:
+        return tid if tid in self.records else self.aliases.get(tid, tid)
 
     @property
     def key(self) -> str:
@@ -136,7 +149,7 @@ class Catalog:
         return out
 
     def to_json(self) -> dict:
-        return {"records": self.records, "versions": self.versions, "built_at": self.built_at, "warnings": self.warnings}
+        return {"records": self.records, "versions": self.versions, "built_at": self.built_at, "warnings": self.warnings, "aliases": self.aliases}
 
     def by_operation(self) -> dict[str, list[str]]:
         """operationId → 그 API 에 걸린 TC id 목록 (API 계약 TC 는 `operation`, 비즈니스 규칙·수동 작성 TC 는 `binding.operations`).
@@ -154,7 +167,7 @@ class Catalog:
 
     @classmethod
     def from_json(cls, d: dict) -> "Catalog":
-        return cls(records=d["records"], versions=d["versions"], built_at=d["built_at"], warnings=d.get("warnings") or [])
+        return cls(records=d["records"], versions=d["versions"], built_at=d["built_at"], warnings=d.get("warnings") or [], aliases=d.get("aliases") or {})
 
 
 def _exclusion_for(rec: dict, exclusions: list) -> str | None:
@@ -179,16 +192,20 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
         owner_slug.update(rt_mod.OWNER_PKG)
     bind_cmds: dict[str, list[str]] = inputs.bindings.get("commands") or {}
     bind_checks: dict[str, str] = inputs.bindings.get("checks") or {}
+    key_of_legacy = {v: k for k, v in inputs.aliases.items()}     # 옛 번호 id → key id (위키가 아직 번호일 때 bindings·exclusions 를 key 로 찾는다)
 
     def prd_refs(sources: list) -> list[dict]:
+        """근거 PRD. 절 인용(§4.3)은 절, 요구 인용(R22)은 그 요구가 속한 절과 문장까지 (docs/policy-ssot-split.md §5.3)."""
         out = []
         for s in sources or []:
             if not isinstance(s, str):
                 continue
-            parsed = Wiki.parse_source(s)
-            if parsed:
-                doc, sec = parsed
-                out.append({"doc": doc, "section": sec, "url": wiki.prd_url(doc) if wiki else None})
+            r = wiki.resolve_source(s) if wiki else None
+            if r is None:
+                parsed = Wiki.parse_source(s)
+                r = {"doc": parsed[0], "section": parsed[1]} if parsed else None
+            if r:
+                out.append({**r, "url": wiki.prd_url(r["doc"]) if wiki else None})
         return out
 
     # ---- policy (SSOT) ------------------------------------------------------------------
@@ -204,7 +221,7 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
                 # 에러 코드: SSOT `error` 가 채워져 있으면 그것이 정본, 비어 있는 동안만 bindings.checks (§4.4)
                 ssot_code = str(c.get("error") or "").strip()
                 ssot_code = ssot_code if ssot_code and ssot_code.upper() != "TBD" else None
-                bound = bind_checks.get(rid)
+                bound = bind_checks.get(rid) or bind_checks.get(key_of_legacy.get(rid, "")) or bind_checks.get(f'{c["gate"]}#{c.get("position")}')
                 if ssot_code and bound and ssot_code != bound:
                     warnings.append(f"{rid}: SSOT error {ssot_code} 와 bindings.checks {bound} 가 다르다 — SSOT 를 쓴다. bindings 에서 지워도 된다")
                 elif ssot_code and bound:
@@ -215,7 +232,7 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
                     "title": rt_mod.reject_name(c), "gate": c["gate"], "gate_name": c.get("gate_name"),
                     "command": cmd, "actor": cmd_actor.get(cmd),
                     "expect_hint": {"cond": c.get("cond"), "message": c.get("message"), "must_pass_first": c.get("must_pass_first") or [],
-                                    "check": c["check"], "of": c.get("of")},
+                                    "check": c["check"], "position": c.get("position"), "of": c.get("of")},
                     "binding": ({"operations": ops, "error_code": code, "error_source": ("ssot" if ssot_code else "bindings") if code else None}
                                 if (ops or code) else None),
                     "source": c.get("source") or [],
@@ -300,14 +317,50 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
             "prd": [{"doc": doc, "section": sec, "url": wiki.prd_url(doc) if wiki else None}] if doc else [],
         }
 
+    # ---- 별칭 — 게이트 검사 key 전환 (새 key id ↔ 옛 순서 번호 id) --------------------------------
+    aliases: dict[str, str] = {}
+    for rid, rec in records.items():                     # 카탈로그가 key 로 만들어졌으면: 옛 번호 → key
+        h = rec.get("expect_hint") or {}
+        if rec.get("layer") == "policy" and rec.get("kind") == "reject" and h.get("position") and str(h.get("check")) != str(h.get("position")):
+            aliases[f'{rec["gate"]}#{h["position"]}'] = rid
+    for new, old in inputs.aliases.items():              # 카탈로그가 아직 번호면: key → 옛 번호 (tc-aliases.yaml)
+        if new not in records and old in records:
+            aliases[new] = old
+
     # ---- 제외 · 해시 ----------------------------------------------------------------------
     for rec in records.values():
-        rec["excluded"] = _exclusion_for(rec, inputs.exclusions)
-        rec["hash"] = _h({k: rec.get(k) for k in ("title", "expect_hint", "binding", "source", "kind", "domain")})
+        rec["excluded"] = (_exclusion_for(rec, inputs.exclusions) or _exclusion_for({**rec, "id": _legacy_id(rec)}, inputs.exclusions)
+                           or (_exclusion_for({**rec, "id": key_of_legacy[rec["id"]]}, inputs.exclusions) if rec["id"] in key_of_legacy else None))
+        rec["hash"] = _h(_hash_view(rec))
 
     versions = {"ssot": ssot_hash, "openapi": spec.hash if spec else None, "bindings": inputs.hashes.get("bindings"),
                 "exclusions": inputs.hashes.get("exclusions"), "manual": inputs.hashes.get("manual"), "wiki_head": wiki_head}
-    return Catalog(records=records, versions=versions, built_at=_now(), warnings=warnings)
+    return Catalog(records=records, versions=versions, built_at=_now(), warnings=warnings, aliases=aliases)
+
+
+def _legacy_id(rec: dict) -> str:
+    h = rec.get("expect_hint") or {}
+    return f'{rec.get("gate")}#{h["position"]}' if rec.get("layer") == "policy" and h.get("position") else rec.get("id")
+
+
+def _source_view(sources) -> list:
+    """해시용 출처 — 문서와 장(4.3 → 4) 단위로 줄인다. 절 인용(§4.3)을 요구 인용(R21·R22)으로 좁힌 것처럼
+    형식만 바뀐 것은 TC 변경으로 보지 않는다. 요구 문장이 바뀐 것은 SSOT 드리프트 검사가 잡는다."""
+    out = set()
+    for s in sources or []:
+        s = str(s)
+        m = re.match(r"^PRD/(.+?)\s*(?:§\s*(\d+)|R\d+)", s)
+        out.add(f"PRD/{m.group(1).strip()}" + (f" §{m.group(2)}" if m.group(2) else "") if m else s)
+    docs_with_chapter = {x.rsplit(" §", 1)[0] for x in out if " §" in x}
+    return sorted(x for x in out if " §" in x or x not in docs_with_chapter)
+
+
+def _hash_view(rec: dict) -> dict:
+    v = {k: rec.get(k) for k in ("title", "binding", "kind", "domain")}
+    h = rec.get("expect_hint")
+    v["expect_hint"] = {k: x for k, x in h.items() if k not in ("check", "position")} if isinstance(h, dict) else h
+    v["source"] = _source_view(rec.get("source"))
+    return v
 
 
 def snapshot(rec: dict | None) -> dict | None:
@@ -326,9 +379,18 @@ def snapshot(rec: dict | None) -> dict | None:
 def diff(prev: Catalog | None, cur: Catalog) -> dict:
     if prev is None:
         return {"changed": [], "added": [], "removed": []}
-    changed = [i for i, r in cur.records.items() if i in prev.records and prev.records[i].get("hash") != r.get("hash")]
-    added = [i for i in cur.records if i not in prev.records]
-    removed = [i for i in prev.records if i not in cur.records]
+    # 이름만 바뀐 TC(옛 순서 번호 ↔ key)는 같은 TC 로 비교한다 — 삭제 + 추가로 보지 않는다
+    back = {v: k for k, v in cur.aliases.items()}          # 지금 id → 다른 이름
+    fwd = cur.aliases                                         # 다른 이름 → 지금 id
+
+    def prev_of(i):
+        if i in prev.records:
+            return prev.records[i]
+        return prev.records.get(back.get(i)) if back.get(i) else None
+    # 이전 레코드 해시는 지금 공식으로 다시 계산한다 — 캐시된 해시가 예전 공식(출처 원문·검사 번호 포함)이면 한 번에 전부 "변경" 이 된다
+    changed = [i for i, r in cur.records.items() if prev_of(i) is not None and _h(_hash_view(prev_of(i))) != r.get("hash")]
+    added = [i for i in cur.records if prev_of(i) is None]
+    removed = [i for i in prev.records if i not in cur.records and fwd.get(i) not in cur.records]
     return {"changed": sorted(changed), "added": sorted(added), "removed": sorted(removed)}
 
 

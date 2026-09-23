@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -15,7 +16,8 @@ from qa import drafts, httpx  # noqa: E402
 from qa.config import Config  # noqa: E402
 
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
-WIKI_DIR = ROOT.parent / "wiki-workspace"
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")
 
 
 def _chat_reply(text: str):

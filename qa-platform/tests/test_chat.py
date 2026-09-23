@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -16,7 +17,8 @@ from qa import hermes, httpx  # noqa: E402
 from qa.config import Config  # noqa: E402
 
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
-WIKI_DIR = ROOT.parent / "wiki-workspace"
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")
 
 
 def _resp(rid: str, text: str, calls: list | None = None) -> dict:
@@ -97,10 +99,10 @@ class ChatFlowTest(unittest.TestCase):
 
     def test_first_turn_has_system_and_attachment_then_chains(self):
         did = self.app.store.add_draft(operator="hermes", source="hermes-chat", domain="room", yaml_text="id: x", note=None)
-        cid = self.app.chat_create(operator="bebe", context={"tc": "G.room.create#8"}, session_hash=None, ip=None)
+        cid = self.app.chat_create(operator="bebe", context={"tc": "G.room.create#duplicate-slot-left"}, session_hash=None, ip=None)
         chat = self.app.store.get_chat(cid)
-        self.assertEqual((chat["title"], chat["session_key"]), ("TC G.room.create#8", f"qa-chat-{cid}"))
-        self.fake.queue.append((200, _sse("resp_1", "초안 d-… 만들었다", [("qa_tc_get", {"id": "G.room.create#8"}, "{}"),
+        self.assertEqual((chat["title"], chat["session_key"]), ("TC G.room.create#duplicate-slot-left", f"qa-chat-{cid}"))
+        self.fake.queue.append((200, _sse("resp_1", "초안 d-… 만들었다", [("qa_tc_get", {"id": "G.room.create#duplicate-slot-left"}, "{}"),
                                                                        ("qa_draft_create", {"yaml": "..."}, json.dumps({"created": [{"id": did}]}))], deltas=["초안 d-… ", "만들었다"])))
         events: list = []
         reply = self.app.chat_send(chat, "케이스 써 줘", operator="bebe", session_hash="s", ip="1.1.1.1", emit=lambda k, d: events.append((k, d)))
@@ -113,7 +115,7 @@ class ChatFlowTest(unittest.TestCase):
         self.assertEqual(req["headers"]["X-Hermes-Session-Key"], f"qa-chat-{cid}")
         self.assertIn("QA 엔지니어", req["body"]["instructions"])
         self.assertIn("https://qa.test", req["body"]["instructions"])
-        self.assertTrue(req["body"]["input"].startswith("[첨부: TC G.room.create#8]"))
+        self.assertTrue(req["body"]["input"].startswith("[첨부: TC G.room.create#duplicate-slot-left]"))
         self.assertTrue(req["body"]["input"].endswith("케이스 써 줘"))
         self.assertNotIn("previous_response_id", req["body"])
         self.assertEqual(req["timeout"], 180)

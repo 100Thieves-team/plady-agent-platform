@@ -611,9 +611,14 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
     bind = ("op " + ", ".join(b.get("operations") or [])) if b.get("operations") else (("command " + ", ".join(b.get("commands") or [])) if b.get("commands") else "없음")
     if b.get("error_code"):
         bind += f' · 코드 {b["error_code"]}'
-    prd_refs = {f'PRD/{p["doc"]} §{p["section"]}' for p in rec.get("prd") or []}
+    prd_refs = {f'PRD/{p["doc"]} §{p["section"]}' for p in rec.get("prd") or []} | {f'PRD/{p["doc"]} {p["req"]}' for p in rec.get("prd") or [] if p.get("req")}
     src = "".join(f'<li>{e(s)}</li>' for s in rec.get("source") or [] if s not in prd_refs) or '<li class="mut">–</li>'
-    prd = "".join(f'<li><a href="{e(p["url"])}">{e(p["doc"])} §{e(p["section"])}</a></li>' for p in rec.get("prd") or [] if p.get("url"))
+    # 요구 인용(R22)은 요구 id·절·문장까지 — PRD 의 그 줄이 바뀌면 SSOT 드리프트 검사가 이 TC 의 근거로 짚는다 (docs/policy-ssot-split.md §5.3)
+    prd = "".join(
+        (f'<li><a href="{e(p["url"])}">{e(p["doc"])} {e(p["req"])}</a> <span class="small mut">§{e(p.get("section") or "?")}</span>'
+         f'{(" — " + e(p["text"])) if p.get("text") else " <span class=\"b fail\">PRD 에 없는 요구 id</span>"}</li>') if p.get("req") else
+        f'<li><a href="{e(p["url"])}">{e(p["doc"])} §{e(p["section"])}</a></li>'
+        for p in rec.get("prd") or [] if p.get("url"))
     ex_html = "".join(
         f'<details {"open" if i == 0 else ""}><summary>{e(ref["doc"])} §{e(ref["section"])}</summary><pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{e(text) if text else "(본문을 찾지 못했다 — 절 번호가 PRD 헤딩과 다르거나 위키 체크아웃이 없다)"}</pre></details>'
         for i, (ref, text) in enumerate(excerpts))
@@ -641,7 +646,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
             f'{("<div>게이트 (SSOT 검사 순서)</div><div class=\"mono\">" + e(rec["gate"]) + " " + e(rec.get("gate_name") or "") + "</div>") if rec.get("gate") else ""}'
             f'{("<div>command</div><div class=\"mono\">" + e(rec["command"]) + "</div>") if rec.get("command") else ""}'
             f'<div>API 매핑</div><div class="mono">{e(bind)}</div><div>출처</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div>'
-            f'{("<div>PRD</div><div><ul style=\"margin:0;padding-left:18px\">" + prd + "</ul></div>") if prd else ""}'
+            f'{("<div>근거 PRD" + h("tc.req") + "</div><div><ul style=\"margin:0;padding-left:18px\">" + prd + "</ul></div>") if prd else ""}'
             f'<div>해시</div><div class="mono">{e(rec.get("hash"))}</div></div></div>'
             f'{origin_html}<h2>기대 결과</h2><div class="card"><div class="kv">{hint or "<div class=\"mut\">–</div><div></div>"}</div></div>'
             f'{("<h2>PRD 본문</h2><div class=\"card\">" + ex_html + "</div>") if excerpts else ""}'
@@ -1254,7 +1259,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <table><tr><th style="width:110px">언제</th><th>무슨 일</th></tr>
 <tr><td><b>월</b><br><span class="small mut">기획</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>A</b> 가 위키 PRD 「룸 참여 및 참여자 관리」에 반려 사유 항목을 적고, 규칙표(SSOT)의 "신청 반려"에 "사유는 선택지 중 하나" 조건을 더한다.</li>
-<li>플랫폼이 규칙표를 다시 읽어 TC 화면에 새 TC(<span class="mono">G.application.reject#3</span> "선택지에 없는 사유는 거절")를 만든다. 기존 반려 스크립트에 <span class="b drift">TC 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
+<li>플랫폼이 규칙표를 다시 읽어 TC 화면에 새 TC(<span class="mono">G.application.reject#reason-in-options</span> "선택지에 없는 사유는 거절")를 만든다. 기존 반려 스크립트에 <span class="b drift">TC 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
 <tr><td><b>화</b><br><span class="small mut">구현·배포</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 구현. 반려 API(<span class="mono">POST /v1/rooms/{roomId}/applications/{applicationId}/reject</span>)가 본문에 <span class="mono">reason</span> 을 받고, 없는 값이면 400 <span class="mono">E400</span>. 선택지 조회 API(<span class="mono">GET /v1/rooms/reject-reasons</span>)가 새로 생긴다. REST Docs 테스트에 요청 예시와 400 예시를 넣는다.</li>
 <li>PR → 리뷰 → dev 머지 → 자동 배포. 대시보드에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" TC(<span class="mono">op.rejectApplication:E400</span>)가 생긴다.</li></ul></td></tr>
@@ -1264,7 +1269,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li>스크립트 상세의 [바뀐 TC 에 맞게 Hermes 가 고치기 → 초안]. 초안에서 원본과의 차이(diff)를 보고 [한 번 실행해 보기] → 통과 → 승인. 승인하면 main 의 그 항목이 바뀐다. 한두 칸만 고치면 되면 초안의 [폼으로 고치기].</li>
 <li>다시 [검증] → <span class="b pass">3/3 통과</span>. 배포에 ✓. Slack: "B 가 PR #131 배포 검증 → 3/3 통과".</li></ul></td></tr>
 <tr><td><b>수</b><br><span class="small mut">스크립트 추가</span></td><td><ul style="margin:0;padding-left:18px">
-<li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. TC 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#3</span>). 둘을 체크 → [고른 TC 로 스크립트 초안 생성]. Hermes 초안이 형식·TC 일치 검사를 통과해 초안 화면에 들어온다.</li>
+<li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. TC 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#reason-in-options</span>). 둘을 체크 → [고른 TC 로 스크립트 초안 생성]. Hermes 초안이 형식·TC 일치 검사를 통과해 초안 화면에 들어온다.</li>
 <li>손으로도 한 번 본다. <a href="/setup">테스트 데이터 만들기</a>에서 "신청이 하나 들어온 룸" 실행 → 결과값 <span class="mono">roomId</span>·<span class="mono">applicationId</span>. <a href="/explorer">API 호출</a>에서 <span class="mono">rejectApplication</span> 을 열면 그 값이 입력칸에 이미 들어 있다. Normal(값만 넣는 입력 폼)에 <span class="mono">reason</span> 을 엉뚱한 값으로 넣고 보내기 → 400 <span class="mono">E400</span> 확인. Swagger(실제로 나가는 요청 원문)로 보낸 JSON 도 확인.</li>
 <li>초안 승인 → main 에 커밋. 바로 sanity 에 실린다. TC 화면의 <span class="mono">application</span> 도메인 자동화 수가 올라간다.</li></ul></td></tr>
 <tr><td><b>금</b><br><span class="small mut">스프린트 마감</span></td><td><ul style="margin:0;padding-left:18px">
@@ -1298,7 +1303,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
     s2 = f"""
 <p>플랫폼은 TC 를 <b>만들지 않는다</b>. 원본에서 <b>파생</b>하고 같은 입력이면 같은 TC 목록이 나온다.</p>
 <table><tr><th>층</th><th>원본</th><th>TC 예</th><th>답하는 질문</th></tr>
-<tr><td>정책</td><td><a href="{e(wiki_url)}/policy/">상태-SSOT.yaml</a> (기획 SSOT) — team-wiki-v2 의 <span class="mono">render_tests.cases()</span> 를 그대로 가져와 쓴다</td><td><span class="mono">G.room.create#8</span> (게이트 8번째 검사에서 거절) · <span class="mono">C.room.create</span> (성공 전이)</td><td>기획이 정한 규칙이 지켜지는가</td></tr>
+<tr><td>정책</td><td><a href="{e(wiki_url)}/policy/">상태-SSOT.yaml</a> (기획 SSOT) — team-wiki-v2 의 <span class="mono">render_tests.cases()</span> 를 그대로 가져와 쓴다</td><td><span class="mono">G.room.create#duplicate-slot-left</span> (게이트 8번째 검사에서 거절) · <span class="mono">C.room.create</span> (성공 전이)</td><td>기획이 정한 규칙이 지켜지는가</td></tr>
 <tr><td>계약</td><td>백엔드 OpenAPI (dev 브랜치, REST Docs 산출물)</td><td><span class="mono">op.createRoom:200</span> · <span class="mono">op.createRoom:E1402</span></td><td>API 가 문서대로 응답하는가</td></tr>
 <tr><td>수동 작성</td><td>사람이 적는 <span class="mono">qa-platform/catalog/manual-tc.yaml</span> (PRD 절 · 운영 기준)</td><td><span class="mono">PRD.룸-탐색.4.1#1</span> · <span class="mono">OPS.platform.health#1</span></td><td>SSOT 로 형식화되지 않은 요구</td></tr></table>
 <p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 TC(시스템 전이·OAuth·담당자 전용)는 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다. 분모에서 빠지지만 화면에는 보인다.</p>
@@ -1354,7 +1359,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
     s_terms = """
 <p class="small mut" style="margin-top:0">이 화면들에서 쓰는 말. 일반 QA 용어를 따르고, 코드·URL 의 영어 키(run, case, catalog, covers, audit)는 그대로 둔다.</p>
 <table><tr><th>말</th><th>뜻</th><th>영어 · 코드</th></tr>
-<tr><td><b>테스트 케이스 (TC)</b></td><td>"무엇을 확인해야 하는가" 한 건. 기획(SSOT·PRD)과 API 계약(OpenAPI)에서 규칙으로 뽑는다. 사람이 손으로 쓰지 않는다(수동 작성 층만 예외). id 는 <span class="mono">G.room.create#8</span>, <span class="mono">op.createRoom:E1402</span> 같은 꼴</td><td>test case · <span class="mono">catalog</span></td></tr>
+<tr><td><b>테스트 케이스 (TC)</b></td><td>"무엇을 확인해야 하는가" 한 건. 기획(SSOT·PRD)과 API 계약(OpenAPI)에서 규칙으로 뽑는다. 사람이 손으로 쓰지 않는다(수동 작성 층만 예외). id 는 <span class="mono">G.room.create#duplicate-slot-left</span>, <span class="mono">op.createRoom:E1402</span> 같은 꼴</td><td>test case · <span class="mono">catalog</span></td></tr>
 <tr><td><b>테스트 스크립트</b></td><td>TC 를 실제로 확인하는 실행 단위. 요청·기대 응답을 적은 YAML 이고 git 이 원본. 스크립트 하나가 TC 여러 건을 검증할 수 있다</td><td>test script · <span class="mono">cases/*.yaml</span></td></tr>
 <tr><td><b>검증하는 TC</b></td><td>스크립트가 "이 TC 들을 확인한다" 고 선언한 목록. 커버리지의 근거</td><td><span class="mono">covers</span></td></tr>
 <tr><td><b>정합성</b></td><td>스크립트의 선언이 TC 목록·API 계약과 맞는지 플랫폼이 검사한 결과. 정합 / 경고 / 불일치. 불일치면 스위트에서 빠진다</td><td><span class="mono">audit</span></td></tr>
@@ -1417,7 +1422,7 @@ def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, o
 
 # ---- Hermes 위젯 스크립트 (/static/hermes.js). 표준 라이브러리 서버라 문자열로 낸다 ---------------------------
 HERMES_JS_VERSION = "4"
-HELP_JS_VERSION = "2"
+HELP_JS_VERSION = "3"
 HERMES_JS = r"""
 (function(){
   var Q = window.QA || {}; var SFX = Q.operator ? (':'+Q.operator) : ''; var LS_ID='qa_chat_id'+SFX, LS_OPEN='qa_chat_open'+SFX;   // 담당자별

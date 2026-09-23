@@ -20,6 +20,11 @@ import yaml
 SSOT_REL = Path("wiki/policy/_src/상태-SSOT.yaml")
 RENDER_TESTS_REL = Path("tools/policy-renderer/render_tests.py")
 PRD_REL = Path("raw/product")
+# PRD 요구 id (team-wiki-v2 tools/policy-renderer/prd_reqs.py 와 같은 규칙): 규칙 줄 끝의 `R22`, 표 행은 마지막 칸
+_REQ_TAG = re.compile(r"\s`R(\d+)`\s*\|?\s*$")
+_REQ_SOURCE = re.compile(r"^PRD/(.+?)\s+(R\d+)\s*$")
+_REQ_HEADING = re.compile(r"^#{2,4}\s*(\d+(?:[.-]\d+)*)[.\s]")
+_REQ_LIST = re.compile(r"^\s*(?:[-*]|\d+\.)\s+")
 
 
 def doc_slug(doc: str) -> str:
@@ -43,6 +48,7 @@ class Wiki:
         self.public_url = public_url.rstrip("/")
         self._rt_mod = None
         self._rt_mtime: float | None = None
+        self._reqs: dict[str, tuple[float, dict]] = {}     # 문서 → (mtime, {R id: {section, text}})
 
     # ---- 존재 ---------------------------------------------------------------------
     @property
@@ -123,6 +129,39 @@ class Wiki:
             return None
         p = self.root / PRD_REL / f"{doc_slug(doc)}.md"
         return p if p.is_file() else None
+
+    def prd_reqs(self, doc: str) -> dict[str, dict]:
+        """PRD 의 요구 id → {section, text}. 파일이 바뀔 때만 다시 읽는다."""
+        p = self.prd_path(doc)
+        if not p:
+            return {}
+        mt = p.stat().st_mtime
+        hit = self._reqs.get(doc)
+        if hit and hit[0] == mt:
+            return hit[1]
+        out, sec = {}, None
+        for ln in p.read_text(encoding="utf-8").split("\n"):
+            h = _REQ_HEADING.match(ln)
+            if h:
+                sec = h.group(1)
+                continue
+            t = _REQ_TAG.search(ln)
+            if t:
+                text = " ".join(_REQ_LIST.sub("", _REQ_TAG.sub("", ln)).strip().strip("|").split())
+                out[f"R{t.group(1)}"] = {"section": sec, "text": text}
+        self._reqs[doc] = (mt, out)
+        return out
+
+    def resolve_source(self, ref: str) -> dict | None:
+        """SSOT 출처 한 줄 → {doc, section, req?, text?}. 'PRD/룸 생성 R22' 는 그 요구의 절과 문장까지, '§4.3' 은 절만.
+        DEC-nnn 등은 None."""
+        m = _REQ_SOURCE.match(str(ref).strip())
+        if m:
+            doc, rid = m.group(1).strip(), m.group(2)
+            info = self.prd_reqs(doc).get(rid) or {}
+            return {"doc": doc, "section": info.get("section"), "req": rid, "text": info.get("text")}
+        parsed = self.parse_source(str(ref))
+        return {"doc": parsed[0], "section": parsed[1]} if parsed else None
 
     def prd_url(self, doc: str) -> str:
         return f"{self.public_url}/raw/product/{doc_slug(doc)}/"

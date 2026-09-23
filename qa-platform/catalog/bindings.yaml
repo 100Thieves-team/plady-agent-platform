@@ -44,27 +44,27 @@ commands:
 # 게이트 검사 → 에러 코드. SSOT 의 `error` 필드가 비어 있는 동안만 여기 둔다.
 # 코드가 OpenAPI 응답 예시에 없으면 카탈로그가 경고를 낸다(스펙 누락일 수 있으니 오류는 아니다).
 checks:
-  "G.room.create#1": E1102          # 비로그인
-  "G.room.create#6": E1402          # 인원 범위
-  "G.room.create#8": E1427          # 같은 공고·직무 활성 룸 3개 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
-  "G.room.create#9": E1425          # 참여 슬롯 소진 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
-  "G.room.confirm#2": E1410
-  "G.room.confirm#4": E1421
-  "G.room.start#1": E1701
-  "G.room.start#3": E1702
+  "G.room.create#login-required": E1102          # 비로그인
+  "G.room.create#headcount-range": E1402          # 인원 범위
+  "G.room.create#duplicate-slot-left": E1427          # 같은 공고·직무 활성 룸 3개 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
+  "G.room.create#participation-slot-left": E1425          # 참여 슬롯 소진 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
+  "G.room.confirm#room-recruiting": E1410
+  "G.room.confirm#min-headcount-met": E1421
+  "G.room.start#room-confirmed": E1701
+  "G.room.start#confirmed-member-only": E1702
   "G.room.start#5": E1706
-  "G.application.submit#1": E1102
-  "G.application.submit#2": E1410
-  "G.participation.cancel#2": E1410
-  "G.participation.submit_closing#2": E1802
-  "G.participation.submit_closing#3": E1801
-  "G.participation.write_final_feedback#3": E1903
-  "G.participation.write_self_feedback#2": E1903
-  "G.question.create#1": E1504
-  "G.question.write_comment#3": E1510
-  "G.guestbook.post_write#1": E2101
-  "G.review.write#1": E2001
-  "G.review.write#2": E2002
-  "G.review.edit#2": E2007
-  "G.review.edit#3": E2008
-  "G.member.mutate#1": E1102
+  "G.application.submit#login-required": E1102
+  "G.application.submit#room-recruiting": E1410
+  "G.participation.cancel#participation-joined": E1410
+  "G.participation.submit_closing#room-in-progress": E1802
+  "G.participation.submit_closing#attended": E1801
+  "G.participation.write_final_feedback#room-in-progress": E1903
+  "G.participation.write_self_feedback#room-in-progress": E1903
+  "G.question.create#room-confirmed": E1504
+  "G.question.write_comment#room-in-progress": E1510
+  "G.guestbook.post_write#joined-member-only": E2101
+  "G.review.write#room-completed": E2001
+  "G.review.write#author-attended": E2002
+  "G.review.edit#review-effective": E2007
+  "G.review.edit#within-edit-window": E2008
+  "G.member.mutate#login-required": E1102

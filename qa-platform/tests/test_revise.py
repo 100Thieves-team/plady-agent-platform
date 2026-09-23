@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -16,7 +17,8 @@ from qa.catalog import snapshot  # noqa: E402
 from qa.config import Config  # noqa: E402
 
 SPEC_FIXTURE = ROOT / "tests" / "fixtures" / "openapi-seed.yaml"
-WIKI_DIR = ROOT.parent / "wiki-workspace"
+# 위키 체크아웃 — 기본은 레포 옆 wiki-workspace, QA_TEST_WIKI_DIR 로 바꿀 수 있다 (예: SSOT 조각 브랜치 worktree)
+WIKI_DIR = Path(os.environ.get("QA_TEST_WIKI_DIR") or ROOT.parent / "wiki-workspace")
 
 
 def _chat_reply(text: str):
@@ -41,7 +43,7 @@ class ReviseTest(unittest.TestCase):
         httpx.request = self.orig
         self.tmp.cleanup()
 
-    def _drift(self, changed="G.room.create#8", removed=None):
+    def _drift(self, changed="G.room.create#duplicate-slot-left", removed=None):
         """변경 이력을 흉내 낸다: changed 는 hash 가 바뀐 것, removed 는 사라진 것 + 같은 배치에 추가된 대체 후보."""
         at = "2026-09-22T00:00:00Z"
         ch = {changed: {"at": at, "kind": "changed", "before": dict(snapshot(self.cat.records[changed]), title="(옛 제목)")}}
@@ -57,9 +59,9 @@ class ReviseTest(unittest.TestCase):
         self.assertIsNone(snapshot(None))
 
     def test_candidates(self):
-        changes = {"G.room.create#8": {"at": "t1", "kind": "removed"}, "G.room.create#1": {"at": "t1", "kind": "added"}, "G.room.create#2": {"at": "t0", "kind": "added"}}
+        changes = {"G.room.create#duplicate-slot-left": {"at": "t1", "kind": "removed"}, "G.room.create#login-required": {"at": "t1", "kind": "added"}, "G.room.create#account-active": {"at": "t0", "kind": "added"}}
         # 같은 배치(t1)에 추가된 같은 앞부분 → #1 만 (#2 는 다른 배치)
-        self.assertEqual(drafts._candidates("G.room.create#8", self.cat, changes), ["G.room.create#1"])
+        self.assertEqual(drafts._candidates("G.room.create#duplicate-slot-left", self.cat, changes), ["G.room.create#login-required"])
         # 배치에 없으면 TC 목록에서 앞부분 같은 것
         c = drafts._candidates("op.createRoom:E9999", self.cat, {})
         self.assertTrue(all(x.startswith("op.createRoom:") for x in c) and c)

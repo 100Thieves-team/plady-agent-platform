@@ -447,8 +447,9 @@ services:
       - wiki-data:/workspace
     restart: unless-stopped
 
-  # 정책서 자동 렌더 사이드카. wiki/policy/_src/상태-SSOT.yaml (SSOT 원본,
-  # git push 또는 llm-wiki MCP asset write 로 도착)의 내용 해시를 폴링하다가
+  # 정책서 자동 렌더 사이드카. wiki/policy/_src/ 의 상태 SSOT 조각(index.yaml·기능/·상태/·공통·결정,
+  # git push 또는 llm-wiki MCP asset write 로 도착. docs/policy-ssot-split.md)의 내용 해시를 폴링하다가
+  # (조각이 없는 예전 체크아웃이면 상태-SSOT.yaml 파일 하나의 해시를. 폴더를 받은 렌더러는 조립본도 다시 쓴다)
   # 바뀌면 team-wiki-v2 의 tools/policy-renderer/render_wiki.py 로
   # wiki/policy/ 파생 페이지들을 재렌더한다. 이후 체인은 기존 인프라가 잇는다:
   # wiki-data-sync 가 커밋/푸시 + Slack 알림, wiki-ui HEAD 워처가 재빌드.
@@ -466,12 +467,18 @@ services:
     command:
       - |
         pip install --quiet --no-cache-dir 'pyyaml==6.0.2'
-        SRC="/workspace/wiki/policy/_src/상태-SSOT.yaml"
+        SRCDIR=/workspace/wiki/policy/_src
         OUT=/workspace/wiki/policy
         TOOLS=/workspace/tools/policy-renderer
+        # 조각 폴더면 조각 전체 해시(ssot_load.py hash)와 manifest.parts_hash 를, 아니면 파일 해시와 source_hash 를 비교한다
+        src_in() { if [ -f "$$SRCDIR/index.yaml" ] && [ -f "$$TOOLS/ssot_load.py" ]; then echo "$$SRCDIR"; else echo "$$SRCDIR/상태-SSOT.yaml"; fi; }
+        src_hash() {
+          if [ -d "$$1" ]; then python3 "$$TOOLS/ssot_load.py" hash "$$1"
+          else python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:12])" "$$1"; fi
+        }
         LAST=""
         if [ -f "$$OUT/sync-manifest.json" ]; then
-          LAST="$$(python3 -c "import json;print(json.load(open('$$OUT/sync-manifest.json')).get('source_hash',''))" 2>/dev/null || true)"
+          LAST="$$(python3 -c "import json,os;m=json.load(open('$$OUT/sync-manifest.json'));print(m.get('parts_hash','') if os.path.isfile('$$SRCDIR/index.yaml') else m.get('source_hash',''))" 2>/dev/null || true)"
         fi
         # Same advisory lock as llm-wiki (RepoLock) and wiki-data-sync: a render
         # rewrites eight pages at once, and the sync loop committing between the
@@ -495,12 +502,13 @@ services:
           return 1
         }
         lock_release() { rm -rf "$$LOCK"; }
-        echo "[policy-renderer] watching $$SRC every $${POLICY_RENDER_INTERVAL}s (last=$${LAST:-none})"
+        echo "[policy-renderer] watching $$(src_in) every $${POLICY_RENDER_INTERVAL}s (last=$${LAST:-none})"
         while :; do
           sleep "$$POLICY_RENDER_INTERVAL"
-          [ -f "$$SRC" ] || continue
+          SRC="$$(src_in)"
+          [ -e "$$SRC" ] || continue
           [ -f "$$TOOLS/render_wiki.py" ] || continue
-          CUR="$$(python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:12])" "$$SRC")"
+          CUR="$$(src_hash "$$SRC")" || continue
           [ "$$CUR" = "$$LAST" ] && continue
           echo "[policy-renderer] source changed ($${LAST:-none} -> $$CUR); rendering"
           # Hold the lock across the whole multi-file rewrite. Do NOT consume the
@@ -517,7 +525,7 @@ services:
             echo "[policy-renderer] RENDER FAILED @$$CUR — keeping previous pages"
             if [ -n "$${WIKI_SLACK_WEBHOOK_URL}" ]; then
               wget -q -O /dev/null --header='Content-Type: application/json' \
-                --post-data="{\"text\":\":x: policy-renderer: 상태-SSOT.yaml@$$CUR 렌더 실패 — 이전 정책서 유지, EC2 로그 확인 필요\"}" \
+                --post-data="{\"text\":\":x: policy-renderer: 상태 SSOT@$$CUR 조립·렌더 실패 — 이전 정책서 유지, EC2 로그 확인 필요\"}" \
                 "$${WIKI_SLACK_WEBHOOK_URL}" || true
             fi
           fi

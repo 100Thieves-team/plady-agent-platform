@@ -86,7 +86,7 @@ TOOLS: list[dict] = [
                              "only": {"type": "string", "enum": ["uncovered", "covered", "excluded", "warn"]},
                              "q": {"type": "string", "description": "id·제목·API 매핑에 대한 부분 문자열"}, "limit": _INT})},
     {"name": "qa_tc_get", "description": "TC 하나의 레코드 전문 + 근거 PRD 절 본문 + 검증하는 스크립트 + 최근 변경 여부.",
-     "inputSchema": _schema({"id": {"type": "string", "description": "예: G.room.create#8, op.createRoom:E1402, PRD.룸-탐색.4.1#1"}}, ["id"])},
+     "inputSchema": _schema({"id": {"type": "string", "description": "예: G.room.create#duplicate-slot-left, op.createRoom:E1402, PRD.룸-탐색.4.1#1"}}, ["id"])},
     {"name": "qa_coverage", "description": "도메인×층 커버리지 매트릭스, 제외 수, TC 소스 버전(SSOT·OpenAPI 해시), 스펙 불일치 경고.", "inputSchema": _schema({})},
     {"name": "qa_changes", "description": "최근 바뀐(추가·변경·삭제된) TC 와 영향받는 스크립트. since 는 ISO 시각(그 이후만).",
      "inputSchema": _schema({"since": _STR, "limit": _INT})},

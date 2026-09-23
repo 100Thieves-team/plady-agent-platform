@@ -62,7 +62,7 @@ cases:
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200, result: SUCCESS }
       - name: 재취소는 모집 중이 아니라 E1410
-        covers: ["G.participation.cancel#2", op.cancelRoom:E1410]
+        covers: ["G.participation.cancel#participation-joined", op.cancelRoom:E1410]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 409, error_code: E1410 }
 
