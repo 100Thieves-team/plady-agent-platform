@@ -631,7 +631,7 @@ class App:
             return None, [f"YAML 파싱 실패: {ex}"], []
         if not isinstance(raw, dict):
             return None, ["스크립트는 맵이어야 한다"], []
-        return draftsmod.validate(raw, requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
+        return draftsmod.validate(raw, actors=self.all_actors(), requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
                                   catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")})
 
     def _on_finish(self, run: dict):

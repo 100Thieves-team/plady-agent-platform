@@ -192,3 +192,44 @@ cases:
           body: { startAt: "{{date:-1}}T09:00:00" }
         expect: { status: 200, result: SUCCESS, json: { "data.status": CONFIRMED } }
         save: { startAt: data.startAt }
+
+  - id: setup.resume-list
+    title: 테스트 계정의 이력서 목록 보기 (id 찾기)
+    suite: setup
+    description: 고른 테스트 계정으로 보관 이력서 목록을 읽어 첫 이력서의 id·이름·AI 요약 상태를 결과값으로 돌려준다. 요약 강제나 신청 카드에 넣을 resumeId 를 찾을 때 쓴다. 아무것도 만들지 않는다.
+    domains: [resume]
+    operations: [resumes]
+    actor: qa-host
+    inputs:
+      actor: { label: 테스트 계정, default: qa-host, hint: "qa-host · qa-guest · 만든 QA 회원 이름" }
+    outputs: [resumeCount, firstResumeId, firstResumeName, firstSummaryStatus]
+    steps:
+      - name: 내 이력서 목록
+        actor: "{{input.actor}}"
+        request: { method: GET, path: /v1/members/me/resumes }
+        expect: { status: 200, result: SUCCESS, exists: [data.resumes] }
+        save:
+          resumeCount: data.maxCount
+          firstResumeId: "data.resumes[0].resumeId"
+          firstResumeName: "data.resumes[0].name"
+          firstSummaryStatus: "data.resumes[0].aiSummary.status"
+
+  - id: setup.resume-summary
+    title: 이력서 AI 요약 강제 완료 (Bedrock 없이 DONE)
+    suite: setup
+    description: 이름이 [QA] 로 시작하는 이력서의 AI 요약을 주어진 문장으로 바로 완료(DONE)시킨다. 요약이 안 끝나 룸 신청이 막힐 때 쓴다. 회원에게 기본 이력서가 없으면 이것이 기본이 된다. dev 전용 API(completeQaResumeSummary).
+    domains: [resume]
+    operations: [completeQaResumeSummary]
+    actor: qa-host
+    inputs:
+      resumeId: { label: 이력서 id, required: true, hint: "이름이 [QA] 로 시작하는 이력서만 (아니면 E2201). 위 '이력서 목록 보기' 카드로 찾는다" }
+      summary: { label: 요약문, default: "[QA] 테스트용 이력서 요약입니다. 백엔드 3년차, Kotlin·Spring 기반 API 개발 경험이 있습니다.", hint: "1~1000자" }
+    outputs: [resumeId, summaryStatus, isDefault]
+    steps:
+      - name: 요약 완료 강제
+        request:
+          method: POST
+          path: "/v1/dev/resumes/{{input.resumeId}}/summary"
+          body: { summary: "{{input.summary}}" }
+        expect: { status: 200, result: SUCCESS, json: { "data.status": DONE } }
+        save: { resumeId: data.resumeId, summaryStatus: data.status, isDefault: data.isDefault }

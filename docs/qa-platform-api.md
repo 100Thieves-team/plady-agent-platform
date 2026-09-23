@@ -320,3 +320,11 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - **토큰 마스킹**: 러너가 응답 본문의 `accessToken`·`refreshToken`·`token` 값을 `***` 로 바꿔 기록한다 — API 호출 화면에서 회원 생성 API 를 직접 불러도 토큰이 실행 기록에 남지 않는다.
 - **못 하는 것**: Hermes 초안 검증(`drafts.validate`)은 아직 SSM 고정 계정만 안다 — 초안에서 `actor: qa-3` 을 쓰면 경고가 난다. 필요해지면 검증에도 합친다.
 - **검증**: 테스트 4건(회원 생성→테스트 계정→토큰, 중복·형식 거절, 삭제 시 목록 제거, 마스킹, 카드 로드·실행·결과값, 화면), 전체 94건. 실제 dev 는 배포 뒤 회원 하나 만들어 API 호출 화면 드롭다운에 뜨는지, 확정 룸에 시작 시각 카드를 돌려 `startAt` 이 어제로 오는지 본다.
+
+### 11.8 이력서 요약 강제 카드 (2026-09-23)
+
+- `setup.resume-summary` — 이름이 `[QA]` 로 시작하는 이력서의 AI 요약을 주어진 문장으로 DONE 으로 만든다(`POST /v1/dev/resumes/{id}/summary`, 1~1000자). Bedrock 이 느리거나 실패해 룸 신청이 막힐 때. 결과값 resumeId·summaryStatus·isDefault.
+- `setup.resume-list` — 고른 테스트 계정으로 `GET /v1/members/me/resumes` 를 읽어 첫 이력서의 id·이름·요약 상태를 결과값으로. 카드 입력이 단계의 `actor` 가 된다(`actor: "{{input.actor}}"` — 입력 박기가 단계 필드 어디든 치환한다). 만든 QA 회원 이름도 된다.
+- 이력서 등록(`createResume`)은 파일 업로드(multipart)라 러너가 못 보낸다 — 카드로 만들지 않았다. 앱이나 API 문서로 `[QA]` 이름으로 올린 뒤 목록 카드로 id 를 찾는다. 이름 변경 API 는 스펙에 없다(PR 설명과 다름 — 백엔드에 확인 필요).
+- Hermes 초안 검증(`drafts.validate`)에 `actors` 인자를 더해 플랫폼이 만든 QA 회원 이름도 안다(`App.all_actors()`). 화면·MCP 경로 둘 다 넘긴다.
+- 검증: 테스트 4건, 전체 98건. dev 실제 확인은 배포 뒤 — qa-host 로 목록 카드 → `[QA]` 이력서가 있으면 요약 카드.

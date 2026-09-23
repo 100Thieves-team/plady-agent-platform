@@ -115,7 +115,8 @@ def parse_output(text: str) -> list[dict]:
     return out
 
 
-def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str]) -> tuple[Case | None, list[str], list[str]]:
+def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str], actors: dict | None = None) -> tuple[Case | None, list[str], list[str]]:
+    known = actors if actors is not None else cfg.actors     # SSM 고정 계정 + 플랫폼이 만든 QA 회원(App.all_actors)
     """docs/qa-platform-tc.md §7.2. 반환 (스크립트|None, 버린 사유, 경고)."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -137,9 +138,9 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
     warnings.extend(case.audit["warnings"])
     text = case.to_yaml()
     for name in {case.actor} | {s.get("actor") for s in case.steps} | set(_ACTOR.findall(text)):
-        if name and cfg.actors and name not in cfg.actors:
+        if name and known and name not in known:
             errors.append(f"없는 테스트 계정 {name}")
-        elif name and not cfg.actors:
+        elif name and not known:
             warnings.append(f"테스트 계정 {name} — 이 환경에 QA_ACTORS 가 없어 확인 못 함")
     for key in set(_FIXTURE.findall(text)):
         if cfg.fixtures and key not in cfg.fixtures:

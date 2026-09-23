@@ -176,6 +176,9 @@ HELP: dict[str, tuple[str, str]] = {
     "setup.reschedule": ("룸 시작 시각 바꾸기",
                          "<p>룸은 미래 시각으로만 만들 수 있고 진행 시작은 그 시각이 지나야 열린다. 그래서 진행 이후 화면(질문 카드·출석·클로징·후기)에 손으로 닿기 어렵다. dev 전용 API(<span class=\"mono\">rescheduleQaRoom</span>)로 [QA] 룸의 시작 시각만 과거로 옮기면 나머지는 공개 API 의 실제 경로로 간다. 상태는 안 바뀐다.</p>"
                          "<p>확정된 룸에 쓴다. \"진행 시작 직전 상태의 룸 만들기\" 카드는 생성부터 이 단계까지 한 번에 한다.</p>"),
+    "setup.resume": ("이력서 AI 요약 강제 완료",
+                     "<p>이력서를 올리면 Bedrock 이 AI 요약을 만들고, 요약이 DONE 이어야 룸 신청에 쓸 수 있다. dev 에서 Bedrock 이 느리거나 실패하면 신청이 막힌다. dev 전용 API(<span class=\"mono\">completeQaResumeSummary</span>)가 주어진 요약문으로 바로 DONE 을 만든다. 회원에게 기본 이력서가 없으면 이것을 기본으로 지정한다.</p>"
+                     "<p>이름이 <span class=\"mono\">[QA]</span> 로 시작하는 이력서만 된다(아니면 E2201). 이력서 등록은 파일 업로드라 이 화면에서는 못 하고, 앱이나 API 문서로 <span class=\"mono\">[QA]</span> 이름으로 올린 뒤 \"이력서 목록 보기\" 카드로 id 를 찾는다.</p>"),
     "setup.outputs": ("결과값", f"<p>스크립트가 저장({M}save{E})한 값 중 {M}outputs{E} 에 적힌 것. [복사]해서 쓸 수 있고, API 호출 입력 폼에는 \"최근에 넣은 값\"으로 자동으로 뜬다.</p>"),
     "setup.swagger": ("Swagger (읽기 전용)", f"<p>실제로 나가는 요청을 단계 순서대로 보여 준다. {M}{{{{input.x}}}}{E} 는 Normal 에 넣은 값으로 바뀌고, 나머지 치환은 실행 때 채워진다. 여기서는 못 고친다 — 원본은 {M}cases/setup.yaml{E}.</p>"),
     # ---- Hermes ----

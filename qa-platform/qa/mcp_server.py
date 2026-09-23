@@ -422,7 +422,7 @@ class McpServer:
         created, rejected = [], []
         for raw in raws:
             requested = list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])]
-            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=set(self.app.cases))
+            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=set(self.app.cases), actors=self.app.all_actors())
             if not case:
                 rejected.append({"case_id": str(raw.get("id") or "?"), "errors": errors, "warnings": warnings})
                 continue
