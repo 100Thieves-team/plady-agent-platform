@@ -54,8 +54,19 @@ class QaData:
         js = r.json if isinstance(r.json, dict) else {}
         if r.status == 200 and js.get("result") == "SUCCESS":
             return True, js.get("data") or {}, r.status
-        err = js.get("error") or {}
-        return False, {"code": err.get("code") or str(r.status), "message": err.get("message") or (r.text or "")[:200]}, r.status
+        # 우리 규약(error: {code, message})이 아닐 수도 있다 — Spring 기본 오류 몸체는 error 가 문자열("Not Found")이고,
+        # 인증 필터는 빈 몸체로 401/403 을 준다. 어떤 꼴이든 상태 코드와 몸체 요약을 그대로 보여 준다.
+        err = js.get("error")
+        if isinstance(err, dict):
+            code, message = err.get("code") or str(r.status), err.get("message") or ""
+        else:
+            code, message = str(r.status), (str(err) if err else "") or (js.get("message") if isinstance(js.get("message"), str) else "") or (r.text or "")[:200]
+        hint = ""
+        if r.status == 404:
+            hint = " — dev 서버에 아직 이 API 가 없다. 백엔드 PR #135 가 dev 에 배포됐는지 확인"
+        elif r.status in (401, 403):
+            hint = " — 인증이 거부됐다. 테스트 계정 토큰(dev-sessions)이 dev 에서 유효한지 확인"
+        return False, {"code": code, "message": (message or "(몸체 없음)") + hint}, r.status
 
     def list(self) -> tuple[bool, dict, int]:
         return self._call("GET", "/v1/dev/qa-data")

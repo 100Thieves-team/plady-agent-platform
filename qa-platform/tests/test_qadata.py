@@ -125,3 +125,29 @@ class QaDataTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NonEnvelopeErrorTest(unittest.TestCase):
+    """dev 가 우리 규약이 아닌 오류 몸체를 줄 때(Spring 기본 404 · 인증 필터의 빈 401) 죽지 않고 상태·힌트를 돌려준다. (배포에서 실제로 난 오류)"""
+
+    def test_string_error_and_empty_body(self):
+        from qa.qadata import QaData
+        class FakeApp:
+            class cfg: actors = {"qa-host": "m1"}; target_base_url = "https://dev"; request_timeout = 5
+            class runner:
+                class actors:
+                    @staticmethod
+                    def token(n, b): return "t"
+            class spec:
+                @staticmethod
+                def get(): return None
+        orig = httpx.request
+        try:
+            httpx.request = lambda m, u, headers=None, body=None, timeout=30: httpx.HttpResult(404, {}, '{"timestamp":"x","status":404,"error":"Not Found","path":"/v1/dev/qa-data"}', 1)
+            ok, err, st = QaData(FakeApp()).list()
+            self.assertFalse(ok); self.assertEqual(err["code"], "404"); self.assertIn("PR #135", err["message"])
+            httpx.request = lambda m, u, headers=None, body=None, timeout=30: httpx.HttpResult(401, {}, "", 1)
+            ok, err, st = QaData(FakeApp()).list()
+            self.assertFalse(ok); self.assertIn("인증", err["message"])
+        finally:
+            httpx.request = orig
