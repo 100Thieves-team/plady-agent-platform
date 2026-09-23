@@ -33,6 +33,9 @@
 #     Absent -> qa profile still starts, actor cases are recorded as skipped)
 #   QA_FIXTURES_PARAM=/plady/agent-platform/<env>/qa-fixtures (optional; JSON)
 #   QA_GITHUB_TOKEN_PARAM=/plady/agent-platform/<env>/qa-github-token (optional; read-only PAT)
+#   QA_REPO_TOKEN_PARAM=/plady/agent-platform/<env>/qa-repo-token (optional; fine-grained PAT, contents: write on
+#     plady-agent-platform only. qa-platform commits approved script/manual-TC drafts to main with [skip ci].
+#     Absent -> approval still works, the draft page offers the changed file for a manual commit)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -74,6 +77,7 @@ QA_PUBLIC_HOST="${QA_PUBLIC_HOST:-qa.agent.plady.io}"
 QA_ACTORS_PARAM="${QA_ACTORS_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-actors}"
 QA_FIXTURES_PARAM="${QA_FIXTURES_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fixtures}"
 QA_GITHUB_TOKEN_PARAM="${QA_GITHUB_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-github-token}"
+QA_REPO_TOKEN_PARAM="${QA_REPO_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-repo-token}"
 # QA MCP bearer (docs/qa-platform-hermes.md §6): optional. Absent -> qa-platform /mcp answers 503 and
 # hermes-config-init leaves mcp_servers.qa-platform out, so Hermes has no QA tools until it is filled.
 QA_MCP_TOKEN_PARAM="${QA_MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mcp-token}"
@@ -142,9 +146,11 @@ QA_FIXTURES="$(ssm_get "$QA_FIXTURES_PARAM")"
 [ "$QA_FIXTURES" = "None" ] && QA_FIXTURES=""
 QA_GITHUB_TOKEN="$(ssm_get "$QA_GITHUB_TOKEN_PARAM")"
 [ "$QA_GITHUB_TOKEN" = "None" ] && QA_GITHUB_TOKEN=""
+QA_REPO_TOKEN="$(ssm_get "$QA_REPO_TOKEN_PARAM")"
+[ "$QA_REPO_TOKEN" = "None" ] && QA_REPO_TOKEN=""
 QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
 [ "$QA_MCP_TOKEN" = "None" ] && QA_MCP_TOKEN=""
-echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
+echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); repo write $([ -n "$QA_REPO_TOKEN" ] && echo "present — approvals commit to main" || echo "absent — approvals offer a file"); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
 else
@@ -237,6 +243,7 @@ SLACK_INGEST_SIGNING_SECRET=${SLACK_INGEST_SIGNING_SECRET}
 QA_ACTORS=${QA_ACTORS}
 QA_FIXTURES=${QA_FIXTURES}
 QA_GITHUB_TOKEN=${QA_GITHUB_TOKEN}
+QA_REPO_TOKEN=${QA_REPO_TOKEN}
 QA_MCP_TOKEN=${QA_MCP_TOKEN}
 ENV
 chmod 600 "$ENV_FILE"

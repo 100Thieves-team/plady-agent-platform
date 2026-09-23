@@ -34,6 +34,8 @@ class Op:
     errors: dict = field(default_factory=dict)      # code -> {status, message, example}
     request_example: object = None
     params: list = field(default_factory=list)      # [{name, in: path|query|header, required, description}]
+    # 요청 본문 스키마 필드 — 폼 편집기가 입력칸 옆에 설명·필수·선택지를 보인다 (docs/qa-platform-editor.md §4.2)
+    body_fields: list = field(default_factory=list)  # [{name, type, description, required, nullable, enum?, fields?, items?}]
 
     @property
     def is_write(self) -> bool:
@@ -84,6 +86,50 @@ def _json_content(content: dict) -> dict:
     return {}
 
 
+_ENUM_DESC = re.compile(r"\b([A-Z][A-Z0-9_]+(?:\s*\|\s*[A-Z][A-Z0-9_]+)+)")
+
+
+def _resolve(doc: dict, sch, depth: int = 0) -> dict:
+    """`$ref: '#/components/schemas/X'` 를 따라간다. 순환은 깊이로 끊는다."""
+    while isinstance(sch, dict) and "$ref" in sch and depth < 8:
+        node = doc
+        for part in str(sch["$ref"]).lstrip("#/").split("/"):
+            node = node.get(part) if isinstance(node, dict) else None
+        sch, depth = node, depth + 1
+    return sch if isinstance(sch, dict) else {}
+
+
+def body_fields(doc: dict, sch, example=None, depth: int = 0) -> list[dict]:
+    """스키마 properties → 입력칸 정보. 순서는 요청 예시의 키 순서, 나머지는 필수 먼저. enum 이 없으면 설명의 `A | B` 에서 뽑는다."""
+    sch = _resolve(doc, sch)
+    props = sch.get("properties") or {}
+    if not isinstance(props, dict):
+        return []
+    req = set(sch.get("required") or [])
+    order = [k for k in (example or {}) if k in props] if isinstance(example, dict) else []
+    order += sorted((k for k in props if k not in order), key=lambda k: (k not in req, k))
+    out = []
+    for name in order:
+        p = _resolve(doc, props[name])
+        t = str(p.get("type") or ("object" if p.get("properties") else "string"))
+        desc = str(p.get("description") or "")
+        f = {"name": str(name), "type": t, "description": desc, "required": name in req, "nullable": bool(p.get("nullable"))}
+        enum = [str(x) for x in (p.get("enum") or [])]
+        if not enum:
+            m = _ENUM_DESC.search(desc)
+            enum = [x.strip() for x in m.group(1).split("|")] if m else []
+        if enum:
+            f["enum"] = enum
+        if t == "object" and depth < 2:
+            sub = body_fields(doc, p, (example or {}).get(name) if isinstance(example, dict) else None, depth + 1)
+            if sub:
+                f["fields"] = sub
+        if t == "array":
+            f["items"] = str(_resolve(doc, p.get("items")).get("type") or "")
+        out.append(f)
+    return out
+
+
 def _example_value(ex) -> object:
     if isinstance(ex, dict) and "value" in ex:
         v = ex["value"]
@@ -112,9 +158,16 @@ def parse(doc: dict) -> dict[str, Op]:
                     o.params.append({"name": str(prm["name"]), "in": str(prm.get("in") or "query"), "required": bool(prm.get("required")),
                                      "description": str(prm.get("description") or "")})
             rb = _json_content((op.get("requestBody") or {}).get("content") or {})
-            for ex in (rb.get("examples") or {}).values():
-                o.request_example = _example_value(ex)
-                break
+            exs = rb.get("examples") or {}
+            # 성공 예시를 고른다 — operationId 와 같은 이름, 아니면 에러 예시(`-e1402`)가 아닌 첫 것. 에러 예시는 일부러 틀린 값이다
+            key = oid if oid in exs else next((k for k in exs if not re.search(r"-e\d{3,4}", str(k), re.I)), next(iter(exs), None))
+            if key is not None:
+                o.request_example = _example_value(exs[key])
+            if rb.get("schema"):
+                try:
+                    o.body_fields = body_fields(doc, rb["schema"], o.request_example)
+                except (TypeError, AttributeError, RecursionError):
+                    o.body_fields = []
             for status, resp in (op.get("responses") or {}).items():
                 status = str(status)
                 content = _json_content((resp or {}).get("content") or {}) if isinstance(resp, dict) else {}

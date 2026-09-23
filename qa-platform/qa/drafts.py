@@ -192,11 +192,16 @@ def validate_manual_tc(text: str) -> tuple[list[dict], list[str]]:
 # ---------------------------------------------------------------------------------------------
 # 오케스트레이션
 # ---------------------------------------------------------------------------------------------
+def _asker(cfg: Config, ask):
+    """ask(system, prompt, session_prefix) → 텍스트. 없으면 기존 동기 호출(MCP 도구·JSON API·테스트). Hermes 작업은 스트리밍 ask 를 넘긴다."""
+    return ask or (lambda system, prompt, prefix: hermes.chat(cfg, system, prompt, session_prefix=prefix, timeout=max(cfg.hermes_timeout, 180)))
+
+
 def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None,
-             existing_ids: set[str]) -> dict:
+             existing_ids: set[str], ask=None) -> dict:
     """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}."""
     prompt, phash = assemble(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, tc_ids=tc_ids, example=example)
-    raw = hermes.chat(cfg, DRAFT_SYSTEM, prompt, session_prefix="qa-draft", timeout=max(cfg.hermes_timeout, 180))
+    raw = _asker(cfg, ask)(DRAFT_SYSTEM, prompt, "qa-draft")
     accepted, rejected = [], []
     for d in parse_output(raw):
         case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids)
@@ -303,10 +308,10 @@ def _collect(r: dict, ops: list, prd_refs: list) -> None:
         prd_refs.append((ref["doc"], ref["section"]))
 
 
-def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict, existing_ids: set[str]) -> dict:
+def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict, existing_ids: set[str], ask=None) -> dict:
     """반환 {prompt_hash, raw, allowed, accepted: (Case, warnings)|None, errors, model}. id 는 원본으로 고정한다."""
     prompt, phash, allowed = assemble_revision(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, case=case, drift=drift, changes=changes)
-    raw_text = hermes.chat(cfg, REVISE_SYSTEM, prompt, session_prefix="qa-revise", timeout=max(cfg.hermes_timeout, 180))
+    raw_text = _asker(cfg, ask)(REVISE_SYSTEM, prompt, "qa-revise")
     docs = parse_output(raw_text)
     if not docs:
         return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": None, "errors": ["출력에서 스크립트 YAML 을 찾지 못했다"], "model": cfg.hermes_model}
@@ -365,7 +370,7 @@ def build_manual_tc(*, catalog, doc: str, section: str, items: list, domain: str
     return out, warnings, str(domain)
 
 
-def propose_manual_tc(*, cfg: Config, catalog, wiki: Wiki, doc: str, section: str, domain: str | None) -> dict:
+def propose_manual_tc(*, cfg: Config, catalog, wiki: Wiki, doc: str, section: str, domain: str | None, ask=None) -> dict:
     """PRD 절 본문 → Hermes → items. 반환 {prompt_hash, raw, items, records, warnings, domain, model}. 본문이 없으면 ValueError."""
     if not wiki.available:
         raise ValueError("위키 체크아웃이 없다 (QA_WIKI_DIR) — PRD 를 읽을 수 없다")
@@ -384,7 +389,7 @@ def propose_manual_tc(*, cfg: Config, catalog, wiki: Wiki, doc: str, section: st
     parts.append("# 출력\n```yaml\nitems:\n  - title: …\n    given: …\n    when: …\n    then: …\n    operations: [operationId]\n```")
     prompt = "\n\n".join(parts)
     phash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
-    raw = hermes.chat(cfg, PROPOSE_SYSTEM, prompt, session_prefix="qa-propose", timeout=max(cfg.hermes_timeout, 180))
+    raw = _asker(cfg, ask)(PROPOSE_SYSTEM, prompt, "qa-propose")
     items: list[dict] = []
     for b in re.findall(r"```(?:ya?ml)?\s*\n(.*?)```", raw, re.S) or [raw]:
         try:

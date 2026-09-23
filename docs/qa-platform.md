@@ -246,7 +246,7 @@ wiki-auth는 팀 공용 비밀번호 하나로 세션을 준다. 세션에 개�
 1. 사람이 도메인(예: `room`)을 골라 [초안 생성].
 2. 플랫폼이 PRD(`raw/product/룸-생성` 등) + SSOT의 해당 gate/command + OpenAPI 해당 operation(요약·요청 예제·에러 코드)을 모아 Hermes에 넘긴다.
 3. Hermes가 케이스 JSON 목록을 낸다. 플랫폼이 **결정론 검증**: 스키마 유효성, operationId 실재, 에러 코드가 스펙 예시에 존재, 테스트 계정 지정 여부, 쓰기 케이스의 정리 단계 존재.
-4. 통과한 것만 케이스 초안에 들어간다. 사람이 탐색기로 한 번 돌려보고 승인 → YAML → PR(리뷰 대상).
+4. 통과한 것만 케이스 초안에 들어간다. 사람이 탐색기로 한 번 돌려보고 승인 → 플랫폼이 main 에 커밋(2026-09-23 부터, [`qa-platform-editor.md`](qa-platform-editor.md) §6. 그 전에는 사람이 YAML 을 PR).
 5. **승인 없이 실행 스위트에 들어가는 케이스는 없다.**
 
 ## 8. 케이스 형식
@@ -387,6 +387,7 @@ drafts      id, created_at, operator, status(draft|approved|rejected), source(he
 | P3 | 커버리지 공백 화면 ✅(P2 기준 화면) · 스프린트 리마인더 Slack ✅(알림만, `qa/reminder.py`) · Linear 코멘트(연결 인증 후). live 읽기 전용 smoke 는 **뺐다** — QA 는 live 와 무관하게 간다(사용자 결정 2026-09-21) |
 | P4 | QA MCP 도구 ✅(P4a, `qa/mcp_server.py` — Hermes 가 기준·케이스·런을 읽고 초안을 낸다) · Hermes 채팅창 ✅(P4b, `/chat`, `qa/chat.py`, Hermes `/v1/responses`) · 바뀐 TC 에 맞게 스크립트 다시 쓰기 ✅(P4c, `POST /cases/{id}/revise`, 초안 source hermes-revise + diff) · PRD 절에서 수동 작성 TC 제안 ✅(P4d, `POST /catalog/propose-tc`, 초안 kind tc) — 설계 [`qa-platform-hermes.md`](qa-platform-hermes.md) |
 | P5 | 토스식 호출 카드 ✅(P5a, Normal 폼 / Swagger 요청 원문 토글, `/explorer` 재구성, op 별 QA 배지, CSS 손질) · 실행 결과 요약 ✅(P5d, 카드 4·통과율 도넛·도메인별 진행 막대·판정 필터) · API 별로 TC·스크립트·최근 호출을 모아 보는 화면 ✅(P5b, `/apis`, `run_steps.op_id`, MCP `qa_api_get`), API 호출 화면 마찰 줄이기 ✅(P5a 에 포함: 최근 값·즐겨찾기·프리필), 버튼 하나로 테스트 데이터 만들기 ✅(P5c, `/setup`, suite setup·inputs·outputs, 시드 3개 — 확정 시드는 dev 미확인), 통과율·평균 소요·불안정(flaky) 배지 ✅(P5e, 스크립트·API 화면) — **P5 전부 완료** — 설계 [`qa-platform-api.md`](qa-platform-api.md) (토스 QA Platform·Tossion 참고) |
+| P6 ✅ | 폼으로 스크립트·수동 작성 TC 만들기·고치기·지우기(초안을 거쳐 승인하면 main 에 `[skip ci]` 커밋, 플랫폼 즉시 반영) — 설계 [`qa-platform-editor.md`](qa-platform-editor.md) · Hermes 작업 진행을 SSE 로(초안 생성·TC 제안·고치기·실패 분석) — 설계 [`qa-platform-progress.md`](qa-platform-progress.md) (2026-09-23, 사용자 요청) |
 
 P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 
@@ -465,6 +466,12 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 ### 14.4b QA 데이터 정리 (2026-09-23)
 
 백엔드 PR #135 의 dev 전용 API(`/v1/dev/…`)로 "테스트 데이터 만들기" 화면에서 `[QA]` 룸 삭제·일괄 삭제·테스트 계정 초기화·QA 회원 삭제를 한다(qa-host 토큰, 감사 로그 `qa_data.*`, 실행 기록 아님). `/v1/dev/` 는 TC·API 화면에서 빠지고 API 호출 화면에만 `qa-dev` 도메인으로 남는다. 자세한 것은 [`qa-platform-api.md`](qa-platform-api.md) §11.6.
+
+### 14.4c 폼 편집과 Hermes 작업 (2026-09-23, 사용자 요청)
+
+- **폼 편집**: `/cases/new` · `/cases/{id}/edit` · `/drafts/{id}/edit`(스크립트), `/catalog/manual/new` · `/catalog/tc/edit`(수동 작성 TC), 삭제 요청. 전부 초안이 되고 승인하면 `QA_REPO_TOKEN` 으로 이 레포 main 에 커밋한다. 자세한 것은 [`qa-platform-editor.md`](qa-platform-editor.md) §11.
+- **Hermes 작업**: 초안 생성·수동 TC 제안·고치기·실패 분석이 `/jobs/{id}` 진행 카드로 바뀌었다. 진행은 `/api/jobs/{id}/events` SSE. 자세한 것은 [`qa-platform-progress.md`](qa-platform-progress.md) §8.
+- **사람 작업**: SSM `/plady/agent-platform/dev/qa-repo-token` 에 이 레포 contents: write fine-grained PAT 를 넣는다. 없으면 승인 뒤 [반영된 파일 받기]로 끝난다.
 
 ### 14.4 운영 메모
 

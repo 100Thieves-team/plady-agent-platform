@@ -15,8 +15,8 @@ from qa import help as helpmod, ui  # noqa: E402
 
 class HelpTest(unittest.TestCase):
     def test_every_help_button_has_content(self):
-        src = (ROOT / "qa" / "ui.py").read_text(encoding="utf-8")
-        used = set(re.findall(r'h\("([a-z.]+)"\)', src))
+        src = "".join((ROOT / "qa" / f).read_text(encoding="utf-8") for f in ("ui.py", "ui_edit.py"))
+        used = set(re.findall(r'h\("([a-z._]+)"\)', src)) | set(re.findall(r"help\('([a-z._]+)'\)", src))
         self.assertGreaterEqual(len(used), 55)
         missing = sorted(used - set(helpmod.HELP))
         self.assertEqual(missing, [])
@@ -39,15 +39,19 @@ class HelpTest(unittest.TestCase):
     def test_nothing_shadows_help_function(self):
         # ui.py 안에서 지역 변수 h 가 도움말 함수 h() 를 가리면 그 화면이 500 이 된다 (catalog_detail, 2026-09-23).
         import ast
-        tree = ast.parse((ROOT / "qa" / "ui.py").read_text(encoding="utf-8"))
         bad = []
+        for f in ("ui.py", "ui_edit.py"):
+            self._no_h_shadow(ast.parse((ROOT / "qa" / f).read_text(encoding="utf-8")), bad)
+        self.assertEqual(bad, [])
+
+    def _no_h_shadow(self, tree, bad):
+        import ast
         for fn in ast.walk(tree):
             if not isinstance(fn, (ast.FunctionDef, ast.Lambda)):
                 continue
             for n in ast.walk(fn):
                 if (isinstance(n, ast.Name) and n.id == "h" and isinstance(n.ctx, ast.Store)) or (isinstance(n, ast.arg) and n.arg == "h"):
                     bad.append((getattr(fn, "name", "lambda"), n.lineno))
-        self.assertEqual(bad, [])
 
     def test_catalog_detail_renders_expect_hint(self):
         rec = {"id": "room.create.ok", "layer": "policy", "title": "룸 생성", "domain": "room", "kind": "happy",

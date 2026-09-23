@@ -1,6 +1,8 @@
 """Hermes 호출 — UI 의 AI 는 전부 여기로. 플랫폼은 모델 키를 갖지 않는다.
 
 - `chat()`: chat completions 한 번. 실패 진단(triage)과 초안 생성(qa/drafts.py)이 쓴다. 도구 호출은 기대하지 않는다.
+- `ask_stream()`: 한 번 묻고 답을 받되, `/v1/responses` 스트리밍으로 받으며 조각·도구 호출을 콜백으로 알린다. Hermes 작업
+  (qa/jobs.py — 초안 생성·TC 제안·고치기·실패 분석)이 쓴다. 그만두기·시간 한도를 이벤트마다 확인한다.
 - `stream_respond()`: `/v1/responses` 한 턴을 SSE 로 받는다. 채팅 위젯(qa/chat.py)이 쓴다. 본문 델타·도구 호출·도구 결과가
   이벤트로 오고 마지막 `response.completed` 에 전체 응답이 온다. previous_response_id 로 서버가 대화를 잇는다
   (hermes-agent v2026.6.19 api_server.py `_write_sse_responses` 확인).
@@ -9,6 +11,8 @@ from __future__ import annotations
 
 import json
 import secrets
+import socket
+import time
 
 from . import httpx
 from .config import Config
@@ -39,6 +43,44 @@ def chat(cfg: Config, system: str, user: str, *, session_prefix: str, timeout: i
         return str(r.json["choices"][0]["message"]["content"]).strip()
     except (KeyError, IndexError, TypeError):
         raise RuntimeError("Hermes 응답에 message.content 가 없다") from None
+
+
+class Canceled(RuntimeError):
+    """사람이 [그만두기] 를 눌렀다."""
+
+
+def ask_stream(cfg: Config, system: str, prompt: str, *, session_prefix: str, on_event=None, cancel=None,
+               deadline: float | None = None, stall: int | None = None) -> str:
+    """system·prompt 한 번 → 전체 답 텍스트. on_event(kind, data): delta · tool · tool_result · keepalive.
+    cancel(threading.Event)이 서면 Canceled, deadline(time.monotonic 기준)을 넘으면 RuntimeError.
+    stall 초 동안 아무것도 안 오면(Hermes 는 10초마다 keepalive) 멈춘 것으로 보고 RuntimeError."""
+    stall = stall or cfg.job_stall
+    gen = stream_respond(cfg, prompt, instructions=system, session_key=f"{session_prefix}-{secrets.token_hex(3)}", timeout=stall)
+    parts: list[str] = []
+    final = None
+    try:
+        for kind, data in gen:
+            if cancel is not None and cancel.is_set():
+                raise Canceled("그만둠")
+            if deadline is not None and time.monotonic() > deadline:
+                raise RuntimeError(f"시간 한도({cfg.job_timeout}초)를 넘었다")
+            if kind == "delta":
+                parts.append(data)
+            elif kind == "done":
+                final = data
+                break
+            elif kind == "failed":
+                raise RuntimeError(f"Hermes 실패: {data}")
+            if on_event is not None:
+                on_event(kind, data)
+    except (socket.timeout, TimeoutError):
+        raise RuntimeError(f"Hermes 가 {stall}초 동안 아무것도 보내지 않았다") from None
+    finally:
+        gen.close()
+    text = ((final or {}).get("text") or "".join(parts)).strip()
+    if not text:
+        raise RuntimeError("Hermes 응답이 비어 있다")
+    return text
 
 
 class HermesNotFound(RuntimeError):
@@ -151,7 +193,7 @@ def parse_response(data: dict) -> dict:
     return {"id": data.get("id"), "text": "\n".join(texts).strip(), "tool_calls": calls, "usage": data.get("usage") or {}}
 
 
-def triage(cfg: Config, run: dict, rc: dict, steps: list[dict]) -> str:
+def triage(cfg: Config, run: dict, rc: dict, steps: list[dict], ask=None) -> str:
     parts = [f"## 런\n트리거 {run['trigger']} · 대상 {run['base_url']} · sha {run.get('sha') or '-'} · PR {run.get('pr_number') or '-'}",
              f"## 스크립트 {rc['case_id']} — {rc['case_title']}\n판정 {rc['verdict']} · 오류 {rc.get('error') or '-'}",
              "## 스크립트 정의\n```yaml\n" + rc["case_yaml"] + "\n```", "## 단계 결과"]
@@ -163,4 +205,6 @@ def triage(cfg: Config, run: dict, rc: dict, steps: list[dict]) -> str:
             f"### {s['ord'] + 1}. {s['name']} → {s['verdict']}\n요청: {json.dumps(req, ensure_ascii=False)[:1500]}\n"
             f"응답 status={resp.get('status')} body={json.dumps(body, ensure_ascii=False)[:1500] if body is not None else '-'}\n"
             f"검증 항목(assertion): {json.dumps(s['checks'], ensure_ascii=False)[:1200]}\n오류: {s.get('error') or '-'}")
+    if ask is not None:
+        return ask(TRIAGE_SYSTEM, "\n\n".join(parts), "qa-triage")
     return chat(cfg, TRIAGE_SYSTEM, "\n\n".join(parts), session_prefix="qa-triage")

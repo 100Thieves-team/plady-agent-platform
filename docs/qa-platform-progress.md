@@ -1,6 +1,6 @@
 # QA 플랫폼 — Hermes 작업 진행 현황을 SSE 로 보여 주기 (설계)
 
-> 상태: **설계 1판, 검토 대기 (2026-09-23)** — 사용자 요청 "Hermes 를 호출하는 기능이 블로킹되면 제대로 되고 있는지 모른다, SSE 로 진행 현황을 받자".
+> 상태: **구현됨 (2026-09-23)** — 사용자 요청 "Hermes 를 호출하는 기능이 블로킹되면 제대로 되고 있는지 모른다, SSE 로 진행 현황을 받자". 검토 답(§7)을 받아 구현했다. 구현 결과는 §8.
 > 관련: [qa-platform-hermes.md](qa-platform-hermes.md)(Hermes 연동), `qa/hermes.py`, `qa/drafts.py`.
 
 ## 1. 지금
@@ -48,7 +48,7 @@ Hermes 작업 j-1a2b3c · 스크립트 초안 생성 · bebe · 00:47 경과
 | 검증 | 결정론 검증(스크립트 초안·수동 TC) | 통과·거절 건수 |
 | 끝 · 실패 · 그만둠 | 결과 저장, 링크 | 초안 id, 오류 메시지 |
 
-- 스크립트 초안은 Hermes 가 쓰는 도중의 YAML 을 보여 주지 않는다. 검증 전 글은 틀린 내용이 섞여 있어 오해를 부른다. 글자 수와 마지막 수신 시각만 보여 준다.
+- **결정 (2026-09-23 사용자 "yaml")**: 스크립트 초안도 Hermes 가 쓰는 YAML 을 받는 대로 보여 준다. 카드에 "검증 전이라 틀린 곳이 있을 수 있다" 를 적는다.
 - 실패 분석은 짧은 문장이고 검증 단계가 없으니 받는 대로 보여 준다.
 
 ## 3. 구조
@@ -70,7 +70,7 @@ Hermes 작업 j-1a2b3c · 스크립트 초안 생성 · bebe · 00:47 경과
 
 - `hermes.chat` 에 스트리밍 판을 더한다. chat completions 를 `stream: true` 로 보내고 델타가 올 때마다 콜백을 부른다.
 - 호출 쪽(`drafts.generate` 등)은 지금처럼 전체 글을 받아 처리한다. 콜백으로 진행만 알린다.
-- **확인할 것**: 배포된 hermes-agent 의 `/v1/chat/completions` 가 `stream: true` 를 지원하는지. 지원하지 않으면 대화 화면처럼 `/v1/responses` 스트리밍을 쓴다. 둘 다 안 되면 "Hermes 에게 보냄" 단계에서 경과 시간만 보여 준다. 구현 첫 단계에서 dev 로 확인한다.
+- **구현**: 배포된 hermes-agent 에서 이미 쓰고 있는 `/v1/responses` 스트리밍(대화 화면과 같은 경로)을 쓴다. chat completions 스트리밍은 확인된 적이 없어 쓰지 않았다. `hermes.ask_stream()` 이 system 을 `instructions` 로, 근거를 `input` 으로 보낸다.
 
 ### 3.3 SSE
 
@@ -104,7 +104,7 @@ Hermes 는 한 대다. 동시에 도는 작업은 **2건**까지로 하고 나�
 - 그만둔 작업의 결과는 저장하지 않는다.
 
 ### 4.5 타임아웃
-지금처럼 180초다. 진행 카드에 남은 시간을 보여 준다. "마지막 수신 뒤 60초" 동안 아무것도 안 오면 멈춘 것으로 보고 실패로 끝낸다.
+작업 하나에 300초(`QA_JOB_TIMEOUT`). 진행 카드에 한도를 보여 준다. "마지막 수신 뒤 60초" 동안 아무것도 안 오면 멈춘 것으로 보고 실패로 끝낸다.
 
 ## 5. 구현 순서
 
@@ -120,10 +120,22 @@ Hermes 는 한 대다. 동시에 도는 작업은 **2건**까지로 하고 나�
 
 - 작업 끝날 때 Slack 알림. 사용자가 알림은 필요 없다고 했다(2026-09-22, API 문서 갱신 때와 같은 기준).
 - 실패한 작업 자동 재시도.
-- 초안 YAML 을 쓰는 도중에 보여 주기(§2.1).
 
-## 7. 검토 질문
+## 7. 검토 질문과 답 (2026-09-23)
 
-1. 스크립트 초안 생성 도중에 Hermes 가 쓰는 YAML 을 그대로 보여 줄까, 글자 수만 보여 줄까? 설계는 글자 수만 보여 준다.
-2. 동시 작업 2건 제한과 대기열이 괜찮은가?
-3. 폼 편집 설계([qa-platform-editor.md](qa-platform-editor.md))와 이 작업 중 무엇을 먼저 구현할까?
+1. 초안 YAML 을 쓰는 도중에 보여 줄까? → **"yaml"**: 보여 준다(§2.1).
+2. 동시 작업 2건 제한과 대기열 → 답 없음. 설계대로 2건(`QA_JOB_CONCURRENCY`)으로 두었다.
+3. 폼 편집과 무엇을 먼저? → **"둘 다 같이 구현해"**.
+
+## 8. 구현 결과 (2026-09-23)
+
+| 부분 | 어디 |
+|---|---|
+| 작업 관리(단계·글·대기·그만두기·재시작 중단) | `qa/jobs.py` `Jobs`·`Job` |
+| 스트리밍 ask | `qa/hermes.py` `ask_stream()`, `Canceled`. `drafts.generate`·`revise`·`propose_manual_tc`·`hermes.triage` 가 `ask` 를 받는다(없으면 기존 동기 호출 — MCP 도구·JSON API 는 그대로) |
+| 표 | `hermes_jobs`(id, kind, operator, label, status, stage, info, result, error, text, back, 시각) |
+| 라우트 | `GET /jobs` · `GET /jobs/{id}` · `GET /api/jobs/{id}` · `GET /api/jobs/{id}/events`(SSE: `snapshot`·`state`·`text`·`end`, 15초 keepalive) · `POST /jobs/{id}/cancel` · `GET /static/jobs.js` |
+| 바뀐 버튼 | 초안 생성·수동 TC 제안·고치기는 `/jobs/{id}` 로 간다. 실패 분석은 `X-QA-Job` 헤더로 작업 id 를 받아 제자리 카드로 흐르고, 끝나면 화면을 새로 고친다. `/api/…` JSON 경로는 예전처럼 끝까지 기다린다 |
+| 설정 | `QA_JOB_CONCURRENCY`(2) · `QA_JOB_TIMEOUT`(300초) · `QA_JOB_STALL`(60초, Hermes keepalive 10초) |
+| 감사 로그 | `hermes_job.start`(버튼을 누른 것) · `hermes_job.cancel` · 결과는 기존 `draft.generate`·`run.triage` 등(`run.triage` 는 detail 에 job id) |
+| 테스트 | `tests/test_jobs.py` 13건 — SSE 파싱·그만두기·멈춤, 단계·글·결과·표, 대기와 그만두기, 재시작 중단, 초안 생성 작업, 실제 HTTP 로 SSE `snapshot → text → end`, 실패 분석 제자리 작업 |

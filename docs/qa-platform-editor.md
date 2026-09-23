@@ -1,6 +1,6 @@
 # QA 플랫폼 — 폼으로 스크립트·TC 만들기·고치기·지우기 (설계)
 
-> 상태: **설계 1판, 검토 대기 (2026-09-23)** — 사용자 요청 "테스트 케이스를 직접 추가/수정/삭제하는 기능, 사람이 쓰기 편한 폼". 검토 뒤 구현한다.
+> 상태: **구현됨 (2026-09-23)** — 사용자 요청 "테스트 케이스를 직접 추가/수정/삭제하는 기능, 사람이 쓰기 편한 폼". 검토 답(§10)을 받아 구현했다. 구현 결과는 §11.
 > 관련: [qa-platform.md](qa-platform.md) §7(초안), [qa-platform-tc.md](qa-platform-tc.md) §4(수동 작성 TC), [qa-platform-api.md](qa-platform-api.md)(API 호출 카드).
 
 ## 1. 왜
@@ -34,8 +34,8 @@
   → 폼 작성 → [초안으로 저장]            ← 결정론 검증(기존 drafts.validate) 이 저장 때마다 돈다
   → 초안 화면: [한 번 실행해 보기]        ← 기존 초안 시험 실행
   → [승인]
-  → 레포 반영 (§6 에서 방식 선택)
-  → 머지·배포되면 실행 스위트에 들어간다
+  → main 에 바로 커밋 (§6 결정, [skip ci])
+  → 플랫폼이 그 파일을 바로 다시 읽어 실행 스위트에 들어간다
 ```
 
 - 초안 목록에서 출처를 구분한다. 기존 `hermes`, `hermes-revise` 에 `form`(새로 만듦), `form-edit`(고침), `form-delete`(삭제 요청)가 더해진다.
@@ -115,9 +115,8 @@
 | B. 플랫폼에 바로 반영 | 플랫폼 볼륨에 저장하고 즉시 실행 스위트에 넣는다 | 가장 빠르다 | 레포와 실행 중인 스크립트가 갈라진다. 원본이 둘이 된다 |
 | C. 지금처럼 복사 | 초안 화면에 [YAML 복사] · [파일 받기] 버튼. 사람이 PR | 추가 권한 없음 | 손이 많이 간다. 복사 실수 |
 
-- **A 를 권장한다.** 토큰이 없을 때는 자동으로 C 로 떨어진다.
-- A 의 PR 은 사람이 승인 버튼을 눌렀을 때만 열린다. "실행 시작은 사람" 규칙과 맞는다. 머지도 사람이 한다.
-- 머지 전에도 승인된 초안은 초안 화면에서 계속 시험 실행할 수 있다.
+- **결정 (2026-09-23 사용자 "그냥 커밋 푸시해")**: PR 없이 **main 에 바로 커밋**한다(A 의 변형). 커밋 메시지에 `[skip ci]` 를 붙여 YAML 한 줄 때문에 플랫폼 전체가 재배포되지 않게 하고, 플랫폼은 커밋한 파일을 자기 사본에 바로 쓰고 다시 읽는다. 토큰이 없을 때는 C 로 떨어진다.
+- 커밋은 사람이 승인 버튼을 눌렀을 때만 일어난다. "실행 시작은 사람" 규칙과 맞는다. 아래 §6.1·§8 의 PR 관련 줄은 설계 1판 기록이다.
 
 ### 6.1 A 방식의 파일 고치기
 
@@ -151,8 +150,27 @@ E1 만으로도 이번 sigunguId 같은 수정을 YAML 없이 할 수 있다.
 - 폼 ⇄ YAML 양방향 동기화(§4.3).
 - 승인 없이 실행 스위트에 넣기, PR 자동 머지.
 
-## 10. 검토 질문
+## 10. 검토 질문과 답 (2026-09-23)
 
-1. **범위**: 폼 편집은 스크립트와 수동 작성 TC 만, SSOT·OpenAPI 에서 오는 TC 는 원본 링크와 자동화 제외만 두는 것이 맞나?
-2. **레포 반영**: A(플랫폼이 PR, 토큰 필요) · B(바로 반영) · C(복사) 중 어느 것인가? A 라면 토큰은 PAT 와 GitHub App 중 무엇으로 발급하나?
-3. **승인 조건**: 폼으로 만든 초안은 한 번 실행해 보기를 통과해야만 승인할 수 있게 할까? 지금은 실행 없이도 승인된다.
+1. **범위** — 폼 편집은 스크립트와 수동 작성 TC 만, SSOT·OpenAPI 에서 오는 TC 는 원본 링크와 자동화 제외만. → **맞다.**
+2. **레포 반영** — → **"그냥 커밋 푸시해"**: PR 없이 main 에 바로 커밋(§6 결정).
+3. **승인 조건** — 한 번 실행해 보기 통과를 승인 조건으로 할까? → **"테스트 코드 정도로 검증하면 충분"**: 저장·승인 때 결정론 검증(형식·TC 대조·테스트 계정·픽스처·본문 스키마)만 한다. 시험 실행은 선택.
+
+## 11. 구현 결과 (2026-09-23)
+
+| 부분 | 어디 |
+|---|---|
+| 폼 상태 ⇄ YAML, 사람 검증, 본문 스키마 경고, 승인 계획 | `qa/editor.py` (`to_state`·`from_state`·`validate_case`·`body_warnings`·`plan_case`·`plan_tc`) |
+| main 읽기·쓰기, 항목 구간만 바꾸기, 동기화 | `qa/repo.py` (`Repo.sync`·`Repo.commit`·`item_spans`·`replace_item`·`append_item`) |
+| 요청 본문 스키마 → 입력칸 정보(설명·필수·선택지·중첩) | `qa/spec.py` `body_fields`, `Op.body_fields`. 요청 예시는 에러 예시(`-e1402`)가 아닌 성공 예시를 고른다 |
+| 화면 | `qa/ui_edit.py` `editor_page`·`EDITOR_JS`(`/static/editor.js`)·`manual_tc_form`, `qa/ui.py` 버튼(스크립트 목록·상세, TC 목록·상세, 초안 상세) |
+| 라우트 | `GET /cases/new[?tc=…&suite=setup]` · `GET /cases/{id}/edit` · `GET /drafts/{id}/edit` · `POST /editor/save` · `POST /api/editor/preview` · `GET /api/editor/context` · `GET /api/editor/op/{op}` · `POST /cases/{id}/delete-request` · `GET /catalog/manual/new` · `GET /catalog/tc/edit?id=` · `POST /catalog/manual/save` · `POST /catalog/tc/delete-request` · `GET /drafts/{id}/file` |
+| 초안 | kind 에 `case-delete`·`tc-delete`, source 에 `form`·`form-edit`·`form-delete`, 열 `commit_sha`·`commit_url`·`file` |
+| 감사 로그 | `draft.form_save` · `draft.delete_request` · `draft.approve`(detail 에 commit) |
+| 설정 | `QA_REPO`(기본 `100Thieves-team/plady-agent-platform`) · `QA_REPO_BRANCH`(main) · `QA_REPO_ROOT`(qa-platform) · `QA_REPO_TOKEN`(SSM `qa-repo-token`) |
+| 테스트 | `tests/test_editor.py` 24건 — 레포의 모든 스크립트가 폼 왕복에서 같게 남는지, 항목만 바뀌고 주석·다른 항목이 남는지, 가짜 Contents API 로 승인 → 커밋 → 즉시 반영, 충돌(409), 수동 TC 번호 매기기, 실제 HTTP 로 화면·미리보기·저장 |
+
+- **승인 때 하는 일**: 초안을 다시 검증하고, main 의 그 파일을 읽어 항목만 바꾸거나 붙이거나 지운 뒤 커밋한다. 스크립트는 `reviewed` 를 오늘·승인자로 올린다. 새 스크립트는 `cases/{첫 도메인}.yaml`(setup 은 `setup.yaml`) 끝에 붙인다. 수동 TC 는 번호가 겹치면 다음 번호로 붙인다. 커밋 뒤 플랫폼 사본(`<data>/repo`)에 같은 파일을 쓰고 다시 읽는다.
+- **플랫폼이 읽는 곳**: 쓰기 토큰이 있으면 시작할 때와 [main 에서 다시 읽기] 때 main 의 `qa-platform/cases/`·`catalog/` 를 `<data>/repo` 로 받아 읽는다. 받기에 실패하면 이미지에 든 파일을 읽는다. `[skip ci]` 로 재배포가 없으니 이게 반영 경로다.
+- **본문 도우미**: [필수 필드만 채우기]는 선택지가 있는 필드에 첫 선택지(ONLINE)를, 나머지에 성공 예시 값을 넣는다. 예시를 통째로 쓰면 OFFLINE·sigunguId 처럼 얽힌 값이 딸려 온다. 설명이 "X 일 때" 인 필드가 본문에 있는데 X 가 없으면 화면과 서버 둘 다 경고한다(2026-09-23 E400 사례).
+- **사람 작업**: fine-grained PAT(이 레포만, Contents: Read and write)를 만들어 SSM `/plady/agent-platform/dev/qa-repo-token`(SecureString)에 넣는다. 다음 배포에 `ec2-deploy.sh` 가 읽는다.

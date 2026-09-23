@@ -836,6 +836,9 @@ services:
       QA_FIXTURES: ${QA_FIXTURES:-}
       QA_OPERATORS: ${QA_OPERATORS:-bebe,dbwp031,중곤}
       QA_GITHUB_TOKEN: ${QA_GITHUB_TOKEN:-}
+      # 승인된 스크립트·수동 TC 초안을 이 레포 main 에 바로 커밋 (docs/qa-platform-editor.md §6). SSM qa-repo-token,
+      # 비어 있으면 승인 뒤 파일 받기로 끝난다. 커밋은 [skip ci] — 플랫폼이 main 을 다시 받아 바로 반영한다
+      QA_REPO_TOKEN: ${QA_REPO_TOKEN:-}
       HERMES_API_URL: http://hermes-gateway:8642
       HERMES_API_KEY: ${HERMES_API_SERVER_KEY:-}
       HERMES_MODEL: ${HERMES_MODEL:-gpt-5.5}

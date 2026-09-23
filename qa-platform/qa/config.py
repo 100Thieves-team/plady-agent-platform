@@ -66,6 +66,13 @@ class Config:
             "QA_RELEASE_CHECKLIST_URL",
             "https://raw.githubusercontent.com/100Thieves-team/moimyeon-backend/dev/docs/knowledge/release-checklist.md")
 
+        # 이 레포(스크립트·수동 TC 의 원본)에 승인된 초안을 바로 커밋 (docs/qa-platform-editor.md §6). 비어 있으면 파일 받기로 끝난다.
+        # 백엔드 레포 읽기 토큰(QA_GITHUB_TOKEN)과 따로 둔다 — 이쪽은 contents: write 가 필요하다.
+        self.repo = g("QA_REPO", "100Thieves-team/plady-agent-platform")
+        self.repo_branch = g("QA_REPO_BRANCH", "main")
+        self.repo_root = g("QA_REPO_ROOT", "qa-platform")
+        self.repo_token = g("QA_REPO_TOKEN", "")
+
         # 스프린트 = Linear 주간 사이클. API 없이 앵커로 계산한다 (docs/qa-platform.md §4 2.3).
         self.sprint_anchor = g("QA_SPRINT_ANCHOR", "2026-09-13T15:00:00Z")
         self.sprint_anchor_number = int(g("QA_SPRINT_ANCHOR_NUMBER", "9"))
@@ -83,6 +90,11 @@ class Config:
         self.chat_timeout = int(g("QA_CHAT_TIMEOUT", "180"))
         self.chat_max_turns = int(g("QA_CHAT_MAX_TURNS", "40"))
         self.chat_stale_days = int(g("QA_CHAT_STALE_DAYS", "30"))
+        # Hermes 작업 (docs/qa-platform-progress.md): 초안 생성·TC 제안·고치기·실패 분석을 뒤에서 돌리고 진행을 SSE 로.
+        # 동시에 도는 작업 수, 작업 하나의 전체 한도, 아무것도 안 오면 멈춘 것으로 보는 시간(Hermes 는 10초마다 keepalive)
+        self.job_concurrency = int(g("QA_JOB_CONCURRENCY", "2"))
+        self.job_timeout = int(g("QA_JOB_TIMEOUT", "300"))
+        self.job_stall = int(g("QA_JOB_STALL", "60"))
 
         # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 QA 도구. 비어 있으면 /mcp 가 꺼진다 (503)
         self.qa_mcp_token = g("QA_MCP_TOKEN", "")
@@ -118,5 +130,5 @@ class Config:
             "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
             "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
             "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir), "wiki_publish": bool(self.wiki_mcp_url and self.wiki_mcp_token),
-            "qa_mcp": bool(self.qa_mcp_token),
+            "qa_mcp": bool(self.qa_mcp_token), "repo_write": bool(self.repo_token), "repo": self.repo,
         }

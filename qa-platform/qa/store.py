@@ -55,11 +55,22 @@ CREATE INDEX IF NOT EXISTS ix_chat_messages_chat ON chat_messages(chat_id, id);
 DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "validation": "TEXT NOT NULL DEFAULT '{}'",
                  "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT",
                  # P4: kind case(케이스 YAML) | tc(서술 TC 제안 — manual-tc.yaml 에 사람이 옮긴다)
-                 "kind": "TEXT NOT NULL DEFAULT 'case'"}
+                 "kind": "TEXT NOT NULL DEFAULT 'case'",
+                 # 폼 편집 (docs/qa-platform-editor.md): kind 에 case-delete · tc-delete 가 더해졌다. 승인 때 main 에 바로 커밋한 결과
+                 "commit_sha": "TEXT", "commit_url": "TEXT", "file": "TEXT"}
 # P5b: 단계가 부른 OpenAPI operationId. 기록 시점에 박아 두어 스펙이 바뀌어도 과거 기록의 해석이 안 바뀐다(런 불변).
 # 이전 행은 NULL — 조회 때 method/path 로 폴백 매칭(app.py), 백필하지 않는다. docs/qa-platform-api.md §6.
 STEP_COLUMNS = {"op_id": "TEXT"}
 # 플랫폼이 dev 전용 API(POST /v1/dev/members)로 만든 QA 테스트 회원. 이름(label)이 테스트 계정 이름처럼 쓰인다 — actor: qa-3
+# Hermes 작업 (docs/qa-platform-progress.md) — 초안 생성·TC 제안·고치기·실패 분석을 뒤에서 돌린 기록. 진행 중 상태는 메모리,
+# 이 표는 새로 고침·재시작 뒤 결과를 찾는 용도. 서버가 재시작되면 끝나지 않은 작업은 interrupted 로 닫는다(다시 돌리지 않는다).
+JOBS_SQL = """CREATE TABLE IF NOT EXISTS hermes_jobs (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL, operator TEXT NOT NULL, label TEXT, status TEXT NOT NULL, stage TEXT,
+  created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, info TEXT NOT NULL DEFAULT '{}', result TEXT NOT NULL DEFAULT '{}',
+  error TEXT, text TEXT, back TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_hermes_jobs_created ON hermes_jobs(created_at);
+"""
 QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
   member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
 );"""
@@ -94,6 +105,7 @@ class Store:
                     self._db.execute(f"ALTER TABLE run_steps ADD COLUMN {col} {decl}")
             self._db.execute("CREATE INDEX IF NOT EXISTS ix_run_steps_op ON run_steps(op_id, id)")
             self._db.executescript(QA_MEMBERS_SQL)
+            self._db.executescript(JOBS_SQL)
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -311,6 +323,39 @@ class Store:
 
     def event_actions(self) -> list[str]:
         return [r["action"] for r in self._q("SELECT DISTINCT action FROM events ORDER BY action")]
+
+    # ---- Hermes 작업 ----------------------------------------------------------------------
+    def add_job(self, job: dict):
+        self._x("INSERT INTO hermes_jobs(id,kind,operator,label,status,stage,created_at,back) VALUES(?,?,?,?,?,?,?,?)",
+                (job["id"], job["kind"], job["operator"], job.get("label"), job["status"], job.get("stage"), job["created_at"],
+                 json.dumps(job.get("back") or {}, ensure_ascii=False)))
+
+    def update_job(self, jid: str, **fields):
+        for k in ("info", "result"):
+            if k in fields and not isinstance(fields[k], str):
+                fields[k] = json.dumps(fields[k], ensure_ascii=False, default=str)
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._x(f"UPDATE hermes_jobs SET {cols} WHERE id=?", (*fields.values(), jid))
+
+    @staticmethod
+    def _job(r: dict) -> dict:
+        for k in ("info", "result", "back"):
+            try:
+                r[k] = json.loads(r.get(k) or "{}")
+            except ValueError:
+                r[k] = {}
+        return r
+
+    def get_job(self, jid: str) -> dict | None:
+        r = self._one("SELECT * FROM hermes_jobs WHERE id=?", (jid,))
+        return self._job(r) if r else None
+
+    def list_jobs(self, limit: int = 100, active_only: bool = False) -> list[dict]:
+        where = "WHERE status IN ('queued','running')" if active_only else ""
+        return [self._job(r) for r in self._q(f"SELECT id,kind,operator,label,status,stage,created_at,started_at,finished_at,info,result,error,back FROM hermes_jobs {where} ORDER BY created_at DESC LIMIT ?", (limit,))]
+
+    def interrupt_jobs(self) -> int:
+        return self._x("UPDATE hermes_jobs SET status='interrupted', error='서버 재시작으로 중단', finished_at=? WHERE status IN ('queued','running')", (now_iso(),))
 
     # ---- drafts (케이스 초안, docs/qa-platform-tc.md §7.3) -------------------------------------
     def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None,
