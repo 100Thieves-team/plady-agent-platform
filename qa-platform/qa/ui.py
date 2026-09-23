@@ -1094,14 +1094,14 @@ def cleanup_section(cu: dict | None, *, operators: list[str], operator: str) -> 
         return head + f'<div class="card"><p class="mut" style="margin:0;color:var(--bad)">목록을 못 읽었다 — {e(er.get("code"))}: {e(er.get("message"))}</p></div>'
     rooms = cu.get("rooms") or []
     rrows = "".join(
-        f'<tr><td class="mono small">{e(r["roomId"][:8])}…</td><td>{e(r["title"])}</td><td>{badge(r.get("status"))}</td><td>{e(r.get("host_label"))}</td>'
+        f'<tr><td class="mono small">{e(str(r.get("roomId") or "")[:8])}…</td><td>{e(r.get("title"))}</td><td>{badge(r.get("status"))}</td><td>{e(r.get("host_label"))}</td>'
         f'<td class="small">신청 {(r.get("counts") or {}).get("applications", 0)} · 참여 {(r.get("counts") or {}).get("participants", 0)}</td><td class="small mut">{e((r.get("createdAt") or "")[:16].replace("T", " "))}</td>'
-        f'<td>{form("delete_room", r["roomId"], "삭제", cls="danger", confirm=f"[{r["title"]}] 룸과 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
+        f'<td>{form("delete_room", str(r.get("roomId") or ""), "삭제", cls="danger", confirm=f"[{r.get("title") or ""}] 룸과 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
         for r in rooms) or '<tr><td colspan="7" class="mut">[QA] 룸이 없다</td></tr>'
     members = cu.get("members") or []
     mrows = "".join(
-        f'<tr><td class="mono small">{e(m["memberId"][:8])}…{(" <b>" + e(m["label"]) + "</b>") if m.get("label") else ""}</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
-        f'<td>{form("delete_member", m["memberId"], "삭제", cls="danger", confirm="QA 테스트 회원과 그 회원의 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
+        f'<tr><td class="mono small">{e(str(m.get("memberId") or "")[:8])}…{(" <b>" + e(m["label"]) + "</b>") if m.get("label") else ""}</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
+        f'<td>{form("delete_member", str(m.get("memberId") or ""), "삭제", cls="danger", confirm="QA 테스트 회원과 그 회원의 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
         for m in members)
     resets = " ".join(form("reset", a, f"{a} 초기화", confirm=f"테스트 계정 {a} 를 룸이 하나도 없는 처음 상태로 되돌린다 — 방장인 [QA] 룸과 신청·참여 행을 지운다. 회원·프로필·이력서는 남는다.") for a in cu.get("actors") or [])
     return (head + f'<div class="card"><p class="small mut" style="margin-top:0">지우는 건 백엔드가 제목 <span class="mono">[QA]</span> 로 시작하는 것만 허용한다(아니면 E2201). 모든 버튼은 감사 로그에 남는다. '

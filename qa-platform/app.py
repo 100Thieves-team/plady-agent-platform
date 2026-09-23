@@ -45,6 +45,16 @@ TRIGGERS = ("deploy-sanity", "sprint-smoke", "release", "manual", "draft-check",
 HIDDEN_TRIGGERS = ("explorer",)          # 테스트 실행 목록 기본 숨김 (API 직접 호출은 건수가 많다)
 
 
+def _crash_summary(e: BaseException) -> str:
+    """500 화면에 보일 한 줄 — 예외 종류·메시지·이 레포 안의 마지막 위치. 팀 세션 뒤의 내부 도구라 서버 로그 없이도 원인을 알 수 있게."""
+    where = ""
+    for fr in reversed(traceback.extract_tb(e.__traceback__)):
+        if "qa-platform" in fr.filename or fr.filename.endswith(("app.py",)) or "/qa/" in fr.filename:
+            where = f" ({fr.filename.rsplit('/', 2)[-2]}/{fr.filename.rsplit('/', 1)[-1]}:{fr.lineno} in {fr.name})"
+            break
+    return f"내부 오류 — {type(e).__name__}: {str(e)[:300]}{where}"
+
+
 class BadRequest(Exception):
     pass
 
@@ -778,18 +788,18 @@ class Handler(BaseHTTPRequestHandler):
             self._route("GET")
         except BadRequest as e:
             self._error(400, str(e))
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
-            self._error(500, "내부 오류 (서버 로그 참고)")
+            self._error(500, _crash_summary(e))
 
     def do_POST(self):
         try:
             self._route("POST")
         except BadRequest as e:
             self._error(400, str(e))
-        except Exception:
+        except Exception as e:
             traceback.print_exc()
-            self._error(500, "내부 오류 (서버 로그 참고)")
+            self._error(500, _crash_summary(e))
 
     def _error(self, status: int, msg: str):
         if self._wants_json():
