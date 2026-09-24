@@ -236,6 +236,20 @@ class RunTest(unittest.TestCase):
         self.assertEqual(run["verdict"], "pass")
         self.assertEqual(self.app.setup_outputs(run), {"roomId": "room-9", "applicationId": "app-1"})
 
+    def test_confirmed_room_cancel_warning(self):
+        """2026-09-25 guestbook.post-happy: 확정까지 간 룸을 취소로 정리하면 E1410. 저장 때 경고한다."""
+        from qa.drafts import confirmed_cancel_warning
+        confirmed = {"id": "setup.confirmed", "title": "확정", "suite": "setup", "actor": "qa-host", "uses": {"setup": "setup.applied"}, "outputs": ["roomId"],
+                     "steps": [{"name": "확정", "request": {"method": "POST", "path": "/v1/rooms/{{roomId}}/confirmation"}, "expect": {"status": 200}}]}
+        script = {"id": "guestbook.x", "title": "t", "suite": "sanity", "actor": "qa-host", "uses": {"setup": "setup.confirmed"}, "covers": ["op.cancelRoom:200"],
+                  "steps": [{"name": "정리", "request": {"method": "POST", "path": "/v1/rooms/{{roomId}}/cancellation"}, "expect": {"status": 200}}]}
+        with tempfile.TemporaryDirectory() as d:
+            write_cases(Path(d), [CARD_OPEN, CARD_APPLIED, confirmed, script])
+            cases, errors = load_dir(Path(d))
+        self.assertEqual(errors, [])
+        self.assertIn("DELETE /v1/dev/rooms", confirmed_cancel_warning(cases["guestbook.x"]) or "")
+        self.assertIsNone(confirmed_cancel_warning(self.app.cases[SCRIPT["id"]]))         # 확정 없이 취소하는 스크립트는 괜찮다
+
     def test_case_page_and_editor(self):
         c = self.app.cases[SCRIPT["id"]]
         page = ui.case_detail(c, [])

@@ -13,7 +13,7 @@ from datetime import date
 import yaml
 
 from .cases import _TC, CaseError, _validate, audit
-from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE
+from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE, confirmed_cancel_warning
 
 CASE_KEYS = ("id", "title", "suite", "variant", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
 STEP_KEYS = ("name", "actor", "covers", "request", "expect", "save")
@@ -245,6 +245,9 @@ def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[st
     for key in set(_FIXTURE.findall(text)):
         if cfg.fixtures and key not in cfg.fixtures:
             errors.append(f"없는 픽스처 키 {key}")
+    w = confirmed_cancel_warning(case)
+    if w:
+        warnings.append(w)
     if case.suite == "sanity" and any(s["request"]["method"] in WRITE for s in case.steps):
         last = case.steps[-1]["request"]
         if not (last["method"] == "DELETE" or CLEANUP_HINT.search(last.get("path") or "")):

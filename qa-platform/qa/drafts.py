@@ -32,7 +32,7 @@ DRAFT_SYSTEM = (
     "3. API 계약 테스트 조건(`op.X:E####`)을 덮는 단계는 그 op 의 method·path 를 부르고 `expect.error_code` 가 그 코드여야 한다. "
     "`op.X:2xx` 를 덮는 단계는 `expect.status` 가 2xx 여야 한다.\n"
     "4. 거절 테스트 조건(`G.x#n`)은 `must_pass_first` 의 앞 검사들을 모두 통과하는 상태를 먼저 만든 뒤에 n 번째 검사만 걸리게 한다.\n"
-    "5. 쓰기 스크립트(POST/PUT/PATCH/DELETE)는 자기가 만든 데이터를 자기가 닫는 정리 단계(취소·철회·삭제)로 끝난다. 만든 데이터의 title 은 `[QA]` 로 시작한다.\n"
+    "5. 쓰기 스크립트(POST/PUT/PATCH/DELETE)는 자기가 만든 데이터를 자기가 닫는 정리 단계(취소·철회·삭제)로 끝난다. 만든 데이터의 title 은 `[QA]` 로 시작한다. 룸 취소(`POST /v1/rooms/{roomId}/cancellation`)는 모집 중(RECRUITING)인 룸만 된다. 진행 확정 이후까지 간 룸(setup.room-confirmed 같은 카드를 쓴 경우 포함)은 취소가 E1410 으로 막히므로 `DELETE /v1/dev/rooms/{{roomId}}`(dev 전용 QA 룸 삭제, 제목이 [QA] 인 룸만)로 정리한다.\n"
     "6. 로그인이 필요하면 `actor:` 에 주어진 테스트 계정 이름만 쓴다. 픽스처는 주어진 키만 `{{fixture.키}}` 로 쓴다.\n"
     "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} 만.\n"
     "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
@@ -117,6 +117,20 @@ def parse_output(text: str) -> list[dict]:
     return out
 
 
+def confirmed_cancel_warning(case: Case) -> str | None:
+    """진행 확정(POST …/confirmation 성공)까지 간 룸을 마지막에 취소로 정리하려 하면 E1410 으로 막힌다 (2026-09-25 guestbook.post-happy).
+    전제 카드에서 온 단계도 본다."""
+    def ok2xx(st):
+        v = (st.get("expect") or {}).get("status")
+        return v is None or str(v).startswith("2")
+    steps = case.steps
+    confirmed = any(st["request"]["method"] == "POST" and str(st["request"].get("path") or "").endswith("/confirmation") and ok2xx(st) for st in steps[:-1])
+    last = steps[-1]["request"] if steps else {}
+    if confirmed and last.get("method") == "POST" and str(last.get("path") or "").endswith("/cancellation") and ok2xx(steps[-1]):
+        return "진행 확정한 룸은 취소(E1410)가 안 된다 — 마지막 정리 단계를 DELETE /v1/dev/rooms/{{roomId}} (dev 전용 QA 룸 삭제)로 바꾼다"
+    return None
+
+
 def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str], actors: dict | None = None,
              library: dict | None = None) -> tuple[Case | None, list[str], list[str]]:
     known = actors if actors is not None else cfg.actors     # SSM 고정 계정 + 플랫폼이 만든 QA 회원(App.all_actors)
@@ -154,6 +168,9 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
         elif not cfg.fixtures:
             warnings.append(f"픽스처 {key} — 이 환경에 QA_FIXTURES 가 없어 확인 못 함")
     writes = [i for i, s in enumerate(case.steps) if s["request"]["method"] in WRITE and s["request"]["method"] != "DELETE"]
+    w = confirmed_cancel_warning(case)
+    if w:
+        warnings.append(w)
     if writes:
         last = case.steps[-1]["request"]
         if not (last["method"] == "DELETE" or CLEANUP_HINT.search(last.get("path") or "")):

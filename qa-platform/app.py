@@ -435,7 +435,7 @@ class App:
         ft, sc, va = hit
         step = next((st for s in (self.wiki.prd_scenarios(ft.feature) if self.wiki.available else []) if s["id"] == sc.id
                      for st in s["steps"] if st.get("req") == va.at), None)
-        cards = [{"id": c.id, "title": c.title, "inputs": {k: v.get("default") for k, v in c.inputs.items()}, "outputs": c.outputs,
+        cards = [{"id": c.id, "title": c.title, "description": c.description, "inputs": {k: v.get("default") for k, v in c.inputs.items()}, "outputs": c.outputs,
                   "steps": [s["name"] for s in c.steps]} for c in self.setup_cases()]
         lines = [f"# 이 스크립트가 구현할 케이스 {vid}", f"- 종류: {scenariosmod.KIND_KO.get(va.kind, va.kind)}", f"- 제목: {va.title}"]
         if va.at:

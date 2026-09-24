@@ -517,3 +517,170 @@ paths:
               examples:
                 roomLeaveAtMinCapacity:
                   value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E1423\",\n    \"message\" : \"최소 진행 인원이라 나갈 수 없습니다.\",\n    \"data\" : null\n  }\n}"
+  # 2026-09-25 추가: 방명록 글쓰기 (guestbook.post-happy). 실제 dev OpenAPI 에서 $ref 를 풀어 옮겼다
+  /v1/rooms/{roomId}/comments:
+    post:
+      tags:
+      - v1
+      summary: 룸 방명록 글 작성
+      description: 룸 참여자가 텍스트 글을 남긴다(trim 후 1~1000자). 직전 글과 같은 내용을 10초 안에 다시 보내면 새로 만들지 않고 기존 글을 돌려준다(멱등 - 에러가 아니라 200). 400 E400 내용 규칙 위반, 403 E1419 비참여자, 409 E2101 읽기 전용 전환 후 작성.
+      operationId: createRoomComment
+      parameters:
+      - name: roomId
+        in: path
+        description: ''
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              required:
+              - content
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: 글 내용 (trim 후 1~1000자, 텍스트만)
+            examples:
+              createRoomComment-e400:
+                value: "{\n  \"content\" : \"가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가\"\
+                  \n}"
+              createRoomComment-e2101:
+                value: "{\n  \"content\" : \"늦은 글\"\n}"
+              createRoomComment-e1419:
+                value: "{\n  \"content\" : \"몰래 등록\"\n}"
+              createRoomComment:
+                value: "{\n  \"content\" : \"좋아요. 자기소개는 각자 3분 정도 준비하면 될까요?\"\n}"
+      responses:
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                required:
+                - result
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: 처리 결과 (ERROR)
+                  error:
+                    required:
+                    - code
+                    - message
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        description: 에러 코드 (E 코드, 분기 기준)
+                      data:
+                        type: object
+                        description: 추가 정보 (검증 오류의 필드별 사유 등, 없으면 null)
+                        nullable: true
+                        additionalProperties:
+                          type: string
+                      message:
+                        type: string
+                        description: 사용자에게 표시 가능한 메시지
+                    nullable: true
+              examples:
+                createRoomComment-e400:
+                  value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E400\",\n    \"message\" : \"요청 형식이 올바르지 않습니다.\",\n    \"data\" : null\n  }\n}"
+        '409':
+          description: '409'
+          content:
+            application/json:
+              schema:
+                required:
+                - result
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: 처리 결과 (ERROR)
+                  error:
+                    required:
+                    - code
+                    - message
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        description: 에러 코드 (E 코드, 분기 기준)
+                      data:
+                        type: object
+                        description: 추가 정보 (검증 오류의 필드별 사유 등, 없으면 null)
+                        nullable: true
+                        additionalProperties:
+                          type: string
+                      message:
+                        type: string
+                        description: 사용자에게 표시 가능한 메시지
+                    nullable: true
+              examples:
+                createRoomComment-e2101:
+                  value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E2101\",\n    \"message\" : \"읽기 전용으로 전환된 방명록입니다. 지난 댓글은 볼 수 있지만 새로 남길 수는 없어요.\",\n    \"data\" : null\n  }\n}"
+        '403':
+          description: '403'
+          content:
+            application/json:
+              schema:
+                required:
+                - result
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: 처리 결과 (ERROR)
+                  error:
+                    required:
+                    - code
+                    - message
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                        description: 에러 코드 (E 코드, 분기 기준)
+                      data:
+                        type: object
+                        description: 추가 정보 (검증 오류의 필드별 사유 등, 없으면 null)
+                        nullable: true
+                        additionalProperties:
+                          type: string
+                      message:
+                        type: string
+                        description: 사용자에게 표시 가능한 메시지
+                    nullable: true
+              examples:
+                createRoomComment-e1419:
+                  value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E1419\",\n    \"message\" : \"룸에 참여한 사람만 볼 수 있습니다.\",\n    \"data\" : null\n  }\n}"
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                required:
+                - result
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: 처리 결과 (SUCCESS)
+                  data:
+                    required:
+                    - commentId
+                    - createdAt
+                    type: object
+                    properties:
+                      createdAt:
+                        type: string
+                        description: 작성 시각
+                      commentId:
+                        type: number
+                        description: 생성된(또는 멱등 반환된 기존) 글 id
+                    nullable: true
+              examples:
+                createRoomComment:
+                  value: "{\n  \"result\" : \"SUCCESS\",\n  \"data\" : {\n    \"commentId\" : 42,\n    \"createdAt\" : \"2026-07-21T14:31:02\"\n  },\n  \"error\" : null\n}"

@@ -63,7 +63,7 @@ cases:
   - id: setup.room-confirmed
     title: 참여자를 수락하고 진행 확정까지 간 룸 만들기
     suite: setup
-    description: 신청 들어온 룸(setup.room-with-application) → 방장 수락 → 진행 확정. 확정된 룸의 상세·완료 화면을 볼 때 쓴다. 최소 진행 인원을 방장 포함 2명으로 잡았다 — dev 가 E1421(최소 인원 미달)을 주면 SSOT 의 인원 계산(방장 포함 여부)을 확인한다.
+    description: 신청 들어온 룸(setup.room-with-application) → 방장 수락 → 진행 확정. 확정된 룸의 상세·완료 화면을 볼 때 쓴다. 확정된 룸은 취소(E1410)가 안 되므로 이 카드를 uses 로 쓰는 스크립트는 DELETE /v1/dev/rooms/{roomId} 로 정리한다. 최소 진행 인원을 방장 포함 2명으로 잡았다 — dev 가 E1421(최소 인원 미달)을 주면 SSOT 의 인원 계산(방장 포함 여부)을 확인한다.
     domains: [room, application, participation]
     operations: [createRoom, submitRoomApplication, acceptApplication, confirmRoom]
     actor: qa-host
@@ -104,7 +104,7 @@ cases:
   - id: setup.room-ready-to-start
     title: 진행 시작 직전 상태의 룸 만들기 (확정 + 시작 시각 지남)
     suite: setup
-    description: 확정된 룸(setup.room-confirmed) → dev 전용 API 로 시작 시각을 어제로. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.
+    description: 확정된 룸(setup.room-confirmed) → dev 전용 API 로 시작 시각을 어제로. 이 카드를 uses 로 쓰는 스크립트도 DELETE /v1/dev/rooms/{roomId} 로 정리한다. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.
     domains: [room, application, participation]
     operations: [createRoom, submitRoomApplication, acceptApplication, confirmRoom, rescheduleQaRoom]
     actor: qa-host
