@@ -79,7 +79,7 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(hermes._text_of([{"type": "input_text", "text": "a"}, {"type": "input_text", "text": "b"}]), "ab")
 
     def test_draft_ids_only_from_draft_tools(self):
-        calls = [{"name": "mcp_qa_draft_create", "output": '{"created":[{"id":"d-0123abcd"}]}'}, {"name": "qa_run_get", "output": "d-ffffffff 는 무시"}]
+        calls = [{"name": "mcp_qa_case_save", "output": '{"saved":[{"id":"d-0123abcd"}]}'}, {"name": "qa_run_get", "output": "d-ffffffff 는 무시"}]
         self.assertEqual(chatmod.draft_ids_from(calls), ["d-0123abcd"])
 
 
@@ -103,7 +103,7 @@ class ChatFlowTest(unittest.TestCase):
         chat = self.app.store.get_chat(cid)
         self.assertEqual((chat["title"], chat["session_key"]), ("TC G.room.create#duplicate-slot-left", f"qa-chat-{cid}"))
         self.fake.queue.append((200, _sse("resp_1", "초안 d-… 만들었다", [("qa_tc_get", {"id": "G.room.create#duplicate-slot-left"}, "{}"),
-                                                                       ("qa_draft_create", {"yaml": "..."}, json.dumps({"created": [{"id": did}]}))], deltas=["초안 d-… ", "만들었다"])))
+                                                                       ("qa_case_save", {"yaml": "..."}, json.dumps({"saved": [{"id": did}]}))], deltas=["초안 d-… ", "만들었다"])))
         events: list = []
         reply = self.app.chat_send(chat, "케이스 써 줘", operator="bebe", session_hash="s", ip="1.1.1.1", emit=lambda k, d: events.append((k, d)))
         self.assertEqual([k for k, _ in events], ["user", "keepalive", "tool", "tool_result", "tool", "tool_result", "delta", "delta", "done"])
@@ -120,7 +120,7 @@ class ChatFlowTest(unittest.TestCase):
         self.assertNotIn("previous_response_id", req["body"])
         self.assertEqual(req["timeout"], 180)
         self.assertEqual(reply["draft_ids"], [did])
-        self.assertEqual([c["name"] for c in reply["tool_calls"]], ["qa_tc_get", "qa_draft_create"])
+        self.assertEqual([c["name"] for c in reply["tool_calls"]], ["qa_tc_get", "qa_case_save"])
         chat = self.app.store.get_chat(cid)
         self.assertEqual((chat["turns"], chat["drafts"], chat["last_response_id"]), (1, 1, "resp_1"))
         msgs = self.app.store.list_chat_messages(cid)

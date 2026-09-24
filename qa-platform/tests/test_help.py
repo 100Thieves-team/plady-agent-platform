@@ -25,7 +25,7 @@ class HelpTest(unittest.TestCase):
 
     def test_automation_help_explains_how(self):
         t, b = helpmod.HELP["tc.state"]
-        for frag in ("미자동화 TC 를 자동화하려면", "고른 TC 로 스크립트 초안 생성", "한 번 실행해 보기", "승인", "PR", "covers", "exclusions.yaml"):
+        for frag in ("미자동화 TC 를 자동화하려면", "고른 TC 로 Hermes 가 스크립트 쓰기", "main 에 바로 저장", "직접 쓰기 (폼)", "PR", "covers", "exclusions.yaml"):
             self.assertIn(frag, b)
 
     def test_js_carries_table(self):

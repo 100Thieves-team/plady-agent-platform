@@ -3,8 +3,9 @@
 streamable HTTP 의 서버 쪽 최소 구현: JSON-RPC 2.0 over POST, 상태 없음(세션 id 없음), 표준 라이브러리만.
 메서드는 initialize · ping · tools/list · tools/call 네 개. 알림(id 없음)은 202 로 받고 버린다.
 
-도구는 읽기 10 + 제안 3. **실행·전송·발행·승인·스크립트 파일 쓰기 도구는 없다** — 사용자 결정 ①(실행은 사람 버튼)을
-도구 목록 자체로 막는다. 제안 도구는 스크립트 초안(drafts)까지만 쓰고, 그 뒤는 지금과 같은 사람 승인 경로다.
+도구는 읽기 + 저장 2. **실행·전송·발행 도구는 없다** — 사용자 결정 ①(실행은 사람 버튼)을 도구 목록 자체로 막는다.
+저장 도구(qa_case_save · qa_manual_tc_save)는 폼과 같은 결정론 검증을 통과한 것만 main 에 바로 커밋한다
+(초안·승인 없음, docs/qa-platform-scenarios.md §9). 저장한 항목에는 written_by: hermes 가 붙는다. 삭제 도구는 없다.
 
 인증: `Authorization: Bearer QA_MCP_TOKEN` (내부 네트워크 전용. Caddy @qa 는 /mcp 를 403 으로 막는다).
 모든 tools/call 은 events `mcp.call` 로 남는다 (operator "hermes" — 사람이 아니라 에이전트가 부른 것임을 그대로 적는다).
@@ -30,8 +31,8 @@ MAX_LIMIT = 200
 
 INSTRUCTIONS = (
     "plady QA 플랫폼의 도구다. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이라 여기서 만들거나 고칠 수 없다. "
-    "스크립트를 새로 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 스크립트 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
-    "실행·전송·발행·승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크로 안내한다. "
+    "스크립트를 새로 쓰거나 고칠 때는 qa_case_save 로 저장한다. 검증을 통과하면 main 에 바로 들어가고, 사유가 돌아오면 고쳐서 다시 부른다. "
+    "실행·전송·발행은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크로 안내한다. "
     "회원 UUID 같은 식별값은 답에 옮기지 않는다."
 )
 
@@ -105,14 +106,14 @@ TOOLS: list[dict] = [
      "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
     {"name": "qa_prd_section", "description": "PRD 절 본문(위키 체크아웃에서). doc 은 문서 이름(예: 룸 생성), section 은 절 번호(예: 4.7).",
      "inputSchema": _schema({"doc": _STR, "section": _STR}, ["doc", "section"])},
-    {"name": "qa_draft_create", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 TC 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
-     "통과하면 스크립트 초안으로 저장한다. 실패하면 사유를 돌려준다 — 고쳐서 다시 부른다. 초안은 사람이 화면에서 승인해야 스크립트가 된다. "
-     "YAML 은 스크립트 맵 하나 또는 `cases:` 목록(최대 5).",
-     "inputSchema": _schema({"yaml": _STR, "reason": {"type": "string", "description": "왜 이 스크립트인지 한 줄 (초안 메모에 남는다)"}}, ["yaml"])},
-    {"name": "qa_draft_update", "description": "아직 결정되지 않은 초안의 YAML 을 바꾸고 다시 검증한다. 승인·반려된 초안은 못 고친다.",
-     "inputSchema": _schema({"id": {"type": "string", "description": "d-… 초안 id"}, "yaml": _STR}, ["id", "yaml"])},
-    {"name": "qa_manual_tc_propose", "description": "PRD 절에서 수동 작성 TC(사람이 적는 TC) 제안을 만든다. 파일(manual-tc.yaml)에는 쓰지 않고 초안(kind tc)으로만 남긴다 — "
-     "사람이 검토해 PR 로 옮긴다. items 의 각 항목은 title·when·then 필수, given·operations 선택.",
+    {"name": "qa_case_save", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 TC 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
+     "통과하면 main 에 바로 저장한다(Hermes 작성 표시가 붙는다). 실패하면 사유를 돌려준다 — 고쳐서 다시 부른다. "
+     "기존 스크립트를 고치려면 update=true 로 같은 id 를 낸다(qa_case_get 으로 읽은 YAML 을 고쳐서). update=false 인데 id 가 겹치면 -2 처럼 새 id 로 만든다. "
+     "YAML 은 스크립트 맵 하나 또는 `cases:` 목록(최대 5). 실행은 하지 않는다 — 사람이 화면에서 누른다.",
+     "inputSchema": _schema({"yaml": _STR, "update": {"type": "boolean", "description": "true 면 같은 id 의 기존 스크립트를 이 YAML 로 바꾼다"},
+                             "reason": {"type": "string", "description": "왜 이 스크립트인지 한 줄 (커밋 메시지와 변경 기록에 남는다)"}}, ["yaml"])},
+    {"name": "qa_manual_tc_save", "description": "PRD 절에서 뽑은 수동 작성 TC(규칙표에 없는 확인 항목)를 catalog/manual-tc.yaml 에 바로 저장한다(Hermes 작성 표시). "
+     "id 는 PRD.문서.절#번호 로 자동으로 붙는다. items 의 각 항목은 title·when·then 필수, given·operations 선택.",
      "inputSchema": _schema({"doc": _STR, "section": _STR, "domain": {"type": "string", "description": "room·participation 등. 없으면 같은 문서의 기존 수동 작성 TC 에서 가져온다"},
                              "items": {"type": "array", "minItems": 1, "maxItems": 10,
                                        "items": _schema({"title": _STR, "given": _STR, "when": _STR, "then": _STR,
@@ -268,7 +269,7 @@ class McpServer:
                 item["warnings"] = [w for w in cat.warnings if w.startswith(r["id"] + ":")]
             items.append(item)
         return {"total": total, "returned": len(items), "domains": cat.domains(), "items": items,
-                "note": "스크립트로 쓰려면 qa_draft_create 에 YAML 을 낸다. covers 는 여기 있는 id 만 쓸 수 있다."}
+                "note": "스크립트로 쓰려면 qa_case_save 에 YAML 을 낸다. covers 는 여기 있는 id 만 쓸 수 있다."}
 
     def t_tc_get(self, id: str) -> dict:  # noqa: A002
         cat = self._catalog()
@@ -308,7 +309,7 @@ class McpServer:
             rows.append(dict(ch, id=tid, affected_cases=by_tc.get(tid, [])))
         rows.sort(key=lambda x: (x.get("at") or "", x["id"]), reverse=True)
         return {"total": len(rows), "items": rows[:n],
-                "note": "영향 스크립트는 스크립트 화면의 TC 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_draft_create 로 고친 판을 낸다."}
+                "note": "영향 스크립트는 스크립트 화면의 TC 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_case_save(update=true) 로 고친 판을 저장한다."}
 
     def t_case_list(self, domain=None, suite=None) -> dict:
         self.app.current_catalog()
@@ -411,49 +412,39 @@ class McpServer:
             raise ToolError(f"PRD/{doc} 에 §{section} 헤딩이 없다")
         return {"doc": doc, "section": str(section), "url": wiki.prd_url(doc), "text": text, "wiki_head": wiki.head()}
 
-    # ---- 제안 도구 (초안까지만) -------------------------------------------------------
-    def t_draft_create(self, yaml: str, reason=None) -> dict:  # noqa: A002
+    # ---- 저장 도구 (검증을 통과하면 main 에 바로) ------------------------------------------
+    def t_case_save(self, yaml: str, update=False, reason=None) -> dict:  # noqa: A002
         cat = self._catalog()
         raws = draftsmod.parse_output(str(yaml))
         if not raws:
             raise ToolError("YAML 에서 스크립트를 찾지 못했다 — 스크립트 맵 하나 또는 `cases:` 목록이어야 한다")
         if len(raws) > 5:
             raise ToolError("한 번에 5건까지")
-        created, rejected = [], []
+        saved, rejected = [], []
         for raw in raws:
-            requested = list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])]
-            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=set(self.app.cases), actors=self.app.all_actors())
-            if not case:
-                rejected.append({"case_id": str(raw.get("id") or "?"), "errors": errors, "warnings": warnings})
+            rid = str(raw.get("id") or "?")
+            if update and rid not in self.app.cases:
+                rejected.append({"case_id": rid, "errors": ["update=true 인데 그 id 의 스크립트가 없다 — qa_case_list 로 id 를 확인한다"], "warnings": []})
                 continue
-            did = self.app.store.add_draft(operator=AGENT, source="hermes-chat", domain=(case.domains[0] if case.domains else None),
-                                           yaml_text=case.to_yaml(), note=(str(reason).strip()[:300] if reason else None), case_id=case.id,
-                                           tc_ids=case.covers, validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=None)
-            self.app.store.add_event(operator=AGENT, action="draft.generate", target=did, detail={"source": "hermes-chat", "case_id": case.id, "tc_ids": case.covers})
-            created.append({"id": did, "case_id": case.id, "status": case.audit["status"], "warnings": warnings, "url": self._url(f"/drafts/{did}")})
-        return {"created": created, "rejected": rejected, "_hint": {"created": [c["id"] for c in created], "rejected": len(rejected)},
-                "next": ("사람이 초안 화면에서 [한 번 실행해 보기]·[승인] 을 누른다. 링크를 안내하라." if created else "사유를 고쳐 다시 qa_draft_create 를 부른다.")}
+            requested = list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])]
+            existing = set(self.app.cases) - ({rid} if update else set())
+            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=existing, actors=self.app.all_actors())
+            if not case:
+                rejected.append({"case_id": rid, "errors": errors, "warnings": warnings})
+                continue
+            try:
+                out = self.app.save_change(kind="case", source="hermes-chat", yaml_text=case.to_yaml(), operator=AGENT, domain=(case.domains[0] if case.domains else None),
+                                           note=(str(reason).strip()[:300] if reason else None), case_id=case.id, tc_ids=case.covers,
+                                           validation={"status": case.audit["status"], "warnings": warnings})
+            except Exception as ex:      # main 커밋 실패 (그사이 바뀜 등)
+                rejected.append({"case_id": case.id, "errors": [str(ex)], "warnings": warnings})
+                continue
+            saved.append({"id": out["id"], "case_id": case.id, "updated": bool(update), "committed": bool(out["commit"]), "warnings": warnings,
+                          "url": self._url(self.app.change_link(out)["href"])})
+        return {"saved": saved, "rejected": rejected, "_hint": {"saved": [c["id"] for c in saved], "rejected": len(rejected)},
+                "next": ("저장했다. 실행은 사람이 스크립트 화면에서 누른다 — 링크를 안내하라." if saved else "사유를 고쳐 다시 qa_case_save 를 부른다.")}
 
-    def t_draft_update(self, id: str, yaml: str) -> dict:  # noqa: A002
-        d = self.app.store.get_draft(id)
-        if not d:
-            raise ToolError(f"없는 초안: {id}")
-        if d["status"] in ("approved", "rejected"):
-            raise ToolError("결정된 초안은 고치지 않는다 — 새 초안을 낸다")
-        text = str(yaml)
-        if (d.get("kind") or "case") == "tc":
-            items, errors = draftsmod.validate_manual_tc(text)
-            validation = {"status": "error" if errors else "ok", "errors": errors, "warnings": []}
-            self.app.store.update_draft(id, yaml=text, validation=validation, tc_ids=[i["id"] for i in items], status="draft")
-        else:
-            case, errors, warnings = self.app.revalidate_draft(d, text)
-            validation = {"status": ("error" if errors else case.audit["status"]), "errors": errors, "warnings": warnings}
-            self.app.store.update_draft(id, yaml=text, validation=validation, case_id=(case.id if case else d.get("case_id")),
-                                        tc_ids=(case.covers if case else d["tc_ids"]), status="draft", run_id=None)
-        self.app.store.add_event(operator=AGENT, action="draft.save", target=id, detail={"errors": len(validation["errors"]), "warnings": len(validation.get("warnings") or [])})
-        return {"id": id, "validation": validation, "url": self._url(f"/drafts/{id}"), "_hint": {"validation": validation["status"]}}
-
-    def t_manual_tc_propose(self, doc: str, section: str, items: list, domain=None) -> dict:
+    def t_manual_tc_save(self, doc: str, section: str, items: list, domain=None) -> dict:
         cat = self._catalog()
         if not isinstance(items, list) or not items:
             raise ToolError("items 는 비어 있지 않은 목록")
@@ -465,13 +456,15 @@ class McpServer:
             raise ToolError(str(ex))
         sec = str(section).strip().rstrip(".")
         text = yaml_dump({"cases": out})
-        note = f"manual-tc.yaml 에 붙일 수동 작성 TC 제안 — PRD/{doc} §{sec}"
-        did = self.app.store.add_draft(operator=AGENT, source="hermes-chat", domain=str(domain), yaml_text=text, note=note, case_id=None,
-                                       tc_ids=[r["id"] for r in out], validation={"status": "warn" if warnings else "ok", "warnings": warnings}, kind="tc")
-        self.app.store.add_event(operator=AGENT, action="draft.generate", target=did, detail={"source": "hermes-chat", "kind": "tc", "tc_ids": [r["id"] for r in out]})
-        return {"id": did, "kind": "tc", "tc_ids": [r["id"] for r in out], "yaml": text, "warnings": warnings, "url": self._url(f"/drafts/{did}"),
-                "_hint": {"created": [did], "tc": len(out)},
-                "next": "사람이 초안 화면에서 검토·승인한 뒤 qa-platform/catalog/manual-tc.yaml 에 붙여 PR 을 연다. 승인 전에는 TC 가 아니다."}
+        try:
+            res = self.app.save_change(kind="tc", source="hermes-chat", yaml_text=text, operator=AGENT, domain=str(domain),
+                                       note=f"PRD/{doc} §{sec} 에서 Hermes 가 뽑은 수동 작성 TC", tc_ids=[r["id"] for r in out],
+                                       validation={"status": "warn" if warnings else "ok", "warnings": warnings})
+        except Exception as ex:
+            raise ToolError(f"저장하지 못했다: {ex}")
+        return {"id": res["id"], "kind": "tc", "tc_ids": res["tc_ids"], "yaml": text, "warnings": warnings, "committed": bool(res["commit"]),
+                "url": self._url(self.app.change_link(res)["href"]), "_hint": {"saved": [res["id"]], "tc": len(out)},
+                "next": "저장했다. 틀린 항목은 사람이 TC 상세에서 폼으로 고치거나 지운다."}
 
 
 def yaml_dump(obj) -> str:

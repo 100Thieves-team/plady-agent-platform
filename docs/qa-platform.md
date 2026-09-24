@@ -473,6 +473,10 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 - **Hermes 작업**: 초안 생성·수동 TC 제안·고치기·실패 분석이 `/jobs/{id}` 진행 카드로 바뀌었다. 진행은 `/api/jobs/{id}/events` SSE. 자세한 것은 [`qa-platform-progress.md`](qa-platform-progress.md) §8.
 - **사람 작업**: SSM `/plady/agent-platform/dev/qa-repo-token` 에 이 레포 contents: write fine-grained PAT 를 넣는다. 없으면 승인 뒤 [반영된 파일 받기]로 끝난다.
 
+### 14.4d 초안·승인 없이 바로 저장 (2026-09-24, 사용자 결정)
+
+- 폼 저장, Hermes 생성·고치기·TC 제안, Hermes 채팅 도구, 삭제가 모두 검증을 통과하면 main 에 바로 커밋된다. `/drafts` 는 "변경 기록" 이 됐다. Hermes 가 쓴 항목에는 `written_by: hermes` 가 붙고 사람이 폼으로 저장하면 사라진다. 자세한 것은 [`qa-platform-scenarios.md`](qa-platform-scenarios.md) §9, §17.
+
 ### 14.4 운영 메모
 
 - 케이스 추가·수정은 `qa-platform/cases/*.yaml` PR. 배포되면 새 이미지에 실린다. 로컬 확인은 UI 케이스 화면의 [파일에서 다시 읽기].

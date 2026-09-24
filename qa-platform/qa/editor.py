@@ -15,7 +15,7 @@ import yaml
 from .cases import _TC, CaseError, _validate, audit
 from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE
 
-CASE_KEYS = ("id", "title", "suite", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "inputs", "outputs", "steps")
+CASE_KEYS = ("id", "title", "suite", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "inputs", "outputs", "steps")
 STEP_KEYS = ("name", "actor", "covers", "request", "expect", "save")
 REQ_KEYS = ("method", "path", "query", "body")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
@@ -300,7 +300,8 @@ def today() -> str:
 
 
 def plan_case(d: dict, *, cases: dict, operator: str):
-    """스크립트 초안(kind case · case-delete) → (rel, change, summary, case_id). reviewed 는 오늘·승인자로 올린다."""
+    """변경 기록(kind case · case-delete) → (rel, change, summary, case_id). reviewed 는 오늘·저장한 사람으로 올린다.
+    Hermes 가 쓴 것(source hermes*)은 written_by: hermes 를 달고, 사람이 폼으로 저장하면 뗀다 (docs/qa-platform-scenarios.md §7)."""
     from .repo import RepoError, append_item, ids_in, replace_item
     kind = d.get("kind") or "case"
     if kind == "case-delete":
@@ -313,6 +314,9 @@ def plan_case(d: dict, *, cases: dict, operator: str):
         raise RepoError("초안 YAML 이 스크립트 맵이 아니다")
     raw = {k: raw[k] for k in CASE_KEYS if k in raw} | {k: v for k, v in raw.items() if k not in CASE_KEYS}
     raw["reviewed"] = {"at": today(), "by": operator}
+    raw.pop("written_by", None)
+    if str(d.get("source") or "").startswith("hermes"):
+        raw["written_by"] = "hermes"
     order = [k for k in CASE_KEYS if k in raw] + [k for k in raw if k not in CASE_KEYS]
     raw = {k: raw[k] for k in order}
     cid = raw["id"]
@@ -343,6 +347,7 @@ def plan_tc(d: dict, *, covered_by: dict) -> tuple:
             raise RepoError(f"{tid} 를 검증하는 스크립트가 있다: {', '.join(covered_by[tid])} — 먼저 그 스크립트의 covers 에서 뺀다")
         return rel, (lambda text: replace_item(text or "", tid, None)), f"{tid} 삭제", [tid]
     edit = d.get("source") == "form-edit"
+    hermes = str(d.get("source") or "").startswith("hermes")
     final_ids: list[str] = []
 
     def change(text):
@@ -350,6 +355,8 @@ def plan_tc(d: dict, *, covered_by: dict) -> tuple:
         final_ids.clear()
         for it in items:
             it = dict(it)
+            if hermes:
+                it["written_by"] = "hermes"
             if edit:
                 text = replace_item(text, str(it["id"]), it)
             else:

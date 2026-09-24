@@ -1,6 +1,7 @@
 # QA 플랫폼 — 폼으로 스크립트·TC 만들기·고치기·지우기 (설계)
 
 > 상태: **구현됨 (2026-09-23)** — 사용자 요청 "테스트 케이스를 직접 추가/수정/삭제하는 기능, 사람이 쓰기 편한 폼". 검토 답(§10)을 받아 구현했다. 구현 결과는 §11.
+> **2026-09-24 흐름 바뀜:** 초안과 승인을 없앴다. 폼 저장, Hermes 생성, 삭제 모두 검증을 통과하면 main 에 바로 커밋된다. §3 의 "초안 → 승인" 흐름은 더 이상 쓰지 않는다. 새 흐름은 [qa-platform-scenarios.md](qa-platform-scenarios.md) §9, 구현은 같은 문서 §17.
 > 관련: [qa-platform.md](qa-platform.md) §7(초안), [qa-platform-tc.md](qa-platform-tc.md) §4(수동 작성 TC), [qa-platform-api.md](qa-platform-api.md)(API 호출 카드).
 
 ## 1. 왜

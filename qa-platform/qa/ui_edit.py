@@ -8,7 +8,7 @@ import json
 
 from .ui import badge, e, h, kst
 
-EDITOR_JS_VERSION = "3"
+EDITOR_JS_VERSION = "4"
 JOBS_JS_VERSION = "1"
 
 EDIT_CSS = """
@@ -26,24 +26,26 @@ pre.jobtext{max-height:420px;white-space:pre-wrap;word-break:break-word}
 # ---------------------------------------------------------------------------------------------
 def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str | None, errors: list | None = None,
                 warnings: list | None = None, operator: str = "", operators: list | None = None) -> str:
-    title = {"new": "새 스크립트", "edit": f"스크립트 고치기 — {original_id}", "draft": f"초안 고치기 — {draft_id}"}.get(mode, "스크립트 폼")
+    title = {"new": "새 스크립트", "edit": f"스크립트 고치기 — {original_id}", "draft": f"폼으로 담은 것 저장하기 — {draft_id}"}.get(mode, "스크립트 폼")
     msgs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors or []) + "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in warnings or [])
     back = (f'<a href="/cases/{e(original_id)}">스크립트로 돌아가기</a>' if mode == "edit" else
-            (f'<a href="/drafts/{e(draft_id)}">초안으로 돌아가기</a>' if mode == "draft" else '<a href="/cases">스크립트 목록</a>'))
+            (f'<a href="/drafts/{e(draft_id)}">변경 기록으로</a>' if mode == "draft" else '<a href="/cases">스크립트 목록</a>'))
     ed = {"mode": mode, "original_id": original_id, "draft_id": draft_id}
     return (f'<style>{EDIT_CSS}</style>'
-            f'<h1>{e(title)}{h("editor.form")} <span class="small mut">저장하면 스크립트 초안이 된다 — 승인하면 main 에 커밋되고 실행 스위트에 들어간다</span></h1>'
+            f'<h1>{e(title)}{h("editor.form")} <span class="small mut">저장하면 검사를 거쳐 main 에 바로 커밋되고 실행 스위트에 들어간다</span></h1>'
             f'{("<div class=\"card\"><b>저장하지 않았다</b><ul style=\"margin:6px 0 0\">" + msgs + "</ul></div>") if msgs else ""}'
             f'<form id="ed" method="post" action="/editor/save">'
             f'<input type="hidden" name="operator" value="{e(operator)}"><input type="hidden" name="mode" value="{e(mode)}">'
             f'<input type="hidden" name="original_id" value="{e(original_id or "")}"><input type="hidden" name="draft_id" value="{e(draft_id or "")}">'
             f'<input type="hidden" name="state" id="ed-state-in">'
-            f'<div id="ed-root"><div class="card mut">폼을 불러오는 중… (JavaScript 가 필요하다. 꺼져 있으면 초안의 YAML 칸으로 고친다)</div></div>'
+            f'<div id="ed-root"><div class="card mut">폼을 불러오는 중… (JavaScript 가 필요하다)</div></div>'
             f'<div class="actions"><button type="button" id="ed-add">+ 단계 추가</button></div>'
             f'<div class="card"><h3 style="margin-top:0">검사와 YAML 미리보기{h("editor.preview")}</h3>'
             f'<p class="small mut" style="margin-top:0">저장 전에 서버가 하는 검사(형식·TC 대조·테스트 계정·픽스처·본문 스키마)를 미리 돌리고, 저장될 YAML 을 보여 준다.</p>'
             f'<button type="button" id="ed-preview">검사하고 YAML 보기</button><ul id="ed-msgs" class="small"></ul><pre id="ed-yaml" style="display:none"></pre></div>'
-            f'<div class="actions"><button class="primary" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>초안으로 저장</button> {back}</div></form>'
+            f'<div class="actions"><button class="primary" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장</button>'
+            f'<button type="button" id="ed-try" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장 전에 한 번 실행해 보기 (dev)</button>{h("editor.try")} {back}</div>'
+            f'<p id="ed-try-msg" class="small mut"></p></form>'
             f'<datalist id="dl-ops"></datalist><datalist id="dl-tcs"></datalist><datalist id="dl-vars"></datalist>'
             f'<script id="ed-state" type="application/json">{json.dumps(st, ensure_ascii=False).replace("</", "<\\/")}</script>'
             f'<script>window.ED={json.dumps(ed, ensure_ascii=False)}</script><script src="/static/editor.js?v={EDITOR_JS_VERSION}" defer></script>')
@@ -177,6 +179,13 @@ EDITOR_JS = r"""
       m.innerHTML=(j.errors||[]).map(function(x){return '<li style="color:var(--bad)">'+esc(x)+'</li>'}).join('')+(j.warnings||[]).map(function(x){return '<li style="color:var(--warn)">'+esc(x)+'</li>'}).join('')+(j.ok&&!(j.warnings||[]).length?'<li style="color:var(--ok)">검사 통과</li>':'');
       y.style.display=j.yaml?'block':'none';y.textContent=j.yaml||''}).catch(function(e){alert('검사 실패: '+e)}).then(function(){b.disabled=false})});
   document.getElementById('ed').addEventListener('submit',function(){document.getElementById('ed-state-in').value=JSON.stringify(S)});
+  var tryB=document.getElementById('ed-try');
+  if(tryB) tryB.addEventListener('click',function(){var b=this,msg=document.getElementById('ed-try-msg');b.disabled=true;msg.textContent='dev 에 보내는 중…';
+    var w=window.open('about:blank','_blank');
+    fetch('/editor/try',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({state:S,mode:ED.mode,original_id:ED.original_id,draft_id:ED.draft_id,operator:document.querySelector('#ed input[name=operator]').value})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||j.message||('HTTP '+r.status));return j})})
+    .then(function(j){msg.innerHTML='실행 기록 <a href="'+esc(j.url)+'" target="_blank">'+esc(j.run_id)+'</a> — 저장하지 않았다';if(w)w.location=j.url})
+    .catch(function(e){if(w)w.close();msg.textContent='실행하지 못했다: '+e.message}).then(function(){b.disabled=false})});
   render();
   fetch('/api/editor/context',{headers:{Accept:'application/json'}}).then(function(r){return r.json()}).then(function(c){CTX=c;
     document.getElementById('dl-ops').innerHTML=c.ops.map(function(o){return '<option value="'+esc(o.id)+'">'+esc(o.method+' '+o.path+' — '+(o.summary||''))+'</option>'}).join('');
@@ -213,12 +222,13 @@ def manual_tc_form(rec: dict | None, *, docs: list, domains: list, ops: list, pr
                  f'<p class="hint">id 는 PRD.문서.절#번호 로 저장 때 자동으로 붙는다. 같은 절의 다음 번호다.</p>')
     delete = ""
     if edit:
-        delete = (f'<form method="post" action="/catalog/tc/delete-request" class="card"><h3 style="margin-top:0">이 TC 삭제 요청{h("tc.delete")}</h3>'
+        delete = (f'<form method="post" action="/catalog/tc/delete" class="card" onsubmit="return confirm(\'{e(r["id"])} 를 지운다. manual-tc.yaml 에서 바로 빠진다.\')">'
+                  f'<h3 style="margin-top:0">이 TC 지우기{h("tc.delete")}</h3>'
                   f'<input type="hidden" name="id" value="{e(r["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-                  f'<p class="small mut">삭제도 초안이 되고, 승인하면 manual-tc.yaml 에서 빠진다. 이 TC 를 검증하는 스크립트가 있으면 요청이 막힌다.</p>'
-                  f'<input name="reason" placeholder="삭제 사유 (필수)" style="width:60%" required> <button class="danger" {dis}>삭제 요청</button></form>')
+                  f'<p class="small mut">누르면 manual-tc.yaml 에서 바로 빠진다. 이 TC 를 검증하는 스크립트가 있으면 막힌다.</p>'
+                  f'<input name="reason" placeholder="사유 (선택, 커밋 메시지에 남는다)" style="width:60%"> <button class="danger" {dis}>지우기</button></form>')
     return (f'<style>{EDIT_CSS}</style><h1>{"수동 작성 TC 고치기" if edit else "수동 작성 TC 추가"}{h("tc.manual_form")}</h1>'
-            f'<p class="small mut">SSOT 로 형식화되지 않은 PRD 요구나 운영 기준을 사람이 TC 로 적는다. 저장하면 초안이 되고, 승인하면 <span class="mono">catalog/manual-tc.yaml</span> 에 커밋된다.</p>'
+            f'<p class="small mut">SSOT 로 형식화되지 않은 PRD 요구나 운영 기준을 사람이 TC 로 적는다. 저장하면 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 커밋된다.</p>'
             f'<form method="post" action="/catalog/manual/save" class="card"><input type="hidden" name="operator" value="{e(operator)}">{where}'
             f'<div class="g2"><div class="field"><label class="req">도메인</label><select name="domain">{doms}</select></div>'
             f'<div class="field"><label>관련 API</label><input name="operations" list="dl-ops2" value="{e(", ".join(r.get("operations") or []))}" placeholder="operationId, 쉼표로" class="mono"></div></div>'
@@ -226,7 +236,7 @@ def manual_tc_form(rec: dict | None, *, docs: list, domains: list, ops: list, pr
             f'<div class="field"><label>given (전제)</label><textarea name="given" rows="2">{e(v("given"))}</textarea></div>'
             f'<div class="field"><label class="req">when (요청이나 행동)</label><textarea name="when" rows="2" required>{e(v("when"))}</textarea></div>'
             f'<div class="field"><label class="req">then (기대 결과)</label><textarea name="then" rows="2" required>{e(v("then"))}</textarea></div>'
-            f'<div class="actions"><button class="primary" {dis}>초안으로 저장</button> <a href="/catalog">TC 목록</a></div></form>{delete}'
+            f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="/catalog">TC 목록</a></div></form>{delete}'
             f'<datalist id="dl-docs">{dl_docs}</datalist><datalist id="dl-ops2">{dl_ops}</datalist>')
 
 
@@ -259,7 +269,7 @@ def jobs_list(rows: list[dict]) -> str:
         body += (f'<tr><td><a href="/jobs/{e(r["id"])}" class="mono">{e(r["id"])}</a></td><td>{e(KINDS.get(r["kind"], r["kind"]))}</td><td class="small">{e(r.get("label"))}</td>'
                  f'<td>{e(r["operator"])}</td><td>{badge(STATUS_KO.get(r["status"], r["status"]))}</td><td class="small mut">{kst(r["created_at"])}</td>'
                  f'<td class="small">{links or e((r.get("error") or "")[:80])}</td></tr>')
-    return (f'<h1>Hermes 작업{h("jobs.list")} <span class="small mut">초안 생성·TC 제안·고치기·실패 분석 — 누가 언제 돌렸고 어떻게 끝났나</span></h1>'
+    return (f'<h1>Hermes 작업{h("jobs.list")} <span class="small mut">스크립트 쓰기·TC 제안·고치기·실패 분석 — 누가 언제 돌렸고 어떻게 끝났나</span></h1>'
             f'<div class="card"><table><tr><th>작업</th><th>종류</th><th>대상</th><th>담당자</th><th>상태</th><th>시작</th><th>결과</th></tr>'
             f'{body or "<tr><td colspan=7 class=mut>아직 없다</td></tr>"}</table></div>')
 

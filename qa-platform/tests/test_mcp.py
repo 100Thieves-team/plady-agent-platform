@@ -94,9 +94,10 @@ class McpServerTest(unittest.TestCase):
         self.assertEqual(resp["result"], {})
         status, resp = self.rpc("tools/list")
         names = [t["name"] for t in resp["result"]["tools"]]
-        self.assertEqual(len(names), 14)
-        # 실행·전송·발행·승인 도구는 없다 (원칙 ①)
-        for bad in ("run_create", "run_start", "send", "publish", "approve", "reject", "apply", "write", "execute", "cancel"):
+        self.assertEqual(len(names), 13)
+        # 실행·전송·발행·삭제 도구는 없다 (원칙 ①). 저장 도구는 둘뿐
+        self.assertEqual([n for n in names if n.endswith("_save")], ["qa_case_save", "qa_manual_tc_save"])
+        for bad in ("run_create", "run_start", "send", "publish", "approve", "reject", "apply", "write", "execute", "cancel", "delete"):
             self.assertFalse(any(bad in n for n in names), names)
         for t in TOOLS:
             self.assertEqual(t["inputSchema"]["type"], "object")
@@ -195,51 +196,48 @@ class McpServerTest(unittest.TestCase):
         self.assertIn("12345678-…", step["response"]["body"])
         self.assertNotIn("123456789abc", step["response"]["body"])
 
-    # -- 제안 --
-    def test_draft_create_update(self):
-        res, err = self.call("qa_draft_create", yaml=GOOD_CASE, reason="테스트")
+    # -- 저장 (초안·승인 없이 바로, docs/qa-platform-scenarios.md §9) --
+    def test_case_save(self):
+        res, err = self.call("qa_case_save", yaml=GOOD_CASE, reason="테스트")
         self.assertFalse(err, res)
-        self.assertEqual(len(res["created"]), 1)
-        did = res["created"][0]["id"]
+        self.assertEqual(len(res["saved"]), 1)
+        did = res["saved"][0]["id"]
         d = self.app.store.get_draft(did)
-        self.assertEqual((d["source"], d["operator"], d["kind"], d["note"], d["status"]), ("hermes-chat", "hermes", "case", "테스트", "draft"))
+        self.assertEqual((d["source"], d["operator"], d["kind"], d["note"], d["status"]), ("hermes-chat", "hermes", "case", "테스트", "approved"))
         self.assertEqual(d["tc_ids"], ["G.room.create#duplicate-slot-left"])
-        # 요청하지 않은/없는 TC → 버림
+        self.assertFalse(res["saved"][0]["committed"])          # 이 테스트 앱은 쓰기 토큰이 없다
+        # 요청하지 않은/없는 TC → 저장하지 않고 사유
         bad = GOOD_CASE.replace('covers: ["G.room.create#duplicate-slot-left"]', 'covers: ["G.room.create#99"]')
-        res, err = self.call("qa_draft_create", yaml=bad)
+        res, err = self.call("qa_case_save", yaml=bad)
         self.assertFalse(err)
-        self.assertEqual(len(res["created"]), 0)
-        self.assertEqual(len(res["rejected"]), 1)
-        text, err = self.call("qa_draft_create", yaml="just: nonsense")
+        self.assertEqual((len(res["saved"]), len(res["rejected"])), (0, 1))
+        text, err = self.call("qa_case_save", yaml="just: nonsense")
         self.assertTrue(err)
-        # 갱신: 잘못된 YAML 이면 검증 오류가 초안에 남되 status 는 draft
-        res, err = self.call("qa_draft_update", id=did, yaml=bad)
-        self.assertFalse(err)
-        self.assertEqual(res["validation"]["status"], "error")
-        res, err = self.call("qa_draft_update", id=did, yaml=GOOD_CASE)
-        self.assertNotEqual(res["validation"]["status"], "error")
-        self.app.store.update_draft(did, status="approved")
-        text, err = self.call("qa_draft_update", id=did, yaml=GOOD_CASE)
-        self.assertTrue(err)
+        # update=true 는 있는 id 만. 없는 id 면 저장하지 않는다
+        res, err = self.call("qa_case_save", yaml=GOOD_CASE, update=True)
+        self.assertEqual((len(res["saved"]), len(res["rejected"])), (0, 1))
+        self.assertIn("update=true", res["rejected"][0]["errors"][0])
+        # update=false 인데 id 가 겹치면 새 id 로
+        existing = self.app.cases["room.explore"].to_yaml()
+        res, err = self.call("qa_case_save", yaml=existing)
+        self.assertEqual(res["saved"][0]["case_id"], "room.explore-2")
+        res, err = self.call("qa_case_save", yaml=existing, update=True)
+        self.assertEqual(res["saved"][0]["case_id"], "room.explore")
         acts = [e["action"] for e in self.app.store.list_events(50)]
-        self.assertIn("draft.generate", acts)
-        self.assertIn("draft.save", acts)
+        self.assertIn("case.save", acts)
         self.assertIn("mcp.call", acts)
 
-    def test_manual_tc_propose(self):
-        res, err = self.call("qa_manual_tc_propose", doc="룸 탐색", section="4.1",
+    def test_manual_tc_save(self):
+        res, err = self.call("qa_manual_tc_save", doc="룸 탐색", section="4.1",
                              items=[{"title": "t1", "when": "GET /v1/rooms", "then": "200"}, {"title": "t2", "given": "g", "when": "w", "then": "t", "operations": ["rooms"]}])
         self.assertFalse(err, res)
         self.assertEqual(res["kind"], "tc")
         # 기존 PRD.룸-탐색.4.1#1 다음 번호부터
         self.assertEqual(res["tc_ids"], ["PRD.룸-탐색.4.1#2", "PRD.룸-탐색.4.1#3"])
         d = self.app.store.get_draft(res["id"])
-        self.assertEqual((d["kind"], d["domain"]), ("tc", "room"))
+        self.assertEqual((d["kind"], d["domain"], d["status"]), ("tc", "room", "approved"))
         self.assertIn("cases:", d["yaml"])
-        # 서술 TC 제안은 갱신도 tc 형식으로 검증
-        res2, err = self.call("qa_draft_update", id=res["id"], yaml="cases:\n  - id: bad\n    title: x\n")
-        self.assertEqual(res2["validation"]["status"], "error")
-        text, err = self.call("qa_manual_tc_propose", doc="룸 탐색", section="4.1", items=[{"title": "", "when": "w", "then": "t"}])
+        text, err = self.call("qa_manual_tc_save", doc="룸 탐색", section="4.1", items=[{"title": "", "when": "w", "then": "t"}])
         self.assertTrue(err)
 
 

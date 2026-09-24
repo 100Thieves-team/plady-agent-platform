@@ -3,6 +3,7 @@
 - 이슈: [MOI-483](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축) 후속 (P4)
 - 선행: [`qa-platform.md`](qa-platform.md) (P0·P1), [`qa-platform-tc.md`](qa-platform-tc.md) (P2·P3)
 - 상태: 검토 완료(2026-09-21, §8 전부 권장안 채택) → **P4a~P4d 구현 완료**. 구현 결과와 사람이 할 일은 §10.
+- **2026-09-24 바뀜:** 초안·승인을 없앴다. 제안 도구 `qa_draft_create`·`qa_draft_update`·`qa_manual_tc_propose` 는 저장 도구 `qa_case_save`·`qa_manual_tc_save` 로 바뀌었고, 검증을 통과하면 main 에 바로 커밋된다. 이 문서의 "초안" 흐름은 옛 기록이다. 새 흐름은 [`qa-platform-scenarios.md`](qa-platform-scenarios.md) §9, §17.
 - 작성: 2026-09-21
 
 ## 0. 한 줄 요약

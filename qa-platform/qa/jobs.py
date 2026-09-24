@@ -15,8 +15,8 @@ from datetime import datetime, timezone
 from . import hermes
 from .config import Config
 
-KINDS = {"draft": "스크립트 초안 생성", "propose": "수동 작성 TC 제안", "revise": "바뀐 TC 에 맞게 고치기", "triage": "Hermes 실패 분석"}
-STAGES_FULL = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "검증", "끝"]
+KINDS = {"draft": "Hermes 가 스크립트 쓰기", "propose": "수동 작성 TC 제안", "revise": "바뀐 TC 에 맞게 고치기", "triage": "Hermes 실패 분석"}
+STAGES_FULL = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "검증하고 저장", "끝"]
 STAGES_SHORT = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "끝"]
 TERMINAL = ("done", "failed", "canceled", "interrupted")
 STATUS_KO = {"queued": "대기", "running": "도는 중", "done": "끝", "failed": "실패", "canceled": "그만둠", "interrupted": "중단"}
@@ -87,7 +87,7 @@ class Job:
         if len(self.text) < len(text):       # 스트리밍이 조각을 안 준 경우에도 받은 글은 보인다
             self.text = text[:TEXT_LIMIT]
         self.info["received_chars"] = len(text)
-        self.set_stage("검증" if "검증" in self.stages else "끝")
+        self.set_stage("검증하고 저장" if "검증하고 저장" in self.stages else "끝")
         return text
 
     # ---- 읽기 ----

@@ -725,10 +725,9 @@ services:
             - qa_spec_op
             - qa_api_get
             - qa_prd_section
-            # 제안 — 케이스 초안(drafts)까지만. 승인은 사람이 화면에서
-            - qa_draft_create
-            - qa_draft_update
-            - qa_manual_tc_propose
+            # 저장 — 검증을 통과하면 main 에 바로 커밋(Hermes 작성 표시). 실행·삭제 도구는 없다
+            - qa_case_save
+            - qa_manual_tc_save
           resources: false
           prompts: false
         YAML

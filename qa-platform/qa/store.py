@@ -394,6 +394,15 @@ class Store:
             rows = self._q("SELECT * FROM drafts ORDER BY created_at DESC LIMIT ?", (limit,))
         return [self._draft(r) for r in rows]
 
+    def list_changes(self, *, case_id: str | None = None, tc_id: str | None = None, limit: int = 5) -> list[dict]:
+        """저장된 변경(status approved) 중 이 스크립트·TC 에 대한 것, 최신순. 화면의 "최근 변경" 에 쓴다."""
+        if case_id:
+            rows = self._q("SELECT * FROM drafts WHERE status='approved' AND case_id=? ORDER BY decided_at DESC LIMIT ?", (case_id, limit))
+        else:
+            rows = self._q("SELECT * FROM drafts WHERE status='approved' AND kind IN ('tc','tc-delete') AND tc_ids LIKE ? ORDER BY decided_at DESC LIMIT ?",
+                           ("%" + json.dumps(tc_id, ensure_ascii=False) + "%", limit))
+        return [self._draft(r) for r in rows]
+
     def draft_counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self._q("SELECT status, COUNT(*) n FROM drafts GROUP BY status")}
 

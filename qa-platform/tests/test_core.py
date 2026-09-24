@@ -468,9 +468,9 @@ cases:
         bad["steps"] = [dict(bad["steps"][0], covers=["op.createRoom:E1402"])]
         case, errors, _ = self.drafts.validate(bad, requested=["op.createRoom:E1402"], catalog=self.cat, cfg=self.cfg, existing_ids=set())
         self.assertIsNone(case)
-        # 기존 id 와 겹치면 -draft 접미
+        # 기존 id 와 겹치면 -2 접미
         case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids={"room.create-limit-reject"})
-        self.assertEqual(case.id, "room.create-limit-reject-draft")
+        self.assertEqual(case.id, "room.create-limit-reject-2")
 
     def test_generate_flow_with_fake_hermes(self):
         seen = {}

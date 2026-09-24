@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 import app as appmod  # noqa: E402
 from app import App, BadRequest  # noqa: E402
-from qa import editor, httpx  # noqa: E402
+from qa import editor, httpx, ui  # noqa: E402
 from qa.cases import _validate  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.repo import RepoError, append_item, ids_in, item_spans, replace_item  # noqa: E402
@@ -227,12 +227,13 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(self.app.cases_dir, self.app.repo.local / "cases")
         self.assertIn("room.explore", self.app.cases)
 
-    def test_new_script_approve_commits_and_applies(self):
-        res = self.app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="bebe")
+    def test_new_script_saves_commits_and_applies(self):
+        """초안·승인 없이 저장이 곧 main 커밋 (docs/qa-platform-scenarios.md §9)."""
+        res = self.app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="dbwp031")
         self.assertTrue(res["ok"], res)
-        d = self.app.store.get_draft(res["draft_id"])
-        self.assertEqual((d["source"], d["case_id"], d["kind"]), ("form", "room.form-options-again", "case"))
-        self.app.approve_draft(d, operator="dbwp031", note=None)
+        self.assertTrue(res["commit"]["sha"].startswith("c"))
+        d = self.app.store.get_draft(res["id"])
+        self.assertEqual((d["source"], d["case_id"], d["kind"], d["status"]), ("form", "room.form-options-again", "case", "approved"))
         put = self.gh.puts[-1]
         self.assertEqual(put["path"], "qa-platform/cases/room.yaml")
         self.assertEqual(put["branch"], "main")
@@ -243,10 +244,11 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(new.startswith((ROOT / "cases" / "room.yaml").read_text(encoding="utf-8").rstrip("\n")))
         self.assertIn("room.form-options-again", self.app.cases)                       # 플랫폼에 바로
         self.assertEqual(self.app.cases["room.form-options-again"].reviewed["by"], "dbwp031")
-        d = self.app.store.get_draft(d["id"])
-        self.assertEqual(d["status"], "approved")
-        self.assertTrue(d["commit_sha"].startswith("c"))
+        self.assertNotIn("written_by", self.app.cases["room.form-options-again"].raw)
         self.assertEqual(d["file"], "cases/room.yaml")
+        self.assertEqual(self.app.change_link(res)["href"], "/cases/room.form-options-again")
+        acts = [e["action"] for e in self.app.store.list_events(10)]
+        self.assertIn("case.save", acts)
 
     def test_new_script_validation_blocks_save(self):
         st = json.loads(json.dumps(SMOKE_STATE))
@@ -261,6 +263,7 @@ class FlowTest(unittest.TestCase):
         st["actor"] = "nobody"
         self.assertTrue(any("nobody" in x for x in self.app.form_case(st, mode="new", original_id=None, draft_id=None, operator="bebe")["errors"]))
         self.assertEqual(self.app.store.list_drafts(), [])
+        self.assertEqual(self.gh.puts, [])
         with self.assertRaises(BadRequest):
             self.app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="누구")
 
@@ -272,69 +275,87 @@ class FlowTest(unittest.TestCase):
         self.assertIn("바꿀 수 없다", self.app.form_case(bad, mode="edit", original_id="room.explore", draft_id=None, operator="bebe")["errors"][0])
         res = self.app.form_case(st, mode="edit", original_id="room.explore", draft_id=None, operator="bebe")
         self.assertTrue(res["ok"], res)
-        d = self.app.store.get_draft(res["draft_id"])
-        self.assertEqual(d["source"], "form-edit")
-        self.app.approve_draft(d, operator="bebe", note="제목만")
+        self.assertEqual(self.app.store.get_draft(res["id"])["source"], "form-edit")
         after = self.gh.files["qa-platform/cases/room.yaml"]
         self.assertIn("(폼으로 고침)", after)
         self.assertEqual(after.split("  - id: room.create-and-cancel")[1], before.split("  - id: room.create-and-cancel")[1])
         self.assertTrue(after.startswith(before.split("  - id: room.explore")[0]))
         self.assertIn("room.explore 수정", self.gh.puts[-1]["message"])
         self.assertEqual(self.app.cases["room.explore"].title, st["title"])
+        self.assertEqual([c["id"] for c in self.app.store.list_changes(case_id="room.explore")], [res["id"]])
 
-    def test_edit_hermes_draft_through_form(self):
-        did = self.app.store.add_draft(operator="bebe", source="hermes", domain="room", yaml_text=yaml.safe_dump(dict(editor.from_state(SMOKE_STATE))), note=None,
+    def test_hermes_mark_is_removed_by_form_save(self):
+        """Hermes 가 저장한 것은 written_by: hermes. 사람이 폼으로 한 번 저장하면 뗀다."""
+        raw = dict(editor.from_state(SMOKE_STATE))
+        out = self.app.save_change(kind="case", source="hermes", yaml_text=yaml.safe_dump(raw, allow_unicode=True), operator="bebe",
+                                   case_id=raw["id"], tc_ids=["op.roomFormOptions:200"])
+        self.assertTrue(out["commit"])
+        self.assertEqual(self.app.cases["room.form-options-again"].raw.get("written_by"), "hermes")
+        self.assertIn("Hermes 작성", ui.hermes_badge(self.app.cases["room.form-options-again"].raw))
+        st = editor.to_state(self.app.cases["room.form-options-again"].raw)
+        st["title"] = "사람이 본 제목"
+        res = self.app.form_case(st, mode="edit", original_id="room.form-options-again", draft_id=None, operator="bebe")
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn("written_by", self.app.cases["room.form-options-again"].raw)
+        self.assertNotIn("written_by", self.gh.files["qa-platform/cases/room.yaml"])
+
+    def test_form_saves_unsaved_draft(self):
+        """API 호출 화면에서 담은 것(저장 안 된 변경 기록)을 폼으로 열어 저장하면 그 기록이 저장됨이 된다."""
+        did = self.app.store.add_draft(operator="bebe", source="explorer", domain="room", yaml_text=yaml.safe_dump(dict(editor.from_state(SMOKE_STATE))), note=None,
                                        case_id="room.form-options-again", tc_ids=["op.roomFormOptions:200"])
         st = json.loads(json.dumps(SMOKE_STATE))
         st["title"] = "사람이 고친 제목"
         res = self.app.form_case(st, mode="draft", original_id=None, draft_id=did, operator="bebe")
         self.assertTrue(res["ok"], res)
-        self.assertEqual(res["draft_id"], did)
-        self.assertIn("사람이 고친 제목", self.app.store.get_draft(did)["yaml"])
-
-    def test_delete_request_then_approve(self):
-        did = self.app.delete_request(what="case", target="room.explore", reason="중복", operator="bebe")
+        self.assertEqual(res["id"], did)
         d = self.app.store.get_draft(did)
-        self.assertEqual((d["kind"], d["note"]), ("case-delete", "중복"))
-        with self.assertRaises(BadRequest):
-            self.app.delete_request(what="case", target="room.explore", reason=" ", operator="bebe")
-        self.app.approve_draft(d, operator="dbwp031", note=None)
+        self.assertEqual((d["status"], d["source"]), ("approved", "form"))
+        self.assertIn("사람이 고친 제목", d["yaml"])
+        self.assertEqual(self.app.cases["room.form-options-again"].title, "사람이 고친 제목")
+        with self.assertRaises(BadRequest):          # 저장한 것은 다시 안 연다
+            self.app.form_case(st, mode="draft", original_id=None, draft_id=did, operator="bebe")
+
+    def test_delete_is_immediate(self):
+        out = self.app.delete_item(what="case", target="room.explore", reason="중복", operator="dbwp031")
+        d = self.app.store.get_draft(out["id"])
+        self.assertEqual((d["kind"], d["note"], d["status"]), ("case-delete", "중복", "approved"))
         self.assertNotIn("room.explore", self.app.cases)
         self.assertNotIn("id: room.explore\n", self.gh.files["qa-platform/cases/room.yaml"])
         self.assertIn("room.explore 삭제", self.gh.puts[-1]["message"])
+        self.assertIn("메모: 중복", self.gh.puts[-1]["message"])
+        self.app.delete_item(what="case", target="room.creation-limit", operator="bebe")          # 사유는 선택
+        self.assertNotIn("room.creation-limit", self.app.cases)
+        with self.assertRaises(BadRequest):
+            self.app.delete_item(what="case", target="room.nope", operator="bebe")
 
     def test_manual_tc_add_edit_delete(self):
         with self.assertRaises(BadRequest):      # 검증하는 스크립트가 있으면 막는다
-            self.app.delete_request(what="tc", target="PRD.룸-탐색.4.1#1", reason="x", operator="bebe")
+            self.app.delete_item(what="tc", target="PRD.룸-탐색.4.1#1", reason="x", operator="bebe")
         with self.assertRaises(BadRequest):      # 규칙·계약 TC 는 폼으로 안 고친다
             self.app.form_tc({"title": "x", "when": "w", "then": "t"}, tc_id="op.roomFormOptions:200", operator="bebe")
-        did = self.app.form_tc({"tc_kind": "prd", "doc": "룸 탐색", "section": "4.1", "domain": "room", "title": "필터 없이 조회한다",
+        out = self.app.form_tc({"tc_kind": "prd", "doc": "룸 탐색", "section": "4.1", "domain": "room", "title": "필터 없이 조회한다",
                                 "when": "GET /v1/rooms", "then": "200", "operations": "rooms"}, tc_id=None, operator="bebe")
-        d = self.app.store.get_draft(did)
-        self.assertEqual(d["kind"], "tc")
-        new_id = d["tc_ids"][0]
+        self.assertEqual(out["kind"], "tc")
+        new_id = out["tc_ids"][0]
         self.assertTrue(new_id.startswith("PRD.룸-탐색.4.1#"))
         self.assertNotEqual(new_id, "PRD.룸-탐색.4.1#1")
-        self.app.approve_draft(d, operator="bebe", note=None)
         self.assertIn(new_id, ids_in(self.gh.files["qa-platform/catalog/manual-tc.yaml"]))
         self.assertIn(new_id, self.app.current_catalog().records)
-        # 같은 번호로 또 제안된 것(동시에 만든 초안)은 승인 때 다음 번호로
+        self.assertEqual(self.app.change_link(out)["href"], "/catalog/tc?id=" + quote(new_id, safe=""))
+        # 예전 방식으로 남은 초안(같은 번호)은 저장 때 다음 번호로
         dup = self.app.store.add_draft(operator="bebe", source="hermes-propose", domain="room", note=None, case_id=None, tc_ids=[new_id], kind="tc",
                                        yaml_text=yaml.safe_dump({"cases": [{"id": new_id, "doc": "룸 탐색", "section": "4.1", "domain": "room", "title": "또", "when": "w", "then": "t"}]}, allow_unicode=True))
         self.app.approve_draft(self.app.store.get_draft(dup), operator="bebe", note=None)
         n = int(new_id.rsplit("#", 1)[1])
         self.assertEqual(self.app.store.get_draft(dup)["tc_ids"], [f"PRD.룸-탐색.4.1#{n + 1}"])
+        self.assertIn("written_by: hermes", self.gh.files["qa-platform/catalog/manual-tc.yaml"])
         # 고치기 → 지우기
-        eid = self.app.form_tc({"domain": "room", "title": "필터 없이 조회한다 (고침)", "when": "GET /v1/rooms", "then": "200"}, tc_id=new_id, operator="bebe")
-        self.app.approve_draft(self.app.store.get_draft(eid), operator="bebe", note=None)
+        self.app.form_tc({"domain": "room", "title": "필터 없이 조회한다 (고침)", "when": "GET /v1/rooms", "then": "200"}, tc_id=new_id, operator="bebe")
         self.assertEqual(self.app.current_catalog().records[new_id]["title"], "필터 없이 조회한다 (고침)")
-        xid = self.app.delete_request(what="tc", target=new_id, reason="안 씀", operator="bebe")
-        self.app.approve_draft(self.app.store.get_draft(xid), operator="bebe", note=None)
+        self.app.delete_item(what="tc", target=new_id, operator="bebe")
         self.assertNotIn(new_id, self.app.current_catalog().records)
 
     def test_conflict_is_reported(self):
-        res = self.app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="bebe")
-        d = self.app.store.get_draft(res["draft_id"])
         orig = self.gh.__call__
 
         def conflict(method, url, **kw):
@@ -343,23 +364,28 @@ class FlowTest(unittest.TestCase):
             return orig(method, url, **kw)
         httpx.request = conflict
         with self.assertRaises(BadRequest) as cm:
-            self.app.approve_draft(d, operator="bebe", note=None)
+            self.app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="bebe")
         self.assertIn("그사이 바뀌었다", str(cm.exception))
-        self.assertEqual(self.app.store.get_draft(d["id"])["status"], "draft")
+        d = self.app.store.list_drafts()[0]
+        self.assertEqual(d["status"], "failed")
+        self.assertNotIn("room.form-options-again", self.app.cases)
+        httpx.request = self.gh                                   # 다시 저장하면 된다
+        self.assertTrue(self.app.approve_draft(self.app.store.get_draft(d["id"]), operator="bebe", note=None)["commit"])
+        self.assertIn("room.form-options-again", self.app.cases)
 
 
 @unittest.skipUnless(HAS_WIKI, "wiki-workspace 체크아웃 없음")
 class NoTokenTest(unittest.TestCase):
-    def test_approve_without_token_offers_file(self):
+    def test_save_without_token_offers_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_app(tmp, token=False)
             self.assertFalse(app.repo.enabled)
             res = app.form_case(json.loads(json.dumps(SMOKE_STATE)), mode="new", original_id=None, draft_id=None, operator="bebe")
-            d = app.store.get_draft(res["draft_id"])
-            app.approve_draft(d, operator="bebe", note=None)
-            d = app.store.get_draft(d["id"])
+            self.assertIsNone(res["commit"])
+            d = app.store.get_draft(res["id"])
             self.assertEqual(d["status"], "approved")
             self.assertIsNone(d["commit_sha"])
+            self.assertEqual(app.change_link(res)["href"], f"/drafts/{d['id']}")
             rel, text = app.draft_file(d, "bebe")
             self.assertEqual(rel, "cases/room.yaml")
             self.assertIn("room.form-options-again", ids_in(text))
@@ -438,12 +464,18 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(st, 400)
         self.assertIn("저장하지 않았다", body)
         st, body = self.post("/editor/save", {"state": json.dumps(dict(SMOKE_STATE, id="room.via-http")), "mode": "new", "operator": "bebe"})
-        self.assertEqual(st, 200)       # 303 → 초안 화면을 따라간다
+        self.assertEqual(st, 200)       # 303 → 저장된 스크립트 화면을 따라간다
         self.assertIn("room.via-http", body)
+        self.assertIn("최근 변경", body)
+        self.assertIn("room.via-http", self.app.cases)
         did = next(d["id"] for d in self.app.store.list_drafts() if d["case_id"] == "room.via-http")
-        st, body = self.get(f"/drafts/{did}/edit")
+        st, body = self.get(f"/drafts/{did}")
         self.assertEqual(st, 200)
-        self.assertIn("room.via-http", body)
+        self.assertIn("저장됨", body)
+        st, body = self.post("/editor/try", {"state": dict(SMOKE_STATE, id="room.try-only"), "mode": "new", "operator": "bebe"}, json_body=True)
+        self.assertEqual(st, 200, body)
+        self.assertTrue(json.loads(body)["run_id"].startswith("r-"))
+        self.assertNotIn("room.try-only", self.app.cases)                      # 실행해 봐도 저장하지 않는다
 
 
 if __name__ == "__main__":

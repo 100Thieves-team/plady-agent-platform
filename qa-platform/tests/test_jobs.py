@@ -121,7 +121,7 @@ class JobsTest(unittest.TestCase):
             stages.append(job.stage)
             return {"summary": f"받음 {out}", "links": [{"href": "/drafts/d-1", "label": "초안"}]}
         job = jobs.submit("draft", "bebe", "TC x", fn, sync=True)
-        self.assertEqual(stages, ["근거 모으기", "검증"])
+        self.assertEqual(stages, ["근거 모으기", "검증하고 저장"])
         s = job.snapshot(with_text=True)
         self.assertEqual((s["status"], s["stage"], s["text"]), ("done", "끝", "abc"))
         self.assertEqual(s["info"]["prompt_chars"], len("PROMPT-TEXT"))
@@ -134,7 +134,7 @@ class JobsTest(unittest.TestCase):
     def test_triage_has_no_validation_stage(self):
         jobs = Jobs(self.cfg, self.store, asker=fake_asker(["분류: 버그"]))
         job = jobs.submit("triage", "bebe", "r-1", lambda j: {"summary": j.ask("s", "p", "qa-triage")}, sync=True)
-        self.assertNotIn("검증", job.stages)
+        self.assertNotIn("검증하고 저장", job.stages)
         self.assertEqual(job.status, "done")
 
     def test_failure_message(self):
@@ -206,17 +206,20 @@ class AppJobTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_generate_job_makes_draft(self):
+    def test_generate_job_saves_script(self):
         job = self.app.job_generate(["op.roomFormOptions:200"], "bebe", sync=True)
         self.assertEqual(job.status, "done", job.error)
-        self.assertEqual(job.text, YAML_DRAFT)                      # 사용자 결정: 초안 YAML 을 쓰는 대로 보인다
-        link = job.result["links"][0]["href"]
+        self.assertEqual(job.text, YAML_DRAFT)                      # 사용자 결정: Hermes 가 쓰는 YAML 이 쓰는 대로 보인다
+        link = job.result["links"][0]["href"]                       # 쓰기 토큰이 없어 커밋 없이 변경 기록(파일 받기)으로
+        self.assertTrue(link.startswith("/drafts/d-"), link)
         d = self.app.store.get_draft(link.rsplit("/", 1)[1])
-        self.assertEqual((d["case_id"], d["source"]), ("room.form-options-by-hermes", "hermes"))
+        self.assertEqual((d["case_id"], d["source"], d["status"]), ("room.form-options-by-hermes", "hermes", "approved"))
+        self.assertIn("1건 저장", job.result["summary"])
         acts = [ev["action"] for ev in self.app.store.list_events(limit=20)] if hasattr(self.app.store, "list_events") else None
         if acts is not None:
             self.assertIn("hermes_job.start", acts)
-            self.assertIn("draft.generate", acts)
+            self.assertIn("hermes.generate", acts)
+            self.assertIn("case.save", acts)
 
     def test_bad_input_fails_job_with_reason(self):
         job = self.app.job_generate(["없는.TC"], "bebe", sync=True)

@@ -2,8 +2,8 @@
 
 플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(실행·스크립트·TC 요약)를 붙인다, (2) Hermes `/v1/responses` 를
 SSE 로 한 번 부르며 델타·도구 호출·도구 결과를 그대로 브라우저로 흘린다(previous_response_id 로 서버가 대화를 잇고, 밀려났으면
-여기 기록으로 다시 잇는다), (3) 끝나면 응답 본문·도구 호출·그 턴에 생긴 초안 id 를 저장하고 감사 로그에 남긴다.
-실행·발행·승인은 도구에 없으므로 채팅으로는 일어나지 않는다.
+여기 기록으로 다시 잇는다), (3) 끝나면 응답 본문·도구 호출·그 턴에 저장한 변경 id(d-…)를 기록하고 감사 로그에 남긴다.
+실행·발행은 도구에 없으므로 채팅으로는 일어나지 않는다. 스크립트·수동 작성 TC 저장은 검증을 통과하면 바로 된다.
 """
 from __future__ import annotations
 
@@ -15,19 +15,19 @@ from . import hermes
 from .config import Config
 
 DRAFT_ID = re.compile(r"\bd-[0-9a-f]{8}\b")
-DRAFT_TOOLS = ("qa_draft_create", "qa_draft_update", "qa_manual_tc_propose")
+DRAFT_TOOLS = ("qa_case_save", "qa_manual_tc_save", "qa_draft_create", "qa_draft_update", "qa_manual_tc_propose")   # 뒤 셋은 예전 대화 기록을 읽으려고
 Emit = Callable[[str, object], None]
 
 SYSTEM = (
     "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 테스트 케이스(TC)·스크립트·실행 기록·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
     "규칙:\n"
     "1. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이고 네가 만들거나 고치지 않는다. TC 를 바꾸려면 위키를 고쳐야 한다고 안내한다.\n"
-    "2. 스크립트를 쓰거나 고칠 때는 qa_draft_create / qa_draft_update 로 스크립트 초안을 내고, 검증 사유가 돌아오면 고쳐서 다시 낸다. "
-    "세 번 넘게 실패하면 사람에게 넘긴다. covers 는 qa_catalog_search 로 확인한 실재 TC id 만 쓴다.\n"
-    "3. 실행·API 직접 호출·위키 보고서 게시·초안 승인은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
+    "2. 스크립트를 쓰거나 고칠 때는 qa_case_save 로 저장한다(고칠 때는 update=true). 검증을 통과하면 main 에 바로 들어가니, 사람이 부탁한 것만 저장한다. "
+    "검증 사유가 돌아오면 고쳐서 다시 부르고, 세 번 넘게 실패하면 사람에게 넘긴다. covers 는 qa_catalog_search 로 확인한 실재 TC id 만 쓴다.\n"
+    "3. 실행·API 직접 호출·위키 보고서 게시는 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
     "4. 답은 도구로 읽은 사실에 근거하고, 모르는 것은 모른다고 한다. 회원 UUID 같은 식별값은 답에 옮기지 않는다.\n"
     "5. 이 QA 대화에서는 위키를 쓰지 않는다(wiki_apply 금지). 위키 읽기 도구는 PRD·SSOT 확인에만 쓴다.\n"
-    "6. 초안을 만들었으면 초안 id(d-…)와 링크를 답에 적는다. 답은 짧게, 마크다운 없이 평문으로."
+    "6. 저장했으면 스크립트 id 와 링크를 답에 적는다. 답은 짧게, 마크다운 없이 평문으로."
 )
 
 

@@ -54,16 +54,16 @@ class ProposeTest(unittest.TestCase):
 
     def test_propose_button_path(self):
         httpx.request = _chat_reply("```yaml\nitems:\n  - title: 마감 지난 룸은 목록에 안 나온다\n    given: 마감일이 지난 룸\n    when: GET /v1/rooms\n    then: 그 룸이 없다\n    operations: [rooms]\n  - title: 잘못된 항목\n    when: w\n    then: t\n```")
-        did = self.app.propose_tc(doc="룸 탐색", section="4.1", domain="", operator="bebe", session_hash=None, ip=None)
-        d = self.app.store.get_draft(did)
-        self.assertEqual((d["kind"], d["source"], d["domain"], d["operator"]), ("tc", "hermes-propose", "room", "bebe"))
+        out = self.app.propose_tc(doc="룸 탐색", section="4.1", domain="", operator="bebe", session_hash=None, ip=None)
+        d = self.app.store.get_draft(out["id"])
+        self.assertEqual((d["kind"], d["source"], d["domain"], d["operator"], d["status"]), ("tc", "hermes-propose", "room", "bebe", "approved"))
         self.assertEqual(d["tc_ids"], ["PRD.룸-탐색.4.1#2", "PRD.룸-탐색.4.1#3"])
         self.assertIn("cases:", d["yaml"])
         self.assertTrue(d["prompt_hash"])
         sent = httpx.request.bodies[-1]
         self.assertIn("PRD/룸 탐색 §4.1 본문", sent["messages"][1]["content"])
         self.assertIn("기존 TC", sent["messages"][1]["content"])          # 이미 뽑힌 #1 을 알려 준다
-        # 저장·승인 경로는 tc 형식 검증
+        # 저장 경로는 tc 형식 검증
         items, errors = drafts.validate_manual_tc(d["yaml"])
         self.assertEqual((len(items), errors), (2, []))
 

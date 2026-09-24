@@ -1,6 +1,6 @@
 # QA 플랫폼 — 사용자 시나리오로 테스트 관리하기 (설계)
 
-> 상태: **설계 3판 (2026-09-24), 검토 중.** 검토 답은 §16. 3판은 PRD 를 잘게 나누지 않기로 §3 을 고쳤다.
+> 상태: **설계 3판 확정 (2026-09-24), 구현 중.** 검토 답은 §16, 구현 기록은 §17. 1단계(초안·승인 없애기)가 끝났다.
 > 사용자 요청: "스크립트 기반은 너무 비직관적이다. 단일 정책은 결국 유즈케이스 안의 여러 로직 중 하나다. 시나리오는 AI 가 만들고, 사람이 CRUD 를 직접 다 할 수 있게 하자."
 > 관련: [qa-platform-tc.md](qa-platform-tc.md)(TC 카탈로그), [qa-platform-editor.md](qa-platform-editor.md)(폼 편집, 이번에 저장 흐름이 바뀐다), [qa-platform-progress.md](qa-platform-progress.md)(Hermes 작업 SSE), [policy-ssot-split.md](policy-ssot-split.md)(PRD 요구 id, 게이트 검사 key).
 
@@ -310,7 +310,7 @@ scenarios:
 
 ## 15. 남은 질문
 
-1. **PRD 고칠 곳(§3.3):** 이 목록대로 진행해도 될까요? 새 시나리오 셋(룸 생성 S2, 후기 S2, 회원 S2)이 흐름으로 따로 설 만한지 봐 주세요.
+없다. §3.3 의 PRD 고칠 곳 목록은 2026-09-24 사용자가 받아들였다.
 
 ## 16. 검토 답 (2026-09-24)
 
@@ -325,3 +325,21 @@ scenarios:
 - **3차**
   - ErrorCode 를 모르는 거절 규칙 77개는 테스트 없는 거절 규칙 목록에 보이되 `manual` 로 시작한다. 목록은 백엔드에 물어볼 것으로 쓴다.
   - 사용자 지적: "PRD 를 너무 잘게 나누면 SSOT 문서의 스펙과 역할이 같아진다." 동의해서 §3 을 고쳤다. 시나리오는 여러 행동을 잇는 흐름이고, 명령 하나짜리는 단계나 분기로 넣는다. 29개 제안을 14개로 줄였다.
+- **4차**
+  - §3.3 의 새 시나리오 셋(룸 생성 S2, 후기 S2, 회원 S2)과 나머지 목록을 그대로 진행한다. 1단계부터 구현한다.
+
+## 17. 구현 기록
+
+### 17.1 1단계 — 초안과 승인 없애기 (2026-09-24)
+
+- **저장 경로 하나:** `App.save_change` 가 변경 기록(drafts 테이블) 한 줄을 남기고 `_apply` 로 main 에 커밋한다. 폼(`form_case`, `form_tc`), 삭제(`delete_item`, 사유는 선택), Hermes(`generate_cases`, `revise_case`, `propose_tc`), 채팅 도구가 모두 이 길을 탄다.
+- **커밋 실패:** 기록이 `failed`(저장 실패)로 남고 사유를 돌려준다. 다시 저장하면 된다.
+- **Hermes 작성 표시:** `editor.plan_case`·`plan_tc` 가 source 가 `hermes*` 이면 `written_by: hermes` 를 달고, 사람이 폼으로 저장하면 뗀다. 스크립트 화면에 "Hermes 작성" 배지가 뜬다. `reviewed` 는 저장한 사람과 오늘로 올린다.
+- **저장 전 실행:** `POST /editor/try` 가 폼 내용을 저장하지 않고 한 번 돌린다(trigger `draft-check`, 화면 이름 "저장 전 실행").
+- **화면:** `/drafts` 는 "변경 기록" 이다. 스크립트 화면에 "최근 변경"(커밋 링크)이 붙고, 삭제는 확인 창 하나로 바로 된다. API 호출 화면의 [스크립트로 담기] 는 폼을 연다.
+- **Hermes 채팅 도구:** `qa_draft_create`·`qa_draft_update`·`qa_manual_tc_propose` 를 `qa_case_save`(update 로 기존 id 고치기)·`qa_manual_tc_save` 로 바꿨다. 삭제 도구는 없다. 도구는 13개.
+- **예전 초안:** 저장 안 된 것(`draft`, `checked`)은 변경 기록 화면에서 폼으로 열거나 저장·버리기 할 수 있다.
+- **id 겹침:** Hermes 가 쓴 id 가 겹치면 `-draft` 대신 `-2`, `-3` 을 붙인다.
+- **감사 로그:** `case.save`, `case.delete`, `case.try`, `manual_tc.save`, `manual_tc.delete`, `hermes.generate`, `hermes.rejected_by_validation`, `explorer.to_form`.
+- 테스트 142건 통과(위키 새 판 기준). 로컬 브라우저로 폼 저장, 저장 전 실행, 변경 기록, 스크립트 화면을 확인했다.
+

@@ -79,13 +79,13 @@ class ReviseTest(unittest.TestCase):
         self.assertIn("C.room.create", allowed)
         self.assertIn("# 허용되는 covers", text)
 
-    def test_revise_creates_draft_with_same_id_and_diff(self):
+    def test_revise_saves_with_same_id(self):
         self._drift(changed="C.room.create")
         new_yaml = self.case.to_yaml().replace("title: ", "title: 고침 — ", 1)
         httpx.request = _chat_reply("# 변경: 제목만\n```yaml\n" + new_yaml + "```")
-        did = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
-        d = self.app.store.get_draft(did)
-        self.assertEqual((d["source"], d["case_id"], d["status"]), ("hermes-revise", self.case.id, "draft"))
+        out = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
+        d = self.app.store.get_draft(out["id"])
+        self.assertEqual((d["source"], d["case_id"], d["status"]), ("hermes-revise", self.case.id, "approved"))     # 초안 없이 바로 저장
         self.assertTrue(d["note"].startswith("바뀐 TC 에 맞게 다시 씀"))
         self.assertTrue(d["prompt_hash"])
         self.assertIn("고침 — ", d["yaml"])
@@ -94,14 +94,14 @@ class ReviseTest(unittest.TestCase):
         html = ui.draft_detail(d, {}, None, operators=["bebe"], operator="bebe", original_yaml=self.case.to_yaml())
         self.assertIn("원본 스크립트와의 차이", html)
         self.assertIn("+title: 고침", html)
-        ev = [x for x in self.app.store.list_events(10) if x["action"] == "draft.generate"][0]
+        ev = [x for x in self.app.store.list_events(10) if x["action"] == "hermes.generate"][0]
         self.assertEqual(ev["detail"]["source"], "hermes-revise")
 
     def test_revise_keeps_id_even_if_hermes_changes_it(self):
         self._drift(changed="C.room.create")
         httpx.request = _chat_reply("```yaml\n" + self.case.to_yaml().replace("id: room.create-and-cancel", "id: room.other") + "```")
-        did = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
-        self.assertEqual(self.app.store.get_draft(did)["case_id"], self.case.id)
+        out = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
+        self.assertEqual(self.app.store.get_draft(out["id"])["case_id"], self.case.id)
 
     def test_revise_rejects_extra_covers_and_guards(self):
         with self.assertRaises(BadRequest):                    # 바뀐 TC 없음
@@ -113,7 +113,7 @@ class ReviseTest(unittest.TestCase):
         with self.assertRaises(BadRequest) as cm:
             self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
         self.assertIn("검증을 못 넘겼다", str(cm.exception))
-        self.assertTrue(any(x["action"] == "draft.rejected_by_validation" for x in self.app.store.list_events(10)))
+        self.assertTrue(any(x["action"] == "hermes.rejected_by_validation" for x in self.app.store.list_events(10)))
         with self.assertRaises(BadRequest):
             self.app.revise_case("room.nope", operator="bebe", session_hash=None, ip=None)
 

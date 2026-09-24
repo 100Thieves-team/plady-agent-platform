@@ -17,7 +17,7 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -317,11 +317,12 @@ class App:
             slack(self.cfg.slack_webhook_url, f"[QA] {operator} 가 {ui.TRIGGER_KO.get(trigger, trigger)} 실행 — {tgt}, {len(chosen)}건 · {self.cfg.public_url}/runs/{rid}")
         return rid
 
-    # ---- 초안 (Hermes) ------------------------------------------------------------
-    def generate_drafts(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
+    # ---- Hermes 가 만들고 바로 저장 (docs/qa-platform-scenarios.md §9) --------------------------------
+    def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
+        """고른 TC 로 Hermes 가 스크립트를 쓰고, 검증을 통과한 것은 바로 저장한다(Hermes 작성 표시)."""
         cat = self.current_catalog()
         if cat is None:
-            raise BadRequest("TC 목록이 없어 초안을 만들 수 없다")
+            raise BadRequest("TC 목록이 없어 스크립트를 만들 수 없다")
         tc_ids = [t for t in dict.fromkeys(tc_ids) if t in cat.records]
         if not tc_ids:
             raise BadRequest("TC 목록에 있는 TC 를 하나 이상 골라야 한다")
@@ -332,25 +333,28 @@ class App:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
                                      example=example, existing_ids=set(self.cases), ask=ask)
         except Exception as ex:
-            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip,
+            self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
-            raise BadRequest(f"초안 생성 실패: {ex}")
-        ids = []
-        for case, warnings in res["accepted"]:
-            did = self.store.add_draft(operator=operator, source="hermes", domain=(case.domains[0] if case.domains else cat.records[tc_ids[0]]["domain"]),
-                                       yaml_text=case.to_yaml(), note=None, case_id=case.id, tc_ids=case.covers,
-                                       validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"])
-            ids.append(did)
+            raise BadRequest(f"스크립트 생성 실패: {ex}")
+        saved, rejected = [], list(res["rejected"])
         for raw_id, errors in res["rejected"]:
-            self.store.add_event(operator=operator, action="draft.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
+            self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
                                  detail={"case_id": raw_id, "errors": errors[:6], "prompt_hash": res["prompt_hash"]})
-        self.store.add_event(operator=operator, action="draft.generate", target=",".join(ids) or None, session_hash=session_hash, ip=ip,
+        for case, warnings in res["accepted"]:
+            try:
+                saved.append(self.save_change(kind="case", source="hermes", yaml_text=case.to_yaml(), operator=operator,
+                                              domain=(case.domains[0] if case.domains else cat.records[tc_ids[0]]["domain"]), case_id=case.id, tc_ids=case.covers,
+                                              validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"],
+                                              session_hash=session_hash, ip=ip))
+            except BadRequest as ex:
+                rejected.append((case.id, [str(ex)]))
+        self.store.add_event(operator=operator, action="hermes.generate", target=",".join(s["id"] for s in saved) or None, session_hash=session_hash, ip=ip,
                              detail={"tc_ids": tc_ids, "model": res["model"], "prompt_hash": res["prompt_hash"], "prompt_chars": res["prompt_chars"],
-                                     "accepted": len(ids), "rejected": len(res["rejected"]), "raw_chars": len(res["raw"])})
-        return {"ids": ids, "rejected": res["rejected"], "prompt_hash": res["prompt_hash"]}
+                                     "saved": [s["case_id"] for s in saved], "rejected": len(rejected), "raw_chars": len(res["raw"])})
+        return {"saved": saved, "rejected": rejected, "prompt_hash": res["prompt_hash"]}
 
-    def propose_tc(self, *, doc: str, section: str, domain: str | None, operator: str, session_hash: str | None, ip: str | None, ask=None) -> str:
-        """PRD 절 본문을 Hermes 에게 주어 수동 작성 TC 를 제안받고 초안(kind tc)으로. docs/qa-platform-hermes.md §3 트리 4 (P4d)."""
+    def propose_tc(self, *, doc: str, section: str, domain: str | None, operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
+        """PRD 절 본문을 Hermes 에게 주어 수동 작성 TC 를 받고 manual-tc.yaml 에 바로 저장한다. docs/qa-platform-hermes.md §3 트리 4 (P4d)."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         if not doc.strip() or not section.strip():
@@ -363,24 +367,24 @@ class App:
         except ValueError as ex:
             raise BadRequest(str(ex))
         except Exception as ex:
-            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-propose", "doc": doc, "section": section, "error": str(ex)[:300]})
+            self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-propose", "doc": doc, "section": section, "error": str(ex)[:300]})
             raise BadRequest(f"제안 실패: {ex}")
         if not res["records"]:
-            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip,
+            self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"source": "hermes-propose", "doc": doc, "section": section, "prompt_hash": res["prompt_hash"], "items": 0})
             raise BadRequest("Hermes 가 이 절에서 제안할 TC 를 찾지 못했다 (이미 뽑힌 것과 겹치거나 본문에 확인 항목이 없다)")
         text = draftsmod.yaml.safe_dump({"cases": res["records"]}, allow_unicode=True, sort_keys=False)
-        did = self.store.add_draft(operator=operator, source="hermes-propose", domain=res["domain"], yaml_text=text,
-                                   note=f"manual-tc.yaml 에 붙일 수동 작성 TC 제안 — PRD/{doc.strip()} §{section.strip().rstrip('.')}", case_id=None,
-                                   tc_ids=[r["id"] for r in res["records"]], validation={"status": "warn" if res["warnings"] else "ok", "warnings": res["warnings"]},
-                                   prompt_hash=res["prompt_hash"], kind="tc")
-        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip,
-                             detail={"source": "hermes-propose", "kind": "tc", "doc": doc, "section": section, "tc_ids": [r["id"] for r in res["records"]],
+        out = self.save_change(kind="tc", source="hermes-propose", yaml_text=text, operator=operator, domain=res["domain"],
+                               note=f"PRD/{doc.strip()} §{section.strip().rstrip('.')} 에서 Hermes 가 뽑은 수동 작성 TC",
+                               tc_ids=[r["id"] for r in res["records"]], validation={"status": "warn" if res["warnings"] else "ok", "warnings": res["warnings"]},
+                               prompt_hash=res["prompt_hash"], session_hash=session_hash, ip=ip)
+        self.store.add_event(operator=operator, action="hermes.generate", target=out["id"], session_hash=session_hash, ip=ip,
+                             detail={"source": "hermes-propose", "kind": "tc", "doc": doc, "section": section, "tc_ids": out["tc_ids"],
                                      "model": res["model"], "prompt_hash": res["prompt_hash"], "raw_chars": len(res["raw"])})
-        return did
+        return out
 
-    def revise_case(self, case_id: str, *, operator: str, session_hash: str | None, ip: str | None, ask=None) -> str:
-        """TC 가 바뀐 스크립트를 Hermes 가 바뀐 만큼만 고쳐 초안(source hermes-revise, 같은 id)으로. docs/qa-platform-hermes.md §3.3."""
+    def revise_case(self, case_id: str, *, operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
+        """TC 가 바뀐 스크립트를 Hermes 가 바뀐 만큼만 고쳐 바로 저장한다(같은 id). docs/qa-platform-hermes.md §3.3."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         c = self.cases.get(case_id)
@@ -395,21 +399,30 @@ class App:
         try:
             res = draftsmod.revise(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, case=c, drift=drift, changes=self.catalog.changes, existing_ids=set(self.cases), ask=ask)
         except Exception as ex:
-            self.store.add_event(operator=operator, action="draft.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-revise", "case_id": case_id, "error": str(ex)[:300]})
+            self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-revise", "case_id": case_id, "error": str(ex)[:300]})
             raise BadRequest(f"다시 쓰기 실패: {ex}")
         summary = ", ".join(f"{d['id']} {d['kind']}" for d in drift[:8])
         if not res["accepted"]:
-            self.store.add_event(operator=operator, action="draft.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
+            self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
                                  detail={"source": "hermes-revise", "case_id": case_id, "errors": res["errors"][:6], "prompt_hash": res["prompt_hash"]})
             raise BadRequest("Hermes 가 고친 스크립트가 검증을 못 넘겼다: " + "; ".join(res["errors"][:3]))
         case, warnings = res["accepted"]
-        did = self.store.add_draft(operator=operator, source="hermes-revise", domain=(c.domains[0] if c.domains else None), yaml_text=case.to_yaml(),
-                                   note=f"바뀐 TC 에 맞게 다시 씀 — {summary}", case_id=c.id, tc_ids=case.covers,
-                                   validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"])
-        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip,
+        out = self.save_change(kind="case", source="hermes-revise", yaml_text=case.to_yaml(), operator=operator, domain=(c.domains[0] if c.domains else None),
+                               note=f"바뀐 TC 에 맞게 다시 씀 — {summary}", case_id=c.id, tc_ids=case.covers,
+                               validation={"status": case.audit["status"], "warnings": warnings}, prompt_hash=res["prompt_hash"], session_hash=session_hash, ip=ip)
+        self.store.add_event(operator=operator, action="hermes.generate", target=out["id"], session_hash=session_hash, ip=ip,
                              detail={"source": "hermes-revise", "case_id": c.id, "drift": [d["id"] for d in drift], "allowed": res["allowed"], "model": res["model"],
                                      "prompt_hash": res["prompt_hash"], "raw_chars": len(res["raw"]), "warnings": len(warnings)})
-        return did
+        return out
+
+    def change_link(self, out: dict) -> dict:
+        """저장 결과로 갈 곳. main 에 들어갔으면 그 스크립트·TC, 아니면(토큰 없음) 파일 받기가 있는 변경 기록."""
+        if out.get("commit"):
+            if out.get("case_id") and not out.get("deleted"):
+                return {"href": f"/cases/{out['case_id']}", "label": out["case_id"]}
+            if out.get("tc_ids") and not out.get("deleted"):
+                return {"href": "/catalog/tc?id=" + quote(out["tc_ids"][0], safe=""), "label": out["tc_ids"][0] + (f" 외 {len(out['tc_ids']) - 1}건" if len(out["tc_ids"]) > 1 else "")}
+        return {"href": f"/drafts/{out['id']}", "label": f"변경 {out['id']}" + ("" if out.get("commit") else " (파일 받기)")}
 
     # ---- Hermes 작업 (docs/qa-platform-progress.md) ------------------------------------------
     def start_job(self, kind: str, *, operator: str, label: str, fn, back: dict | None = None, session_hash=None, ip=None, sync: bool = False):
@@ -425,24 +438,24 @@ class App:
 
     def job_generate(self, tc_ids: list[str], operator: str, session_hash=None, ip=None, sync=False):
         def fn(job):
-            res = self.generate_drafts(tc_ids=tc_ids, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
-            links = [{"href": f"/drafts/{i}", "label": f"스크립트 초안 {i}"} for i in res["ids"]]
+            res = self.generate_cases(tc_ids=tc_ids, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
+            links = [self.change_link(s) for s in res["saved"]]
             rej = "; ".join(f"{rid}: {', '.join(errs[:2])}" for rid, errs in res["rejected"][:3])
-            return {"summary": f"초안 {len(res['ids'])}건 생성" + (f", {len(res['rejected'])}건은 검증에서 버림 — {rej}" if res["rejected"] else ""), "links": links}
+            return {"summary": f"스크립트 {len(res['saved'])}건 저장" + (f", {len(res['rejected'])}건은 검증에서 버림 — {rej}" if res["rejected"] else ""), "links": links}
         return self.start_job("draft", operator=operator, label="TC " + ", ".join(tc_ids[:5]) + (" …" if len(tc_ids) > 5 else ""), fn=fn,
                               back={"href": "/catalog", "label": "TC 목록"}, session_hash=session_hash, ip=ip, sync=sync)
 
     def job_propose(self, doc: str, section: str, domain: str, operator: str, session_hash=None, ip=None, sync=False):
         def fn(job):
-            did = self.propose_tc(doc=doc, section=section, domain=domain, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
-            return {"summary": "수동 작성 TC 제안 초안을 만들었다", "links": [{"href": f"/drafts/{did}", "label": f"초안 {did}"}]}
+            out = self.propose_tc(doc=doc, section=section, domain=domain, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
+            return {"summary": f"수동 작성 TC {len(out['tc_ids'])}건을 저장했다", "links": [self.change_link(out)]}
         return self.start_job("propose", operator=operator, label=f"PRD/{doc} §{section}", fn=fn, back={"href": "/catalog", "label": "TC 목록"},
                               session_hash=session_hash, ip=ip, sync=sync)
 
     def job_revise(self, case_id: str, operator: str, session_hash=None, ip=None, sync=False):
         def fn(job):
-            did = self.revise_case(case_id, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
-            return {"summary": "바뀐 TC 에 맞게 고친 초안을 만들었다", "links": [{"href": f"/drafts/{did}", "label": f"초안 {did}"}]}
+            out = self.revise_case(case_id, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
+            return {"summary": "바뀐 TC 에 맞게 고쳐 저장했다", "links": [self.change_link(out)]}
         return self.start_job("revise", operator=operator, label=case_id, fn=fn, back={"href": f"/cases/{case_id}", "label": case_id},
                               session_hash=session_hash, ip=ip, sync=sync)
 
@@ -495,38 +508,49 @@ class App:
                 "errors": [{"code": c, "status": i.get("status"), "message": i.get("message")} for c, i in sorted(o.errors.items())],
                 "domain": domain_of_path(o.path)}
 
-    def form_case(self, state: dict, *, mode: str, original_id: str | None, draft_id: str | None, operator: str,
-                  session_hash=None, ip=None, dry: bool = False) -> dict:
-        """폼 저장. mode new | edit(기존 스크립트) | draft(초안 고치기). 반환 {ok, errors, warnings, yaml, draft_id}.
-        오류가 있으면 저장하지 않는다(폼에 그대로 남는다). dry=True 는 YAML 미리보기."""
-        if not dry and (not operator or operator not in self.cfg.operators):
-            raise BadRequest("담당자를 목록에서 골라야 한다")
+    def _form_raw(self, state: dict, *, mode: str, original_id: str | None, draft: dict | None) -> tuple:
+        """폼 상태 → (raw, case, errors, warnings, text). 저장·미리보기·저장 전 실행이 같은 검사를 쓴다."""
         try:
             raw = editormod.from_state(state, op_of=self.op_of)
         except editormod.FormError as ex:
-            return {"ok": False, "errors": [str(ex)], "warnings": [], "yaml": ""}
+            return None, None, [str(ex)], [], ""
         if mode == "edit" and raw.get("id") != original_id:
-            return {"ok": False, "errors": [f"id 는 바꿀 수 없다 ({original_id}) — 새 id 가 필요하면 새 스크립트로 만들고 이것은 삭제 요청한다"], "warnings": [], "yaml": ""}
-        d = self.store.get_draft(draft_id) if draft_id else None
-        existing = set(self.cases) - ({original_id} if mode == "edit" else set()) - ({d.get("case_id")} if d and d.get("case_id") else set())
+            return raw, None, [f"id 는 바꿀 수 없다 ({original_id}) — 새 id 가 필요하면 새 스크립트로 만들고 이것은 지운다"], [], ""
+        existing = set(self.cases) - ({original_id} if mode == "edit" else set()) - ({draft.get("case_id")} if draft and draft.get("case_id") else set())
         case, errors, warnings = editormod.validate_case(raw, catalog=self.current_catalog(), cfg=self.cfg, actors=self.all_actors(), existing_ids=existing)
         warnings = warnings + editormod.body_warnings(raw, self.spec.get())
-        text = draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
+        return raw, case, errors, warnings, draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
+
+    def form_case(self, state: dict, *, mode: str, original_id: str | None, draft_id: str | None, operator: str,
+                  session_hash=None, ip=None, dry: bool = False) -> dict:
+        """폼 저장. mode new | edit(기존 스크립트) | draft(API 호출 화면에서 담은 것·예전 초안). 검증을 통과하면 바로 main 에 저장한다.
+        반환 {ok, errors, warnings, yaml, id, case_id, commit}. 오류가 있으면 저장하지 않는다(폼에 그대로 남는다). dry=True 는 YAML 미리보기."""
+        if not dry and (not operator or operator not in self.cfg.operators):
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        d = self.store.get_draft(draft_id) if draft_id else None
+        if d and d["status"] in ("approved", "rejected"):
+            raise BadRequest("이미 저장했거나 버린 것이다 — 스크립트 화면에서 폼으로 고친다")
+        raw, case, errors, warnings, text = self._form_raw(state, mode=mode, original_id=original_id, draft=d)
         if dry or errors:
             return {"ok": not errors, "errors": errors, "warnings": warnings, "yaml": text}
-        validation = {"status": "warn" if warnings else "ok", "errors": [], "warnings": warnings}
-        domain = (case.domains[0] if case.domains else None)
-        if d:
-            if d["status"] in ("approved", "rejected"):
-                raise BadRequest("결정된 초안은 고치지 않는다")
-            self.store.update_draft(d["id"], yaml=text, validation=validation, case_id=case.id, tc_ids=case.covers, status="draft", run_id=None, domain=domain)
-            did = d["id"]
-        else:
-            did = self.store.add_draft(operator=operator, source="form-edit" if mode == "edit" else "form", domain=domain, yaml_text=text,
-                                       note=None, case_id=case.id, tc_ids=case.covers, validation=validation)
-        self.store.add_event(operator=operator, action="draft.form_save", target=did, session_hash=session_hash, ip=ip,
-                             detail={"mode": mode, "case_id": case.id, "warnings": len(warnings)})
-        return {"ok": True, "errors": [], "warnings": warnings, "yaml": text, "draft_id": did}
+        out = self.save_change(kind="case", source="form-edit" if mode == "edit" else "form", yaml_text=text, operator=operator,
+                               domain=(case.domains[0] if case.domains else None), case_id=case.id, tc_ids=case.covers,
+                               validation={"status": "warn" if warnings else "ok", "errors": [], "warnings": warnings}, draft=d, session_hash=session_hash, ip=ip)
+        return {"ok": True, "errors": [], "warnings": warnings, "yaml": text, **out}
+
+    def try_case(self, state: dict, *, mode: str, original_id: str | None, draft_id: str | None, operator: str, session_hash=None, ip=None) -> str:
+        """[저장 전에 한 번 실행해 보기] — 폼 내용을 저장하지 않고 dev 에 한 번 돌린다. 실행 기록은 남는다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        d = self.store.get_draft(draft_id) if draft_id else None
+        _, case, errors, _, _ = self._form_raw(state, mode=mode, original_id=original_id, draft=d)
+        if errors:
+            raise BadRequest("검사를 통과하지 못해 실행하지 않는다: " + "; ".join(errors[:3]))
+        rid = self.create_run(trigger="draft-check", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None, deploy_run_id=None,
+                              reason=f"{case.id} 저장 전 실행", basis="저장 전 실행 1건", extra={"try": {"case_id": case.id, "mode": mode}},
+                              session_hash=session_hash, ip=ip, cases_override=[case], notify=False)
+        self.store.add_event(operator=operator, action="case.try", target=rid, session_hash=session_hash, ip=ip, detail={"case_id": case.id, "mode": mode})
+        return rid
 
     def manual_item(self, tc_id: str) -> dict | None:
         """manual-tc.yaml 의 원본 항목 (카탈로그 레코드는 모양이 바뀌어 있다 — doc·section 은 prd, given·when·then 은 expect_hint)."""
@@ -537,8 +561,8 @@ class App:
             return None
         return next((dict(it) for it in (doc.get("cases") or []) if isinstance(it, dict) and str(it.get("id")) == tc_id), None)
 
-    def form_tc(self, f: dict, *, tc_id: str | None, operator: str, session_hash=None, ip=None) -> str:
-        """수동 작성 TC 폼 저장 → 초안(kind tc). tc_id 가 있으면 고치기(form-edit), 없으면 새로(번호 자동)."""
+    def form_tc(self, f: dict, *, tc_id: str | None, operator: str, session_hash=None, ip=None) -> dict:
+        """수동 작성 TC 폼 저장 — 바로 manual-tc.yaml 에. tc_id 가 있으면 고치기, 없으면 새로(번호 자동)."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         cat = self.current_catalog()
@@ -566,29 +590,26 @@ class App:
             tid = editormod.next_manual_id(prefix, list(cat.records))
             rec = editormod.manual_record(f, tc_id=tid)
         text = draftsmod.yaml.safe_dump({"cases": [rec]}, allow_unicode=True, sort_keys=False)
-        items, errors = draftsmod.validate_manual_tc(text)
+        _, errors = draftsmod.validate_manual_tc(text)
         if errors:
             raise BadRequest("; ".join(errors[:4]))
-        did = self.store.add_draft(operator=operator, source="form-edit" if tc_id else "form", domain=rec.get("domain"), yaml_text=text,
-                                   note=None, case_id=None, tc_ids=[rec["id"]], validation={"status": "ok", "warnings": []}, kind="tc")
-        self.store.add_event(operator=operator, action="draft.form_save", target=did, session_hash=session_hash, ip=ip, detail={"kind": "tc", "tc_id": rec["id"], "edit": bool(tc_id)})
-        return did
+        return self.save_change(kind="tc", source="form-edit" if tc_id else "form", yaml_text=text, operator=operator, domain=rec.get("domain"),
+                                tc_ids=[rec["id"]], validation={"status": "ok", "warnings": []}, session_hash=session_hash, ip=ip)
 
-    def delete_request(self, *, what: str, target: str, reason: str, operator: str, session_hash=None, ip=None) -> str:
-        """삭제도 초안을 거친다. what case | tc. 사유 필수."""
+    def delete_item(self, *, what: str, target: str, reason: str = "", operator: str, session_hash=None, ip=None) -> dict:
+        """지우기도 바로 저장한다. what case | tc. 사유는 있으면 커밋 메시지에 남긴다."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
-        if not reason.strip():
-            raise BadRequest("삭제 사유를 적어 달라")
         if what == "case":
             c = self.cases.get(target)
             if not c:
                 raise BadRequest("없는 스크립트")
             others = {t for x in self.cases.values() if x.id != c.id for t in x.covers}
             orphan = [t for t in c.covers if t not in others]
-            did = self.store.add_draft(operator=operator, source="form-delete", domain=(c.domains[0] if c.domains else None), yaml_text=c.to_yaml(),
-                                       note=reason.strip(), case_id=c.id, tc_ids=c.covers, kind="case-delete",
-                                       validation={"status": "warn" if orphan else "ok", "warnings": [f"지우면 미자동화가 되는 TC: {', '.join(orphan)}"] if orphan else []})
+            out = self.save_change(kind="case-delete", source="form-delete", yaml_text=c.to_yaml(), operator=operator, domain=(c.domains[0] if c.domains else None),
+                                   note=reason.strip() or None, case_id=c.id, tc_ids=c.covers,
+                                   validation={"status": "warn" if orphan else "ok", "warnings": [f"지워서 미자동화가 된 TC: {', '.join(orphan)}"] if orphan else []},
+                                   session_hash=session_hash, ip=ip)
         else:
             cat = self.current_catalog()
             r = cat.records.get(target) if cat else None
@@ -598,12 +619,10 @@ class App:
             if users:
                 raise BadRequest(f"이 TC 를 검증하는 스크립트가 있다: {', '.join(users)} — 먼저 그 스크립트의 covers 에서 뺀다")
             rec = self.manual_item(target) or {"id": target, "title": r["title"]}
-            did = self.store.add_draft(operator=operator, source="form-delete", domain=r.get("domain"), note=reason.strip(), case_id=None, tc_ids=[target],
-                                       yaml_text=draftsmod.yaml.safe_dump({"cases": [rec]}, allow_unicode=True, sort_keys=False), kind="tc-delete",
-                                       validation={"status": "ok", "warnings": []})
-        self.store.add_event(operator=operator, action="draft.delete_request", target=did, session_hash=session_hash, ip=ip,
-                             detail={"what": what, "target": target, "reason": reason.strip()[:200]})
-        return did
+            out = self.save_change(kind="tc-delete", source="form-delete", yaml_text=draftsmod.yaml.safe_dump({"cases": [rec]}, allow_unicode=True, sort_keys=False),
+                                   operator=operator, domain=r.get("domain"), note=reason.strip() or None, tc_ids=[target],
+                                   validation={"status": "ok", "warnings": []}, session_hash=session_hash, ip=ip)
+        return {**out, "deleted": True}
 
     def _plan(self, d: dict, operator: str):
         kind = d.get("kind") or "case"
@@ -612,45 +631,70 @@ class App:
             return editormod.plan_tc(d, covered_by=self.coverage(cat)["by_tc"] if cat else {})
         return editormod.plan_case(d, cases=self.cases, operator=operator)
 
-    def approve_draft(self, d: dict, *, operator: str, note: str | None, session_hash=None, ip=None) -> dict:
-        """승인 = 검증 통과 확인 → 쓰기 토큰이 있으면 main 에 바로 커밋하고 플랫폼에도 바로 반영. 없으면 승인만 하고 파일 받기로."""
+    SAVE_ACTIONS = {"case": "case.save", "case-delete": "case.delete", "tc": "manual_tc.save", "tc-delete": "manual_tc.delete"}
+
+    def save_change(self, *, kind: str, source: str, yaml_text: str, operator: str, domain: str | None = None, note: str | None = None,
+                    case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None, prompt_hash: str | None = None,
+                    draft: dict | None = None, session_hash=None, ip=None) -> dict:
+        """검증을 마친 변경 하나를 바로 저장한다 (docs/qa-platform-scenarios.md §9). 변경 기록(drafts 테이블) 한 줄을 남기고,
+        쓰기 토큰이 있으면 main 에 커밋해 플랫폼에 바로 반영한다. 토큰이 없으면 기록만 남고 [반영된 파일 받기] 로 끝난다."""
+        if draft:
+            did = draft["id"]
+            self.store.update_draft(did, yaml=yaml_text, validation=validation or {}, case_id=case_id, tc_ids=tc_ids or [], domain=domain, source=source, kind=kind)
+        else:
+            did = self.store.add_draft(operator=operator, source=source, domain=domain, yaml_text=yaml_text, note=note, case_id=case_id,
+                                       tc_ids=tc_ids or [], validation=validation or {}, prompt_hash=prompt_hash, kind=kind)
+        return self._apply(self.store.get_draft(did), operator=operator, action=self.SAVE_ACTIONS.get(kind, "case.save"), session_hash=session_hash, ip=ip)
+
+    def _apply(self, d: dict, *, operator: str, action: str, note: str | None = None, session_hash=None, ip=None) -> dict:
+        """변경 기록 하나를 main 에 커밋하고 플랫폼에 반영한다. 커밋이 실패하면 기록은 '저장 실패' 로 남고 BadRequest."""
         kind = d.get("kind") or "case"
-        if kind == "tc":
-            _, errors = draftsmod.validate_manual_tc(d["yaml"])
-            if errors:
-                raise BadRequest("형식 오류가 있는 제안은 승인하지 않는다: " + "; ".join(errors[:3]))
-        elif kind == "case":
-            case, errors, _ = self.revalidate_draft(d, d["yaml"])
-            if not case:
-                raise BadRequest("검증 오류가 있는 초안은 승인하지 않는다: " + "; ".join(errors[:3]))
-        commit = None
+        commit, rel, ids = None, None, None
         if self.repo.enabled:
             try:
                 rel, change, summary, ids = self._plan(d, operator)
-                msg = (f"qa({rel.split('/')[0]}): {summary} — {operator} [skip ci]\n\nQA 플랫폼 초안 {d['id']} 승인 ({d.get('source')})."
-                       + (f"\n메모: {note}" if note else "") + (f"\n삭제 사유: {d.get('note')}" if kind.endswith("-delete") and d.get("note") else "")
-                       + f"\n\nQA-Operator: {operator}")
+                why = note or (d.get("note") if kind.endswith("-delete") or str(d.get("source") or "").startswith("hermes") else None)
+                msg = (f"qa({rel.split('/')[0]}): {summary} — {operator} [skip ci]\n\nQA 플랫폼 변경 {d['id']} ({d.get('source')})."
+                       + (f"\n메모: {why}" if why else "") + f"\n\nQA-Operator: {operator}")
                 commit = self.repo.commit(rel, change, msg)
             except RepoError as ex:
-                self.store.add_event(operator=operator, action="draft.approve", target=d["id"], session_hash=session_hash, ip=ip, detail={"error": str(ex)[:300]})
-                raise BadRequest(f"main 에 커밋하지 못했다 — {ex}")
+                self.store.update_draft(d["id"], status="failed", note=f"저장 실패: {ex}"[:500])
+                self.store.add_event(operator=operator, action=action, target=d["id"], session_hash=session_hash, ip=ip, detail={"kind": kind, "error": str(ex)[:300]})
+                raise BadRequest(f"main 에 저장하지 못했다 — {ex}")
             if self.cases_dir != self.repo.local / "cases":      # 시작 때 main 받기에 실패해 이미지 파일을 읽고 있었다 — 지금 받는다
                 self.resync_repo()
             elif kind in ("tc", "tc-delete"):
                 self.catalog.get(force=True)
             self.reload_cases()
         fields = {"status": "approved", "decided_by": operator, "decided_at": now_iso(), "note": (note or "").strip() or d.get("note")}
+        tc_ids = d["tc_ids"]
         if commit:
             fields.update(commit_sha=commit["sha"], commit_url=commit["url"], file=rel)
             if kind == "tc" and ids:
-                fields["tc_ids"] = ids
+                fields["tc_ids"] = tc_ids = ids
         self.store.update_draft(d["id"], **fields)
-        self.store.add_event(operator=operator, action="draft.approve", target=d["id"], session_hash=session_hash, ip=ip,
-                             detail={"kind": kind, "case_id": d.get("case_id"), "tc_ids": d["tc_ids"], "commit": (commit or {}).get("sha")})
-        return {"commit": commit}
+        self.store.add_event(operator=operator, action=action, target=d.get("case_id") or ",".join(tc_ids[:3]) or d["id"], session_hash=session_hash, ip=ip,
+                             detail={"change": d["id"], "kind": kind, "source": d.get("source"), "case_id": d.get("case_id"), "tc_ids": tc_ids,
+                                     "commit": (commit or {}).get("sha")})
+        return {"id": d["id"], "commit": commit, "case_id": d.get("case_id"), "tc_ids": tc_ids, "file": rel, "kind": kind}
+
+    def approve_draft(self, d: dict, *, operator: str, note: str | None, session_hash=None, ip=None) -> dict:
+        """예전 방식으로 남은 초안(저장 안 된 것) 하나를 저장한다. 검증을 다시 돌린다."""
+        if d["status"] in ("approved", "rejected"):
+            raise BadRequest("이미 저장했거나 버린 것이다")
+        kind = d.get("kind") or "case"
+        if kind == "tc":
+            _, errors = draftsmod.validate_manual_tc(d["yaml"])
+            if errors:
+                raise BadRequest("형식 오류가 있어 저장하지 않는다: " + "; ".join(errors[:3]))
+        elif kind == "case":
+            case, errors, _ = self.revalidate_draft(d, d["yaml"])
+            if not case:
+                raise BadRequest("검증 오류가 있어 저장하지 않는다: " + "; ".join(errors[:3]))
+        return self._apply(d, operator=operator, action="draft.approve", note=note, session_hash=session_hash, ip=ip)
 
     def draft_file(self, d: dict, operator: str) -> tuple[str, str]:
-        """쓰기 토큰이 없을 때: 이 초안을 반영한 파일 전체(플랫폼이 지금 읽는 판 기준). (레포 안 경로, 텍스트)."""
+        """쓰기 토큰이 없을 때: 이 변경을 반영한 파일 전체(플랫폼이 지금 읽는 판 기준). (레포 안 경로, 텍스트)."""
         rel, change, _, _ = self._plan(d, operator)
         sub, name = rel.split("/", 1)
         base = (self.cases_dir if sub == "cases" else self.catalog.catalog_dir) / name
@@ -812,7 +856,7 @@ class App:
         return out
 
     def explorer_to_draft(self, rid: str, operator: str, session_hash: str | None, ip: str | None) -> str:
-        """API 호출 기록 하나를 초안(단계 1개, 관측한 status·error_code 를 기대로)으로 담는다. covers 는 사람이 채운다."""
+        """API 호출 기록 하나를 스크립트 폼에 담는다(단계 1개, 관측한 status·error_code 를 기대로). 저장 안 된 변경 기록으로 두고 폼을 연다. covers 는 사람이 채운다."""
         run = self.store.get_run(rid)
         if not run or run["trigger"] != "explorer":
             raise BadRequest("API 호출 기록이 아니다")
@@ -844,7 +888,7 @@ class App:
         text = draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
         did = self.store.add_draft(operator=operator, source="explorer", domain=None, yaml_text=text, note=f"API 호출 기록 {rid}", case_id=raw["id"], tc_ids=[],
                                    validation={"status": "warn", "warnings": ["covers 와 suite 를 채워야 한다 (지금은 manual)"]}, prompt_hash=None)
-        self.store.add_event(operator=operator, action="draft.generate", target=did, session_hash=session_hash, ip=ip, detail={"source": "explorer", "run_id": rid})
+        self.store.add_event(operator=operator, action="explorer.to_form", target=did, session_hash=session_hash, ip=ip, detail={"source": "explorer", "run_id": rid})
         return did
 
     # ---- 위키 보고서 발행 (docs/qa-platform-tc.md §9) ------------------------------
@@ -1349,8 +1393,7 @@ class Handler(BaseHTTPRequestHandler):
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if self._wants_json():
-                did = app.propose_tc(doc=str(fv("doc")), section=str(fv("section")), domain=str(fv("domain")), operator=operator, session_hash=self._session_hash(), ip=self._ip())
-                return self._json(200, {"id": did})
+                return self._json(200, app.propose_tc(doc=str(fv("doc")), section=str(fv("section")), domain=str(fv("domain")), operator=operator, session_hash=self._session_hash(), ip=self._ip()))
             if not str(fv("doc")).strip() or not str(fv("section")).strip():
                 raise BadRequest("PRD 문서 이름과 절 번호가 필요하다")
             job = app.job_propose(str(fv("doc")).strip(), str(fv("section")).strip(), str(fv("domain")).strip(), operator, self._session_hash(), self._ip())
@@ -1511,12 +1554,12 @@ class Handler(BaseHTTPRequestHandler):
             if not operator or operator not in app.cfg.operators:
                 raise BadRequest("담당자를 목록에서 골라야 한다")
             did = app.explorer_to_draft(str(fv("run")), operator, self._session_hash(), self._ip())
-            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
+            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}/edit", set_operator=operator)
 
-        # ---------- 케이스 초안 (docs/qa-platform-tc.md §7.3) ----------
+        # ---------- 변경 기록 (예전 스크립트 초안. 저장은 바로 한다 — docs/qa-platform-scenarios.md §9) ----------
         if path == "/drafts" and method == "GET":
             st = g("status")
-            return self._page("스크립트 초안", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st, active_jobs=app.jobs.active()), "drafts")
+            return self._page("변경 기록", ui.drafts_list(app.store.list_drafts(st or None), app.store.draft_counts(), st, active_jobs=app.jobs.active()), "drafts")
         if path == "/drafts/generate" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -1525,7 +1568,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise BadRequest("담당자를 목록에서 골라야 한다")
             tc_ids = [str(x) for x in f.get("tc_ids") or []]
             if self._wants_json():
-                return self._json(200, app.generate_drafts(tc_ids=tc_ids, operator=operator, session_hash=self._session_hash(), ip=self._ip()))
+                return self._json(200, app.generate_cases(tc_ids=tc_ids, operator=operator, session_hash=self._session_hash(), ip=self._ip()))
             if not tc_ids:
                 raise BadRequest("TC 를 하나 이상 골라야 한다")
             job = app.job_generate(tc_ids, operator, self._session_hash(), self._ip())
@@ -1534,71 +1577,58 @@ class Handler(BaseHTTPRequestHandler):
         if m and method == "GET":
             d = app.store.get_draft(m.group(1))
             if not d:
-                return self._error(404, "초안이 없다")
+                return self._error(404, "그 변경 기록이 없다")
             cat = app.current_catalog()
             recs = {t: (cat.records.get(t) if cat else None) for t in d["tc_ids"]}
             run = app.store.get_run(d["run_id"]) if d.get("run_id") else None
-            orig = app.cases.get(d["case_id"]) if d.get("source") in ("hermes-revise", "form-edit") and d.get("case_id") and (d.get("kind") or "case") == "case" else None
-            return self._page(f"스크립트 초안 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator(),
+            orig = (app.cases.get(d["case_id"]) if d["status"] not in ("approved", "rejected") and d.get("source") in ("hermes-revise", "form-edit")
+                    and d.get("case_id") and (d.get("kind") or "case") == "case" else None)
+            return self._page(f"변경 {d['id']}", ui.draft_detail(d, recs, run, operators=app.cfg.operators, operator=self._operator(),
                                                                      original_yaml=(orig.to_yaml() if orig else None), repo_write=app.repo.enabled), "drafts")
         m = re.match(r"^/drafts/(d-[0-9a-f]+)/(save|check|approve|reject)$", path)
-        if m and method == "POST":
+        if m and method == "POST":      # 예전 방식으로 남은 초안(저장 안 됨)만 — 고치고, 한 번 돌려 보고, 저장하거나 버린다
             did, action = m.group(1), m.group(2)
             d = app.store.get_draft(did)
             if not d:
-                return self._error(404, "초안이 없다")
+                return self._error(404, "그 변경 기록이 없다")
             f = self._form()
             fv = lambda k, d_="": (f.get(k) or [d_])[0]  # noqa: E731
             operator = str(fv("operator")).strip()
             if not operator or operator not in app.cfg.operators:
                 raise BadRequest("담당자를 목록에서 골라야 한다")
             sh, ip = self._session_hash(), self._ip()
-            if d["status"] in ("approved", "rejected") and action in ("save", "check"):
-                raise BadRequest("결정된 초안은 고치거나 실행하지 않는다")
-            is_tc = (d.get("kind") or "case") == "tc"     # 수동 TC 제안: 실행할 수 없고, 승인은 manual-tc.yaml 로 옮기라는 뜻
+            if d["status"] in ("approved", "rejected"):
+                raise BadRequest("이미 저장했거나 버린 것이다 — 고치려면 스크립트 화면에서 폼으로 연다")
+            is_tc = (d.get("kind") or "case") == "tc"
             is_delete = (d.get("kind") or "").endswith("-delete")
             if is_delete and action in ("save", "check"):
-                raise BadRequest("삭제 요청은 고치거나 실행하지 않는다 — 승인하거나 반려한다")
+                raise BadRequest("삭제는 고치거나 실행하지 않는다 — 저장하거나 버린다")
             if action == "approve":
-                app.approve_draft(d, operator=operator, note=str(fv("note")).strip() or None, session_hash=sh, ip=ip)
-                return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
+                out = app.approve_draft(d, operator=operator, note=str(fv("note")).strip() or None, session_hash=sh, ip=ip)
+                return self._json(200, out) if self._wants_json() else self._redirect(app.change_link(out)["href"], operator)
             if action == "save":
                 text = str(fv("yaml"))
                 if is_tc:
                     items, errors = draftsmod.validate_manual_tc(text)
                     validation = {"status": "error" if errors else "ok", "errors": errors, "warnings": []}
                     app.store.update_draft(did, yaml=text, validation=validation, tc_ids=[str(i.get("id")) for i in items], status="draft")
-                    app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"kind": "tc", "errors": len(errors)})
-                    return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
-                case, errors, warnings = app.revalidate_draft(d, text)
-                validation = {"status": ("error" if errors else (case.audit["status"] if case else "error")), "errors": errors, "warnings": warnings}
-                app.store.update_draft(did, yaml=text, validation=validation, case_id=(case.id if case else d.get("case_id")),
-                                       tc_ids=(case.covers if case else d["tc_ids"]), status="draft", run_id=None)
-                app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"errors": len(errors), "warnings": len(warnings)})
+                else:
+                    case, errors, warnings = app.revalidate_draft(d, text)
+                    validation = {"status": ("error" if errors else (case.audit["status"] if case else "error")), "errors": errors, "warnings": warnings}
+                    app.store.update_draft(did, yaml=text, validation=validation, case_id=(case.id if case else d.get("case_id")),
+                                           tc_ids=(case.covers if case else d["tc_ids"]), status="draft", run_id=None)
+                app.store.add_event(operator=operator, action="draft.save", target=did, session_hash=sh, ip=ip, detail={"errors": len(validation["errors"])})
             elif action == "check":
                 if is_tc:
-                    raise BadRequest("수동 TC 제안은 실행할 것이 없다 — 승인 뒤 manual-tc.yaml 에 붙여 PR 로 낸다")
+                    raise BadRequest("수동 작성 TC 는 실행할 것이 없다")
                 case, errors, _ = app.revalidate_draft(d, d["yaml"])
                 if not case:
-                    raise BadRequest("검증 오류가 있는 초안은 실행하지 않는다: " + "; ".join(errors[:3]))
+                    raise BadRequest("검증 오류가 있어 실행하지 않는다: " + "; ".join(errors[:3]))
                 rid = app.create_run(trigger="draft-check", operator=operator, case_ids=[], sha=None, ref=None, pr_number=None,
-                                     deploy_run_id=None, reason=f"스크립트 초안 {did} 확인 실행", basis="스크립트 초안 1건", extra={"draft_id": did},
+                                     deploy_run_id=None, reason=f"변경 {did} 저장 전 실행", basis="저장 전 실행 1건", extra={"draft_id": did},
                                      session_hash=sh, ip=ip, cases_override=[case])
                 app.store.update_draft(did, status="checked", run_id=rid)
                 app.store.add_event(operator=operator, action="draft.check", target=did, session_hash=sh, ip=ip, detail={"run_id": rid})
-            elif action == "approve":
-                if is_tc:
-                    _, errors = draftsmod.validate_manual_tc(d["yaml"])
-                    if errors:
-                        raise BadRequest("형식 오류가 있는 제안은 승인하지 않는다: " + "; ".join(errors[:3]))
-                    app.store.update_draft(did, status="approved", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
-                    app.store.add_event(operator=operator, action="draft.approve", target=did, session_hash=sh, ip=ip, detail={"kind": "tc", "tc_ids": d["tc_ids"]})
-                    return self._json(200, {"ok": True}) if self._wants_json() else self._redirect(f"/drafts/{did}", operator)
-                case, errors, _ = app.revalidate_draft(d, d["yaml"])
-                if not case:
-                    raise BadRequest("검증 오류가 있는 초안은 승인하지 않는다: " + "; ".join(errors[:3]))
-                app.store.update_draft(did, status="approved", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
-                app.store.add_event(operator=operator, action="draft.approve", target=did, session_hash=sh, ip=ip, detail={"case_id": d.get("case_id"), "tc_ids": d["tc_ids"]})
             elif action == "reject":
                 app.store.update_draft(did, status="rejected", decided_by=operator, decided_at=now_iso(), note=str(fv("note")).strip() or d.get("note"))
                 app.store.add_event(operator=operator, action="draft.reject", target=did, session_hash=sh, ip=ip, detail={"note": str(fv("note")).strip()[:200]})
@@ -1668,9 +1698,9 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d = app.store.get_draft(m_dedit.group(1))
                     if not d or (d.get("kind") or "case") != "case":
-                        return self._error(404, "폼으로 열 스크립트 초안이 없다")
+                        return self._error(404, "폼으로 열 스크립트 변경이 없다")
                     if d["status"] in ("approved", "rejected"):
-                        raise BadRequest("결정된 초안은 고치지 않는다")
+                        raise BadRequest("이미 저장했거나 버린 것이다 — 스크립트 화면에서 폼으로 연다")
                     try:
                         raw = yaml.safe_load(d["yaml"])
                     except yaml.YAMLError as ex:
@@ -1701,14 +1731,25 @@ class Handler(BaseHTTPRequestHandler):
             if not res["ok"]:
                 return self._page("스크립트 폼", ui.editor_page(st, mode=mode, original_id=fv("original_id") or None, draft_id=fv("draft_id") or None,
                                                             errors=res["errors"], warnings=res["warnings"], operator=operator, operators=app.cfg.operators), "cases", status=400)
-            return self._redirect(f"/drafts/{res['draft_id']}", set_operator=operator)
-        m = re.match(r"^/cases/([a-z0-9][a-z0-9.\-]*)/delete-request$", path)
+            return self._redirect(app.change_link(res)["href"], set_operator=operator)
+        if path == "/editor/try" and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            st = fv("state", "{}")
+            try:
+                st = st if isinstance(st, dict) else json.loads(st or "{}")
+            except ValueError:
+                raise BadRequest("폼 상태를 읽지 못했다")
+            rid = app.try_case(st, mode=str(fv("mode", "new")), original_id=fv("original_id") or None, draft_id=fv("draft_id") or None,
+                               operator=str(fv("operator")).strip() or self._operator(), session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, {"run_id": rid, "url": f"/runs/{rid}"}) if self._wants_json() else self._redirect(f"/runs/{rid}")
+        m = re.match(r"^/cases/([a-z0-9][a-z0-9.\-]*)/delete(?:-request)?$", path)
         if m and method == "POST":
             f = self._form()
             operator = str((f.get("operator") or [""])[0]).strip() or self._operator()
-            did = app.delete_request(what="case", target=m.group(1), reason=str((f.get("reason") or [""])[0]), operator=operator,
-                                     session_hash=self._session_hash(), ip=self._ip())
-            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
+            out = app.delete_item(what="case", target=m.group(1), reason=str((f.get("reason") or [""])[0]), operator=operator,
+                                  session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, out) if self._wants_json() else self._redirect("/cases" if out["commit"] else f"/drafts/{out['id']}", set_operator=operator)
         if path in ("/catalog/manual/new", "/catalog/tc/edit") and method == "GET":
             cat = app.current_catalog()
             rec = None
@@ -1725,19 +1766,19 @@ class Handler(BaseHTTPRequestHandler):
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip() or self._operator()
             form = {k: fv(k) for k in ("tc_kind", "ops_id", "doc", "section", "domain", "title", "given", "when", "then", "operations", "source")}
-            did = app.form_tc(form, tc_id=fv("id") or None, operator=operator, session_hash=self._session_hash(), ip=self._ip())
-            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
-        if path == "/catalog/tc/delete-request" and method == "POST":
+            out = app.form_tc(form, tc_id=fv("id") or None, operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, out) if self._wants_json() else self._redirect(app.change_link(out)["href"], set_operator=operator)
+        if path in ("/catalog/tc/delete", "/catalog/tc/delete-request") and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
             operator = str(fv("operator")).strip() or self._operator()
-            did = app.delete_request(what="tc", target=str(fv("id")), reason=str(fv("reason")), operator=operator, session_hash=self._session_hash(), ip=self._ip())
-            return self._json(200, {"id": did}) if self._wants_json() else self._redirect(f"/drafts/{did}", set_operator=operator)
+            out = app.delete_item(what="tc", target=str(fv("id")), reason=str(fv("reason")), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200, out) if self._wants_json() else self._redirect("/catalog" if out["commit"] else f"/drafts/{out['id']}", set_operator=operator)
         m = re.match(r"^/drafts/(d-[0-9a-f]+)/file$", path)
         if m and method == "GET":
             d = app.store.get_draft(m.group(1))
             if not d:
-                return self._error(404, "초안이 없다")
+                return self._error(404, "그 변경 기록이 없다")
             rel, text = app.draft_file(d, self._operator() or d["operator"])
             return self._send(200, text, "application/x-yaml; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{rel.rsplit("/", 1)[-1]}"'})
 
@@ -1765,13 +1806,14 @@ class Handler(BaseHTTPRequestHandler):
             recs = {t: (cat.records.get(t) if cat else None) for t in c.covers}
             return self._page(c.id, ui.case_detail(c, app.store.case_history(c.id), tc_records=recs, drift=app.drift_of(c),
                                                  revise={"operator": self._operator(), "operators": app.cfg.operators, "hermes": bool(app.cfg.hermes_key)},
-                                                 stats=ui.stats_of(app.store.recent_case_results(20).get(c.id) or [])), "cases", context={"case": c.id})
+                                                 stats=ui.stats_of(app.store.recent_case_results(20).get(c.id) or []),
+                                                 changes=app.store.list_changes(case_id=c.id)), "cases", context={"case": c.id})
         m = re.match(r"^/cases/([a-z0-9][a-z0-9.\-]*)/revise$", path)
         if m and method == "POST":
             f = self._form()
             operator = str((f.get("operator") or [""])[0]).strip()
             if self._wants_json():
-                return self._json(200, {"id": app.revise_case(m.group(1), operator=operator, session_hash=self._session_hash(), ip=self._ip())})
+                return self._json(200, app.revise_case(m.group(1), operator=operator, session_hash=self._session_hash(), ip=self._ip()))
             c = app.cases.get(m.group(1))
             if not c:
                 raise BadRequest("없는 스크립트")
@@ -1799,7 +1841,7 @@ class Handler(BaseHTTPRequestHandler):
             if not chat:
                 return self._error(404, "대화가 없다")
             head = (f'<h1>{ui.e(chat.get("title") or "대화")} <span class="small mut mono">{ui.e(chat["id"])}</span> <a class="btn" href="/chat">목록</a></h1>'
-                    f'<p class="small mut">담당자 {ui.e(chat["operator"])} · {ui.kst(chat["created_at"])} · 초안 {chat["drafts"]}건(승인은 <a href="/drafts">스크립트 초안</a> 화면에서)</p>')
+                    f'<p class="small mut">담당자 {ui.e(chat["operator"])} · {ui.kst(chat["created_at"])} · 저장 {chat["drafts"]}건(<a href="/drafts">변경 기록</a>)</p>')
             return self._page(f"대화 {chat['id']}", head, "chat", inline_chat=chat["id"])
         if path == "/api/chats" and method == "GET":
             chats = app.store.list_chats(50)

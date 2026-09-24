@@ -122,7 +122,10 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
     warnings: list[str] = []
     raw = dict(raw)
     if isinstance(raw.get("id"), str) and raw["id"] in existing_ids:
-        raw["id"] = raw["id"] + "-draft"
+        base, n = raw["id"], 2
+        while f"{base}-{n}" in existing_ids:
+            n += 1
+        raw["id"] = f"{base}-{n}"
         warnings.append(f"id 가 기존 스크립트와 겹쳐 '{raw['id']}' 로 바꿨다")
     try:
         case = _validate(raw, "<hermes>")
@@ -322,7 +325,7 @@ def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Cas
 
 
 # ---------------------------------------------------------------------------------------------
-# PRD 절에서 수동 작성 TC 제안 (docs/qa-platform-hermes.md §3 트리 4, P4d). MCP 도구 qa_manual_tc_propose 와 버튼이 같이 쓴다
+# PRD 절에서 수동 작성 TC 제안 (docs/qa-platform-hermes.md §3 트리 4, P4d). MCP 도구 qa_manual_tc_save 와 버튼이 같이 쓴다
 # ---------------------------------------------------------------------------------------------
 PROPOSE_SYSTEM = (
     "너는 Spring 백엔드 팀의 QA 엔지니어다. 주어진 PRD 절 본문에서, SSOT 로 형식화되지 않아 자동으로 뽑히지 않은 확인 항목(테스트 케이스)을 골라낸다. 한국어로 쓴다.\n\n"
