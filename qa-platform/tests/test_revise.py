@@ -45,7 +45,7 @@ class ReviseTest(unittest.TestCase):
 
     def _drift(self, changed="G.room.create#duplicate-slot-left", removed=None):
         """변경 이력을 흉내 낸다: changed 는 hash 가 바뀐 것, removed 는 사라진 것 + 같은 배치에 추가된 대체 후보."""
-        at = "2026-09-22T00:00:00Z"
+        at = "2099-01-01T00:00:00Z"          # 시드 스크립트의 마지막 검토(reviewed.at) 뒤의 변경이어야 보인다
         ch = {changed: {"at": at, "kind": "changed", "before": dict(snapshot(self.cat.records[changed]), title="(옛 제목)")}}
         if removed:
             ch[removed] = {"at": at, "kind": "removed", "before": snapshot(self.cat.records.get(removed) or {"title": "옛것"})}

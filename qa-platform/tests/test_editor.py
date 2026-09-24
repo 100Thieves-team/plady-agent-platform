@@ -299,7 +299,8 @@ class FlowTest(unittest.TestCase):
         res = self.app.form_case(st, mode="edit", original_id="room.form-options-again", draft_id=None, operator="bebe")
         self.assertTrue(res["ok"], res)
         self.assertNotIn("written_by", self.app.cases["room.form-options-again"].raw)
-        self.assertNotIn("written_by", self.gh.files["qa-platform/cases/room.yaml"])
+        text = self.gh.files["qa-platform/cases/room.yaml"]
+        self.assertNotIn("written_by", text.split("  - id: room.form-options-again")[1])       # 다른 항목(Hermes 가 쓴 room.create 등)은 그대로
 
     def test_form_saves_unsaved_draft(self):
         """API 호출 화면에서 담은 것(저장 안 된 변경 기록)을 폼으로 열어 저장하면 그 기록이 저장됨이 된다."""
