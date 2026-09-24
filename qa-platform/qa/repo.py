@@ -123,8 +123,10 @@ class Repo:
             raise self._err(f"{rel} 읽기", r)
         return base64.b64decode(r.json.get("content") or "").decode("utf-8"), r.json.get("sha")
 
-    def list_dir(self, rel: str) -> list[str]:
+    def list_dir(self, rel: str, missing_ok: bool = False) -> list[str]:
         r = self._api("GET", f"contents/{self.root}/{rel}?ref={self.branch}")
+        if r.status == 404 and missing_ok:
+            return []
         if r.status != 200 or not isinstance(r.json, list):
             raise self._err(f"{rel}/ 목록", r)
         return [x["name"] for x in r.json if isinstance(x, dict) and x.get("type") == "file" and str(x.get("name", "")).endswith((".yaml", ".yml"))]
@@ -143,15 +145,15 @@ class Repo:
 
     # ---- 동기화 ----
     def sync(self) -> bool:
-        """main 의 cases/·catalog/ YAML 을 <data>/repo 로 받는다. 실패하면 이전 것을 그대로 둔다."""
+        """main 의 cases/·catalog/·scenarios/ YAML 을 <data>/repo 로 받는다. 실패하면 이전 것을 그대로 둔다. scenarios/ 는 없어도 된다."""
         if not self.enabled:
             return False
         tmp = self.cfg.data_dir / f"repo.tmp-{int(time.time() * 1000)}"
         try:
             n = 0
-            for sub in ("cases", "catalog"):
+            for sub in ("cases", "catalog", "scenarios"):
                 (tmp / sub).mkdir(parents=True, exist_ok=True)
-                for name in self.list_dir(sub):
+                for name in self.list_dir(sub, missing_ok=(sub == "scenarios")):
                     text, _ = self.read(f"{sub}/{name}")
                     if text is not None:
                         (tmp / sub / name).write_text(text, encoding="utf-8")

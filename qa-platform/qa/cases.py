@@ -22,6 +22,8 @@ _INPUT_EXPR = re.compile(r"\{\{\s*input\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
 _ID = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
+# 이 스크립트가 구현하는 변형 — 기능/시나리오/변형 (docs/qa-platform-scenarios.md §5). 예: 룸-생성/S1/headcount-range
+_VARIANT = re.compile(r"^([^/\s]+)/(S\d+)/([a-z0-9][a-z0-9.\-]*)$")
 # TC id: G.room.create#duplicate-slot-left · C.room.create · op.createRoom:E1402 · op.createRoom:200 · PRD.룸-탐색.4.2#1
 # 게이트 검사는 key(G.room.create#offline-region-required, 2026-09-23~) 또는 예전 순서 번호(G.room.create#5)
 _TC = re.compile(r"^(?:[GC]\.[a-z_]+\.[a-z_]+(?:#(?:\d+|[a-z][a-z0-9]*(?:-[a-z0-9]+)*))?|op\.[A-Za-z0-9_]+:(?:E\d{3,4}|\d{3})|(?:PRD|OPS)\.[^\s#]+#\d+)$")
@@ -46,6 +48,7 @@ class Case:
     reviewed: dict | None = None                     # {at: ISO 날짜, by: 운영자} — 드리프트 배지를 이 시각 이후 변경만 보이게
     inputs: dict = field(default_factory=dict)       # setup 전용: 화면 입력 {name: {label, default, required}} → {{input.name}}
     outputs: list = field(default_factory=list)      # setup 전용: 끝나면 화면에 돌려줄 save 변수 이름
+    variant: str | None = None                       # 구현하는 변형 id (시나리오 파일). 없으면 "시나리오 밖"
     uses: dict | None = None                         # 전제 카드 {setup: id, with: {입력}} — 로더가 펼쳐 steps 앞에 붙인다 (docs/qa-platform-scenarios.md §8)
     raw: dict = field(default_factory=dict)
     file: str = ""
@@ -120,6 +123,12 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
     suite = d.get("suite")
     if suite not in SUITES:
         raise CaseError(f"{file}:{cid}: suite 는 {SUITES} 중 하나: {suite!r}")
+    variant = d.get("variant")
+    if variant is not None:
+        variant = str(variant).strip()
+        if not _VARIANT.match(variant):
+            raise CaseError(f"{file}:{cid}: variant 는 기능/시나리오/변형 (룸-생성/S1/happy): {variant!r}")
+        d["variant"] = variant
     uses = _uses(d, f"{file}:{cid}")
     if uses and d.get("given_by"):
         raise CaseError(f"{file}:{cid}: uses 와 given_by 를 같이 쓸 수 없다 (given_by 는 펼친 스냅샷에만 있다)")
@@ -221,7 +230,7 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
         id=cid, title=title.strip(), suite=suite, steps=steps,
         domains=d["domains"], operations=d["operations"], source=d["source"],
         actor=d.get("actor"), description=str(d.get("description") or ""), covers=covers, reviewed=reviewed,
-        inputs=inputs, outputs=outputs, uses=uses,
+        inputs=inputs, outputs=outputs, uses=uses, variant=variant or None,
         raw=d, file=file, hash=hashlib.sha256(canonical).hexdigest()[:16],
     )
     return expand(case, library) if (uses and library is not None) else case

@@ -135,7 +135,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "변경 기록"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("features", "/features", "시나리오"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "변경 기록"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -464,16 +464,34 @@ def audit_badge(c, drift: list | None = None) -> str:
     return out
 
 
-def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None, stats: dict | None = None) -> str:
+def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None, stats: dict | None = None,
+               variants: dict | None = None, variant_errors: dict | None = None) -> str:
+    """variants: 변형 id → 제목. 변형을 구현한 스크립트를 변형 순서로 먼저, variant: 없는 것은 "시나리오 밖" 으로 뒤에 모은다."""
     drift = drift or {}
     stats = stats or {}
-    rows = "".join(
-        f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a></td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
-        f'<td class="small">{e(", ".join(c.domains))}</td><td class="small">{e(c.actor or "–")}</td>'
-        f'<td class="small">{len(c.covers)} {audit_badge(c, drift.get(c.id))}</td>'
-        f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut small\">–</span>")}'
-        f'<br>{stats_badge(stats.get(c.id)) if c.id in stats else ""}</td></tr>'
-        for c in cases)
+    variants = variants or {}
+    variant_errors = variant_errors or {}
+
+    def vcell(c) -> str:
+        if not c.variant:
+            return ""
+        bad = variant_errors.get(c.id)
+        link = (f'<a href="{variant_url(c.variant)}" class="mono small">{e(c.variant)}</a>' if c.variant in variants else f'<span class="mono small">{e(c.variant)}</span>')
+        return f'<div>{link}{(" <span class=\"b fail\" title=\"" + e("; ".join(bad)) + "\">없는 변형</span>") if bad else ""}</div>'
+
+    def row(c) -> str:
+        return (f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a>{vcell(c)}</td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
+                f'<td class="small">{e(", ".join(c.domains))}</td><td class="small">{e(c.actor or "–")}</td>'
+                f'<td class="small">{len(c.covers)} {audit_badge(c, drift.get(c.id))}</td>'
+                f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut small\">–</span>")}'
+                f'<br>{stats_badge(stats.get(c.id)) if c.id in stats else ""}</td></tr>')
+    order = {vid: i for i, vid in enumerate(variants)}          # 시나리오 파일 순서
+    inside = sorted((c for c in cases if c.variant), key=lambda c: (order.get(c.variant, len(order)), c.variant, c.id))
+    outside = [c for c in cases if not c.variant]
+    rows = "".join(row(c) for c in inside)
+    if inside and outside:
+        rows += f'<tr><th colspan="7" style="padding-top:14px">시나리오 밖 {len(outside)}개{h("cases.variant")}</th></tr>'
+    rows += "".join(row(c) for c in outside)
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
     blocked = [c.id for c in cases if c.blocked]
     return (f'<h1>테스트 스크립트{h("cases.list")} <span class="small mut">{len(cases)}개 · 원본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
@@ -537,6 +555,7 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}{hermes_badge(c.raw)} <a class="btn" href="/chat/new?case={e(c.id)}">Hermes 와 이야기</a> <a class="btn" href="/cases/{e(c.id)}/edit">폼으로 고치기</a>{h("case.edit")}</h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
+            f'{("<div>변형</div><div><a class=\"mono\" href=\"" + variant_url(c.variant) + "\">" + e(c.variant) + "</a>" + h("cases.variant") + "</div>") if c.variant else ""}'
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div>'
             f'{("<div>전제 카드</div><div><a class=\"mono\" href=\"/cases/" + e(c.uses["setup"]) + "\">" + e(c.uses["setup"]) + "</a> <span class=\"small mut\">단계 " + str(len(c.steps) - len(c.own_steps)) + "개를 먼저 돈다</span>" + h("editor.uses") + "</div>") if c.uses else ""}'
             f'<div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
@@ -1586,3 +1605,5 @@ HERMES_JS = r"""
 # 폼 편집·Hermes 작업 화면 (qa/ui_edit.py) — app 은 ui.editor_page 처럼 여기서 쓴다
 from .ui_edit import (EDITOR_JS, EDITOR_JS_VERSION, JOBS_JS, JOBS_JS_VERSION, active_jobs_line,  # noqa: E402,F401
                       editor_page, job_detail, jobs_list, manual_tc_form)
+# 시나리오 화면 (qa/ui_scn.py) — 기능·시나리오·변형 트리, 기능 화면, 변형 화면
+from .ui_scn import feature_page, scenario_tree, state_badge, tc_variants_card, variant_page, variant_url, variants_of_tc  # noqa: E402,F401

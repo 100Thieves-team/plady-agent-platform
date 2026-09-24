@@ -31,6 +31,7 @@ from qa import chat as chatmod  # noqa: E402
 from qa import drafts as draftsmod  # noqa: E402
 from qa import editor as editormod  # noqa: E402
 from qa.jobs import Jobs  # noqa: E402
+from qa import scenarios as scenariosmod  # noqa: E402
 from qa.repo import Repo, RepoError  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
@@ -72,11 +73,12 @@ class App:
         self.spec = Spec(cfg.spec_url, cfg.data_dir / "catalog", file=cfg.spec_file, ttl=cfg.spec_ttl)
         # 스크립트·TC 입력 파일의 원본은 레포 main. 쓰기 토큰이 있으면 main 판을 <data>/repo 로 받아 읽는다 (docs/qa-platform-editor.md §6)
         self.repo = Repo(cfg)
-        self.cases_dir, catalog_dir = cfg.cases_dir, cfg.catalog_dir
+        self.cases_dir, catalog_dir, self.scenarios_dir = cfg.cases_dir, cfg.catalog_dir, cfg.scenarios_dir
         if self.repo.enabled and (self.repo.sync() or self.repo.synced):
-            self.cases_dir, catalog_dir = self.repo.local / "cases", self.repo.local / "catalog"
+            self.cases_dir, catalog_dir, self.scenarios_dir = self.repo.local / "cases", self.repo.local / "catalog", self.repo.local / "scenarios"
         self.catalog = CatalogService(wiki=self.wiki, spec=self.spec, catalog_dir=catalog_dir, data_dir=cfg.data_dir)
         self.cases, self.case_errors = {}, []
+        self.features, self.scenario_errors = {}, []      # 시나리오 파일 (docs/qa-platform-scenarios.md)
         self.reload_cases()
         self.jobs = Jobs(cfg, self.store)     # Hermes 작업 (docs/qa-platform-progress.md)
         self.runner = Runner(cfg, self.store, self.cases, on_finish=self._on_finish, op_resolver=self.op_of)
@@ -92,6 +94,8 @@ class App:
 
     # ---- 케이스 -----------------------------------------------------------------
     def reload_cases(self) -> tuple[int, list[str]]:
+        """스크립트와 시나리오 파일을 다시 읽는다 (둘 다 레포 main 이 원본이고 같은 저장 흐름을 탄다)."""
+        self.features, self.scenario_errors = scenariosmod.load_dir(self.scenarios_dir)
         self.cases, self.case_errors = load_dir(self.cases_dir)
         audit_cases(self.cases, self.catalog.get())
         if hasattr(self, "runner"):
@@ -121,6 +125,19 @@ class App:
             elif r["id"] in by_tc:
                 cell["covered"] += 1
         return {"by_tc": by_tc, "matrix": matrix}
+
+    # ---- 시나리오 (docs/qa-platform-scenarios.md) ------------------------------------------
+    def scenario_view(self) -> tuple[list[dict], dict]:
+        """(기능별 트리, §6.1 검증 결과). 저장하지 않고 요청마다 계산한다 — 스크립트·TC 목록·PRD 가 바뀌면 바로 따라간다."""
+        cat = self.current_catalog()
+        ov = scenariosmod.overview(self.features, wiki=self.wiki, catalog=cat, cases=self.cases, last=self.store.last_verdicts())
+        chk = scenariosmod.check(self.features, wiki=self.wiki, catalog=cat, cases=self.cases)
+        chk["errors"] = list(self.scenario_errors) + chk["errors"]
+        return ov, chk
+
+    def gate_names(self) -> dict:
+        cat = self.catalog.current
+        return {r["gate"]: r.get("gate_name") or "" for r in (cat.records.values() if cat else []) if r.get("gate")}
 
     def drift_of(self, case) -> list[dict]:
         return self.catalog.drift_for(case.covers, (case.reviewed or {}).get("at"))
@@ -328,7 +345,7 @@ class App:
             raise BadRequest("TC 목록에 있는 TC 를 하나 이상 골라야 한다")
         if len(tc_ids) > 10:
             raise BadRequest("한 번에 10건까지")
-        example = self.cases.get("room.create-and-cancel") or next(iter(self.cases.values()), None)
+        example = self.cases.get("room.create") or next(iter(self.cases.values()), None)
         try:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
                                      example=example, existing_ids=set(self.cases), ask=ask, library=self.cases)
@@ -484,6 +501,7 @@ class App:
         ok = self.repo.sync()
         if self.repo.synced:
             self.cases_dir = self.repo.local / "cases"
+            self.scenarios_dir = self.repo.local / "scenarios"
             self.catalog.catalog_dir = self.repo.local / "catalog"
             self.catalog.get(force=True)
         return None if ok else (self.repo.state.get("error") or "main 을 받지 못했다")
@@ -496,8 +514,9 @@ class App:
         tcs = [{"id": r["id"], "title": r["title"], "layer": r["layer"]} for r in (cat.records.values() if cat else []) if not r.get("excluded")]
         setups = [{"id": c.id, "title": c.title, "outputs": c.outputs, "steps": len(c.steps), "uses": (c.uses or {}).get("setup"),
                    "inputs": [{"name": k, **v} for k, v in c.inputs.items()]} for c in self.setup_cases()]
+        variants = [{"id": vid, "title": va.title, "checks": va.checks} for vid, (_, _, va) in sorted(scenariosmod.variant_index(self.features).items())]
         return {"ops": ops, "tcs": tcs, "actors": sorted(self.all_actors()), "fixtures": sorted(self.cfg.fixtures),
-                "suites": ["smoke", "sanity", "manual", "setup"], "setups": setups}
+                "suites": ["smoke", "sanity", "manual", "setup"], "setups": setups, "variants": variants}
 
     def editor_op(self, op_id: str) -> dict | None:
         spec = self.spec.get()
@@ -1201,7 +1220,35 @@ class Handler(BaseHTTPRequestHandler):
                                 recent=app.store.list_runs(10), cfg_summary=app.cfg.summary(), case_count=len(app.cases),
                                 case_errors=app.case_errors, gh_error=app.github.last_error, runner_current=app.runner.current,
                                 catalog=cat, coverage=app.coverage(cat) if cat else None, catalog_error=app.catalog.last_error)
+            ov, chk = app.scenario_view()
+            body += ui.scenario_tree(ov, errors=chk["errors"])
             return self._page("대시보드", body, "dash")
+
+        # ---------- 시나리오 (docs/qa-platform-scenarios.md §12) ----------
+        if path == "/features" and method == "GET":
+            ov, chk = app.scenario_view()
+            return self._page("시나리오", ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
+        m = re.match(r"^/features/([^/]+)(?:/(S\d+)/([^/]+))?$", path)
+        if m and method == "GET":
+            from urllib.parse import unquote
+            import unicodedata
+            slug = unicodedata.normalize("NFC", unquote(m.group(1)))
+            ov, chk = app.scenario_view()
+            f = next((x for x in ov if x["slug"] == slug), None)
+            if not f:
+                return self._error(404, "그 기능이 없다")
+            if not m.group(2):
+                return self._page(f["feature"], ui.feature_page(f, check=chk, gate_names=app.gate_names(),
+                                                               prd_url=app.wiki.prd_url(f["feature"]) if app.wiki.available else None), "features")
+            s = next((x for x in f["scenarios"] if x["id"] == m.group(2)), None)
+            key = unquote(m.group(3))
+            v = next((x for x in (s or {}).get("variants", []) if x["variant"].key == key), None)
+            if not v:
+                return self._error(404, "그 변형이 없다")
+            cat = app.current_catalog()
+            hist = sorted((dict(r, case_id=c.id) for c in v["scripts"] for r in app.store.case_history(c.id, 10)), key=lambda r: r["created_at"], reverse=True)[:15]
+            step = next((st for st in s["steps"] if st.get("req") == v["variant"].at), None)
+            return self._page(v["variant"].title, ui.variant_page(f, s, v, check=chk, tc_records=(cat.records if cat else {}), history=hist, step=step), "features")
 
         # ---------- 런 ----------
         if path == "/runs" and method == "GET":
@@ -1389,7 +1436,9 @@ class Handler(BaseHTTPRequestHandler):
                 src_link = app.cfg.spec_docs_url + (("#" + ui.restdocs_anchor(o.summary)) if o and o.summary else "")
             elif rec["layer"] == "policy":
                 src_link = next((p["url"] for p in rec.get("prd") or [] if p.get("url")), None)
-            return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"]), source_link=src_link),
+            ov, _ = app.scenario_view()
+            return self._page(rec["id"], ui.catalog_detail(rec, covering, app.store.last_verdicts(), excerpts, app.catalog.changes.get(rec["id"]), source_link=src_link)
+                              + ui.tc_variants_card(ui.variants_of_tc(ov, rec["id"])),
                               "catalog", context={"tc": rec["id"]})
         if path == "/catalog/propose-tc" and method == "POST":
             f = self._form()
@@ -1685,6 +1734,7 @@ class Handler(BaseHTTPRequestHandler):
             mode, original_id, draft_id, errors = "new", None, None, []
             if new_case:
                 tcs = [t for t in q.get("tc", []) + q.get("tc_ids", []) if t]
+                vinfo = scenariosmod.variant_index(app.features).get(g("variant")) if g("variant") else None     # 변형 화면의 [스크립트 만들기 (폼)]
                 st = editormod.to_state({"suite": g("suite") or "sanity", "covers": tcs,
                                           "steps": [{"name": "", "request": {"method": "GET", "path": ""}}]})
                 cat = app.current_catalog()
@@ -1692,6 +1742,10 @@ class Handler(BaseHTTPRequestHandler):
                     recs = [cat.records[t] for t in tcs if t in cat.records]
                     st["domains"] = sorted({r["domain"] for r in recs})
                     st["source"] = sorted({f"PRD/{p['doc']} §{p['section']}" for r in recs for p in (r.get("prd") or [])})
+                if vinfo:
+                    ft, sc, va = vinfo
+                    st.update({"variant": g("variant"), "title": va.title, "actor": sc.actor or "",
+                               "source": ([f"PRD/{ft.feature} {va.at}"] if va.at else []) + [x for x in st.get("source") or [] if x != f"PRD/{ft.feature} {va.at}"]})
             else:
                 if m_edit:
                     c = app.cases.get(m_edit.group(1))
@@ -1792,7 +1846,10 @@ class Handler(BaseHTTPRequestHandler):
             drift = {c.id: app.drift_of(c) for c in cs}
             recent = app.store.recent_case_results(20)
             stats = {cid: ui.stats_of(rows) for cid, rows in recent.items()}
-            return self._page("스크립트", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift, stats=stats), "cases")
+            chk = scenariosmod.check(app.features, wiki=None, catalog=None, cases=app.cases)      # 없는 변형을 가리키는 스크립트만 본다
+            vtitles = {vid: va.title for vid, (_, _, va) in scenariosmod.variant_index(app.features).items()}
+            return self._page("스크립트", ui.cases_list(cs, app.store.last_verdicts(), app.case_errors, drift=drift, stats=stats,
+                                                     variants=vtitles, variant_errors=chk["scripts"]), "cases")
         if path == "/cases/reload" and method == "POST":
             sync_err = app.resync_repo()
             n, errs = app.reload_cases()

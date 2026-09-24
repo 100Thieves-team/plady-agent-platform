@@ -15,7 +15,7 @@ import yaml
 from .cases import _TC, CaseError, _validate, audit
 from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE
 
-CASE_KEYS = ("id", "title", "suite", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
+CASE_KEYS = ("id", "title", "suite", "variant", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
 STEP_KEYS = ("name", "actor", "covers", "request", "expect", "save")
 REQ_KEYS = ("method", "path", "query", "body")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
@@ -77,7 +77,7 @@ def unsupported(raw: dict) -> list[str]:
 
 
 def to_state(raw: dict) -> dict:
-    st = {"id": raw.get("id") or "", "title": raw.get("title") or "", "suite": raw.get("suite") or "sanity",
+    st = {"id": raw.get("id") or "", "title": raw.get("title") or "", "suite": raw.get("suite") or "sanity", "variant": raw.get("variant") or "",
           "description": raw.get("description") or "", "domains": list(raw.get("domains") or []), "source": list(raw.get("source") or []),
           "actor": raw.get("actor") or "", "covers": list(raw.get("covers") or []),
           "inputs": [{"name": k, "label": (v or {}).get("label", "") if isinstance(v, dict) else "", "default": value_to_cell((v or {}).get("default") if isinstance(v, dict) else v) if ((v or {}).get("default") if isinstance(v, dict) else v) is not None else "",
@@ -125,6 +125,8 @@ def from_state(st: dict, *, op_of=None) -> dict:
     if not isinstance(st, dict):
         raise FormError("폼 상태가 맵이 아니다")
     raw: dict = {"id": str(st.get("id") or "").strip(), "title": str(st.get("title") or "").strip(), "suite": str(st.get("suite") or "").strip()}
+    if str(st.get("variant") or "").strip():
+        raw["variant"] = str(st["variant"]).strip()
     if str(st.get("description") or "").strip():
         raw["description"] = str(st["description"]).strip()
     steps, ops, paths = [], [], []

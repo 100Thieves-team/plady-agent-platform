@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import re
 import time
+import unicodedata
 from pathlib import Path
 
 import yaml
@@ -25,6 +26,11 @@ _REQ_TAG = re.compile(r"\s`R(\d+)`\s*\|?\s*$")
 _REQ_SOURCE = re.compile(r"^PRD/(.+?)\s+(R\d+)\s*$")
 _REQ_HEADING = re.compile(r"^#{2,4}\s*(\d+(?:[.-]\d+)*)[.\s]")
 _REQ_LIST = re.compile(r"^\s*(?:[-*]|\d+\.)\s+")
+# PRD 2장 사용자 시나리오 (docs/qa-platform-scenarios.md §2): `### 시나리오 S1: 제목`, 단계 `1. 문장 `R1``, 분기 `\t- 분기: 문장 `R3``
+_SCN_HEAD = re.compile(r"^###\s*시나리오\s+(S\d+)\s*[:：]\s*(.+?)\s*$")
+_SCN_STEP = re.compile(r"^(\d+)\.\s+(.*)$")
+_SCN_BRANCH = re.compile(r"^\s+[-*]\s*분기\s*[:：]\s*(.*)$")
+_REQ_ANY = re.compile(r"`(R\d+)`\s*$")
 
 
 def doc_slug(doc: str) -> str:
@@ -150,6 +156,48 @@ class Wiki:
                 text = " ".join(_REQ_LIST.sub("", _REQ_TAG.sub("", ln)).strip().strip("|").split())
                 out[f"R{t.group(1)}"] = {"section": sec, "text": text}
         self._reqs[doc] = (mt, out)
+        return out
+
+    def prd_docs(self) -> list[str]:
+        """위키의 PRD 문서 이름 (파일 이름의 하이픈을 공백으로). `_index.md` 는 뺀다."""
+        if not self.root or not (self.root / PRD_REL).is_dir():
+            return []
+        return sorted(unicodedata.normalize("NFC", p.stem).replace("-", " ") for p in (self.root / PRD_REL).glob("*.md") if not p.name.startswith("_"))
+
+    def prd_scenarios(self, doc: str) -> list[dict]:
+        """PRD 2장의 시나리오 → [{id, title, steps: [{no, text, req, branch, parent}]}]. 분기는 바로 앞 단계 번호가 parent.
+        요구 id 가 없는 줄도 넣는다(req None). `> ` 인용과 다른 절은 건너뛴다."""
+        p = self.prd_path(doc)
+        if not p:
+            return []
+        out, cur, in_ch2, last_no = [], None, False, None
+        for ln in p.read_text(encoding="utf-8").split("\n"):
+            if ln.startswith("## "):
+                in_ch2 = bool(re.match(r"^##\s*2[.\s]", ln))
+                cur = None
+                continue
+            if not in_ch2:
+                continue
+            if ln.startswith("###"):
+                m = _SCN_HEAD.match(ln)
+                cur = {"id": m.group(1), "title": m.group(2), "steps": []} if m else None
+                if cur:
+                    out.append(cur)
+                last_no = None
+                continue
+            if cur is None:
+                continue
+            r = _REQ_ANY.search(ln)
+            req = r.group(1) if r else None
+            text = " ".join(_REQ_ANY.sub("", ln).split())
+            m = _SCN_STEP.match(ln)
+            if m:
+                last_no = int(m.group(1))
+                cur["steps"].append({"no": last_no, "text": " ".join(_REQ_ANY.sub("", m.group(2)).split()), "req": req, "branch": False, "parent": None})
+                continue
+            b = _SCN_BRANCH.match(ln)
+            if b:
+                cur["steps"].append({"no": None, "text": " ".join(_REQ_ANY.sub("", b.group(1)).split()), "req": req, "branch": True, "parent": last_no})
         return out
 
     def resolve_source(self, ref: str) -> dict | None:

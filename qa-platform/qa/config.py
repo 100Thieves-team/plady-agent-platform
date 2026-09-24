@@ -32,6 +32,7 @@ class Config:
         self.port = int(g("QA_PORT", "8800"))
         self.data_dir = Path(g("QA_DATA_DIR", "/data"))
         self.cases_dir = Path(g("QA_CASES_DIR", str(Path(__file__).resolve().parent.parent / "cases")))
+        self.scenarios_dir = Path(g("QA_SCENARIOS_DIR", str(Path(__file__).resolve().parent.parent / "scenarios")))   # docs/qa-platform-scenarios.md §4
         self.public_url = g("QA_PUBLIC_URL", "https://qa.agent.plady.io").rstrip("/")
 
         # 검증 대상

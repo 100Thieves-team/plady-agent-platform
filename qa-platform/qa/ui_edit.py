@@ -8,7 +8,7 @@ import json
 
 from .ui import badge, e, h, kst
 
-EDITOR_JS_VERSION = "5"
+EDITOR_JS_VERSION = "6"
 JOBS_JS_VERSION = "1"
 
 EDIT_CSS = """
@@ -46,7 +46,7 @@ def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str |
             f'<div class="actions"><button class="primary" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장</button>'
             f'<button type="button" id="ed-try" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장 전에 한 번 실행해 보기 (dev)</button>{h("editor.try")} {back}</div>'
             f'<p id="ed-try-msg" class="small mut"></p></form>'
-            f'<datalist id="dl-ops"></datalist><datalist id="dl-tcs"></datalist><datalist id="dl-vars"></datalist>'
+            f'<datalist id="dl-ops"></datalist><datalist id="dl-tcs"></datalist><datalist id="dl-vars"></datalist><datalist id="dl-variants"></datalist>'
             f'<script id="ed-state" type="application/json">{json.dumps(st, ensure_ascii=False).replace("</", "<\\/")}</script>'
             f'<script>window.ED={json.dumps(ed, ensure_ascii=False)}</script><script src="/static/editor.js?v={EDITOR_JS_VERSION}" defer></script>')
 
@@ -54,7 +54,7 @@ def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str |
 EDITOR_JS = r"""
 (function(){
   var el=document.getElementById('ed-state'); if(!el) return;
-  var S=JSON.parse(el.textContent), ED=window.ED||{}, CTX={ops:[],tcs:[],actors:[],fixtures:[],setups:[]}, OPINFO={}, VIEW={};
+  var S=JSON.parse(el.textContent), ED=window.ED||{}, CTX={ops:[],tcs:[],actors:[],fixtures:[],setups:[],variants:[]}, OPINFO={}, VIEW={};
   var root=document.getElementById('ed-root');
   S.steps=S.steps&&S.steps.length?S.steps:[blankStep()];
   S.uses=S.uses||{setup:'',with:{}};S.uses.with=S.uses.with||{};
@@ -86,6 +86,9 @@ EDITOR_JS = r"""
     if(S.uses.setup&&!c)h+='<p class="hint bad">카드 '+esc(S.uses.setup)+' 가 지금 목록에 없다</p>';
     if(c&&c.inputs.length)h+='<table class="bf">'+c.inputs.map(function(f){return '<tr><td class="nm'+(f.required&&(f['default']==null||f['default']==='')?' req':'')+'">'+esc(f.label)+' <span class="mono small mut">'+esc(f.name)+'</span></td><td><input data-k="uses.with.'+esc(f.name)+'" value="'+esc(S.uses.with[f.name]==null?'':S.uses.with[f.name])+'" list="dl-vars" placeholder="'+esc(f['default']==null?'':'기본값 '+f['default'])+'">'+(f.hint?'<div class="hint">'+esc(f.hint)+'</div>':'')+'</td></tr>'}).join('')+'</table>';
     return h}
+  function variantHint(){var v=null;(CTX.variants||[]).forEach(function(x){if(x.id===S.variant)v=x});
+    if(!S.variant)return '시나리오 화면의 변형 하나. 비우면 "시나리오 밖" 스크립트다';if(!v)return '<span class="bad">시나리오 파일에 없는 변형이다</span>';
+    return esc(v.title)+(v.checks.length?' · 확인할 TC '+v.checks.map(esc).join(' '):'')}
   function refreshVars(){document.getElementById('dl-vars').innerHTML=vars().map(function(x){return '<option value="'+esc(x)+'">'}).join('')}
   function parseBody(s){var t=(s.body||'').trim();if(!t)return {};try{var o=JSON.parse(t);return (o&&typeof o==='object'&&!Array.isArray(o))?o:null}catch(e){return null}}
   function getIn(o,name){return name.split('.').reduce(function(a,k){return a==null?undefined:a[k]},o)}
@@ -135,8 +138,9 @@ EDITOR_JS = r"""
   function basicHtml(){var edit=ED.mode==='edit';
     var h='<div class="card"><h3 style="margin-top:0">기본 정보'+help('editor.basic')+'</h3><div class="g2">'
       +fld('스위트'+help('cases.suite'),sel('suite',[['smoke','smoke — 읽기만'],['sanity','sanity — 쓰기 흐름, 만든 것은 정리'],['manual','manual — 손으로만 실행'],['setup','setup — 테스트 데이터 만들기 카드']]),'',true)
-      +fld('id',inp('id','room.create-and-cancel','class="mono"'+(edit?' readonly':''))+(edit?'':' <button type="button" data-act="suggest" class="small">제안</button>'),edit?'고칠 때는 id 를 바꿀 수 없다':'도메인.영문-이름 (소문자·숫자·점·하이픈)',true)+'</div>'
+      +fld('id',inp('id','room.create','class="mono"'+(edit?' readonly':''))+(edit?'':' <button type="button" data-act="suggest" class="small">제안</button>'),edit?'고칠 때는 id 를 바꿀 수 없다':'도메인.영문-이름 (소문자·숫자·점·하이픈)',true)+'</div>'
       +fld('제목',inp('title','방장이 룸을 만들고 취소하면 CANCELED 가 된다'),'한국어 한 문장',true)
+      +(S.suite==='setup'?'':fld('구현하는 변형'+help('cases.variant'),inp('variant','룸-생성/S1/happy','class="mono" list="dl-variants"'),variantHint()))
       +fld('설명','<textarea data-k="description" rows="2">'+esc(S.description)+'</textarea>')
       +'<div class="g2">'+fld('도메인',lst('domains','room'),'API 를 고르면 자동으로 채워진다. 쉼표로 여러 개')+fld('기본 테스트 계정',sel('actor',CTX.actors,'없음 (로그인 안 함)'),'단계마다 따로 정할 수도 있다')+'</div>'
       +fld('출처',lst('source','PRD/룸 생성 §4.8'),'근거 문서. 쉼표로 여러 개')+usesHtml();
@@ -163,6 +167,7 @@ EDITOR_JS = r"""
     if(t.dataset.bf!=null){var i=+t.dataset.bf,o=parseBody(S.steps[i]);if(o===null)return;setIn(o,t.dataset.name,conv(t.value,t.dataset.type));S.steps[i].body=Object.keys(o).length?JSON.stringify(o,null,2):'';return}});
   root.addEventListener('change',function(ev){var t=ev.target;
     if(t.dataset.k==='uses.setup'){S.uses.with={};render();return}
+    if(t.dataset.k==='variant'){render();return}
     if(t.dataset.k==='suite'||t.dataset.k==='actor'||/\.method$/.test(t.dataset.k||'')){render();return}
     if(t.dataset.bf!=null){var i=+t.dataset.bf,o=parseBody(S.steps[i]);if(o!==null){setIn(o,t.dataset.name,conv(t.value,t.dataset.type));S.steps[i].body=Object.keys(o).length?JSON.stringify(o,null,2):''}
       setTimeout(render,0);return}      // 다음 칸으로 포커스가 옮겨 간 뒤 다시 그린다 — 조건부 필드 경고를 갱신하고 커서는 지킨다
@@ -199,6 +204,7 @@ EDITOR_JS = r"""
   render();
   fetch('/api/editor/context',{headers:{Accept:'application/json'}}).then(function(r){return r.json()}).then(function(c){CTX=c;
     document.getElementById('dl-ops').innerHTML=c.ops.map(function(o){return '<option value="'+esc(o.id)+'">'+esc(o.method+' '+o.path+' — '+(o.summary||''))+'</option>'}).join('');
+    document.getElementById('dl-variants').innerHTML=(c.variants||[]).map(function(v){return '<option value="'+esc(v.id)+'">'+esc(v.title)+'</option>'}).join('');
     document.getElementById('dl-tcs').innerHTML=c.tcs.map(function(t){return '<option value="'+esc(t.id)+'">'+esc('['+t.layer+'] '+t.title)+'</option>'}).join('');
     return Promise.all(S.steps.map(function(s){return loadOp(opOf(s))}))}).then(render);
 })();
