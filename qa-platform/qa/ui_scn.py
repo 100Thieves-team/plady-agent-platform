@@ -112,7 +112,13 @@ def _reject_prefill(f: dict, s: dict, r: dict) -> str:
     return feature_url(f["slug"], s["id"], "new") + "?" + "&".join(f"{k}={quote(str(v), safe='')}" for k, v in q.items())
 
 
-def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None, operator: str = "", scripts_of: dict | None = None) -> str:
+def _hermes_btn(action: str, name: str, value: str, label: str, *, operator: str, hermes: bool, help_key: str, why: str | None = None) -> str:
+    dis = "" if (operator and hermes and not why) else f'disabled title="{e(why or ("HERMES_API_KEY 가 없다" if not hermes else "담당자를 먼저 고르세요"))}"'
+    return (f'<form class="inline" method="post" action="{action}" data-job-form>{_operator_hidden(operator)}<input type="hidden" name="{name}" value="{e(value)}">'
+            f'<button {dis}>{e(label)}</button>{h(help_key)}</form>')
+
+
+def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None, operator: str = "", hermes: bool = False) -> str:
     fc = check.get("by_feature", {}).get(f["slug"]) or {"errors": [], "warnings": []}
     msgs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in fc["errors"]) + "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in fc["warnings"])
     body = ""
@@ -136,9 +142,11 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None,
                  f'<h4>PRD 단계{h("feature.steps")}</h4>{_steps_html(s, gate_names)}'
                  f'<h4>변형{h("variant.state")}</h4><table style="table-layout:fixed">{_VCOLS}<tr><th>변형</th><th>상태</th><th>스크립트</th><th>최근 결과</th></tr>{vrows}</table>{rej_html}{del_box}</div>')
     c = f["counts"]
+    fill = _hermes_btn("/features/fill", "slug", f["slug"], "Hermes 로 변형 채우기", operator=operator, hermes=hermes, help_key="feature.fill")
     return (f'<h1>{e(f["feature"])}{h("feature.page")} <span class="small mut">'
             f'{("<a href=\"" + e(prd_url) + "\">PRD</a> · ") if prd_url else ""}'
             f'{("<span class=\"mono\">scenarios/" + e(f["file"]) + "</span>") if f["file"] else "시나리오 파일 없음"}</span></h1>'
+            f'<div class="actions">{fill}</div>'
             f'<div class="card"><div class="stats" style="margin:0">'
             + "".join(f'<div class="stat"><div class="l">{e(label)}</div><b>{c[k]}</b></div>'
                       for k, label in (("variants", "변형"), ("auto", "자동화됨"), ("manual", "사람이 확인"), ("excluded", "제외"), ("untested", "테스트 없음"), ("rejects", "테스트 없는 거절 규칙")))
@@ -146,7 +154,8 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None,
             f'{("<div class=\"card\"><b>검증</b>" + h("feature.check") + "<ul style=\"margin:6px 0 0\">" + msgs + "</ul></div>") if msgs else ""}{body}')
 
 
-def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, history: list[dict], step: dict | None, operator: str = "") -> str:
+def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, history: list[dict], step: dict | None, operator: str = "",
+                 hermes: bool = False) -> str:
     va = v["variant"]
     checks = "".join(
         f'<li>{tc_link(t)} <span class="small">{e((tc_records.get(t) or {}).get("title") or "TC 목록에 없다")}</span>'
@@ -174,7 +183,8 @@ def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, hi
             f'<div>기대 결과</div><div>{e(va.then) or "<span class=mut>–</span>"}</div><div>확인 방식</div><div>{"스크립트" if va.mode == "auto" else "사람이 확인"}</div></div></div>'
             f'<h2>확인할 TC (checks){h("variant.checks")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{checks}</ul></div>'
             f'<h2>구현한 스크립트</h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>스위트</th></tr>{scripts}</table>'
-            f'<div class="actions"><a class="btn" href="/cases/new?{q}">스크립트 만들기 (폼)</a>{h("variant.new_script")}</div></div>'
+            f'<div class="actions"><a class="btn" href="/cases/new?{q}">스크립트 만들기 (폼)</a>{h("variant.new_script")} '
+            f'{_hermes_btn("/features/script", "variant", v["id"], "Hermes 로 스크립트 만들기", operator=operator, hermes=hermes, help_key="variant.hermes_script", why=None if va.checks else "확인할 TC(checks)를 먼저 적는다")}</div></div>'
             f'<h2>실행 이력</h2><div class="card"><table><tr><th>실행</th><th>스크립트</th><th>결과</th><th>시각</th><th>오류</th></tr>{hist}</table></div>{del_box}')
 
 

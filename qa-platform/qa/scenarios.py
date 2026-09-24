@@ -419,6 +419,11 @@ def apply_op(text: str | None, op: dict) -> str:
     header = _header(text) or f"# 「{op['feature']}」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).\n"
     scns = d.setdefault("scenarios", []) or []
     d["scenarios"] = scns
+    if op["action"] == "merge":
+        _merge(scns, op)
+        out = dump_feature(d, header)
+        parse_feature(yaml.safe_load(out), f"{doc_slug(op['feature'])}.yaml")
+        return out
     sid = op["scenario"]
     s = next((x for x in scns if isinstance(x, dict) and str(x.get("id")) == sid), None)
     act = op["action"]
@@ -471,7 +476,46 @@ def apply_op(text: str | None, op: dict) -> str:
     return out
 
 
+_SCN_ORDER = ("id", "actor", "gates", "variants", "basis_hash")
+
+
+def _ordered(s: dict) -> dict:
+    return {k: s[k] for k in [k for k in _SCN_ORDER if k in s] + [k for k in s if k not in _SCN_ORDER]}
+
+
+def _merge(scns: list, op: dict) -> None:
+    """Hermes 가 채운 것을 합친다 (docs/qa-platform-scenarios.md §7). 이미 있는 변형·이미 적힌 단계의 gates·actor 는 건드리지 않고,
+    새 key 의 변형과 비어 있던 단계의 gates 만 더한다."""
+    for hs in op.get("scenarios") or []:
+        sid = str(hs["id"])
+        s = next((x for x in scns if isinstance(x, dict) and str(x.get("id")) == sid), None)
+        if s is None:
+            s = {"id": sid}
+            scns.append(s)
+        if hs.get("actor") and not s.get("actor"):
+            s["actor"] = str(hs["actor"])
+        gates = dict(s.get("gates") or {})
+        for req, gl in (hs.get("gates") or {}).items():
+            gl = [gl] if isinstance(gl, str) else list(gl or [])
+            if str(req) not in gates and gl:
+                gates[str(req)] = [str(g) for g in gl]
+        if gates:
+            s["gates"] = gates
+        vs = list(s.get("variants") or [])
+        have = {v.get("key") for v in vs if isinstance(v, dict)}
+        for v in hs.get("variants") or []:
+            if v.get("key") not in have:
+                vs.append(v)
+                have.add(v.get("key"))
+        if vs:
+            s["variants"] = vs
+        scns[scns.index(s)] = _ordered(s)
+    scns.sort(key=lambda x: _sid_no(str(x.get("id"))))
+
+
 def op_target(op: dict) -> str:
+    if op["action"] == "merge":
+        return doc_slug(op["feature"])
     base = f"{doc_slug(op['feature'])}/{op['scenario']}"
     if op["action"] == "variant":
         return f"{base}/{variant_raw(op['variant']).get('key')}"
@@ -482,5 +526,8 @@ def op_target(op: dict) -> str:
 
 def op_summary(op: dict) -> str:
     t = op_target(op)
+    if op["action"] == "merge":
+        n = sum(len(x.get("variants") or []) for x in op.get("scenarios") or [])
+        return f"{t} 변형 채우기 (Hermes, 새 변형 후보 {n})"
     return {"variant": f"{t} {'수정' if op.get('original_key') else '추가'}", "variant-delete": f"{t} 삭제",
             "scenario": f"{t} 수정", "scenario-delete": f"{t} 삭제"}[op["action"]]

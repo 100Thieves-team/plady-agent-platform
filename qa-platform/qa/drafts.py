@@ -35,7 +35,9 @@ DRAFT_SYSTEM = (
     "5. 쓰기 스크립트(POST/PUT/PATCH/DELETE)는 자기가 만든 데이터를 자기가 닫는 정리 단계(취소·철회·삭제)로 끝난다. 만든 데이터의 title 은 `[QA]` 로 시작한다.\n"
     "6. 로그인이 필요하면 `actor:` 에 주어진 테스트 계정 이름만 쓴다. 픽스처는 주어진 키만 `{{fixture.키}}` 로 쓴다.\n"
     "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} 만.\n"
-    "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장."
+    "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
+    "9. 전제 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
+    "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다."
 )
 
 
@@ -202,12 +204,19 @@ def _asker(cfg: Config, ask):
 
 
 def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None,
-             existing_ids: set[str], ask=None, library: dict | None = None) -> dict:
-    """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}."""
+             existing_ids: set[str], ask=None, library: dict | None = None, extra: str | None = None, variant: str | None = None) -> dict:
+    """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}.
+    extra 는 근거 뒤에 붙일 절(변형 설명·전제 카드), variant 가 있으면 나온 스크립트에 `variant:` 를 박는다."""
     prompt, phash = assemble(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, tc_ids=tc_ids, example=example)
+    if extra:
+        prompt = prompt.replace("\n\n# 출력\n", "\n\n" + extra.strip() + "\n\n# 출력\n", 1)
+        phash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
     raw = _asker(cfg, ask)(DRAFT_SYSTEM, prompt, "qa-draft")
     accepted, rejected = [], []
     for d in parse_output(raw):
+        if variant:
+            d = {k: v for k, v in d.items() if k != "variant"}
+            d = {**{k: d[k] for k in ("id", "title", "suite") if k in d}, "variant": variant, **{k: v for k, v in d.items() if k not in ("id", "title", "suite")}}
         case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
         if case:
             accepted.append((case, warnings))

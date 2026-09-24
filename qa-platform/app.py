@@ -350,20 +350,29 @@ class App:
         return rid
 
     # ---- Hermes 가 만들고 바로 저장 (docs/qa-platform-scenarios.md §9) --------------------------------
-    def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
-        """고른 TC 로 Hermes 가 스크립트를 쓰고, 검증을 통과한 것은 바로 저장한다(Hermes 작성 표시)."""
+    def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None, variant: str | None = None) -> dict:
+        """고른 TC 로 Hermes 가 스크립트를 쓰고, 검증을 통과한 것은 바로 저장한다(Hermes 작성 표시).
+        variant 가 있으면 변형 화면의 [Hermes 로 스크립트 만들기] — 변형의 제목·전제·기대 결과·갈라지는 단계와 전제 카드를 근거에 더하고 variant: 를 박는다."""
         cat = self.current_catalog()
         if cat is None:
             raise BadRequest("TC 목록이 없어 스크립트를 만들 수 없다")
         tc_ids = [t for t in dict.fromkeys(tc_ids) if t in cat.records]
         if not tc_ids:
             raise BadRequest("TC 목록에 있는 TC 를 하나 이상 골라야 한다")
+        if variant:     # 변형의 checks 에 묶인 API 계약 TC 도 같이 요청한다 — 거절이면 그 코드, 성공이면 2xx (계약 대조가 결정론으로 확인한다)
+            for t in list(tc_ids):
+                b = cat.records[t].get("binding") or {}
+                for o in b.get("operations") or []:
+                    code = b.get("error_code")
+                    tc_ids += [r["id"] for r in cat.records.values() if r["layer"] == "contract" and r.get("operation") == o and r["id"] not in tc_ids
+                               and (r["id"].endswith(":" + code) if code else r["id"].rsplit(":", 1)[-1].startswith("2"))]
         if len(tc_ids) > 10:
             raise BadRequest("한 번에 10건까지")
         example = self.cases.get("room.create") or next(iter(self.cases.values()), None)
         try:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
-                                     example=example, existing_ids=set(self.cases), ask=ask, library=self.cases)
+                                     example=example, existing_ids=set(self.cases), ask=ask, library=self.cases,
+                                     extra=self.variant_context(variant) if variant else None, variant=variant)
         except Exception as ex:
             self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
@@ -384,6 +393,99 @@ class App:
                              detail={"tc_ids": tc_ids, "model": res["model"], "prompt_hash": res["prompt_hash"], "prompt_chars": res["prompt_chars"],
                                      "saved": [s["case_id"] for s in saved], "rejected": len(rejected), "raw_chars": len(res["raw"])})
         return {"saved": saved, "rejected": rejected, "prompt_hash": res["prompt_hash"]}
+
+    def variant_context(self, vid: str) -> str:
+        """변형에서 스크립트를 만들 때 근거에 더하는 절 (docs/qa-platform-scenarios.md §7)."""
+        hit = scenariosmod.variant_index(self.features).get(vid)
+        if not hit:
+            raise BadRequest(f"변형 {vid} 가 시나리오 파일에 없다")
+        ft, sc, va = hit
+        step = next((st for s in (self.wiki.prd_scenarios(ft.feature) if self.wiki.available else []) if s["id"] == sc.id
+                     for st in s["steps"] if st.get("req") == va.at), None)
+        cards = [{"id": c.id, "title": c.title, "inputs": {k: v.get("default") for k, v in c.inputs.items()}, "outputs": c.outputs,
+                  "steps": [s["name"] for s in c.steps]} for c in self.setup_cases()]
+        lines = [f"# 이 스크립트가 구현할 변형 {vid}", f"- 종류: {scenariosmod.KIND_KO.get(va.kind, va.kind)}", f"- 제목: {va.title}"]
+        if va.at:
+            lines.append(f"- 갈라지는 단계: {va.at} {(step or {}).get('text') or ''}".rstrip())
+        if va.given:
+            lines.append(f"- 전제: {va.given}")
+        if va.then:
+            lines.append(f"- 기대 결과: {va.then}")
+        lines.append(f"- 기본 테스트 계정: {sc.actor or '(없음)'}")
+        lines.append("- 스크립트 하나만 쓴다. `variant:` 는 플랫폼이 채운다.")
+        return "\n".join(lines) + "\n\n# 전제 카드 (uses 로 받을 수 있는 테스트 데이터 만들기 카드)\n```json\n" + json.dumps(cards, ensure_ascii=False, indent=1) + "\n```"
+
+    def fill_scenarios(self, slug: str, *, operator: str, session_hash=None, ip=None, ask=None) -> dict:
+        """[Hermes 로 변형 채우기] (§7). 출력은 합친다 — 이미 있는 변형과 적힌 gates 는 그대로, 새 변형과 빈 단계의 gates 만 더한다.
+        §6.1 검증에 막히면 오류를 붙여 한 번 더 묻고, 그래도 막히면 저장하지 않고 실패로 끝난다."""
+        from qa import scenario_ai
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        if not self.wiki.available:
+            raise BadRequest("위키 체크아웃이 없어 PRD 를 읽을 수 없다")
+        ov, _ = self.scenario_view()
+        f = next((x for x in ov if x["slug"] == slug), None)
+        if not f:
+            raise BadRequest("그 기능이 없다")
+        ssot, _ = self.wiki.read_ssot()
+        ft = self.features.get(slug)
+        prompt, phash = scenario_ai.assemble_fill(doc=f["feature"], wiki=self.wiki, ssot=ssot, catalog=self.current_catalog(), spec=self.spec.get(),
+                                                  feature=ft, ov_feature=f)
+        asker = draftsmod._asker(self.cfg, ask)
+        text, errors, op, new = asker(scenario_ai.FILL_SYSTEM, prompt, "qa-scenario"), [], None, None
+        for attempt in (0, 1):
+            try:
+                op = scenario_ai.merge_op(f["feature"], scenario_ai.parse_fill(text), ft)
+                new, errors, _ = self.scenario_check(op)
+            except scenariosmod.ScenarioError as ex:
+                errors = [str(ex)]
+            if not errors:
+                break
+            self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target=slug, session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-scenario", "attempt": attempt + 1, "errors": errors[:6], "prompt_hash": phash})
+            if attempt == 0:
+                text = asker(scenario_ai.FILL_SYSTEM, prompt + "\n\n# 앞 출력이 검증에서 막혔다. 아래 오류를 고쳐 다시 낸다\n"
+                             + "\n".join(f"- {x}" for x in errors[:12]) + "\n\n# 앞 출력\n" + text[:20000], "qa-scenario")
+        if errors:
+            raise BadRequest("Hermes 결과가 검증을 못 넘겼다 — 저장하지 않았다: " + "; ".join(errors[:3]))
+        p = self.scenarios_dir / f"{slug}.yaml"
+        added = sum(len(s["variants"]) for s in op["scenarios"])
+        if new == (p.read_text(encoding="utf-8") if p.is_file() else None) or not new:
+            self.store.add_event(operator=operator, action="hermes.generate", target=slug, session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-scenario", "prompt_hash": phash, "added": 0})
+            return {"ok": True, "added": 0, "saved": None}
+        out = self.save_scenario(op, operator=operator, source="hermes-scenario", prompt_hash=phash, session_hash=session_hash, ip=ip)
+        self.store.add_event(operator=operator, action="hermes.generate", target=slug, session_hash=session_hash, ip=ip,
+                             detail={"source": "hermes-scenario", "prompt_hash": phash, "prompt_chars": len(prompt), "added": added, "change": out.get("id")})
+        return {**out, "added": added, "saved": out}
+
+    def job_fill(self, slug: str, operator: str, session_hash=None, ip=None, sync=False):
+        from qa.ui_scn import feature_url
+
+        def fn(job):
+            out = self.fill_scenarios(slug, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
+            if not out["saved"]:
+                return {"summary": "새로 더할 변형이나 gates 가 없었다", "links": [{"href": feature_url(slug), "label": slug}]}
+            return {"summary": f"변형 {out['added']}개와 빈 단계의 gates 를 채워 저장했다 (Hermes 작성 표시)", "links": [self.change_link(out)]}
+        return self.start_job("scenario", operator=operator, label=slug, fn=fn, back={"href": feature_url(slug), "label": slug},
+                              session_hash=session_hash, ip=ip, sync=sync)
+
+    def job_variant_script(self, vid: str, operator: str, session_hash=None, ip=None, sync=False):
+        """[Hermes 로 스크립트 만들기] — 변형의 checks 로 스크립트를 쓰게 한다. checks 가 없으면 근거가 없어 막는다."""
+        from qa.ui_scn import variant_url
+        hit = scenariosmod.variant_index(self.features).get(vid)
+        if not hit:
+            raise BadRequest(f"변형 {vid} 가 시나리오 파일에 없다")
+        if not hit[2].checks:
+            raise BadRequest("확인할 TC(checks)가 없는 변형이다 — 폼으로 checks 를 먼저 적는다")
+
+        def fn(job):
+            res = self.generate_cases(tc_ids=list(hit[2].checks), operator=operator, session_hash=session_hash, ip=ip, ask=job.ask, variant=vid)
+            links = [self.change_link(s) for s in res["saved"]]
+            rej = "; ".join(f"{rid}: {', '.join(errs[:2])}" for rid, errs in res["rejected"][:3])
+            return {"summary": f"스크립트 {len(res['saved'])}건 저장" + (f", {len(res['rejected'])}건은 검증에서 버림 — {rej}" if res["rejected"] else ""), "links": links}
+        return self.start_job("draft", operator=operator, label=vid, fn=fn, back={"href": variant_url(vid), "label": vid},
+                              session_hash=session_hash, ip=ip, sync=sync)
 
     def propose_tc(self, *, doc: str, section: str, domain: str | None, operator: str, session_hash: str | None, ip: str | None, ask=None) -> dict:
         """PRD 절 본문을 Hermes 에게 주어 수동 작성 TC 를 받고 manual-tc.yaml 에 바로 저장한다. docs/qa-platform-hermes.md §3 트리 4 (P4d)."""
@@ -717,7 +819,8 @@ class App:
             return []
         return sorted(c.id for c in self.cases.values() if c.variant in gone)
 
-    def save_scenario(self, op: dict, *, operator: str, source: str = "form", note: str | None = None, session_hash=None, ip=None) -> dict:
+    def save_scenario(self, op: dict, *, operator: str, source: str = "form", note: str | None = None, prompt_hash: str | None = None,
+                      session_hash=None, ip=None) -> dict:
         """시나리오 변경 하나를 검증하고 바로 저장한다. 오류가 있으면 저장하지 않고 {ok: False, errors}.
         변형·시나리오를 지우면 그것을 구현하던 스크립트의 variant: 를 떼어 "시나리오 밖" 으로 남긴다(스크립트는 지우지 않는다)."""
         if not operator or operator not in self.cfg.operators:
@@ -734,7 +837,8 @@ class App:
                 op = {**op, "variant": {k: x for k, x in op["variant"].items() if k != "written_by"}}
         out = self.save_change(kind="scenario-delete" if delete else "scenario", source=source,
                                yaml_text=draftsmod.yaml.safe_dump(op, allow_unicode=True, sort_keys=False), operator=operator,
-                               note=(note or "").strip() or None, case_id=scenariosmod.op_target(op), tc_ids=v.get("checks") or [],
+                               note=(note or "").strip() or None, case_id=scenariosmod.op_target(op), prompt_hash=prompt_hash,
+                               tc_ids=v.get("checks") or [t for s in op.get("scenarios") or [] for x in s.get("variants") or [] for t in x.get("checks") or []],
                                validation={"status": "warn" if warnings else "ok", "errors": [], "warnings": warnings + ([f"시나리오 밖으로 돌린 스크립트: {', '.join(unlinks)}"] if unlinks else [])},
                                session_hash=session_hash, ip=ip)
         for cid in unlinks:
@@ -1318,6 +1422,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/features" and method == "GET":
             ov, chk = app.scenario_view()
             return self._page("시나리오", ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
+        # Hermes (§7): 변형 채우기 · 변형에서 스크립트 만들기 — 사람이 누른 것만 작업이 된다
+        if path in ("/features/fill", "/features/script") and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+            operator = fv("operator").strip() or self._operator()
+            if path == "/features/fill":
+                job = app.job_fill(fv("slug"), operator, self._session_hash(), self._ip())
+            else:
+                job = app.job_variant_script(fv("variant"), operator, self._session_hash(), self._ip())
+            return self._json(200, {"job": job.id, "url": f"/jobs/{job.id}"}) if self._wants_json() else self._redirect(f"/jobs/{job.id}", set_operator=operator)
         # 시나리오 폼 (§14 5단계): 저장·지우기는 §6.1 검사를 거쳐 main 에 바로 커밋한다
         if path in ("/features/save", "/features/delete") and method == "POST":
             f = self._form()
@@ -1383,7 +1497,7 @@ class Handler(BaseHTTPRequestHandler):
             if not f:
                 return self._error(404, "그 기능이 없다")
             if not m.group(2):
-                return self._page(f["feature"], ui.feature_page(f, check=chk, gate_names=app.gate_names(), operator=self._operator(),
+                return self._page(f["feature"], ui.feature_page(f, check=chk, gate_names=app.gate_names(), operator=self._operator(), hermes=bool(app.cfg.hermes_key),
                                                                prd_url=app.wiki.prd_url(f["feature"]) if app.wiki.available else None), "features")
             s = next((x for x in f["scenarios"] if x["id"] == m.group(2)), None)
             key = unquote(m.group(3))
@@ -1393,7 +1507,8 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             hist = sorted((dict(r, case_id=c.id) for c in v["scripts"] for r in app.store.case_history(c.id, 10)), key=lambda r: r["created_at"], reverse=True)[:15]
             step = next((st for st in s["steps"] if st.get("req") == v["variant"].at), None)
-            return self._page(v["variant"].title, ui.variant_page(f, s, v, check=chk, tc_records=(cat.records if cat else {}), history=hist, step=step, operator=self._operator()), "features")
+            return self._page(v["variant"].title, ui.variant_page(f, s, v, check=chk, tc_records=(cat.records if cat else {}), history=hist, step=step, operator=self._operator(),
+                                                                   hermes=bool(app.cfg.hermes_key)), "features")
 
         # ---------- 런 ----------
         if path == "/runs" and method == "GET":
