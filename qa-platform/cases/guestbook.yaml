@@ -1,0 +1,73 @@
+# guestbook — QA 플랫폼 폼으로 만든 파일.
+cases:
+  - id: guestbook.post-happy
+    title: 방장과 참여자가 방명록에 준비 내용을 남긴다
+    suite: sanity
+    variant: 룸-방명록/S1/happy
+    domains:
+    - guestbook
+    operations:
+    - createRoomComment
+    covers:
+    - C.guestbook.post
+    - op.createRoomComment:200
+    source:
+    - PRD/룸 방명록 §2
+    - PRD/룸 방명록 §4.2
+    - PRD/룸 방명록 §4.6
+    - PRD/룸 방명록 §6
+    actor: qa-host
+    reviewed:
+      at: '2026-09-25'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 방명록 sanity {{rand}}'
+    steps:
+    - name: 방장이 방명록에 준비 공지를 남긴다
+      covers:
+      - C.guestbook.post
+      - op.createRoomComment:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/comments
+        body:
+          content: '[QA] 면접 준비 자료는 시작 전까지 확인해 주세요. {{rand}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.commentId
+        - data.createdAt
+      save:
+        hostCommentId: data.commentId
+        hostCommentCreatedAt: data.createdAt
+    - name: 참여자가 방명록에 질문을 남긴다
+      actor: qa-guest
+      covers:
+      - C.guestbook.post
+      - op.createRoomComment:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/comments
+        body:
+          content: '[QA] 자기소개는 각자 3분 정도 준비하면 될까요? {{rand}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.commentId
+        - data.createdAt
+      save:
+        guestCommentId: data.commentId
+        guestCommentCreatedAt: data.createdAt
+    - name: 정리(취소)
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/cancellation
+      expect:
+        status: 200
+      save: {}
