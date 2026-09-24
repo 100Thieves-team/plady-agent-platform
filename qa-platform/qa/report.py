@@ -20,7 +20,8 @@ def slug_for(run: dict) -> str:
     return f"qa/{y}-W{w:02d}-{run['trigger']}"
 
 
-def render(run: dict, rcs: list[dict], *, coverage: dict | None, catalog, public_url: str, sprint: dict | None) -> str:
+def render(run: dict, rcs: list[dict], *, coverage: dict | None, catalog, public_url: str, sprint: dict | None, groups: tuple | None = None) -> str:
+    """groups(scenarios.group_run_cases 결과)가 있으면 스크립트 표를 기능 · 시나리오 · 케이스 순서로 묶는다."""
     meta = run.get("meta") or {}
     created = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00")).astimezone(KST)
     title = f"QA {TRIGGER_KO.get(run['trigger'], run['trigger'])} {created.strftime('%Y-%m-%d')}"
@@ -60,10 +61,22 @@ def render(run: dict, rcs: list[dict], *, coverage: dict | None, catalog, public
     rel = meta.get("release")
     if rel:
         lines.append(f"| 릴리스 판단 | **{rel.get('decision', '').upper()}** — {rel.get('operator')} · {rel.get('reason') or '(사유 없음)'} |")
-    lines += ["", "## 스크립트", "", "| 스크립트 | 스위트 | 판정 | 비고 |", "|---|---|---|---|"]
-    for rc in rcs:
+    def row(rc):
         note = (rc.get("error") or "").replace("|", "\\|").replace("\n", " ")[:160]
-        lines.append(f"| `{rc['case_id']}` {rc['case_title']} | {rc['case_suite']} | {rc['verdict']} | {note} |")
+        return f"| `{rc['case_id']}` {rc['case_title']} | {rc['case_suite']} | {rc['verdict']} | {note} |"
+    head = ["| 스크립트 | 스위트 | 판정 | 비고 |", "|---|---|---|---|"]
+    if groups and groups[0]:
+        lines += ["", "## 시나리오별 결과", "", "| 기능 | 시나리오 | 케이스 | 판정 |", "|---|---|---|---|"]
+        for g in groups[0]:
+            vs = [rc["verdict"] for rc in g["rcs"]]
+            v = "fail" if "fail" in vs else ("error" if "error" in vs else ("pass" if "pass" in vs else vs[0]))
+            lines.append(f"| {g['feature']} | {g['scenario']} {g['scenario_title']} | {g['title']} | {v} |")
+        for g in groups[0]:
+            lines += ["", f"### {g['feature']} › {g['scenario']} › {g['title']}", ""] + head + [row(rc) for rc in g["rcs"]]
+        if groups[1]:
+            lines += ["", "### 시나리오에 연결되지 않은 스크립트", ""] + head + [row(rc) for rc in groups[1]]
+    else:
+        lines += ["", "## 스크립트", ""] + head + [row(rc) for rc in rcs]
     bad = [rc for rc in rcs if rc.get("triage")]
     if bad:
         lines += ["", "## 진단 (Hermes)", ""]

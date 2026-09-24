@@ -114,3 +114,66 @@ def merge_op(doc: str, out: dict, feature) -> dict:
         vs = [dict(S.variant_raw(v), written_by="hermes") for v in s.get("variants") or [] if isinstance(v, dict) and str(v.get("key") or "") not in have]
         scns.append({"id": str(s["id"]), "actor": s.get("actor"), "gates": s.get("gates") or {}, "variants": vs})
     return {"feature": doc, "scenario": "*", "action": "merge", "scenarios": scns}
+
+
+# ---------------------------------------------------------------------------------------------
+# [Hermes 로 다시 맞추기] (§10) — PRD·규칙표 문장이 바뀐 시나리오의 케이스를 바뀐 만큼만 고친다
+# ---------------------------------------------------------------------------------------------
+REALIGN_SYSTEM = (
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 한 시나리오의 PRD 문장이나 규칙표 검사가 바뀌었다. 바뀐 문장에 걸린 케이스만 바뀐 만큼 고친다. "
+    "주어진 근거만 쓰고 지어내지 않는다. 한국어로 쓴다.\n\n"
+    "출력 규칙(어기면 버려진다):\n"
+    "1. 출력은 ```yaml 코드 블록 하나. 시나리오 하나를 `id`, `gates`, `variants` 로 쓴다.\n"
+    "2. 고쳐도 되는 케이스 key 목록이 주어진다. 그 밖의 케이스는 쓰지 않는다. 써도 플랫폼이 무시한다.\n"
+    "3. 없어진 테스트 조건은 checks 에서 뺀다. 바뀐 문장에 맞게 title·given·then·at·checks 를 고친다. 바뀌지 않은 칸은 그대로 둔다.\n"
+    "4. gates 는 바뀐 요구 id 의 것만 적는다.\n"
+    "5. 새로 필요한 케이스가 있으면 새 key 로 더해도 된다. 케이스 kind·key 규칙은 지금 파일과 같다."
+)
+
+
+def affected(s, drift: dict) -> tuple[list[str], list[str]]:
+    """바뀐·없어진 항목에 걸린 케이스 key 와 요구 id. 케이스는 at 이 바뀐 요구이거나 checks 가 바뀐 테스트 조건을 가리키면 걸린다."""
+    ids = {x["id"] for x in drift["changed"] + drift["removed"]}
+    reqs = sorted({i for i in ids | {x["id"] for x in drift["added"]} if re.match(r"^R\d+$", i)})
+    keys = [v.key for v in s.variants if (v.at in ids) or (set(v.checks) & ids)]
+    return keys, reqs
+
+
+def assemble_realign(*, doc: str, wiki, ssot: dict, feature, sid: str, drift: dict, keys: list[str], reqs: list[str]) -> tuple[str, str]:
+    s = feature.scenario(sid)
+    gates, _ = feature_rules(ssot, doc, {g for gl in s.gates.values() for g in gl})
+    parts = [f"# 기능: {doc} · 시나리오 {sid}", "# PRD 2장 (지금 문장)\n" + (wiki.prd_section(doc, "2", max_lines=200) or "(본문 없음)")]
+    lines = [f"- 바뀜 {x['id']}: {x['text']}" for x in drift["changed"]] + [f"- 없어짐 {x['id']}" for x in drift["removed"]] + \
+            [f"- 새로 생김 {x['id']}: {x['text']}" for x in drift["added"]]
+    parts.append("# 지난 저장 뒤 바뀐 것 (지금 내용)\n" + "\n".join(lines))
+    g_out = [{"id": g["id"], "name": g.get("name"), "checks": [{"tc": f"{g['id']}#{c.get('key')}", "ref": c.get("ref"), "error": c.get("error"),
+                                                                "message": c.get("message")} for c in g.get("checks") or []]} for g in gates]
+    parts.append("# 게이트와 검사 (지금)\n```json\n" + json.dumps(g_out, ensure_ascii=False, indent=1) + "\n```")
+    raw = {k: v for k, v in s.raw.items() if k != "basis"}
+    parts.append("# 지금 시나리오 (파일)\n```yaml\n" + yaml.safe_dump(raw, allow_unicode=True, sort_keys=False).strip() + "\n```")
+    parts.append(f"# 고쳐도 되는 케이스 key\n{', '.join(keys) or '(없음 — 새 케이스만 더할 수 있다)'}\n\n# gates 를 고쳐도 되는 요구 id\n{', '.join(reqs) or '(없음)'}")
+    parts.append("# 출력\n시나리오 하나(id, gates, variants)를 ```yaml 블록 하나로.")
+    text = "\n\n".join(parts)
+    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def parse_realign(text: str, sid: str) -> dict:
+    blocks = re.findall(r"```(?:ya?ml)?\s*\n(.*?)```", text, re.S) or [text]
+    for b in blocks:
+        try:
+            d = yaml.safe_load(b)
+        except yaml.YAMLError:
+            continue
+        if isinstance(d, dict) and isinstance(d.get("scenarios"), list):
+            d = next((x for x in d["scenarios"] if isinstance(x, dict) and str(x.get("id")) == sid), None)
+        if isinstance(d, dict) and isinstance(d.get("variants"), list):
+            return d
+    raise S.ScenarioError("Hermes 출력에서 시나리오(variants)를 찾지 못했다")
+
+
+def revise_op(doc: str, sid: str, out: dict, feature, keys: list[str], reqs: list[str]) -> dict:
+    have = {v.key for v in feature.scenario(sid).variants}
+    vs = [dict(S.variant_raw(v), written_by="hermes") for v in out.get("variants") or []
+          if isinstance(v, dict) and (str(v.get("key") or "") in keys or str(v.get("key") or "") not in have)]
+    gates = {str(k): v for k, v in (out.get("gates") or {}).items() if str(k) in reqs}
+    return {"feature": doc, "scenario": sid, "action": "revise", "variants": vs, "allowed": keys, "allowed_reqs": reqs, "gates": gates}

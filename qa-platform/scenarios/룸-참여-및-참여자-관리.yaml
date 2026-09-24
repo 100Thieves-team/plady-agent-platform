@@ -30,3 +30,43 @@ scenarios:
         kind: branch
         at: R181
         title: 참여를 직접 취소한 사람이 같은 룸에 다시 신청한다
+    basis:
+      R1: 16f87808
+      R2: f3ab5523
+      R3: d592396f
+      R4: a1bbc866
+      R5: b883c7f7
+      R6: 3871cbdf
+      R7: cd32e462
+      R179: a88edea6
+      R180: 4be10ebb
+      R8: 7096fc86
+      R9: d809d929
+      R10: 9c643cdf
+      R181: 797928b0
+      C.application.accept: 8d2069e0
+      C.application.submit: 7c1210e0
+      C.application.withdraw: a39c2282
+      G.application.accept#application-pending: 8e74b67b
+      G.application.accept#capacity-left: 14dc585e
+      G.application.accept#host-only: 1af1cac7
+      G.application.accept#room-recruiting: a9b068be
+      G.application.reject#application-pending: dafe6630
+      G.application.reject#host-only: a4f94631
+      G.application.submit#account-active: 213037ad
+      G.application.submit#login-required: 84fc3a27
+      G.application.submit#not-already-engaged: 5f7d086d
+      G.application.submit#not-host: 5a4f5ede
+      G.application.submit#not-rejected-or-removed: 1322ad91
+      G.application.submit#participation-slot-left: 20bc1b33
+      G.application.submit#pending-limit-left: f41c23c7
+      G.application.submit#room-recruiting: cf91be64
+      G.application.submit#schedule-not-passed: 4d51592f
+      G.application.withdraw#application-pending: 9edc94fd
+      G.application.withdraw#own-application: 30c519cc
+      G.participation.cancel#own-participation: e076a190
+      G.participation.cancel#participation-joined: bd3229da
+      G.participation.kick#host-only: 0d9c5684
+      G.participation.kick#room-recruiting: 636f04d1
+      G.participation.kick#target-joined: 8024990f
+      G.participation.kick#target-not-host: fa81b341

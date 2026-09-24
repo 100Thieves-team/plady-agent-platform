@@ -130,7 +130,7 @@ class App:
     def scenario_view(self) -> tuple[list[dict], dict]:
         """(기능별 트리, §6.1 검증 결과). 저장하지 않고 요청마다 계산한다 — 스크립트·테스트 조건 목록·PRD 가 바뀌면 바로 따라간다."""
         cat = self.current_catalog()
-        ov = scenariosmod.overview(self.features, wiki=self.wiki, catalog=cat, cases=self.cases, last=self.store.last_verdicts())
+        ov = scenariosmod.overview(self.features, wiki=self.wiki, catalog=cat, cases=self.cases, last=self.store.last_verdicts(), ssot=self.ssot())
         chk = scenariosmod.check(self.features, wiki=self.wiki, catalog=cat, cases=self.cases)
         chk["errors"] = list(self.scenario_errors) + chk["errors"]
         return ov, chk
@@ -149,6 +149,39 @@ class App:
     def tc_options(self) -> list[tuple[str, str]]:
         cat = self.current_catalog()
         return [(r["id"], r["title"]) for r in (cat.records.values() if cat else []) if not r.get("excluded")]
+
+    def ssot(self) -> dict | None:
+        """위키 규칙표 조립본. 파일이 바뀔 때만 다시 읽는다 (PRD·규칙표 변경 표시에 쓴다)."""
+        if not self.wiki.available:
+            return None
+        try:
+            mt = self.wiki.ssot_path.stat().st_mtime
+            if getattr(self, "_ssot_cache", (None, None))[0] != mt:
+                self._ssot_cache = (mt, self.wiki.read_ssot()[0])
+            return self._ssot_cache[1]
+        except Exception:
+            return None
+
+    def with_basis(self, op: dict, new_text: str) -> dict:
+        """저장할 변경에 손댄 시나리오의 지문을 붙인다 (§10). 위키가 없으면 붙이지 않는다."""
+        ssot = self.ssot()
+        if ssot is None or not new_text:
+            return op
+        ft = scenariosmod.parse_feature(draftsmod.yaml.safe_load(new_text), f"{scenariosmod.doc_slug(op['feature'])}.yaml")
+        sids = [str(x["id"]) for x in op.get("scenarios") or []] if op["action"] == "merge" else ([] if op["action"] == "scenario-delete" else [op["scenario"]])
+        steps = {s["id"]: s["steps"] for s in self.wiki.prd_scenarios(ft.feature)}
+        sidx = scenariosmod.ssot_index(ssot)
+        basis = {sid: scenariosmod.basis_of(ft.scenario(sid), steps.get(sid) or [], sidx) for sid in sids if ft.scenario(sid)}
+        return {**op, "basis": basis} if basis else op
+
+    def run_groups(self, rcs: list[dict]) -> tuple:
+        """실행 결과를 기능 · 시나리오 · 케이스로 묶는다 (§11). 시나리오 제목은 PRD 2장에서."""
+        titles = {}
+        if self.wiki.available:
+            for slug in {str((draftsmod.yaml.safe_load(rc.get("case_yaml") or "") or {}).get("variant") or "").split("/")[0] for rc in rcs} - {""}:
+                for s in self.wiki.prd_scenarios(slug.replace("-", " ")):
+                    titles[(slug, s["id"])] = s["title"]
+        return scenariosmod.group_run_cases(rcs, self.features, titles)
 
     def gate_names(self) -> dict:
         cat = self.catalog.current
@@ -458,6 +491,51 @@ class App:
         self.store.add_event(operator=operator, action="hermes.generate", target=slug, session_hash=session_hash, ip=ip,
                              detail={"source": "hermes-scenario", "prompt_hash": phash, "prompt_chars": len(prompt), "added": added, "change": out.get("id")})
         return {**out, "added": added, "saved": out}
+
+    def realign_scenario(self, slug: str, sid: str, *, operator: str, session_hash=None, ip=None, ask=None) -> dict:
+        """[Hermes 로 다시 맞추기] (§10). 바뀐·없어진 문장에 걸린 케이스만 Hermes 판으로 바꾸고 지문을 새로 적는다."""
+        from qa import scenario_ai
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        f, s = self.scenario_ctx(slug, sid)
+        dr = s.get("drift")
+        if not dr or not (dr["changed"] or dr["removed"] or dr["added"]):
+            raise BadRequest("지난 저장 뒤 PRD·규칙표에서 바뀐 것이 없다")
+        ft = self.features[slug]
+        keys, reqs = scenario_ai.affected(ft.scenario(sid), dr)
+        if not keys and not reqs:
+            raise BadRequest("바뀐 것에 걸린 케이스가 없다 — [변경 확인만 하기] 를 누르면 된다")
+        prompt, phash = scenario_ai.assemble_realign(doc=f["feature"], wiki=self.wiki, ssot=self.ssot() or {}, feature=ft, sid=sid, drift=dr, keys=keys, reqs=reqs)
+        asker = draftsmod._asker(self.cfg, ask)
+        text, errors, op = asker(scenario_ai.REALIGN_SYSTEM, prompt, "qa-realign"), [], None
+        for attempt in (0, 1):
+            try:
+                op = scenario_ai.revise_op(f["feature"], sid, scenario_ai.parse_realign(text, sid), ft, keys, reqs)
+                _, errors, _ = self.scenario_check(op)
+            except scenariosmod.ScenarioError as ex:
+                errors = [str(ex)]
+            if not errors:
+                break
+            self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target=f"{slug}/{sid}", session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-realign", "attempt": attempt + 1, "errors": errors[:6], "prompt_hash": phash})
+            if attempt == 0:
+                text = asker(scenario_ai.REALIGN_SYSTEM, prompt + "\n\n# 앞 출력이 검증에서 막혔다. 아래 오류를 고쳐 다시 낸다\n"
+                             + "\n".join(f"- {x}" for x in errors[:12]) + "\n\n# 앞 출력\n" + text[:20000], "qa-realign")
+        if errors:
+            raise BadRequest("Hermes 결과가 검증을 못 넘겼다 — 저장하지 않았다: " + "; ".join(errors[:3]))
+        out = self.save_scenario(op, operator=operator, source="hermes-realign", prompt_hash=phash, session_hash=session_hash, ip=ip)
+        self.store.add_event(operator=operator, action="hermes.generate", target=f"{slug}/{sid}", session_hash=session_hash, ip=ip,
+                             detail={"source": "hermes-realign", "prompt_hash": phash, "keys": keys, "reqs": reqs, "change": out.get("id")})
+        return {**out, "keys": keys}
+
+    def job_realign(self, slug: str, sid: str, operator: str, session_hash=None, ip=None, sync=False):
+        from qa.ui_scn import feature_url
+
+        def fn(job):
+            out = self.realign_scenario(slug, sid, operator=operator, session_hash=session_hash, ip=ip, ask=job.ask)
+            return {"summary": f"바뀐 문장에 맞춰 케이스 {len(out['keys'])}개를 고쳐 저장했다 (Hermes 작성 표시)", "links": [self.change_link(out)]}
+        return self.start_job("realign", operator=operator, label=f"{slug}/{sid}", fn=fn, back={"href": feature_url(slug) + f"#{sid}", "label": f"{slug} {sid}"},
+                              session_hash=session_hash, ip=ip, sync=sync)
 
     def job_fill(self, slug: str, operator: str, session_hash=None, ip=None, sync=False):
         from qa.ui_scn import feature_url
@@ -825,16 +903,19 @@ class App:
         케이스·시나리오를 지우면 그것을 구현하던 스크립트의 variant: 를 떼어 "시나리오에 연결되지 않은 스크립트"로 남긴다(스크립트는 지우지 않는다)."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
+        if source == "form" and op["action"] == "variant":        # 사람이 폼으로 저장하면 Hermes 작성 표시가 떨어진다 (§7)
+            op = {**op, "variant": {k: x for k, x in op["variant"].items() if k != "written_by"}}
         new, errors, warnings = self.scenario_check(op)
         if errors:
             return {"ok": False, "errors": errors, "warnings": warnings}
         unlinks = self.scenario_unlinks(op)
+        op = self.with_basis(op, new)
+        p = self.scenarios_dir / f"{scenariosmod.doc_slug(op['feature'])}.yaml"
+        cur = p.read_text(encoding="utf-8") if p.is_file() else None
+        if cur is not None and scenariosmod.apply_op(cur, op) == cur:
+            return {"ok": False, "errors": ["바뀐 내용이 없다"], "warnings": warnings}
         delete = op["action"].endswith("-delete")
         v = scenariosmod.variant_raw(op["variant"]) if op["action"] == "variant" else {}
-        if source == "form":
-            v.pop("written_by", None)
-            if op["action"] == "variant":
-                op = {**op, "variant": {k: x for k, x in op["variant"].items() if k != "written_by"}}
         out = self.save_change(kind="scenario-delete" if delete else "scenario", source=source,
                                yaml_text=draftsmod.yaml.safe_dump(op, allow_unicode=True, sort_keys=False), operator=operator,
                                note=(note or "").strip() or None, case_id=scenariosmod.op_target(op), prompt_hash=prompt_hash,
@@ -1119,7 +1200,8 @@ class App:
         cat = self.current_catalog()
         sprint = self.cfg.current_sprint(datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))) if run["trigger"] == "sprint-smoke" else None
         slug = reportmod.slug_for(run)
-        content = reportmod.render(run, rcs, coverage=self.coverage(cat) if cat else None, catalog=cat, public_url=self.cfg.public_url, sprint=sprint)
+        content = reportmod.render(run, rcs, coverage=self.coverage(cat) if cat else None, catalog=cat, public_url=self.cfg.public_url, sprint=sprint,
+                                   groups=self.run_groups(rcs))
         client = McpClient(self.cfg.wiki_mcp_url, self.cfg.wiki_mcp_token, timeout=60)
         try:
             res = wiki_apply(client, path=slug, content=content, message=f"qa: {run['trigger']} 보고서 {run['id']} ({operator})", dry_run=dry_run)
@@ -1423,12 +1505,14 @@ class Handler(BaseHTTPRequestHandler):
             ov, chk = app.scenario_view()
             return self._page("시나리오", ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
         # Hermes (§7): 변형 채우기 · 변형에서 스크립트 만들기 — 사람이 누른 것만 작업이 된다
-        if path in ("/features/fill", "/features/script") and method == "POST":
+        if path in ("/features/fill", "/features/script", "/features/realign") and method == "POST":
             f = self._form()
             fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
             operator = fv("operator").strip() or self._operator()
             if path == "/features/fill":
                 job = app.job_fill(fv("slug"), operator, self._session_hash(), self._ip())
+            elif path == "/features/realign":
+                job = app.job_realign(fv("slug"), fv("scenario"), operator, self._session_hash(), self._ip())
             else:
                 job = app.job_variant_script(fv("variant"), operator, self._session_hash(), self._ip())
             return self._json(200, {"job": job.id, "url": f"/jobs/{job.id}"}) if self._wants_json() else self._redirect(f"/jobs/{job.id}", set_operator=operator)
@@ -1447,6 +1531,8 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "variant":
                 op["original_key"] = fv("original_key").strip() or None
                 op["variant"] = {k: fv(k) for k in ("key", "kind", "at", "title", "given", "then", "checks", "mode")}
+            elif action == "basis":
+                pass                                             # PRD·규칙표 변경을 확인만 했다 — 저장이 지문을 새로 적는다
             elif action == "scenario":
                 op["actor"] = fv("actor").strip() or None
                 op["gates"] = {k[5:]: [x.strip() for x in str(v[0]).split(",") if x.strip()] for k, v in f.items() if k.startswith("gate.")}
@@ -1456,7 +1542,7 @@ class Handler(BaseHTTPRequestHandler):
             if self._wants_json():
                 return self._json(200 if out["ok"] else 400, out)
             if not out["ok"]:
-                if path == "/features/delete":
+                if path == "/features/delete" or action == "basis":
                     raise BadRequest("지우지 못했다: " + "; ".join(out["errors"][:3]))
                 fx, sx = app.scenario_ctx(scenariosmod.doc_slug(feature), sid)
                 if action == "variant":
@@ -1521,6 +1607,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise BadRequest(f"모르는 실행 종류: {trigger}")
             sha, pr = g("sha") or None, (int(g("pr")) if g("pr").isdigit() else None)
             suggested, basis, info = app.suggest(trigger, sha, pr)
+            picked = [x.strip() for v in q.get("case_ids", []) for x in v.split(",") if x.strip()]
+            if trigger == "manual" and picked:        # 시나리오 트리에서 고른 케이스 → 그 케이스를 구현한 스크립트 (§11)
+                suggested = [app.cases[i] for i in dict.fromkeys(picked) if i in app.cases]
+                basis = f"시나리오 화면에서 고른 케이스의 스크립트 {len(suggested)}개"
             pr = info.get("pr_number", pr)
             target = {"환경": f'<span class="mono">{ui.e(app.cfg.target_base_url)}</span>'}
             if sha:
@@ -1590,7 +1680,8 @@ class Handler(BaseHTTPRequestHandler):
                 run["meta"] = m2
             return self._page(f"실행 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
                                                         checklist=checklist, public_url=app.cfg.public_url,
-                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token), domains_by_rc=domains_by_rc, f_verdict=g("verdict")),
+                                                        can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token), domains_by_rc=domains_by_rc, f_verdict=g("verdict"),
+                                                        groups=app.run_groups(rcs)),
                               "runs", flash=flash, context={"run": rid})
 
         m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide|publish)$", path)

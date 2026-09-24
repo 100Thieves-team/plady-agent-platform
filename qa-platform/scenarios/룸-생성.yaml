@@ -35,6 +35,28 @@ scenarios:
         kind: extra
         title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
         checks: ['op.roomCreationLimit:200']
+    basis:
+      R1: 77abae97
+      R2: e7be3cf6
+      R3: e273f459
+      R4: ad7cc705
+      R143: d999c45b
+      R5: 603797ab
+      R6: 968399fd
+      R7: 34cff5be
+      C.room.create: 664b0379
+      C.room.create_batch: 2e9644b6
+      G.room.create#account-active: 2c88b3d6
+      G.room.create#duplicate-slot-left: de0c2c20
+      G.room.create#headcount-range: c60b43b0
+      G.room.create#interview-stage-required: a7da0639
+      G.room.create#login-required: 1fb811eb
+      G.room.create#offline-region-required: f2f6d20e
+      G.room.create#participation-slot-left: a402b414
+      G.room.create#qna-type-only: a8802c6d
+      G.room.create#schedule-not-passed: 4c515d31
+      G.room.create_batch#each-schedule-passes-create: 34e5c6de
+      G.room.create_batch#schedule-count-within-limit: 5b36f429
 
   - id: S2
     actor: qa-host
@@ -65,3 +87,19 @@ scenarios:
         given: 방장이 한 번 취소한 룸
         then: 409 E1410
         checks: [G.room.cancel#room-recruiting]
+    basis:
+      R144: 2e88acca
+      R145: 73d22ca7
+      R146: 4dcf3c08
+      R147: 3453843f
+      R148: 704c56f7
+      C.room.cancel: 2c944445
+      C.room.update: 62bad6f6
+      G.participation.cancel#own-participation: e076a190
+      G.participation.cancel#participation-joined: bd3229da
+      G.room.cancel#host-only: 2ee42238
+      G.room.cancel#no-other-joined-members: 36cd8d71
+      G.room.cancel#room-recruiting: 86775fb0
+      G.room.update#host-only: 156fa962
+      G.room.update#max-headcount-not-below-joined: 0f5eae81
+      G.room.update#room-recruiting: 7db17d54

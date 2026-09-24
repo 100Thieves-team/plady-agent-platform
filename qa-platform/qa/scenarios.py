@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -56,7 +58,7 @@ class Scenario:
     actor: str | None = None
     gates: dict = field(default_factory=dict)          # 요구 id → [게이트 id]
     variants: list = field(default_factory=list)
-    basis_hash: str | None = None
+    basis: dict = field(default_factory=dict)      # 저장할 때의 PRD 단계 문장·규칙표 검사 정의 지문 {R6: 8자리, G.x#key: 8자리} (§10)
     raw: dict = field(default_factory=dict)
 
     def variant(self, key: str) -> Variant | None:
@@ -167,7 +169,7 @@ def parse_feature(d, file: str) -> Feature:
                                     then=str(v.get("then") or "").strip(), checks=checks, mode=mode, raw=v))
         actor = s.get("actor")
         scns.append(Scenario(id=sid, actor=str(actor) if actor else None, gates=gates, variants=variants,
-                             basis_hash=(str(s["basis_hash"]) if s.get("basis_hash") else None), raw=s))
+                             basis={str(k): str(v) for k, v in (s.get("basis") or {}).items()} if isinstance(s.get("basis"), dict) else {}, raw=s))
     return Feature(feature=name.strip(), slug=slug, scenarios=scns, file=file, raw=d)
 
 
@@ -310,10 +312,11 @@ def untested_rejects(s: Scenario, catalog) -> list[dict]:
     return out
 
 
-def overview(feats: dict[str, Feature], *, wiki, catalog, cases: dict, last: dict[str, dict] | None = None) -> list[dict]:
+def overview(feats: dict[str, Feature], *, wiki, catalog, cases: dict, last: dict[str, dict] | None = None, ssot: dict | None = None) -> list[dict]:
     """PRD 의 모든 기능 → [{feature, slug, file, scenarios: [{id, title, steps, variants: [...], untested_rejects}], counts, last}].
     시나리오 파일에 있지만 PRD 에 없는 것도 싣는다(검증 오류로도 보인다)."""
     last = last or {}
+    sidx = ssot_index(ssot) if ssot else None
     impl: dict[str, list] = {}
     for c in cases.values():
         if getattr(c, "variant", None):
@@ -327,7 +330,7 @@ def overview(feats: dict[str, Feature], *, wiki, catalog, cases: dict, last: dic
         prd = wiki.prd_scenarios(name) if wiki is not None and wiki.available else []
         sids = list(dict.fromkeys([p["id"] for p in prd] + ([s.id for s in ft.scenarios] if ft else [])))
         rows = []
-        counts = {k: 0 for k in STATES} | {"variants": 0, "rejects": 0, "pass": 0, "fail": 0}
+        counts = {k: 0 for k in STATES} | {"variants": 0, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}
         for sid in sids:
             p = next((x for x in prd if x["id"] == sid), None)
             s = ft.scenario(sid) if ft else None
@@ -344,8 +347,11 @@ def overview(feats: dict[str, Feature], *, wiki, catalog, cases: dict, last: dic
                     counts["pass" if lv[0]["verdict"] == "pass" else "fail"] += 1
             ur = untested_rejects(s, catalog) if s else []
             counts["rejects"] += len(ur)
+            dr = drift_of(s, (p or {}).get("steps") or [], sidx) if (sidx and p) else None
+            if dr and (dr["changed"] or dr["removed"] or dr["added"]):
+                counts["drift"] += 1
             rows.append({"id": sid, "title": (p or {}).get("title") or "(PRD 2장에 없다)", "steps": (p or {}).get("steps") or [],
-                         "in_prd": p is not None, "scenario": s, "variants": vs, "untested_rejects": ur})
+                         "in_prd": p is not None, "scenario": s, "variants": vs, "untested_rejects": ur, "drift": dr})
         out.append({"feature": name, "slug": slug, "file": ft.file if ft else None, "scenarios": rows, "counts": counts})
     return out
 
@@ -421,6 +427,7 @@ def apply_op(text: str | None, op: dict) -> str:
     d["scenarios"] = scns
     if op["action"] == "merge":
         _merge(scns, op)
+        _set_basis(scns, op)
         out = dump_feature(d, header)
         parse_feature(yaml.safe_load(out), f"{doc_slug(op['feature'])}.yaml")
         return out
@@ -442,7 +449,7 @@ def apply_op(text: str | None, op: dict) -> str:
         gates = {str(k): list(v) for k, v in (op.get("gates") or {}).items() if v}
         if gates:
             new["gates"] = gates
-        for k, v in s.items():                                # variants·basis_hash 등은 그대로
+        for k, v in s.items():                                # variants·basis 등은 그대로
             if k not in ("id", "actor", "gates"):
                 new[k] = v
         scns[scns.index(s)] = new
@@ -460,9 +467,11 @@ def apply_op(text: str | None, op: dict) -> str:
             vs.append(raw)
         else:
             vs[i] = raw
-        if list(s) != sorted(s, key=lambda k: ["id", "actor", "gates", "variants", "basis_hash"].index(k) if k in ("id", "actor", "gates", "variants", "basis_hash") else 9):
-            order = [k for k in ("id", "actor", "gates", "variants", "basis_hash") if k in s] + [k for k in s if k not in ("id", "actor", "gates", "variants", "basis_hash")]
-            scns[scns.index(s)] = {k: s[k] for k in order}
+        scns[scns.index(s)] = _ordered(s)
+    elif act == "basis":
+        pass                                                  # PRD·규칙표 변경을 확인만 했다 — 지문만 새로 적는다
+    elif act == "revise":
+        _revise(s, op)
     elif act == "variant-delete":
         vs = s.get("variants") or []
         keep = [x for x in vs if not (isinstance(x, dict) and x.get("key") == op["key"])]
@@ -471,12 +480,13 @@ def apply_op(text: str | None, op: dict) -> str:
         s["variants"] = keep
     else:
         raise ScenarioError(f"모르는 변경 {act!r}")
+    _set_basis(scns, op)
     out = dump_feature(d, header)
     parse_feature(yaml.safe_load(out), f"{doc_slug(op['feature'])}.yaml")
     return out
 
 
-_SCN_ORDER = ("id", "actor", "gates", "variants", "basis_hash")
+_SCN_ORDER = ("id", "actor", "gates", "variants", "basis")
 
 
 def _ordered(s: dict) -> dict:
@@ -513,6 +523,93 @@ def _merge(scns: list, op: dict) -> None:
     scns.sort(key=lambda x: _sid_no(str(x.get("id"))))
 
 
+def _set_basis(scns: list, op: dict) -> None:
+    """op["basis"] = {Sn: {항목: 지문}} 을 그 시나리오에 적는다. 저장할 때 App 이 계산해 넣는다."""
+    for sid, b in (op.get("basis") or {}).items():
+        s = next((x for x in scns if isinstance(x, dict) and str(x.get("id")) == sid), None)
+        if s is not None:
+            if b:
+                s["basis"] = dict(b)
+            else:
+                s.pop("basis", None)
+            scns[scns.index(s)] = _ordered(s)
+
+
+def _revise(s: dict, op: dict) -> None:
+    """[Hermes 로 다시 맞추기] 결과 (§10). 바뀐 문장에 걸린 케이스(allowed)만 Hermes 판으로 바꾸고, 새 key 는 더한다.
+    바뀐 요구 id 의 gates 만 고친다. 나머지는 그대로 둔다."""
+    allowed = set(op.get("allowed") or [])
+    vs = list(s.get("variants") or [])
+    for v in op.get("variants") or []:
+        i = next((n for n, x in enumerate(vs) if isinstance(x, dict) and x.get("key") == v.get("key")), None)
+        if i is None:
+            vs.append(v)
+        elif v.get("key") in allowed:
+            vs[i] = v
+    if vs:
+        s["variants"] = vs
+    reqs = set(op.get("allowed_reqs") or [])
+    gates = dict(s.get("gates") or {})
+    for req, gl in (op.get("gates") or {}).items():
+        if str(req) in reqs:
+            gl = [gl] if isinstance(gl, str) else [str(g) for g in gl or []]
+            if gl:
+                gates[str(req)] = gl
+            else:
+                gates.pop(str(req), None)
+    if gates:
+        s["gates"] = gates
+
+
+# ---------------------------------------------------------------------------------------------
+# PRD·규칙표 변경 표시 (§10) — 저장할 때 적은 지문과 지금 지문을 비교한다
+# ---------------------------------------------------------------------------------------------
+def _fp(v) -> str:
+    return hashlib.sha256((v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, sort_keys=True, default=str)).encode("utf-8")).hexdigest()[:8]
+
+
+def ssot_index(ssot: dict | None) -> dict:
+    """규칙표에서 지문을 뜰 정의: 검사 `G.x#key` 는 그 검사 칸들, 명령 `C.x` 는 명령 칸들. gates 는 게이트 → 검사 key 목록."""
+    items, gates = {}, {}
+    for g in (ssot or {}).get("gates") or []:
+        gates[g["id"]] = [str(c.get("key")) for c in g.get("checks") or [] if c.get("key")]
+        for c in g.get("checks") or []:
+            if c.get("key"):
+                items[f"{g['id']}#{c['key']}"] = {k: c.get(k) for k in ("ref", "error", "message", "note")}
+    for c in (ssot or {}).get("commands") or []:
+        items[c["id"]] = {k: c.get(k) for k in ("name", "actor", "gate", "transition", "performer")}
+    return {"items": items, "gates": gates}
+
+
+def basis_of(s: Scenario, steps: list[dict], sidx: dict) -> dict:
+    """시나리오 하나의 지문. PRD 단계·분기 문장(요구 id 마다), gates 에 적은 게이트의 모든 검사, 케이스 checks 의 규칙표 항목(G·C).
+    API 계약 테스트 조건(op.*)은 넣지 않는다 — OpenAPI 변경은 스크립트마다 이미 "테스트 조건 변경" 으로 보인다."""
+    out = {st["req"]: _fp(st["text"]) for st in steps if st.get("req")}
+    ids = {f"{g}#{k}" for gl in s.gates.values() for g in gl for k in sidx["gates"].get(g, [])}
+    ids |= {t for v in s.variants for t in v.checks if t.startswith(("G.", "C."))}
+    for t in sorted(ids):
+        if t in sidx["items"]:
+            out[t] = _fp(sidx["items"][t])
+    return out
+
+
+def drift_of(s: Scenario | None, steps: list[dict], sidx: dict) -> dict | None:
+    """지문이 없으면 None(아직 기록 없음). 있으면 {changed, removed, added} — 각 항목 {id, text}."""
+    if s is None or not s.basis:
+        return None
+    cur = basis_of(s, steps, sidx)
+    text = {st["req"]: st["text"] for st in steps if st.get("req")}
+
+    def desc(k):
+        if k in text:
+            return text[k]
+        d = sidx["items"].get(k) or {}
+        return d.get("message") or d.get("ref") or d.get("name") or ""
+    return {"changed": [{"id": k, "text": desc(k)} for k, v in s.basis.items() if k in cur and cur[k] != v],
+            "removed": [{"id": k, "text": ""} for k in s.basis if k not in cur],
+            "added": [{"id": k, "text": desc(k)} for k in cur if k not in s.basis]}
+
+
 def op_target(op: dict) -> str:
     if op["action"] == "merge":
         return doc_slug(op["feature"])
@@ -529,5 +626,39 @@ def op_summary(op: dict) -> str:
     if op["action"] == "merge":
         n = sum(len(x.get("variants") or []) for x in op.get("scenarios") or [])
         return f"{t} 케이스 채우기 (Hermes, 새 케이스 후보 {n})"
+    if op["action"] == "basis":
+        return f"{t} PRD·규칙표 변경 확인"
+    if op["action"] == "revise":
+        return f"{t} 다시 맞추기 (Hermes)"
     return {"variant": f"{t} {'수정' if op.get('original_key') else '추가'}", "variant-delete": f"{t} 삭제",
             "scenario": f"{t} 수정", "scenario-delete": f"{t} 삭제"}[op["action"]]
+
+
+# ---------------------------------------------------------------------------------------------
+# 실행 결과 묶기 (§11) — 기능 · 시나리오 · 케이스 순서, 시나리오에 연결되지 않은 스크립트는 끝에
+# ---------------------------------------------------------------------------------------------
+def group_run_cases(rcs: list[dict], feats: dict[str, Feature], scenario_titles: dict | None = None) -> tuple[list[dict], list[dict]]:
+    """실행 기록의 스크립트들(run_cases) → (케이스 묶음 목록, 연결되지 않은 것). 케이스는 그때 스냅샷의 variant: 로 찾는다
+    (스크립트가 나중에 다른 케이스로 옮겨도 그 실행은 그때 케이스로 묶인다). 순서는 시나리오 파일 순서."""
+    scenario_titles = scenario_titles or {}
+    idx = variant_index(feats)
+    order = {vid: i for i, vid in enumerate(idx)}
+    groups: dict[str, dict] = {}
+    rest = []
+    for rc in rcs:
+        try:
+            vid = (yaml.safe_load(rc.get("case_yaml") or "") or {}).get("variant")
+        except yaml.YAMLError:
+            vid = None
+        if not vid or not VARIANT_ID.match(str(vid)):
+            rest.append(rc)
+            continue
+        g = groups.get(vid)
+        if g is None:
+            slug, sid, key = vid.split("/", 2)
+            hit = idx.get(vid)
+            g = groups[vid] = {"id": vid, "slug": slug, "feature": hit[0].feature if hit else slug.replace("-", " "), "scenario": sid,
+                               "scenario_title": scenario_titles.get((slug, sid), ""), "key": key,
+                               "title": hit[2].title if hit else f"{key} (지금 시나리오 파일에 없다)", "kind": hit[2].kind if hit else None, "rcs": []}
+        g["rcs"].append(rc)
+    return sorted(groups.values(), key=lambda g: (order.get(g["id"], len(order)), g["id"])), rest

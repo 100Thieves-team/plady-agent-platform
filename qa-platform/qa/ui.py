@@ -328,7 +328,9 @@ def run_summary(run: dict, cases: list[dict], domains_by_rc: dict[int, list[str]
 
 
 def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]], *, operators: list[str], operator: str,
-               checklist: list[str], public_url: str, can_publish: bool = False, domains_by_rc: dict | None = None, f_verdict: str = "") -> str:
+               checklist: list[str], public_url: str, can_publish: bool = False, domains_by_rc: dict | None = None, f_verdict: str = "",
+               groups: tuple | None = None) -> str:
+    """groups: scenarios.group_run_cases 결과. 있으면 스크립트 결과를 기능 · 시나리오 · 케이스 순서로 묶어 보인다 (docs/qa-platform-scenarios.md §11)."""
     live = run["status"] in ("queued", "running")
     refresh = '<meta http-equiv="refresh" content="4">' if live else ""
     meta = run.get("meta") or {}
@@ -359,7 +361,9 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
     shown = [rc for rc in cases if not f_verdict or (rc["verdict"] in ("fail", "error") if f_verdict == "fail" else rc["verdict"] == f_verdict)]
     if not shown:
         body_cases = '<div class="card"><p class="mut" style="margin:0">해당 판정의 스크립트가 없다</p></div>'
+    cards: dict = {}
     for rc in shown:
+        body_cases = ""
         steps = steps_by_case.get(rc["id"], [])
         st, given = "", ""
         for s in steps:
@@ -391,6 +395,20 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                        f'<a href="/cases/{e(rc["case_id"])}" class="mono">{e(rc["case_id"])}</a> <b>{e(rc["case_title"])}</b>'
                        f'<span class="small mut">{rc.get("duration_ms") or 0} ms · 스크립트 버전 {e(rc["case_hash"])}</span><span style="margin-left:auto">{tri}</span></div>'
                        f'{("<div class=\"small\" style=\"color:var(--bad);margin-top:4px\">" + e(rc.get("error")) + "</div>") if rc.get("error") and rc["verdict"] == "skipped" else ""}{st}</div>')
+        cards[rc["id"]] = body_cases
+    body_cases = "" if shown else body_cases
+    if groups and any(g["rcs"] for g in groups[0]):
+        from .ui_scn import kind_badge, variant_url
+        for g in groups[0]:
+            gc = "".join(cards[rc["id"]] for rc in g["rcs"] if rc["id"] in cards)
+            if gc:
+                body_cases += (f'<h3 style="margin:18px 0 6px">{kind_badge(g["kind"]) if g["kind"] else ""} <a href="{variant_url(g["id"])}">{e(g["title"])}</a> '
+                               f'<span class="small mut">{e(g["feature"])} › {e(g["scenario"])} {e(g["scenario_title"])}</span></h3>{gc}')
+        rest = "".join(cards[rc["id"]] for rc in groups[1] if rc["id"] in cards)
+        if rest:
+            body_cases += f'<h3 style="margin:18px 0 6px">시나리오에 연결되지 않은 스크립트{h("cases.variant")}</h3>{rest}'
+    else:
+        body_cases += "".join(cards.values())
 
     release = ""
     if run["trigger"] == "release":

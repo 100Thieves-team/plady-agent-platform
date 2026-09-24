@@ -225,7 +225,7 @@ class CheckTest(unittest.TestCase):
         self.assertEqual([s["id"] for s in f["scenarios"]], ["S1", "S2"])            # PRD 에만 있는 S2 도 "변형 없음" 으로 실린다
         st = {v["variant"].key: v["state"] for v in f["scenarios"][0]["variants"]}
         self.assertEqual(st, {"happy": "auto", "pasted": "manual", "headcount": "untested", "cancel": "excluded"})
-        self.assertEqual(f["counts"] | {}, {"auto": 1, "manual": 1, "excluded": 1, "untested": 1, "variants": 4, "rejects": 2, "pass": 1, "fail": 0})
+        self.assertEqual(f["counts"] | {}, {"auto": 1, "manual": 1, "excluded": 1, "untested": 1, "variants": 4, "rejects": 2, "pass": 1, "fail": 0, "drift": 0})
         rej = f["scenarios"][0]["untested_rejects"]                                  # 확인 중인 headcount·제외된 login 은 빠진다
         self.assertEqual([(r["id"], r["mode"]) for r in rej], [("G.room.create#schedule-not-passed", "auto"), ("G.room.create#title-required", "manual")])
         self.assertEqual(f["scenarios"][1]["variants"], [])

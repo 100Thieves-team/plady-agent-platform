@@ -74,6 +74,8 @@ class Router:
 
     def __call__(self, method, url, headers=None, body=None, timeout=30):
         if url.startswith("https://api.github.com/"):
+            if "/contents/" not in url:                     # 배포 목록 같은 다른 GitHub API 는 오프라인
+                return httpx.HttpResult(0, {}, "", 1, error="offline")
             return self.gh(method, url, headers=headers, body=body, timeout=timeout)
         self.bodies.append(body)
         text = self.replies.pop(0) if self.replies else ""

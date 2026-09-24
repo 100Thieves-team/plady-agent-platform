@@ -52,10 +52,31 @@ def _count_vals(c: dict) -> list[str]:
             f'통과 {c["pass"]} · 실패 {c["fail"]}' if (c["pass"] or c["fail"]) else '<span class="mut">–</span>']
 
 
+_PICK_JS = ("<script>document.addEventListener('change',function(ev){var t=ev.target;if(!t.dataset||t.dataset.pickall==null)return;"
+            "var box=t.closest('details')||t.closest('[data-pickbox]');box.querySelectorAll('input[name=case_ids]').forEach(function(c){c.checked=t.checked})});</script>")
+
+
+def _pick(v: dict) -> str:
+    """케이스 고르기 체크박스 — 값은 그 케이스를 구현한 스크립트 id. 스크립트가 없으면 고를 것이 없다."""
+    if not v["scripts"]:
+        return '<input type="checkbox" disabled title="구현한 스크립트가 없다"> '
+    return f'<input type="checkbox" name="case_ids" form="scn-run" value="{e(",".join(c.id for c in v["scripts"]))}" title="이 케이스를 실행할 범위에 넣는다"> '
+
+
+def _pick_all(label: str = "전부") -> str:
+    return f'<label class="small mut" onclick="event.stopPropagation()"><input type="checkbox" data-pickall> {e(label)}</label>'
+
+
+def _run_form(inner: str) -> str:
+    """트리·기능 화면을 감싸는 폼. 고른 케이스의 스크립트로 기존 실행 확인 화면(/runs/new)을 연다 — 실행은 거기서 사람이 누른다."""
+    return (f'<div data-pickbox>{inner}</div><form id="scn-run" method="get" action="/runs/new" class="actions"><input type="hidden" name="trigger" value="manual">'
+            f'<button class="primary">고른 케이스 실행</button>{h("scenario.run")}</form>{_PICK_JS}')
+
+
 def _variant_row(v: dict, *, indent: bool = True) -> str:
     va = v["variant"]
     scripts = " ".join(f'<a href="/cases/{e(c.id)}" class="mono small">{e(c.id)}</a>' for c in v["scripts"]) or '<span class="mut small">–</span>'
-    return (f'<tr><td style="padding-left:{36 if indent else 8}px">{kind_badge(va.kind)} <a href="{variant_url(v["id"])}">{e(va.title)}</a>'
+    return (f'<tr><td style="padding-left:{36 if indent else 8}px">{_pick(v)}{kind_badge(va.kind)} <a href="{variant_url(v["id"])}">{e(va.title)}</a>'
             f' <span class="mono small mut">{e(va.key)}</span></td><td>{state_badge(v["state"])}</td><td>{scripts}</td><td>{_last(v["last"])}</td></tr>')
 
 
@@ -71,13 +92,15 @@ def scenario_tree(ov: list[dict], *, errors: list[str] | None = None, title: str
             vrows = "".join(_variant_row(v) for v in s["variants"])
             n_rej = len(s["untested_rejects"])
             empty = '<tr><td colspan="4" class="mut small" style="padding-left:36px">케이스 없음</td></tr>' if not s["variants"] else ""
-            scn += (f'<details style="margin:2px 0 2px 18px"><summary><a class="mono" href="{feature_url(f["slug"])}#{e(s["id"])}">{e(s["id"])}</a> {e(s["title"])}'
+            scn += (f'<details style="margin:2px 0 2px 18px"><summary>{_pick_all() if s["variants"] else ""} <a class="mono" href="{feature_url(f["slug"])}#{e(s["id"])}">{e(s["id"])}</a> {e(s["title"])}'
                     f' <span class="small mut">케이스 {len(s["variants"])}{(" · 아직 테스트가 없는 거절 조건 " + str(n_rej)) if n_rej else ""}</span>'
+                    f'{" <span class=\"b drift\">PRD·규칙표 바뀜</span>" if _has_drift(s) else ""}'
                     f'{"" if s["in_prd"] else " <span class=\"b fail\">PRD 에 없다</span>"}</summary>'
                     f'<table style="table-layout:fixed">{_VCOLS}{vrows}{empty}</table></details>')
-        no_file = "" if f["file"] else ' <span class="small mut">시나리오 파일 없음</span>'
+        no_file = ("" if f["file"] else ' <span class="small mut">시나리오 파일 없음</span>') + \
+            (f' <span class="b drift">PRD·규칙표 바뀜 {c["drift"]}</span>' if c.get("drift") else "")
         rows += (f'<tr><td colspan="9" style="padding:0"><details><summary style="padding:7px 8px;{_GRID}">'
-                 f'<span><a href="{feature_url(f["slug"])}"><b>{e(f["feature"])}</b></a>{no_file} <span class="small mut">시나리오 {len(f["scenarios"])}</span></span>'
+                 f'<span>{_pick_all("") if c["variants"] else ""}<a href="{feature_url(f["slug"])}"><b>{e(f["feature"])}</b></a>{no_file} <span class="small mut">시나리오 {len(f["scenarios"])}</span></span>'
                  + "".join(f'<span class="small">{x}</span>' for x in _count_vals(c))
                  + f'{_bar(c)}</summary>{scn}</details></td></tr>')
     head = (f'<div style="{_GRID};padding:0 8px 6px;color:var(--mut);font-size:12px;font-weight:600">'
@@ -85,8 +108,8 @@ def scenario_tree(ov: list[dict], *, errors: list[str] | None = None, title: str
     errs = "".join(f'<li class="small" style="color:var(--bad)">{e(x)}</li>' for x in errors or [])
     return (f'<h2>{e(title)}{h("dash.scenarios")} <a class="small" href="/features">기능 목록</a></h2>'
             f'{("<div class=\"flash err\"><b>시나리오 파일 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
-            f'<div class="card">{head}<table>{rows}</table>'
-            f'<p class="small mut" style="margin-bottom:0">시나리오는 PRD 2장이 정하고, 케이스는 <span class="mono">qa-platform/scenarios/</span> 가 더한다. 상태는 스크립트의 <span class="mono">variant:</span>·자동화 제외를 보고 매번 계산한다.</p></div>')
+            + _run_form(f'<div class="card"><div style="overflow-x:auto"><div style="min-width:760px">{head}<table>{rows}</table></div></div>'
+            f'<p class="small mut" style="margin-bottom:0">시나리오는 PRD 2장이 정하고, 케이스는 <span class="mono">qa-platform/scenarios/</span> 가 더한다. 상태는 스크립트의 <span class="mono">variant:</span>·자동화 제외를 보고 매번 계산한다.</p></div>'))
 
 
 def _steps_html(s: dict, gate_names: dict) -> str:
@@ -118,6 +141,35 @@ def _hermes_btn(action: str, name: str, value: str, label: str, *, operator: str
             f'<button {dis}>{e(label)}</button>{h(help_key)}</form>')
 
 
+def _has_drift(s: dict) -> bool:
+    d = s.get("drift")
+    return bool(d and (d["changed"] or d["removed"] or d["added"]))
+
+
+def _drift_box(f: dict, s: dict, *, operator: str, hermes: bool) -> str:
+    """PRD·규칙표 변경 표시 (§10). 저장할 때 적어 둔 문장 지문과 지금이 다르면 무엇이 바뀌었는지 보이고, 확인·다시 맞추기 버튼을 둔다."""
+    if not s["scenario"]:
+        return ""
+    ack = (f'<form class="inline" method="post" action="/features/save">{_operator_hidden(operator)}<input type="hidden" name="feature" value="{e(f["feature"])}">'
+           f'<input type="hidden" name="scenario" value="{e(s["id"])}"><input type="hidden" name="action" value="basis">')
+    if s.get("drift") is None:
+        return (f'<p class="small mut">이 시나리오는 저장 당시 문장 기록이 없어 PRD·규칙표가 바뀌었는지 알 수 없다{h("scenario.drift")} '
+                f'{ack}<button class="small" {"" if operator else "disabled"}>지금 문장으로 기록</button></form></p>')
+    if not _has_drift(s):
+        return ""
+    d = s["drift"]
+    li = "".join(f'<li><span class="mono">{e(x["id"])}</span> 바뀜 — 지금: {e(x["text"])}</li>' for x in d["changed"]) + \
+        "".join(f'<li><span class="mono">{e(x["id"])}</span> 없어짐</li>' for x in d["removed"]) + \
+        "".join(f'<li><span class="mono">{e(x["id"])}</span> 새로 생김 — {e(x["text"])}</li>' for x in d["added"])
+    realign = _hermes_btn("/features/realign", "slug", f["slug"], "Hermes 로 다시 맞추기", operator=operator, hermes=hermes, help_key="scenario.realign") \
+        .replace('<input type="hidden" name="slug"', f'<input type="hidden" name="scenario" value="{e(s["id"])}"><input type="hidden" name="slug"')
+    return (f'<div class="card" style="background:var(--warnbg)"><b>지난 저장 뒤 PRD·규칙표가 바뀌었다</b>{h("scenario.drift")}'
+            f'<ul class="small" style="margin:6px 0">{li}</ul><div class="actions">{realign} '
+            f'<a class="btn" href="{feature_url(f["slug"], s["id"], "edit")}">시나리오 고치기</a> '
+            f'{ack}<button {"" if operator else "disabled"}>변경 확인만 하기</button></form></div>'
+            f'<p class="small mut" style="margin:0">케이스를 고칠 필요가 없으면 [변경 확인만 하기] 로 지금 문장을 기록한다. 자동으로 고치지는 않는다.</p></div>')
+
+
 def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None, operator: str = "", hermes: bool = False) -> str:
     fc = check.get("by_feature", {}).get(f["slug"]) or {"errors": [], "warnings": []}
     msgs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in fc["errors"]) + "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in fc["warnings"])
@@ -137,16 +189,17 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None,
                (f' <a class="btn" href="{feature_url(f["slug"], s["id"], "edit")}">시나리오 고치기</a>{h("scenario.form")}' if s["in_prd"] else "")
         del_box = delete_box(what=f'시나리오 {s["id"]}', action="scenario-delete", feature=f["feature"], scenario=s["id"], key=None,
                              scripts=[c for v in s["variants"] for c in v["scripts"]], operator=operator) if s["scenario"] else ""
-        body += (f'<div class="card" id="{e(s["id"])}"><h3 style="margin-top:0"><span class="mono">{e(s["id"])}</span> {e(s["title"])}'
+        body += (f'<div class="card" id="{e(s["id"])}" data-pickbox><h3 style="margin-top:0"><span class="mono">{e(s["id"])}</span> {e(s["title"])}'
                  f'{"" if s["in_prd"] else " <span class=\"b fail\">PRD 2장에 없다</span>"} <span class="small mut">기본 테스트 계정 {e(actor)}</span>{btns}</h3>'
-                 f'<h4>PRD 단계{h("feature.steps")}</h4>{_steps_html(s, gate_names)}'
-                 f'<h4>케이스{h("variant.state")}</h4><table style="table-layout:fixed">{_VCOLS}<tr><th>케이스</th><th>상태</th><th>스크립트</th><th>최근 결과</th></tr>{vrows}</table>{rej_html}{del_box}</div>')
+                 f'{_drift_box(f, s, operator=operator, hermes=hermes)}<h4>PRD 단계{h("feature.steps")}</h4>{_steps_html(s, gate_names)}'
+                 f'<h4>케이스{h("variant.state")} {_pick_all() if s["variants"] else ""}</h4><table style="table-layout:fixed">{_VCOLS}<tr><th>케이스</th><th>상태</th><th>스크립트</th><th>최근 결과</th></tr>{vrows}</table>{rej_html}{del_box}</div>')
     c = f["counts"]
     fill = _hermes_btn("/features/fill", "slug", f["slug"], "Hermes 로 케이스 채우기", operator=operator, hermes=hermes, help_key="feature.fill")
     return (f'<h1>{e(f["feature"])}{h("feature.page")} <span class="small mut">'
             f'{("<a href=\"" + e(prd_url) + "\">PRD</a> · ") if prd_url else ""}'
             f'{("<span class=\"mono\">scenarios/" + e(f["file"]) + "</span>") if f["file"] else "시나리오 파일 없음"}</span></h1>'
-            f'<div class="actions">{fill}</div>'
+            f'<div class="actions">{fill} <form id="scn-run" method="get" action="/runs/new" class="inline"><input type="hidden" name="trigger" value="manual">'
+            f'<button>고른 케이스 실행</button>{h("scenario.run")}</form></div>{_PICK_JS}'
             f'<div class="card"><div class="stats" style="margin:0">'
             + "".join(f'<div class="stat"><div class="l">{e(label)}</div><b>{c[k]}</b></div>'
                       for k, label in (("variants", "케이스"), ("auto", "자동화됨"), ("manual", "사람이 확인"), ("excluded", "제외"), ("untested", "테스트 없음"), ("rejects", "아직 테스트가 없는 거절 조건")))
@@ -173,6 +226,11 @@ def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, hi
     q = "&".join([f"variant={quote(v['id'], safe='')}"] + [f"tc={quote(t, safe='')}" for t in va.checks])
     fc = check.get("by_feature", {}).get(f["slug"]) or {"errors": [], "warnings": []}
     mine = [x for x in fc["errors"] + fc["warnings"] if x.startswith(f'{s["id"]}/{va.key}')]
+    if _has_drift(s):
+        d = s["drift"]
+        hit = [x["id"] for x in d["changed"] + d["removed"] if x["id"] == va.at or x["id"] in va.checks]
+        if hit:
+            mine.append(f"지난 저장 뒤 이 케이스가 기대는 {', '.join(hit)} 가 바뀌었다 — 기능 화면에서 확인하거나 다시 맞춘다")
     del_box = delete_box(what=f"케이스 {va.key}", action="variant-delete", feature=f["feature"], scenario=s["id"], key=va.key, scripts=v["scripts"], operator=operator)
     hermes = ' <span class="b warn">Hermes 작성</span>' if va.raw.get("written_by") == "hermes" else ""
     return (f'<h1>{kind_badge(va.kind)} {e(va.title)} {state_badge(v["state"])}{hermes}{h("variant.state")} '
