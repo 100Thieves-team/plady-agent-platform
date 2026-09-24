@@ -30,38 +30,74 @@ cases:
     title: 방장이 온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다
     suite: sanity
     variant: 룸-생성/S1/happy
-    domains: [room]
-    operations: [createRoom, roomDetail, cancelRoom]
-    source: ["PRD/룸 생성 §4.8"]
+    domains:
+    - room
+    operations:
+    - createRoom
+    - roomDetail
+    - cancelRoom
+    covers:
+    - C.room.create
+    - op.createRoom:200
+    - op.roomDetail:200
+    source:
+    - PRD/룸 생성 §4.8
     actor: qa-host
+    reviewed:
+      at: '2026-09-25'
+      by: bebe
+    written_by: hermes
     steps:
-      - name: 룸 생성
-        covers: [C.room.create, op.createRoom:200]
-        request:
-          method: POST
-          path: /v1/rooms
-          body:
-            postingId: "{{fixture.postingId}}"
-            jobRoleId: "{{fixture.jobRoleId}}"
-            round: FIRST
-            type: JOB
-            method: ONLINE
-            minParticipants: 2
-            maxParticipants: 4
-            schedule: { date: "{{date:+7}}", startTime: "14:00", durationMinutes: 90 }
-            title: "[QA] 룸 생성 sanity {{rand}}"
-            description: "QA 플랫폼 sanity 케이스가 만든 룸. 곧 취소된다."
-            resumeId: "{{fixture.qa-host.resumeId}}"
-            resumePublic: true
-        expect: { status: 200, result: SUCCESS, json: { "data.status": RECRUITING } }
-        save: { roomId: data.roomId }
-      - name: 상세 조회 — 방장이 테스트 계정이다
-        covers: [op.roomDetail:200]
-        request: { method: GET, path: "/v1/rooms/{{roomId}}" }
-        expect: { status: 200, json: { "data.hostMemberId": "{{actor.qa-host.memberId}}", "data.status": RECRUITING } }
-      - name: 정리(취소)
-        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
-        expect: { status: 200 }
+    - name: 룸 생성
+      covers:
+      - C.room.create
+      - op.createRoom:200
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '14:00'
+            durationMinutes: 90
+          title: '[QA] 룸 생성 sanity {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 취소된다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        roomId: data.roomId
+    - name: 상세 조회 — 방장이 테스트 계정이다
+      covers:
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        json:
+          data.hostMemberId: '{{actor.qa-host.memberId}}'
+          data.status: RECRUITING
+      save: {}
+    - name: 정리(취소)
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/cancellation
+      expect:
+        status: 200
+      save: {}
+      covers: []
 
   - id: room.cancel
     title: 일반 참여자가 없는 모집 중인 룸을 방장이 취소한다
