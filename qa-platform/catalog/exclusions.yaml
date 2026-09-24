@@ -59,3 +59,10 @@ exclusions:
     reason: 위와 같다 (MVP 범위 밖)
   - prefix: C.participation.write_self_feedback
     reason: 위와 같다 (MVP 범위 밖)
+  # 「룸 진행 마무리 및 출석」 의 클로징 기반 종료 — MVP 는 진행 완료 버튼 흐름(PRD §4.6, SSOT 미결정 D56)
+  - prefix: G.participation.submit_closing
+    reason: MVP 이후 흐름 — MVP 에는 클로징이 없고 진행 완료 버튼으로 끝낸다(「룸 진행 마무리 및 출석」 §4.6). MVP 명령이 SSOT 에 생기면 그쪽을 자동화한다
+  - prefix: C.participation.submit_closing
+    reason: 위와 같다 (MVP 이후 흐름)
+  - prefix: G.room.close
+    reason: 위와 같다 — 클로징 전원 제출·8시간 자동 종료로 닫는 규칙이다
