@@ -677,12 +677,37 @@ class App:
         return self.start_job("revise", operator=operator, label=case_id, fn=fn, back={"href": f"/cases/{case_id}", "label": case_id},
                               session_hash=session_hash, ip=ip, sync=sync)
 
+    def triage_rules(self, steps: list[dict]) -> str | None:
+        """실패 분석에 줄 규칙표 설명 (2026-09-25: 멱등 생성이 기존 확정 룸을 돌려준 것을 Hermes 가 버그로 판정했다).
+        처음 실패한 단계가 부른 API(op)에 묶인 명령의 이름·수행자·멱등 여부·메모와 그 게이트의 검사(메시지·코드)."""
+        bad = next((s for s in steps if s["verdict"] not in ("pass",)), None)
+        op = (bad or {}).get("op_id") or (self.op_of(bad["request"].get("method", ""), bad["request"].get("path", "")) if bad else None)
+        ssot, cat = self.ssot(), self.catalog.current
+        if not op or not ssot or cat is None:
+            return None
+        cids = [r["id"] for r in cat.records.values() if r["id"].startswith("C.") and op in ((r.get("binding") or {}).get("operations") or [])]
+        cmds = {c["id"]: c for c in ssot.get("commands") or []}
+        gates = {g["id"]: g for g in ssot.get("gates") or []}
+        out = []
+        for cid in cids:
+            c = cmds.get(cid)
+            if not c:
+                continue
+            out.append(f"- 명령 {cid} {c.get('name') or ''} · 수행자 {c.get('performer') or c.get('actor') or '-'}"
+                       + (" · 멱등(같은 요청이면 새로 만들지 않는다)" if c.get("idempotent") else "") + (f"\n  메모: {' '.join(str(c['note']).split())[:600]}" if c.get("note") else ""))
+            g = gates.get(c.get("gate") or "")
+            if g:
+                out += [f"  - 검사 {g['id']}#{k.get('key')}: {k.get('message') or k.get('ref') or ''}" + (f" ({k['error']})" if k.get("error") else "")
+                        for k in g.get("checks") or []]
+        return "\n".join(out)[:4000] or None
+
     def job_triage(self, run: dict, rc: dict, operator: str, session_hash=None, ip=None, sync=False):
         rid = run["id"]
 
         def fn(job):
             try:
-                text = hermes_triage(self.cfg, run, rc, self.store.list_steps(rc["id"]), ask=job.ask)
+                steps = self.store.list_steps(rc["id"])
+                text = hermes_triage(self.cfg, run, rc, steps, ask=job.ask, rules=self.triage_rules(steps))
             except Exception as ex:
                 self.store.add_event(operator=operator, action="run.triage", target=rid, session_hash=session_hash, ip=ip,
                                      detail={"case": rc["case_id"], "error": str(ex)[:300], "job": job.id})
@@ -1713,7 +1738,8 @@ class Handler(BaseHTTPRequestHandler):
                         return self._json(200, {"job": job.id})
                     return self._redirect(f"/jobs/{job.id}", set_operator=operator)
                 try:
-                    text = hermes_triage(app.cfg, run, rc, app.store.list_steps(rc["id"]))
+                    steps = app.store.list_steps(rc["id"])
+                    text = hermes_triage(app.cfg, run, rc, steps, rules=app.triage_rules(steps))
                     app.store.update_run_case(rc["id"], triage=text, triaged_at=now_iso())
                     app.store.add_event(operator=operator, action="run.triage", target=rid, session_hash=sh, ip=ip,
                                         detail={"case": rc["case_id"], "chars": len(text)})

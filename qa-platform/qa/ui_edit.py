@@ -8,7 +8,7 @@ import json
 
 from .ui import badge, e, h, kst
 
-EDITOR_JS_VERSION = "7"
+EDITOR_JS_VERSION = "8"
 JOBS_JS_VERSION = "1"
 
 EDIT_CSS = """
@@ -58,7 +58,7 @@ EDITOR_JS = r"""
   var root=document.getElementById('ed-root');
   S.steps=S.steps&&S.steps.length?S.steps:[blankStep()];
   S.uses=S.uses||{setup:'',with:{}};S.uses.with=S.uses.with||{};
-  function blankStep(){return {name:'',actor:'',covers:[],method:'GET',path:'',query:[],body:'',expect:{status:'',result:'',error_code:'',json:[],exists:[]},save:[]}}
+  function blankStep(){return {name:'',actor:'',always:false,covers:[],method:'GET',path:'',query:[],body:'',expect:{status:'',result:'',error_code:'',json:[],exists:[]},save:[]}}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function getP(p){var o=S;p.split('.').forEach(function(k){o=(o==null)?undefined:o[k]});return o}
   function setP(p,v){var ks=p.split('.'),o=S;for(var i=0;i<ks.length-1;i++){o=o[ks[i]]}o[ks[ks.length-1]]=v}
@@ -122,6 +122,7 @@ EDITOR_JS = r"""
       +(i>0?'<button type="button" data-act="up" data-i="'+i+'">↑</button> ':'')+(i<n-1?'<button type="button" data-act="down" data-i="'+i+'">↓</button> ':'')
       +'<button type="button" data-act="dup" data-i="'+i+'">복제</button> '+(n>1?'<button type="button" class="danger" data-act="del" data-i="'+i+'">삭제</button>':'')+'</span></div>';
     h+='<div class="g2">'+fld('이름',inp('steps.'+i+'.name','예: 룸 생성'))+fld('테스트 계정',sel('steps.'+i+'.actor',CTX.actors,'기본 계정'+(S.actor?' ('+S.actor+')':' (없음)')),'비우면 위의 기본 테스트 계정으로 부른다')+'</div>';
+    h+='<p style="margin:0 0 10px"><label class="small"><input type="checkbox" data-k="steps.'+i+'.always"'+(s.always?' checked':'')+'> 앞 단계가 실패해도 이 단계는 실행한다 (정리 단계)</label>'+help('editor.always')+'</p>';
     h+=fld('API'+help('editor.api'),'<input list="dl-ops" data-op="'+i+'" placeholder="operationId 나 경로로 검색" value="'+esc(opOf(s))+'">',info?esc(info.method+' '+info.path+' — '+(info.summary||'')):'고르면 메서드·경로·본문 필드가 채워진다');
     h+='<div class="g2">'+fld('메서드',sel('steps.'+i+'.method',['GET','POST','PUT','PATCH','DELETE']))+fld('경로',inp('steps.'+i+'.path','/v1/rooms/{{roomId}}','class="mono" list="dl-vars"'),'앞 단계에서 저장한 값은 {{이름}} 으로 쓴다',true)+'</div>';
     h+='<h4>쿼리</h4>'+rows('steps.'+i+'.query',[['k','이름'],['v','값','dl-vars']]);

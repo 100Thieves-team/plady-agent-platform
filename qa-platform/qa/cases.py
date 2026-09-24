@@ -169,6 +169,11 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
             raise CaseError(f"{file}:{cid}: step {i} save 는 변수→경로 맵")
         s["save"] = save
         s["covers"] = _tc_list(s.get("covers"), f"{file}:{cid}: step {i}")
+        if "always" in s:
+            if not isinstance(s["always"], bool):
+                raise CaseError(f"{file}:{cid}: step {i} always 는 true/false (앞 단계가 실패해도 이 단계를 돌린다 — 정리 단계에 쓴다)")
+            if not s["always"]:
+                s.pop("always")
     for k in ("domains", "operations", "source"):
         v = d.get(k) or []
         if not isinstance(v, list):

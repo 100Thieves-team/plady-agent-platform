@@ -210,26 +210,31 @@ class Runner:
         total_ms = 0
         verdict, err = "pass", None
         for i, step in enumerate(case.steps):
-            sv, ms, serr = self._run_step(case, step, i, rcid, ctx, run["base_url"] or self.cfg.target_base_url)
+            if verdict != "pass" and not step.get("always"):
+                continue            # 앞 단계가 실패했다 — always 표시가 있는 정리 단계만 돈다 (2026-09-25)
+            sv, ms, serr = self._run_step(case, step, i, rcid, ctx, run["base_url"] or self.cfg.target_base_url, after_failure=verdict != "pass")
             total_ms += ms
+            if verdict != "pass":
+                continue            # 실패 뒤 정리 단계의 결과는 기록만 한다. 판정은 처음 실패가 정한다
             if sv != "pass":
                 verdict, err = sv, serr
                 if step.get("given") and sv == "fail":
-                    # 전제 카드(uses) 단계가 틀리면 확인하려던 규칙까지 가지 못한 것 — fail 이 아니라 error (docs/qa-platform-scenarios.md §8.3)
+                    # 테스트 데이터 만들기 카드(uses) 단계가 틀리면 확인하려던 규칙까지 가지 못한 것 — fail 이 아니라 error (docs/qa-platform-scenarios.md §8.3)
                     verdict = "error"
                 if step.get("given") and sv != "skipped":
                     err = f"전제 준비 실패({step['given']}): {serr}"
-                break
         self.store.update_run_case(rcid, verdict=verdict, duration_ms=total_ms, error=err)
         return verdict, total_ms, err
 
-    def _run_step(self, case: Case, step: dict, i: int, rcid: int, ctx: Context, base_url: str) -> tuple[str, int, str | None]:
+    def _run_step(self, case: Case, step: dict, i: int, rcid: int, ctx: Context, base_url: str, after_failure: bool = False) -> tuple[str, int, str | None]:
         """런에 기록된 base_url 로 요청한다 — 런은 생성 시점의 대상을 고정한다."""
         name = step.get("name") or f"step {i + 1}"
         actor = step.get("actor", case.actor)
         record = {"method": step["request"]["method"], "path": step["request"].get("path"), "actor": actor}
         if step.get("given"):
             record["given"] = step["given"]        # 결과 화면이 전제 단계를 접어 보인다
+        if after_failure:
+            record["after_failure"] = True        # 앞 단계가 실패한 뒤 always 로 돈 정리 단계
         op_id = self._op_of(record["method"], record["path"])
         try:
             req = ctx.render(step["request"])
@@ -245,8 +250,9 @@ class Runner:
             record.update({"url": url, "query": req.get("query"), "body": req.get("body"),
                            "headers": {k: ("Bearer ***" if k == "Authorization" else v) for k, v in headers.items()}})
         except TemplateError as e:
-            verdict = "skipped" if e.kind in ("actor", "fixture") else "error"
-            msg = (f"{'테스트 계정' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if verdict == "skipped" else str(e))
+            verdict = "skipped" if (e.kind in ("actor", "fixture") or after_failure) else "error"
+            msg = (f"{'테스트 계정' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if e.kind in ("actor", "fixture") else
+                   (f"앞 단계가 실패해 값이 없어 이 정리 단계를 건너뛰었다: {e}" if after_failure else str(e)))
             self.store.add_step(rcid, i, name, record, None, [], verdict, 0, msg, op_id=op_id)
             return verdict, 0, msg
         except Exception as e:
@@ -271,9 +277,12 @@ class Runner:
             bad = [c for c in checks if not c["ok"]]
             err = f"{name}: " + "; ".join(
                 f"{c['check']}{'(' + c['path'] + ')' if c.get('path') else ''} 기대 {c['expected']!r} 실제 {c['actual']!r}" for c in bad)
-        if ok:
-            for var, path in (step.get("save") or {}).items():
-                ctx.vars[var] = get_path(r.json, path)
+        for var, path in (step.get("save") or {}).items():
+            val = get_path(r.json, path)
+            if ok or val is not None:
+                # 검증이 틀려도 응답에 값이 있으면 저장한다 — 뒤의 정리 단계(always)가 만든 데이터를 지울 수 있게 (2026-09-25:
+                # 룸 생성이 기존 확정 룸을 돌려줘 상태 검증이 실패했고, roomId 가 없어 정리를 못 했다)
+                ctx.vars[var] = val
         self.store.add_step(rcid, i, name, record, response, checks, "pass" if ok else "fail", r.elapsed_ms, err, op_id=op_id)
         return ("pass" if ok else "fail"), r.elapsed_ms, err
 

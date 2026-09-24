@@ -372,6 +372,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
             st += (f'<details {"open" if s["verdict"] not in ("pass",) else ""}><summary>{badge(s["verdict"])} {s["ord"] + 1}. {e(s["name"])} '
                    f'<span class="mono small">{e(req.get("method"))} {e(req.get("path"))}</span>'
                    f'{(" <span class=\"small mut\">테스트 계정 " + e(req.get("actor")) + "</span>") if req.get("actor") else ""}'
+                   f'{" <span class=\"b manual\">실패 뒤 정리</span>" if req.get("after_failure") else ""}'
                    f' <span class="small mut">{s.get("duration_ms") or 0} ms</span></summary>'
                    f'{("<div class=\"small\" style=\"color:var(--bad)\">" + e(s.get("error")) + "</div>") if s.get("error") else ""}'
                    f'{_checks_html(s["checks"])}'

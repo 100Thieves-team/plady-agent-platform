@@ -15,7 +15,7 @@ cases:
       title: { label: 룸 제목, default: "[QA] 준비 작업 룸", required: true, hint: "[QA] 로 시작해야 나중에 찾아 지울 수 있다" }
       minParticipants: { label: 최소 진행 인원, default: 2 }
       maxParticipants: { label: 최대 모집 인원, default: 4 }
-      daysFromNow: { label: 며칠 뒤 일정인가, default: 7, hint: 오늘 기준 N 일 뒤 14:00 }
+      daysFromNow: { label: 며칠 뒤 일정인가, default: 7, hint: "오늘 기준 N 일 뒤. 시각은 실행마다 09:00~20:50 사이에서 고른다 — 남은 룸과 겹치면 백엔드가 그 룸을 돌려주기 때문" }
     outputs: [roomId]
     steps:
       - name: 룸 생성
@@ -30,7 +30,7 @@ cases:
             method: ONLINE
             minParticipants: "{{input.minParticipants}}"
             maxParticipants: "{{input.maxParticipants}}"
-            schedule: { date: "{{date:+{{input.daysFromNow}}}}", startTime: "14:00", durationMinutes: 90 }
+            schedule: { date: "{{date:+{{input.daysFromNow}}}}", startTime: "{{time:rand}}", durationMinutes: 90 }
             title: "{{input.title}} {{rand}}"
             description: "QA 플랫폼 준비 작업이 만든 룸. 지워도 된다."
             resumeId: "{{fixture.qa-host.resumeId}}"

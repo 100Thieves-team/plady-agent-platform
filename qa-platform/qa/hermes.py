@@ -23,7 +23,10 @@ TRIAGE_SYSTEM = (
     "출력 형식(그대로):\n"
     "분류: 버그 | 스크립트 노후 | 환경\n"
     "근거: 두세 문장. 어느 단계의 무엇이 기대와 어긋났는지, 응답 코드·에러 코드를 인용.\n"
-    "다음 행동: 한 줄씩 최대 3개. 버그면 확인할 코드 영역, 스크립트 노후면 고칠 기대값, 환경이면 확인할 설정."
+    "다음 행동: 한 줄씩 최대 3개. 버그면 확인할 코드 영역, 스크립트 노후면 고칠 기대값, 환경이면 확인할 설정.\n"
+    "\"관련 규칙표\" 가 주어지면 기획이 정한 동작이다. 응답이 그 규칙대로면 버그로 분류하지 않는다. "
+    "예를 들어 같은 요청이면 새로 만들지 않고 있던 것을 돌려주는(멱등) 명령에서 기대와 다른 상태가 오면, "
+    "앞 실행이 정리하지 못하고 남긴 데이터(환경)나 스크립트 문제(스크립트 노후)를 먼저 의심한다."
 )
 
 
@@ -193,7 +196,8 @@ def parse_response(data: dict) -> dict:
     return {"id": data.get("id"), "text": "\n".join(texts).strip(), "tool_calls": calls, "usage": data.get("usage") or {}}
 
 
-def triage(cfg: Config, run: dict, rc: dict, steps: list[dict], ask=None) -> str:
+def triage(cfg: Config, run: dict, rc: dict, steps: list[dict], ask=None, rules: str | None = None) -> str:
+    """rules: 실패한 단계가 부른 API 에 묶인 규칙표 명령·검사 설명 (App.triage_rules). 없으면 뺀다."""
     parts = [f"## 런\n트리거 {run['trigger']} · 대상 {run['base_url']} · sha {run.get('sha') or '-'} · PR {run.get('pr_number') or '-'}",
              f"## 스크립트 {rc['case_id']} — {rc['case_title']}\n판정 {rc['verdict']} · 오류 {rc.get('error') or '-'}",
              "## 스크립트 정의\n```yaml\n" + rc["case_yaml"] + "\n```", "## 단계 결과"]
@@ -205,6 +209,8 @@ def triage(cfg: Config, run: dict, rc: dict, steps: list[dict], ask=None) -> str
             f"### {s['ord'] + 1}. {s['name']} → {s['verdict']}\n요청: {json.dumps(req, ensure_ascii=False)[:1500]}\n"
             f"응답 status={resp.get('status')} body={json.dumps(body, ensure_ascii=False)[:1500] if body is not None else '-'}\n"
             f"검증 항목(assertion): {json.dumps(s['checks'], ensure_ascii=False)[:1200]}\n오류: {s.get('error') or '-'}")
+    if rules:
+        parts.append("## 관련 규칙표 (실패한 단계가 부른 API 에 묶인 명령·검사 — 기획이 정한 동작)\n" + rules)
     if ask is not None:
         return ask(TRIAGE_SYSTEM, "\n\n".join(parts), "qa-triage")
     return chat(cfg, TRIAGE_SYSTEM, "\n\n".join(parts), session_prefix="qa-triage")

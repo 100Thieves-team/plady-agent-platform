@@ -16,7 +16,7 @@ from .cases import _TC, CaseError, _validate, audit
 from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE, confirmed_cancel_warning
 
 CASE_KEYS = ("id", "title", "suite", "variant", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
-STEP_KEYS = ("name", "actor", "covers", "request", "expect", "save")
+STEP_KEYS = ("name", "actor", "always", "covers", "request", "expect", "save")
 REQ_KEYS = ("method", "path", "query", "body")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -91,7 +91,7 @@ def to_state(raw: dict) -> dict:
         exp = s.get("expect") or {}
         body = req.get("body")
         st["steps"].append({
-            "name": s.get("name") or "", "actor": s.get("actor") or "", "covers": list(s.get("covers") or []),
+            "name": s.get("name") or "", "actor": s.get("actor") or "", "always": bool(s.get("always")), "covers": list(s.get("covers") or []),
             "method": str(req.get("method") or "GET").upper(), "path": req.get("path") or "",
             "query": [{"k": k, "v": value_to_cell(v)} for k, v in (req.get("query") or {}).items()],
             "body": "" if body is None else json.dumps(body, ensure_ascii=False, indent=2, default=str),
@@ -163,6 +163,8 @@ def from_state(st: dict, *, op_of=None) -> dict:
         step: dict = {"name": str(s.get("name") or "").strip() or f"step {i}"}
         if str(s.get("actor") or "").strip():
             step["actor"] = str(s["actor"]).strip()
+        if s.get("always"):
+            step["always"] = True          # 앞 단계가 실패해도 도는 정리 단계
         cov = _strs(s.get("covers"))
         if cov:
             step["covers"] = cov

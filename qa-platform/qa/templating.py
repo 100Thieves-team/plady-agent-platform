@@ -6,6 +6,8 @@
   {{fixture.key}}           환경 픽스처 (키에 점이 있어도 정확히 일치하는 키를 먼저 본다)
   {{date:+N}} / {{date:-N}} 오늘(KST) 기준 N 일 뒤/전 ISO 날짜
   {{uuid}} / {{rand}}       임의값
+  {{time:rand}}             09:00~20:50 사이 10분 단위 임의 시각(HH:MM). 룸 생성은 (방장, 공고, 직무, 시작 시각)이 같으면
+                            새로 만들지 않고 있던 룸을 돌려주므로, 남은 룸과 겹치지 않게 시각을 흩는다 (2026-09-25)
 문자열 전체가 하나의 치환이면 값의 타입(int 등)을 유지한다.
 """
 from __future__ import annotations
@@ -46,6 +48,9 @@ class Context:
             return str(uuid.uuid4())
         if expr == "rand":
             return secrets.token_hex(3)
+        if expr == "time:rand":
+            n = secrets.randbelow(72)                       # 09:00 부터 10분씩 72칸
+            return f"{9 + n // 6:02d}:{(n % 6) * 10:02d}"
         if expr.startswith("date:"):
             offset = expr[5:].strip() or "0"
             try:

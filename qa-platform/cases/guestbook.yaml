@@ -64,6 +64,7 @@ cases:
         guestCommentId: data.commentId
         guestCommentCreatedAt: data.createdAt
     - name: 정리(QA 룸 삭제)
+      always: true
       covers: []
       request:
         method: DELETE

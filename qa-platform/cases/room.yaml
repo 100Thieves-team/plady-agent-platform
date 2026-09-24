@@ -1,5 +1,6 @@
 # 룸 — 탐색은 비로그인 smoke, 생성·신청 흐름은 테스트 계정이 필요한 sanity.
-# 쓰기 케이스는 자기가 만든 데이터를 자기가 닫는다(취소). 제목 접두 [QA].
+# 쓰기 스크립트는 자기가 만든 데이터를 자기가 닫는다(취소·QA 룸 삭제). 정리 단계는 always: true 로 앞 단계가 실패해도 돈다. 제목 접두 [QA].
+# 룸 시작 시각은 {{time:rand}} — 룸 생성은 (방장, 공고, 직무, 시작 시각)이 같은 활성 룸이 있으면 새로 만들지 않고 그 룸을 돌려준다.
 # variant: 는 구현하는 시나리오 변형(scenarios/<기능>.yaml). 없는 것은 "시나리오 밖" 이다 (docs/qa-platform-scenarios.md §13).
 cases:
   - id: room.form-options
@@ -35,7 +36,6 @@ cases:
     operations:
     - createRoom
     - roomDetail
-    - cancelRoom
     covers:
     - C.room.create
     - op.createRoom:200
@@ -65,7 +65,7 @@ cases:
           maxParticipants: 4
           schedule:
             date: '{{date:+7}}'
-            startTime: '14:00'
+            startTime: '{{time:rand}}'
             durationMinutes: 90
           title: '[QA] 룸 생성 sanity {{rand}}'
           description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 취소된다.
@@ -90,12 +90,14 @@ cases:
           data.hostMemberId: '{{actor.qa-host.memberId}}'
           data.status: RECRUITING
       save: {}
-    - name: 정리(취소)
+    - name: 정리(QA 룸 삭제)
+      always: true
       request:
-        method: POST
-        path: /v1/rooms/{{roomId}}/cancellation
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
       expect:
         status: 200
+        result: SUCCESS
       save: {}
       covers: []
 
@@ -161,6 +163,7 @@ cases:
         request: { method: DELETE, path: "/v1/rooms/{{roomId}}/applications/me" }
         expect: { status: 200, result: SUCCESS }
       - name: 방장이 정리(취소)
+        always: true
         covers: [op.cancelRoom:200]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200 }
