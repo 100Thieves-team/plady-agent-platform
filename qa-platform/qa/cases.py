@@ -1,9 +1,9 @@
-"""케이스 YAML 로드·검증·선택. 정본은 git (qa-platform/cases/). docs/qa-platform.md §8.
+"""스크립트 YAML 로드·검증·선택. 정본은 git (qa-platform/cases/). docs/qa-platform.md §8.
 
-파일 하나에 케이스 하나(맵) 또는 `cases: [...]` 목록. 로드 실패는 파일 단위로 보고하고
-나머지는 계속 읽는다 — 케이스 하나가 깨졌다고 플랫폼이 못 뜨면 안 된다.
+파일 하나에 스크립트 하나(맵) 또는 `cases: [...]` 목록. 로드 실패는 파일 단위로 보고하고
+나머지는 계속 읽는다 — 스크립트 하나가 깨졌다고 플랫폼이 못 뜨면 안 된다.
 
-`covers`(docs/qa-platform-tc.md §5): 케이스·단계가 덮는 TC id. smoke·sanity 는 필수. 형식 검증은 여기서,
+`covers`(docs/qa-platform-tc.md §5): 스크립트·단계가 덮는 테스트 조건 id. smoke·sanity 는 필수. 형식 검증은 여기서,
 카탈로그와의 대조(id 실재, method·path·코드 일치)는 `audit()` 에서 — 카탈로그 없이도 로드는 된다.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ class Case:
     source: list = field(default_factory=list)
     actor: str | None = None
     description: str = ""
-    covers: list = field(default_factory=list)       # 케이스가 덮는 TC id (단계 covers 의 합집합 포함)
+    covers: list = field(default_factory=list)       # 스크립트가 덮는 TC id (단계 covers 의 합집합 포함)
     reviewed: dict | None = None                     # {at: ISO 날짜, by: 운영자} — 드리프트 배지를 이 시각 이후 변경만 보이게
     inputs: dict = field(default_factory=dict)       # setup 전용: 화면 입력 {name: {label, default, required}} → {{input.name}}
     outputs: list = field(default_factory=list)      # setup 전용: 끝나면 화면에 돌려줄 save 변수 이름
@@ -57,7 +57,7 @@ class Case:
 
     @property
     def blocked(self) -> bool:
-        """카탈로그 대조에서 오류가 난 케이스는 스위트에서 뺀다 (선언이 거짓이다)."""
+        """카탈로그 대조에서 오류가 난 스크립트는 스위트에서 뺀다 (선언이 거짓이다)."""
         return self.audit.get("status") == "error"
 
     def to_yaml(self) -> str:
@@ -66,7 +66,7 @@ class Case:
 
     @property
     def own_steps(self) -> list:
-        """전제 카드에서 온 단계(given)를 뺀 이 스크립트의 단계."""
+        """테스트 데이터 만들기 카드에서 온 단계(given)를 뺀 이 스크립트의 단계."""
         return [s for s in self.steps if not s.get("given")]
 
     def run_raw(self) -> dict:
@@ -99,7 +99,7 @@ def _uses(d: dict, where: str) -> dict | None:
         raise CaseError(f"{where}: uses 에 모르는 키 {bad} (허용: setup, with)")
     sid = u.get("setup")
     if not isinstance(sid, str) or not _ID.match(sid):
-        raise CaseError(f"{where}: uses.setup 은 전제 카드 id: {sid!r}")
+        raise CaseError(f"{where}: uses.setup 은 테스트 데이터 만들기 카드 id: {sid!r}")
     w = u.get("with") or {}
     if not isinstance(w, dict) or not all(isinstance(k, str) for k in w):
         raise CaseError(f"{where}: uses.with 는 입력 이름→값 맵")
@@ -113,7 +113,7 @@ def _uses(d: dict, where: str) -> dict | None:
 def _validate(d: dict, file: str, library: dict | None = None) -> Case:
     """library(id→Case)를 주면 uses 를 펼친다. 안 주면 펼치지 않은 채 돌려준다 (load_dir 는 다 읽은 뒤 펼친다)."""
     if not isinstance(d, dict):
-        raise CaseError(f"{file}: 케이스는 맵이어야 한다")
+        raise CaseError(f"{file}: 스크립트는 맵이어야 한다")
     cid = d.get("id")
     if not isinstance(cid, str) or not _ID.match(cid):
         raise CaseError(f"{file}: id 가 없거나 형식이 틀렸다 (소문자·숫자·점·하이픈): {cid!r}")
@@ -127,7 +127,7 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
     if variant is not None:
         variant = str(variant).strip()
         if not _VARIANT.match(variant):
-            raise CaseError(f"{file}:{cid}: variant 는 기능/시나리오/변형 (룸-생성/S1/happy): {variant!r}")
+            raise CaseError(f"{file}:{cid}: variant 는 기능/시나리오/케이스 (룸-생성/S1/happy): {variant!r}")
         d["variant"] = variant
     uses = _uses(d, f"{file}:{cid}")
     if uses and d.get("given_by"):
@@ -180,7 +180,7 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
         if t not in covers:
             covers.append(t)
     if suite in ("smoke", "sanity") and not covers:
-        raise CaseError(f"{file}:{cid}: {suite} 케이스는 covers(덮는 TC id)가 하나 이상 필요하다")
+        raise CaseError(f"{file}:{cid}: {suite} 스크립트는 covers(덮는 테스트 조건 id)가 하나 이상 필요하다")
     d["covers"] = covers
     # ---- 준비 작업(setup): inputs · outputs (docs/qa-platform-api.md §5.4). 다른 스위트는 사람 입력 없이 돌아야 하므로 inputs 금지
     inputs_raw = d.get("inputs") or None       # 빈 맵은 없는 것과 같다 (스냅샷 재검증이 걸리지 않게)
@@ -248,7 +248,7 @@ def expand(case: Case, library: dict, _stack: tuple = ()) -> Case:
         raise CaseError(f"{where}: uses 가 돌고 돈다: {' → '.join((*chain, sid))}")
     card = library.get(sid)
     if card is None:
-        raise CaseError(f"{where}: uses 의 전제 카드 {sid} 가 없다")
+        raise CaseError(f"{where}: uses 의 테스트 데이터 만들기 카드 {sid} 가 없다")
     if card.suite != "setup":
         raise CaseError(f"{where}: uses 는 준비 작업(suite setup) 카드만 받는다: {sid} 는 {card.suite}")
     card = expand(card, library, chain)
@@ -259,7 +259,7 @@ def expand(case: Case, library: dict, _stack: tuple = ()) -> Case:
     try:
         _, baked = _bake(card, given_with)
     except CaseError as e:
-        raise CaseError(f"{where}: 전제 카드 {sid} 입력: {str(e).split(': ', 1)[-1]}") from None
+        raise CaseError(f"{where}: 테스트 데이터 만들기 카드 {sid} 입력: {str(e).split(': ', 1)[-1]}") from None
     given = []
     for s in baked["steps"]:
         s["actor"] = s.get("actor", card.actor)       # 스크립트의 actor 가 카드 단계에 새지 않게
@@ -345,12 +345,12 @@ def _tc_list(v, where: str) -> list[str]:
     if v is None:
         return []
     if not isinstance(v, list):
-        raise CaseError(f"{where}: covers 는 TC id 목록")
+        raise CaseError(f"{where}: covers 는 테스트 조건 id 목록")
     out = []
     for x in v:
         x = str(x).strip()
         if not _TC.match(x):
-            raise CaseError(f"{where}: covers 의 TC id 형식이 틀렸다: {x!r}")
+            raise CaseError(f"{where}: covers 의 테스트 조건 id 형식이 틀렸다: {x!r}")
         if x not in out:
             out.append(x)
     return out
@@ -401,7 +401,7 @@ def parse_one(text: str, file: str = "<inline>", library: dict | None = None) ->
 def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | None = None,
            domains: list[str] | None = None, operations: list[str] | None = None) -> list[Case]:
     """suite / ids / domains / operations 는 각각 필터. domains·operations 는 OR 로 합친다.
-    카탈로그 대조 오류(blocked)인 케이스는 스위트 선택에서 빠진다. id 로 직접 고르면 들어간다(사람이 알고 고른 것)."""
+    카탈로그 대조 오류(blocked)인 스크립트는 스위트 선택에서 빠진다. id 로 직접 고르면 들어간다(사람이 알고 고른 것)."""
     out = []
     dset = set(domains or [])
     oset = set(operations or [])
@@ -420,7 +420,7 @@ def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | No
 
 # ---- 카탈로그 대조 (docs/qa-platform-tc.md §5.2) ------------------------------------------------
 def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
-    """단계가 계약 TC 의 method·path·기대와 맞는지. (경로 일치, 문제 목록)."""
+    """단계가 계약 테스트 조건의 method·path·기대와 맞는지. (경로 일치, 문제 목록)."""
     from .spec import match_path
     req = step["request"]
     if req["method"] != str(hint.get("method", "")).upper() or not match_path(str(hint.get("path", "")), req.get("path", "")):
@@ -439,7 +439,7 @@ def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
 
 
 def audit(cases: dict[str, Case], catalog) -> None:
-    """각 케이스의 covers 를 카탈로그와 대조해 case.audit 를 채운다. catalog 가 None 이면 unchecked."""
+    """각 스크립트의 covers 를 카탈로그와 대조해 case.audit 를 채운다. catalog 가 None 이면 unchecked."""
     for c in cases.values():
         if catalog is None:
             c.audit = {"status": "unchecked", "errors": [], "warnings": []}
@@ -455,13 +455,13 @@ def audit(cases: dict[str, Case], catalog) -> None:
             for s in c.steps:
                 s["covers"] = list(dict.fromkeys(canon(t) for t in s["covers"]))
             if legacy:
-                warnings.append(f"covers 의 옛 TC id {', '.join(legacy)} 를 key id 로 읽었다 — 스크립트를 새 id 로 고친다")
+                warnings.append(f"covers 의 옛 테스트 조건 id {', '.join(legacy)} 를 key id 로 읽었다 — 스크립트를 새 id 로 고친다")
         own = c.own_steps          # 전제 단계(given)는 대조하지 않는다 — 커버리지에 들지 않는다
         for step_i, step in enumerate(own, 1):
             for tid in step["covers"]:
                 rec = recs.get(tid)
                 if not rec:
-                    continue   # 아래 케이스 수준에서 보고
+                    continue   # 아래 스크립트 수준에서 보고
                 if rec["layer"] == "contract":
                     matched, problems = _step_hits(step, rec["expect_hint"])
                     if not matched:
@@ -475,7 +475,7 @@ def audit(cases: dict[str, Case], catalog) -> None:
         for tid in c.covers:
             rec = recs.get(tid)
             if not rec:
-                errors.append(f"covers: 카탈로그에 없는 TC {tid}")
+                errors.append(f"covers: 테스트 조건 목록에 없는 {tid}")
                 continue
             if tid in step_covered:
                 continue

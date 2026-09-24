@@ -1,8 +1,8 @@
 """결정론 러너. 사람이 만든 런을 큐에서 하나씩 꺼내 실행한다. docs/qa-platform.md §4 3.x.
 
 - 런은 직렬(worker 1개): dev 데이터 충돌을 막는다.
-- 케이스는 순차, 단계 실패 시 그 케이스 중단.
-- 테스트 계정/픽스처 부재 → 케이스 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
+- 스크립트는 순차, 단계 실패 시 그 스크립트 중단.
+- 테스트 계정/픽스처 부재 → 스크립트 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
 - 요청 기록은 Authorization 을 마스킹하고 응답 본문은 8 KB 로 자른다.
 """
 from __future__ import annotations
@@ -204,7 +204,7 @@ class Runner:
         try:
             case = parse_one(rc["case_yaml"], f"run:{rc['case_id']}")
         except Exception as e:
-            self.store.update_run_case(rcid, verdict="error", error=f"케이스 스냅샷 파싱 실패: {e}")
+            self.store.update_run_case(rcid, verdict="error", error=f"스크립트 스냅샷 파싱 실패: {e}")
             return "error", 0, str(e)
         ctx = Context(actors=self.actors.mapping(), fixtures=self.cfg.fixtures)
         total_ms = 0

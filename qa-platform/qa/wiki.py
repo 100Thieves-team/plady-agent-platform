@@ -1,9 +1,9 @@
 """llm-wiki 체크아웃(team-wiki-v2) 읽기 — 읽기 전용 볼륨. docs/qa-platform-tc.md §4.5 (안 B).
 
 플랫폼은 `wiki-data` 볼륨을 `/wiki` 에 읽기 전용으로 마운트한다. 여기서
-  - `wiki/policy/_src/상태-SSOT.yaml`   정책 TC 의 원천
+  - `wiki/policy/_src/상태-SSOT.yaml`   정책 테스트 조건의 원천
   - `raw/product/<slug>.md`            PRD 본문 (절 추출)
-  - `tools/policy-renderer/render_tests.py`  정책 TC 파생 함수 `cases()` — 복제하지 않고 import 한다
+  - `tools/policy-renderer/render_tests.py`  정책 테스트 조건 파생 함수 `cases()` — 복제하지 않고 import 한다
 를 읽는다. 락(`.git/llm-wiki.lock`)은 잡지 않는다. 파싱 실패는 1초 뒤 한 번 재시도한다
 (wiki-data-sync 가 git pull 로 파일을 바꾸는 순간을 읽었을 수 있다).
 """

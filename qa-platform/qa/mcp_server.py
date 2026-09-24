@@ -30,7 +30,7 @@ AGENT = "hermes"          # 도구를 부르는 쪽. 감사 로그 operator 열�
 MAX_LIMIT = 200
 
 INSTRUCTIONS = (
-    "plady QA 플랫폼의 도구다. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이라 여기서 만들거나 고칠 수 없다. "
+    "plady QA 플랫폼의 도구다. 테스트 조건은 SSOT·PRD·OpenAPI 에서 파생된 것이라 여기서 만들거나 고칠 수 없다. "
     "스크립트를 새로 쓰거나 고칠 때는 qa_case_save 로 저장한다. 검증을 통과하면 main 에 바로 들어가고, 사유가 돌아오면 고쳐서 다시 부른다. "
     "실행·전송·발행은 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크로 안내한다. "
     "회원 UUID 같은 식별값은 답에 옮기지 않는다."
@@ -81,19 +81,19 @@ _STR = {"type": "string"}
 _INT = {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT}
 
 TOOLS: list[dict] = [
-    {"name": "qa_catalog_search", "description": "테스트 케이스(TC) 목록 검색. 비즈니스 규칙(policy: SSOT 에서 파생)·API 계약(contract: OpenAPI)·수동 작성(manual) 세 층. "
-     "only=uncovered 면 아직 어떤 스크립트도 덮지 않는 TC 만. 결과의 covered_by 가 그 TC 를 검증하는 스크립트와 마지막 결과.",
+    {"name": "qa_catalog_search", "description": "테스트 조건 목록 검색. 비즈니스 규칙(policy: SSOT 에서 파생)·API 계약(contract: OpenAPI)·수동 작성(manual) 세 층. "
+     "only=uncovered 면 아직 어떤 스크립트도 덮지 않는 테스트 조건만. 결과의 covered_by 가 그 테스트 조건을 검증하는 스크립트와 마지막 결과.",
      "inputSchema": _schema({"domain": _STR, "layer": {"type": "string", "enum": ["policy", "contract", "manual"]},
                              "only": {"type": "string", "enum": ["uncovered", "covered", "excluded", "warn"]},
                              "q": {"type": "string", "description": "id·제목·API 매핑에 대한 부분 문자열"}, "limit": _INT})},
-    {"name": "qa_tc_get", "description": "TC 하나의 레코드 전문 + 근거 PRD 절 본문 + 검증하는 스크립트 + 최근 변경 여부.",
+    {"name": "qa_tc_get", "description": "테스트 조건 하나의 레코드 전문 + 근거 PRD 절 본문 + 검증하는 스크립트 + 최근 변경 여부.",
      "inputSchema": _schema({"id": {"type": "string", "description": "예: G.room.create#duplicate-slot-left, op.createRoom:E1402, PRD.룸-탐색.4.1#1"}}, ["id"])},
-    {"name": "qa_coverage", "description": "도메인×층 커버리지 매트릭스, 제외 수, TC 소스 버전(SSOT·OpenAPI 해시), 스펙 불일치 경고.", "inputSchema": _schema({})},
-    {"name": "qa_changes", "description": "최근 바뀐(추가·변경·삭제된) TC 와 영향받는 스크립트. since 는 ISO 시각(그 이후만).",
+    {"name": "qa_coverage", "description": "도메인×층 커버리지 매트릭스, 제외 수, 테스트 조건 소스 버전(SSOT·OpenAPI 해시), 스펙 불일치 경고.", "inputSchema": _schema({})},
+    {"name": "qa_changes", "description": "최근 바뀐(추가·변경·삭제된) 테스트 조건과 영향받는 스크립트. since 는 ISO 시각(그 이후만).",
      "inputSchema": _schema({"since": _STR, "limit": _INT})},
-    {"name": "qa_case_list", "description": "스크립트(원본 YAML, git) 목록: suite·검증하는 TC 수·TC 정합성 검사 상태·마지막 결과·TC 변경 수.",
+    {"name": "qa_case_list", "description": "스크립트(원본 YAML, git) 목록: suite·검증하는 테스트 조건 수·테스트 조건 정합성 검사 상태·마지막 결과·테스트 조건 변경 수.",
      "inputSchema": _schema({"domain": _STR, "suite": {"type": "string", "enum": ["smoke", "sanity", "manual"]}})},
-    {"name": "qa_case_get", "description": "스크립트 하나: YAML 전문, covers, TC 정합성 검사 결과, TC 변경(드리프트), 최근 실행 이력.",
+    {"name": "qa_case_get", "description": "스크립트 하나: YAML 전문, covers, 테스트 조건 정합성 검사 결과, 테스트 조건 변경(드리프트), 최근 실행 이력.",
      "inputSchema": _schema({"id": _STR}, ["id"])},
     {"name": "qa_run_list", "description": "테스트 실행 목록(최신순). trigger: deploy-sanity | sprint-smoke | release | manual | draft-check | explorer.",
      "inputSchema": _schema({"trigger": _STR, "limit": _INT})},
@@ -101,20 +101,20 @@ TOOLS: list[dict] = [
      "inputSchema": _schema({"id": _STR, "with_steps": {"type": "boolean"}}, ["id"])},
     {"name": "qa_spec_op", "description": "OpenAPI(dev 브랜치 계약) 발췌: method·path·파라미터·요청 예시·성공 응답·문서화된 에러 코드.",
      "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
-    {"name": "qa_api_get", "description": "API 하나를 축으로 모아 보기: OpenAPI 발췌(파라미터·요청 예시·응답·에러 코드) + 그 API 에 걸린 TC(층별, 자동화 여부, 검증하는 스크립트) "
+    {"name": "qa_api_get", "description": "API 하나를 축으로 모아 보기: OpenAPI 발췌(파라미터·요청 예시·응답·에러 코드) + 그 API 에 걸린 테스트 조건(층별, 자동화 여부, 검증하는 스크립트) "
                                           "+ 그 API 를 부르는 스크립트(단계 이름) + 최근 호출 20건(실행 기록·판정·status·소요). \"이 API 지난번에 어땠나\" 에 답할 때.",
      "inputSchema": _schema({"operationId": _STR}, ["operationId"])},
     {"name": "qa_prd_section", "description": "PRD 절 본문(위키 체크아웃에서). doc 은 문서 이름(예: 룸 생성), section 은 절 번호(예: 4.7).",
      "inputSchema": _schema({"doc": _STR, "section": _STR}, ["doc", "section"])},
-    {"name": "qa_case_save", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 TC 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
+    {"name": "qa_case_save", "description": "스크립트 YAML 을 결정론 검증(형식·covers 가 테스트 조건 목록에 실재·method/path/코드 일치·테스트 계정·픽스처)에 넣고, "
      "통과하면 main 에 바로 저장한다(Hermes 작성 표시가 붙는다). 실패하면 사유를 돌려준다 — 고쳐서 다시 부른다. "
      "기존 스크립트를 고치려면 update=true 로 같은 id 를 낸다(qa_case_get 으로 읽은 YAML 을 고쳐서). update=false 인데 id 가 겹치면 -2 처럼 새 id 로 만든다. "
      "YAML 은 스크립트 맵 하나 또는 `cases:` 목록(최대 5). 실행은 하지 않는다 — 사람이 화면에서 누른다.",
      "inputSchema": _schema({"yaml": _STR, "update": {"type": "boolean", "description": "true 면 같은 id 의 기존 스크립트를 이 YAML 로 바꾼다"},
                              "reason": {"type": "string", "description": "왜 이 스크립트인지 한 줄 (커밋 메시지와 변경 기록에 남는다)"}}, ["yaml"])},
-    {"name": "qa_manual_tc_save", "description": "PRD 절에서 뽑은 수동 작성 TC(규칙표에 없는 확인 항목)를 catalog/manual-tc.yaml 에 바로 저장한다(Hermes 작성 표시). "
+    {"name": "qa_manual_tc_save", "description": "PRD 절에서 뽑은 수동 작성 테스트 조건(규칙표에 없는 확인 항목)을 catalog/manual-tc.yaml 에 바로 저장한다(Hermes 작성 표시). "
      "id 는 PRD.문서.절#번호 로 자동으로 붙는다. items 의 각 항목은 title·when·then 필수, given·operations 선택.",
-     "inputSchema": _schema({"doc": _STR, "section": _STR, "domain": {"type": "string", "description": "room·participation 등. 없으면 같은 문서의 기존 수동 작성 TC 에서 가져온다"},
+     "inputSchema": _schema({"doc": _STR, "section": _STR, "domain": {"type": "string", "description": "room·participation 등. 없으면 같은 문서의 기존 수동 작성 테스트 조건에서 가져온다"},
                              "items": {"type": "array", "minItems": 1, "maxItems": 10,
                                        "items": _schema({"title": _STR, "given": _STR, "when": _STR, "then": _STR,
                                                          "operations": {"type": "array", "items": _STR}}, ["title", "when", "then"])}},
@@ -216,7 +216,7 @@ class McpServer:
     def _catalog(self):
         cat = self.app.current_catalog()
         if cat is None:
-            raise ToolError("TC 목록이 없다: " + (self.app.catalog.last_error or "원인 미상"))
+            raise ToolError("테스트 조건 목록이 없다: " + (self.app.catalog.last_error or "원인 미상"))
         return cat
 
     def _url(self, path: str) -> str:
@@ -276,7 +276,7 @@ class McpServer:
         r = cat.records.get(id)
         if not r:
             near = [i for i in cat.records if id.lower() in i.lower()][:10]
-            raise ToolError(f"TC 목록에 없는 TC: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
+            raise ToolError(f"테스트 조건 목록에 없는 테스트 조건: {id}" + (f". 비슷한 id: {', '.join(near)}" if near else ""))
         cov = self.app.coverage(cat)["by_tc"].get(id, [])
         last = self._last_verdicts()
         prd = []
@@ -309,7 +309,7 @@ class McpServer:
             rows.append(dict(ch, id=tid, affected_cases=by_tc.get(tid, [])))
         rows.sort(key=lambda x: (x.get("at") or "", x["id"]), reverse=True)
         return {"total": len(rows), "items": rows[:n],
-                "note": "영향 스크립트는 스크립트 화면의 TC 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_case_save(update=true) 로 고친 판을 저장한다."}
+                "note": "영향 스크립트는 스크립트 화면의 테스트 조건 변경 배지와 같다. 고치려면 qa_case_get 으로 YAML 을 읽고 qa_case_save(update=true) 로 고친 판을 저장한다."}
 
     def t_case_list(self, domain=None, suite=None) -> dict:
         self.app.current_catalog()
@@ -459,13 +459,13 @@ class McpServer:
         text = yaml_dump({"cases": out})
         try:
             res = self.app.save_change(kind="tc", source="hermes-chat", yaml_text=text, operator=AGENT, domain=str(domain),
-                                       note=f"PRD/{doc} §{sec} 에서 Hermes 가 뽑은 수동 작성 TC", tc_ids=[r["id"] for r in out],
+                                       note=f"PRD/{doc} §{sec} 에서 Hermes 가 뽑은 수동 작성 테스트 조건", tc_ids=[r["id"] for r in out],
                                        validation={"status": "warn" if warnings else "ok", "warnings": warnings})
         except Exception as ex:
             raise ToolError(f"저장하지 못했다: {ex}")
         return {"id": res["id"], "kind": "tc", "tc_ids": res["tc_ids"], "yaml": text, "warnings": warnings, "committed": bool(res["commit"]),
                 "url": self._url(self.app.change_link(res)["href"]), "_hint": {"saved": [res["id"]], "tc": len(out)},
-                "next": "저장했다. 틀린 항목은 사람이 TC 상세에서 폼으로 고치거나 지운다."}
+                "next": "저장했다. 틀린 항목은 사람이 테스트 조건 상세에서 폼으로 고치거나 지운다."}
 
 
 def yaml_dump(obj) -> str:

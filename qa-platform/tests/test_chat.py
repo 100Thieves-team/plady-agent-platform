@@ -101,11 +101,11 @@ class ChatFlowTest(unittest.TestCase):
         did = self.app.store.add_draft(operator="hermes", source="hermes-chat", domain="room", yaml_text="id: x", note=None)
         cid = self.app.chat_create(operator="bebe", context={"tc": "G.room.create#duplicate-slot-left"}, session_hash=None, ip=None)
         chat = self.app.store.get_chat(cid)
-        self.assertEqual((chat["title"], chat["session_key"]), ("TC G.room.create#duplicate-slot-left", f"qa-chat-{cid}"))
+        self.assertEqual((chat["title"], chat["session_key"]), ("테스트 조건 G.room.create#duplicate-slot-left", f"qa-chat-{cid}"))
         self.fake.queue.append((200, _sse("resp_1", "초안 d-… 만들었다", [("qa_tc_get", {"id": "G.room.create#duplicate-slot-left"}, "{}"),
                                                                        ("qa_case_save", {"yaml": "..."}, json.dumps({"saved": [{"id": did}]}))], deltas=["초안 d-… ", "만들었다"])))
         events: list = []
-        reply = self.app.chat_send(chat, "케이스 써 줘", operator="bebe", session_hash="s", ip="1.1.1.1", emit=lambda k, d: events.append((k, d)))
+        reply = self.app.chat_send(chat, "스크립트 써 줘", operator="bebe", session_hash="s", ip="1.1.1.1", emit=lambda k, d: events.append((k, d)))
         self.assertEqual([k for k, _ in events], ["user", "keepalive", "tool", "tool_result", "tool", "tool_result", "delta", "delta", "done"])
         self.assertEqual(events[2][1]["name"], "qa_tc_get")
         self.assertEqual(events[-1][1]["draft_ids"], [did])
@@ -115,8 +115,8 @@ class ChatFlowTest(unittest.TestCase):
         self.assertEqual(req["headers"]["X-Hermes-Session-Key"], f"qa-chat-{cid}")
         self.assertIn("QA 엔지니어", req["body"]["instructions"])
         self.assertIn("https://qa.test", req["body"]["instructions"])
-        self.assertTrue(req["body"]["input"].startswith("[첨부: TC G.room.create#duplicate-slot-left]"))
-        self.assertTrue(req["body"]["input"].endswith("케이스 써 줘"))
+        self.assertTrue(req["body"]["input"].startswith("[첨부: 테스트 조건 G.room.create#duplicate-slot-left]"))
+        self.assertTrue(req["body"]["input"].endswith("스크립트 써 줘"))
         self.assertNotIn("previous_response_id", req["body"])
         self.assertEqual(req["timeout"], 180)
         self.assertEqual(reply["draft_ids"], [did])
@@ -125,7 +125,7 @@ class ChatFlowTest(unittest.TestCase):
         self.assertEqual((chat["turns"], chat["drafts"], chat["last_response_id"]), (1, 1, "resp_1"))
         msgs = self.app.store.list_chat_messages(cid)
         self.assertEqual([m["role"] for m in msgs], ["user", "assistant"])
-        self.assertEqual(msgs[0]["content"], "케이스 써 줘")        # 첨부는 저장 본문에 안 붙는다 — 화면엔 사람이 쓴 말만
+        self.assertEqual(msgs[0]["content"], "스크립트 써 줘")        # 첨부는 저장 본문에 안 붙는다 — 화면엔 사람이 쓴 말만
         self.assertEqual(msgs[1]["draft_ids"], [did])
         # 두 번째 턴: 새 메시지만 + previous_response_id, 시스템 프롬프트 없음
         self.fake.queue.append((200, _sse("resp_2", "네")))

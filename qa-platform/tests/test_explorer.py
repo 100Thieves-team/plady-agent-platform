@@ -1,4 +1,4 @@
-"""API 호출 화면 P5a (docs/qa-platform-api.md §5.3·§5.6) — op → TC 역색인, QA 배지 요약, 호출 카드(Normal/Swagger) 렌더, 프리필, TC 목록 op 필터."""
+"""API 호출 화면 P5a (docs/qa-platform-api.md §5.3·§5.6) — op → 테스트 조건 역색인, QA 배지 요약, 호출 카드(Normal/Swagger) 렌더, 프리필, 테스트 조건 목록 op 필터."""
 from __future__ import annotations
 
 import json
@@ -91,17 +91,17 @@ class OpQaTest(unittest.TestCase):
         self.assertGreaterEqual(qa["covered"], 1)
         self.assertIsNone(qa["last"])                                     # 실행 기록 없음
         h = ui.qa_badge(qa, "termsList")
-        self.assertIn(f"TC {qa['tc']}", h)
+        self.assertIn(f"테스트 조건 {qa['tc']}", h)
         self.assertIn('href="/apis/termsList"', h)
         self.assertIn("실행 기록 없음", h)
         self.assertEqual(self.app.op_qa("noSuchOp")["tc"], 0)
-        self.assertIn("TC 없음", ui.qa_badge(self.app.op_qa("noSuchOp"), "noSuchOp"))
+        self.assertIn("테스트 조건 없음", ui.qa_badge(self.app.op_qa("noSuchOp"), "noSuchOp"))
 
     def test_catalog_list_op_filter_crosses_domains(self):
         cov = self.app.coverage(self.cat)
         ids = self.cat.by_operation()["createRoom"]
         h = ui.catalog_list(self.cat, cov, {}, domain="room", layer="", only="", changes={}, wiki_available=True, op="createRoom", op_ids=ids)
-        self.assertIn("의 TC 만 보인다", h)
+        self.assertIn("의 테스트 조건만 보인다", h)
         for i in ids:
             self.assertIn(ui.tc_link(i), h)
         self.assertNotIn("op.termsList:200", h)

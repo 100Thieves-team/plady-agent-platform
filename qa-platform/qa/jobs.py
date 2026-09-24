@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from . import hermes
 from .config import Config
 
-KINDS = {"draft": "Hermes 가 스크립트 쓰기", "scenario": "Hermes 가 변형 채우기", "propose": "수동 작성 TC 제안", "revise": "바뀐 TC 에 맞게 고치기", "triage": "Hermes 실패 분석"}
+KINDS = {"draft": "Hermes 가 스크립트 쓰기", "scenario": "Hermes 가 케이스 채우기", "propose": "수동 작성 테스트 조건 제안", "revise": "바뀐 테스트 조건에 맞게 고치기", "triage": "Hermes 실패 분석"}
 STAGES_FULL = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "검증하고 저장", "끝"]
 STAGES_SHORT = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "끝"]
 TERMINAL = ("done", "failed", "canceled", "interrupted")

@@ -1,11 +1,11 @@
-"""시나리오 파일 — 기능(PRD) > 시나리오(PRD 2장 Sn) > 변형 > 스크립트. docs/qa-platform-scenarios.md §2, §5, §6.1.
+"""시나리오 파일 — 기능(PRD) > 시나리오(PRD 2장 Sn) > 케이스 > 스크립트. docs/qa-platform-scenarios.md §2, §5, §6.1.
 
 파일은 `qa-platform/scenarios/<기능>.yaml` 하나에 기능 하나. 시나리오 제목과 단계는 파일에 없고 PRD 2장에서 읽는다.
-변형 상태(자동화됨·사람이 확인·제외·테스트 없음)와 테스트 없는 거절 규칙은 저장하지 않고 매번 계산한다.
+케이스 상태(자동화됨·사람이 확인·제외·테스트 없음)와 아직 테스트가 없는 거절 조건은 저장하지 않고 매번 계산한다.
 
-- `load_dir` 는 형식만 본다 (위키·TC 목록 없이도 읽힌다). 틀린 파일은 빼고 오류를 남긴다.
-- `check` 는 §6.1 결정론 검증 — PRD 2장·TC 목록·스크립트와 대조한다. 오류와 경고를 돌려준다.
-- `overview` 는 화면이 쓰는 계산 결과 — PRD 의 모든 기능·시나리오를 싣고, 파일이 없는 시나리오는 "변형 없음" 으로 둔다.
+- `load_dir` 는 형식만 본다 (위키·테스트 조건 목록 없이도 읽힌다). 틀린 파일은 빼고 오류를 남긴다.
+- `check` 는 §6.1 결정론 검증 — PRD 2장·테스트 조건 목록·스크립트와 대조한다. 오류와 경고를 돌려준다.
+- `overview` 는 화면이 쓰는 계산 결과 — PRD 의 모든 기능·시나리오를 싣고, 파일이 없는 시나리오는 "케이스 없음" 으로 둔다.
 """
 from __future__ import annotations
 
@@ -131,16 +131,16 @@ def parse_feature(d, file: str) -> Feature:
             gates[req] = gl
         variants, keys = [], set()
         for j, v in enumerate(s.get("variants") or [], 1):
-            vw = f"{where}: 변형 {j}"
+            vw = f"{where}: 케이스 {j}"
             if not isinstance(v, dict):
                 raise ScenarioError(f"{vw} 는 맵")
             key = str(v.get("key") or "")
             if not _KEY.match(key):
                 raise ScenarioError(f"{vw}: key 는 소문자·숫자·점·하이픈: {key!r}")
             if key in RESERVED_KEYS:
-                raise ScenarioError(f"{vw}: key {key} 는 화면 주소에 쓰여 변형 이름으로 못 쓴다")
+                raise ScenarioError(f"{vw}: key {key} 는 화면 주소에 쓰여 케이스 이름으로 못 쓴다")
             if key in keys:
-                raise ScenarioError(f"{where}: 변형 key {key} 가 겹친다")
+                raise ScenarioError(f"{where}: 케이스 key {key} 가 겹친다")
             keys.add(key)
             vw = f"{where}/{key}"
             kind = v.get("kind")
@@ -155,14 +155,14 @@ def parse_feature(d, file: str) -> Feature:
                 if not _REQ.match(at):
                     raise ScenarioError(f"{vw}: at 은 요구 id(R6): {at!r}")
             if kind in ("branch", "reject") and not at:
-                raise ScenarioError(f"{vw}: {KIND_KO[kind]} 변형은 at(갈라지는 단계의 요구 id)이 필요하다")
+                raise ScenarioError(f"{vw}: {KIND_KO[kind]} 케이스는 at(분기·거절이 일어나는 단계의 요구 id)이 필요하다")
             mode = v.get("mode") or "auto"
             if mode not in MODES:
                 raise ScenarioError(f"{vw}: mode 는 auto 또는 manual: {mode!r}")
             checks = _str_list(v.get("checks"), f"{vw}: checks")
             bad = [t for t in checks if not _TC.match(t)]
             if bad:
-                raise ScenarioError(f"{vw}: checks 의 TC id 형식이 틀렸다: {bad}")
+                raise ScenarioError(f"{vw}: checks 의 테스트 조건 id 형식이 틀렸다: {bad}")
             variants.append(Variant(key=key, kind=kind, title=title.strip(), at=at, given=str(v.get("given") or "").strip(),
                                     then=str(v.get("then") or "").strip(), checks=checks, mode=mode, raw=v))
         actor = s.get("actor")
@@ -209,7 +209,7 @@ def _gate_of(tid: str) -> str | None:
 
 def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
     """반환 {"errors": [..], "warnings": [..], "by_feature": {slug: {errors, warnings}}, "scripts": {case_id: [오류]}}.
-    wiki 가 없으면 PRD 대조를, catalog 가 없으면 TC 대조를 건너뛴다."""
+    wiki 가 없으면 PRD 대조를, catalog 가 없으면 테스트 조건 대조를 건너뛴다."""
     out = {"errors": [], "warnings": [], "by_feature": {}, "scripts": {}}
 
     def add(slug, level, msg):
@@ -237,7 +237,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
                 if recs is not None:
                     for gid in gl:
                         if gid not in gate_ids:
-                            add(slug, "errors", f"{s.id} gates.{req} 의 {gid} 가 TC 목록에 없다")
+                            add(slug, "errors", f"{s.id} gates.{req} 의 {gid} 가 테스트 조건 목록에 없다")
             for v in s.variants:
                 vid = f"{s.id}/{v.key}"
                 if v.at and have_prd and s.id in prd and v.at not in reqs:
@@ -245,7 +245,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
                 if recs is not None:
                     for t in v.checks:
                         if _canon(catalog, t) not in recs:
-                            add(slug, "errors", f"{vid} checks 의 {t} 가 TC 목록에 없다")
+                            add(slug, "errors", f"{vid} checks 의 {t} 가 테스트 조건 목록에 없다")
                 gchecks = [t for t in v.checks if _gate_of(t)]
                 if v.kind == "reject" and v.at:
                     allowed = set(s.gates.get(v.at) or [])
@@ -253,7 +253,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
                     if outside:
                         add(slug, "warnings", f"{vid}: checks {', '.join(outside)} 가 {v.at} 단계의 gates 밖이다")
                 if len(gchecks) > 1:
-                    add(slug, "warnings", f"{vid}: 검사 {len(gchecks)}개를 한 변형이 확인한다 — 검사 하나에 변형 하나가 기본이다")
+                    add(slug, "warnings", f"{vid}: 검사 {len(gchecks)}개를 한 케이스가 확인한다 — 검사 하나에 케이스 하나가 기본이다")
                 full = variant_id(slug, s.id, v.key)
                 ids = impl.get(full) or []
                 if len(ids) > 1:
@@ -263,7 +263,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
                     covered = {_canon(catalog, t) for t in c.covers} if catalog is not None else set(c.covers)
                     miss = [t for t in v.checks if _canon(catalog, t) not in covered]
                     if miss:
-                        add(slug, "warnings", f"{vid}: 스크립트 {cid} 의 covers 에 변형이 확인할 {', '.join(miss)} 가 없다")
+                        add(slug, "warnings", f"{vid}: 스크립트 {cid} 의 covers 에 케이스가 확인할 {', '.join(miss)} 가 없다")
     known = {variant_id(slug, s.id, v.key) for slug, ft in feats.items() for s in ft.scenarios for v in s.variants}
     for vid, ids in impl.items():
         if vid not in known:
@@ -278,7 +278,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
 # 화면용 계산 — 변형 상태, 테스트 없는 거절 규칙, 기능별 합계
 # ---------------------------------------------------------------------------------------------
 def variant_state(v: Variant, scripts: list, catalog) -> str:
-    """자동화됨(스크립트가 있다) · 제외(확인할 TC 가 모두 자동화 제외) · 사람이 확인(mode manual) · 테스트 없음."""
+    """자동화됨(스크립트가 있다) · 제외(확인할 테스트 조건이 모두 자동화 제외) · 사람이 확인(mode manual) · 테스트 없음."""
     if scripts:
         return "auto"
     recs = catalog.records if catalog is not None else {}
@@ -290,7 +290,7 @@ def variant_state(v: Variant, scripts: list, catalog) -> str:
 
 
 def untested_rejects(s: Scenario, catalog) -> list[dict]:
-    """§2.2 — 시나리오 단계에 걸린 게이트의 거절 검사 중 어느 변형도 확인하지 않고 자동화 제외도 아닌 것.
+    """§2.2 — 시나리오 단계에 걸린 게이트의 거절 검사 중 어느 케이스도 확인하지 않고 자동화 제외도 아닌 것.
     ErrorCode 가 없는 검사는 manual 로 시작한다(§16 3차)."""
     if catalog is None:
         return []
@@ -387,7 +387,7 @@ def _header(text: str | None) -> str:
 
 
 def variant_raw(v: dict) -> dict:
-    """폼·Hermes 가 준 변형 → 파일에 적을 맵 (키 순서 고정, 빈 칸과 기본값 mode auto 는 뺀다)."""
+    """폼·Hermes 가 준 케이스 → 파일에 적을 맵 (키 순서 고정, 빈 칸과 기본값 mode auto 는 뺀다)."""
     out = {}
     for k in VARIANT_KEYS:
         x = v.get(k)
@@ -408,7 +408,7 @@ def _sid_no(sid: str) -> int:
 
 def apply_op(text: str | None, op: dict) -> str:
     """op: {feature, scenario, action, ...}. action
-    - variant: 변형 넣기·고치기 (variant 맵, original_key 가 있으면 그 자리에서 바꾼다)
+    - variant: 케이스 넣기·고치기 (variant 맵, original_key 가 있으면 그 자리에서 바꾼다)
     - variant-delete: key 로 지우기
     - scenario: actor·gates 고치기 (시나리오가 없으면 만든다)
     - scenario-delete: 시나리오 통째로 지우기
@@ -455,7 +455,7 @@ def apply_op(text: str | None, op: dict) -> str:
         if orig and i is None:
             raise ScenarioError(f"{sid}/{orig} 가 파일에 없다 — 그사이 지워졌다")
         if not orig and i is not None:
-            raise ScenarioError(f"{sid} 에 변형 key {raw.get('key')} 가 이미 있다")
+            raise ScenarioError(f"{sid} 에 케이스 key {raw.get('key')} 가 이미 있다")
         if i is None:
             vs.append(raw)
         else:
@@ -484,8 +484,8 @@ def _ordered(s: dict) -> dict:
 
 
 def _merge(scns: list, op: dict) -> None:
-    """Hermes 가 채운 것을 합친다 (docs/qa-platform-scenarios.md §7). 이미 있는 변형·이미 적힌 단계의 gates·actor 는 건드리지 않고,
-    새 key 의 변형과 비어 있던 단계의 gates 만 더한다."""
+    """Hermes 가 채운 것을 합친다 (docs/qa-platform-scenarios.md §7). 이미 있는 케이스·이미 적힌 단계의 gates·actor 는 건드리지 않고,
+    새 key 의 케이스와 비어 있던 단계의 gates 만 더한다."""
     for hs in op.get("scenarios") or []:
         sid = str(hs["id"])
         s = next((x for x in scns if isinstance(x, dict) and str(x.get("id")) == sid), None)
@@ -528,6 +528,6 @@ def op_summary(op: dict) -> str:
     t = op_target(op)
     if op["action"] == "merge":
         n = sum(len(x.get("variants") or []) for x in op.get("scenarios") or [])
-        return f"{t} 변형 채우기 (Hermes, 새 변형 후보 {n})"
+        return f"{t} 케이스 채우기 (Hermes, 새 케이스 후보 {n})"
     return {"variant": f"{t} {'수정' if op.get('original_key') else '추가'}", "variant-delete": f"{t} 삭제",
             "scenario": f"{t} 수정", "scenario-delete": f"{t} 삭제"}[op["action"]]

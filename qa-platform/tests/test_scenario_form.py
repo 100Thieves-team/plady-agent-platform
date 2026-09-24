@@ -1,4 +1,4 @@
-"""시나리오 폼 (docs/qa-platform-scenarios.md §9, §14 5단계) — 변경 적용, 검증으로 막기, main 커밋, 지우면 스크립트를 시나리오 밖으로."""
+"""시나리오 폼 (docs/qa-platform-scenarios.md §9, §14 5단계) — 변경 적용, 검증으로 막기, main 커밋, 지우면 스크립트를 시나리오에 연결되지 않은 스크립트로."""
 from __future__ import annotations
 
 import sys
@@ -106,7 +106,7 @@ class FlowTest(unittest.TestCase):
         self.assertFalse(out["ok"])
         self.assertTrue(any("R146" in x for x in out["errors"]), out)
         out = self.app.save_scenario(op("variant", variant=dict(NEW_REJECT, checks="G.room.create#nope")), operator="bebe")
-        self.assertTrue(any("TC 목록에 없다" in x for x in out["errors"]), out)
+        self.assertTrue(any("테스트 조건 목록에 없다" in x for x in out["errors"]), out)
         out = self.app.save_scenario(op("scenario", gates={"R6": ["G.room.nope"]}), operator="bebe")
         self.assertFalse(out["ok"])
         self.assertEqual(len(self.gh.puts), n)                                              # 커밋하지 않았다

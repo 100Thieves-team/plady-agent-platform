@@ -1,4 +1,4 @@
-"""폼 편집(스크립트·수동 작성 TC)과 Hermes 작업 진행 화면. docs/qa-platform-editor.md · docs/qa-platform-progress.md.
+"""폼 편집(스크립트·수동 작성 테스트 조건)과 Hermes 작업 진행 화면. docs/qa-platform-editor.md · docs/qa-platform-progress.md.
 
 ui.py 가 맨 끝에서 이 모듈의 이름을 다시 내보낸다(app 은 ui.editor_page 처럼 쓴다). 공통 도우미는 ui 에서 가져온다.
 """
@@ -8,7 +8,7 @@ import json
 
 from .ui import badge, e, h, kst
 
-EDITOR_JS_VERSION = "6"
+EDITOR_JS_VERSION = "7"
 JOBS_JS_VERSION = "1"
 
 EDIT_CSS = """
@@ -41,7 +41,7 @@ def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str |
             f'<div id="ed-root"><div class="card mut">폼을 불러오는 중… (JavaScript 가 필요하다)</div></div>'
             f'<div class="actions"><button type="button" id="ed-add">+ 단계 추가</button></div>'
             f'<div class="card"><h3 style="margin-top:0">검사와 YAML 미리보기{h("editor.preview")}</h3>'
-            f'<p class="small mut" style="margin-top:0">저장 전에 서버가 하는 검사(형식·TC 대조·테스트 계정·픽스처·본문 스키마)를 미리 돌리고, 저장될 YAML 을 보여 준다.</p>'
+            f'<p class="small mut" style="margin-top:0">저장 전에 서버가 하는 검사(형식·테스트 조건 대조·테스트 계정·픽스처·본문 스키마)를 미리 돌리고, 저장될 YAML 을 보여 준다.</p>'
             f'<button type="button" id="ed-preview">검사하고 YAML 보기</button><ul id="ed-msgs" class="small"></ul><pre id="ed-yaml" style="display:none"></pre></div>'
             f'<div class="actions"><button class="primary" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장</button>'
             f'<button type="button" id="ed-try" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장 전에 한 번 실행해 보기 (dev)</button>{h("editor.try")} {back}</div>'
@@ -67,7 +67,7 @@ EDITOR_JS = r"""
   function fld(label,html,hint,req){return '<div class="field"><label'+(req?' class="req"':'')+'>'+label+'</label>'+html+(hint?'<p class="hint">'+hint+'</p>':'')+'</div>'}
   function sel(p,opts,blank){var v=getP(p)||'';return '<select data-k="'+p+'">'+(blank!=null?'<option value="">'+esc(blank)+'</option>':'')+opts.map(function(o){var a=typeof o==='string'?[o,o]:o;return '<option value="'+esc(a[0])+'"'+(a[0]===v?' selected':'')+'>'+esc(a[1])+'</option>'}).join('')+'</select>'}
   function lst(p,ph){return '<input data-list="'+p+'" value="'+esc((getP(p)||[]).join(', '))+'" placeholder="'+esc(ph||'')+'">'}
-  function chips(p){var a=getP(p)||[];return '<div class="chips">'+a.map(function(t,i){return '<span class="chip mono">'+esc(t)+'<a href="#" data-rmchip="'+p+'" data-i="'+i+'">×</a></span>'}).join('')+'<input list="dl-tcs" data-chip="'+p+'" placeholder="TC id 나 제목으로 검색해 추가" style="min-width:260px"></div>'}
+  function chips(p){var a=getP(p)||[];return '<div class="chips">'+a.map(function(t,i){return '<span class="chip mono">'+esc(t)+'<a href="#" data-rmchip="'+p+'" data-i="'+i+'">×</a></span>'}).join('')+'<input list="dl-tcs" data-chip="'+p+'" placeholder="테스트 조건 id 나 제목으로 검색해 추가" style="min-width:260px"></div>'}
   function rows(p,cols){var a=getP(p)||[];var h='<table class="rows">'+a.map(function(r,j){return '<tr>'+cols.map(function(c){
       if(c[2]==='chk') return '<td style="width:60px"><label class="small"><input type="checkbox" data-k="'+p+'.'+j+'.'+c[0]+'"'+(r[c[0]]?' checked':'')+'> '+c[1]+'</label></td>';
       return '<td><input data-k="'+p+'.'+j+'.'+c[0]+'" value="'+esc(r[c[0]])+'" placeholder="'+esc(c[1])+'" list="'+(c[2]||'')+'"></td>'}).join('')+'<td style="width:30px"><button type="button" data-rmrow="'+p+'" data-i="'+j+'">×</button></td></tr>'}).join('')+'</table>';
@@ -82,13 +82,13 @@ EDITOR_JS = r"""
   function card(id){for(var i=0;i<(CTX.setups||[]).length;i++){if(CTX.setups[i].id===id)return CTX.setups[i]}return null}
   function usedOuts(){var c=card(S.uses.setup);return c?c.outputs:[]}
   function usesHtml(){var c=card(S.uses.setup),opts=(CTX.setups||[]).filter(function(x){return x.id!==S.id}).map(function(x){return [x.id,x.id+' — '+x.title]});
-    var h=fld('전제 카드'+help('editor.uses'),sel('uses.setup',opts,'없음 (처음부터 단계를 적는다)'),c?'이 카드의 단계 '+c.steps+'개를 먼저 돈다. 결과값 '+c.outputs.map(function(n){return '{{'+n+'}}'}).join(' ')+' 을 아래 단계에서 쓴다. 전제 단계가 실패하면 판정은 오류다':'룸 만들기·신청 같은 준비 단계를 테스트 데이터 만들기 카드로 대신한다');
+    var h=fld('테스트 데이터 만들기 카드'+help('editor.uses'),sel('uses.setup',opts,'없음 (처음부터 단계를 적는다)'),c?'이 카드의 단계 '+c.steps+'개를 먼저 돈다. 결과값 '+c.outputs.map(function(n){return '{{'+n+'}}'}).join(' ')+' 을 아래 단계에서 쓴다. 전제 단계가 실패하면 판정은 오류다':'룸 만들기·신청 같은 준비 단계를 테스트 데이터 만들기 카드로 대신한다');
     if(S.uses.setup&&!c)h+='<p class="hint bad">카드 '+esc(S.uses.setup)+' 가 지금 목록에 없다</p>';
     if(c&&c.inputs.length)h+='<table class="bf">'+c.inputs.map(function(f){return '<tr><td class="nm'+(f.required&&(f['default']==null||f['default']==='')?' req':'')+'">'+esc(f.label)+' <span class="mono small mut">'+esc(f.name)+'</span></td><td><input data-k="uses.with.'+esc(f.name)+'" value="'+esc(S.uses.with[f.name]==null?'':S.uses.with[f.name])+'" list="dl-vars" placeholder="'+esc(f['default']==null?'':'기본값 '+f['default'])+'">'+(f.hint?'<div class="hint">'+esc(f.hint)+'</div>':'')+'</td></tr>'}).join('')+'</table>';
     return h}
   function variantHint(){var v=null;(CTX.variants||[]).forEach(function(x){if(x.id===S.variant)v=x});
-    if(!S.variant)return '시나리오 화면의 변형 하나. 비우면 "시나리오 밖" 스크립트다';if(!v)return '<span class="bad">시나리오 파일에 없는 변형이다</span>';
-    return esc(v.title)+(v.checks.length?' · 확인할 TC '+v.checks.map(esc).join(' '):'')}
+    if(!S.variant)return '시나리오 화면의 케이스 하나. 비우면 시나리오에 연결되지 않은 스크립트가 된다';if(!v)return '<span class="bad">시나리오 파일에 없는 케이스다</span>';
+    return esc(v.title)+(v.checks.length?' · 확인할 테스트 조건 '+v.checks.map(esc).join(' '):'')}
   function refreshVars(){document.getElementById('dl-vars').innerHTML=vars().map(function(x){return '<option value="'+esc(x)+'">'}).join('')}
   function parseBody(s){var t=(s.body||'').trim();if(!t)return {};try{var o=JSON.parse(t);return (o&&typeof o==='object'&&!Array.isArray(o))?o:null}catch(e){return null}}
   function getIn(o,name){return name.split('.').reduce(function(a,k){return a==null?undefined:a[k]},o)}
@@ -133,18 +133,18 @@ EDITOR_JS = r"""
       +'<div class="small mut">응답 값 검사 — 경로(data.status)와 기대값. 문자열은 그대로, 숫자·true·null 은 그 값으로 읽는다</div>'+rows('steps.'+i+'.expect.json',[['path','경로'],['value','기대값','dl-vars']])
       +fld('존재 검사',lst('steps.'+i+'.expect.exists','data.rooms, data.totalCount'),'쉼표로 여러 개 — 값이 있기만 하면 통과');
     h+='<h4>저장할 값'+help('editor.save')+'</h4>'+rows('steps.'+i+'.save',[['name','변수 이름 (roomId)'],['path','응답 경로 (data.roomId)']]);
-    if(S.suite!=='setup')h+='<h4>이 단계가 검증하는 TC'+help('editor.covers')+'</h4>'+chips('steps.'+i+'.covers');
+    if(S.suite!=='setup')h+='<h4>이 단계가 검증하는 테스트 조건'+help('editor.covers')+'</h4>'+chips('steps.'+i+'.covers');
     return h+'<p class="small" style="margin:10px 0 0"><a href="'+esc(tryUrl(s))+'" target="_blank">이 단계만 API 호출 화면에서 보내 보기 ↗</a> <span class="mut">앞 단계 변수는 치환되지 않으니 값을 직접 넣는다</span></p></div>'}
   function basicHtml(){var edit=ED.mode==='edit';
     var h='<div class="card"><h3 style="margin-top:0">기본 정보'+help('editor.basic')+'</h3><div class="g2">'
       +fld('스위트'+help('cases.suite'),sel('suite',[['smoke','smoke — 읽기만'],['sanity','sanity — 쓰기 흐름, 만든 것은 정리'],['manual','manual — 손으로만 실행'],['setup','setup — 테스트 데이터 만들기 카드']]),'',true)
       +fld('id',inp('id','room.create','class="mono"'+(edit?' readonly':''))+(edit?'':' <button type="button" data-act="suggest" class="small">제안</button>'),edit?'고칠 때는 id 를 바꿀 수 없다':'도메인.영문-이름 (소문자·숫자·점·하이픈)',true)+'</div>'
       +fld('제목',inp('title','방장이 룸을 만들고 취소하면 CANCELED 가 된다'),'한국어 한 문장',true)
-      +(S.suite==='setup'?'':fld('구현하는 변형'+help('cases.variant'),inp('variant','룸-생성/S1/happy','class="mono" list="dl-variants"'),variantHint()))
+      +(S.suite==='setup'?'':fld('구현하는 케이스'+help('cases.variant'),inp('variant','룸-생성/S1/happy','class="mono" list="dl-variants"'),variantHint()))
       +fld('설명','<textarea data-k="description" rows="2">'+esc(S.description)+'</textarea>')
       +'<div class="g2">'+fld('도메인',lst('domains','room'),'API 를 고르면 자동으로 채워진다. 쉼표로 여러 개')+fld('기본 테스트 계정',sel('actor',CTX.actors,'없음 (로그인 안 함)'),'단계마다 따로 정할 수도 있다')+'</div>'
       +fld('출처',lst('source','PRD/룸 생성 §4.8'),'근거 문서. 쉼표로 여러 개')+usesHtml();
-    if(S.suite!=='setup')h+=fld('검증하는 TC (covers)'+help('editor.covers'),chips('covers'),'스크립트 전체가 검증하는 TC. 단계별 covers 는 각 단계 카드에서 — 둘을 합친 것이 이 스크립트의 covers 다',S.suite==='smoke'||S.suite==='sanity');
+    if(S.suite!=='setup')h+=fld('검증하는 테스트 조건 (covers)'+help('editor.covers'),chips('covers'),'스크립트 전체가 검증하는 테스트 조건. 단계별 covers 는 각 단계 카드에서 — 둘을 합친 것이 이 스크립트의 covers 다',S.suite==='smoke'||S.suite==='sanity');
     return h+'</div>'}
   function setupHtml(){if(S.suite!=='setup')return '';var saved=usedOuts().slice();S.steps.forEach(function(s){(s.save||[]).forEach(function(r){if(r.name&&saved.indexOf(r.name)<0)saved.push(r.name)})});
     return '<div class="card"><h3 style="margin-top:0">테스트 데이터 만들기 카드'+help('editor.setup')+'</h3><div class="small mut">화면 입력칸 — 단계에서 {{input.이름}} 으로 쓴다</div>'
@@ -239,12 +239,12 @@ def manual_tc_form(rec: dict | None, *, docs: list, domains: list, ops: list, pr
     delete = ""
     if edit:
         delete = (f'<form method="post" action="/catalog/tc/delete" class="card" onsubmit="return confirm(\'{e(r["id"])} 를 지운다. manual-tc.yaml 에서 바로 빠진다.\')">'
-                  f'<h3 style="margin-top:0">이 TC 지우기{h("tc.delete")}</h3>'
+                  f'<h3 style="margin-top:0">이 테스트 조건 지우기{h("tc.delete")}</h3>'
                   f'<input type="hidden" name="id" value="{e(r["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-                  f'<p class="small mut">누르면 manual-tc.yaml 에서 바로 빠진다. 이 TC 를 검증하는 스크립트가 있으면 막힌다.</p>'
+                  f'<p class="small mut">누르면 manual-tc.yaml 에서 바로 빠진다. 이 테스트 조건을 검증하는 스크립트가 있으면 막힌다.</p>'
                   f'<input name="reason" placeholder="사유 (선택, 커밋 메시지에 남는다)" style="width:60%"> <button class="danger" {dis}>지우기</button></form>')
-    return (f'<style>{EDIT_CSS}</style><h1>{"수동 작성 TC 고치기" if edit else "수동 작성 TC 추가"}{h("tc.manual_form")}</h1>'
-            f'<p class="small mut">SSOT 로 형식화되지 않은 PRD 요구나 운영 기준을 사람이 TC 로 적는다. 저장하면 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 커밋된다.</p>'
+    return (f'<style>{EDIT_CSS}</style><h1>{"수동 작성 테스트 조건 고치기" if edit else "수동 작성 테스트 조건 추가"}{h("tc.manual_form")}</h1>'
+            f'<p class="small mut">SSOT 로 형식화되지 않은 PRD 요구나 운영 기준을 사람이 테스트 조건으로 적는다. 저장하면 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 커밋된다.</p>'
             f'<form method="post" action="/catalog/manual/save" class="card"><input type="hidden" name="operator" value="{e(operator)}">{where}'
             f'<div class="g2"><div class="field"><label class="req">도메인</label><select name="domain">{doms}</select></div>'
             f'<div class="field"><label>관련 API</label><input name="operations" list="dl-ops2" value="{e(", ".join(r.get("operations") or []))}" placeholder="operationId, 쉼표로" class="mono"></div></div>'
@@ -252,7 +252,7 @@ def manual_tc_form(rec: dict | None, *, docs: list, domains: list, ops: list, pr
             f'<div class="field"><label>given (전제)</label><textarea name="given" rows="2">{e(v("given"))}</textarea></div>'
             f'<div class="field"><label class="req">when (요청이나 행동)</label><textarea name="when" rows="2" required>{e(v("when"))}</textarea></div>'
             f'<div class="field"><label class="req">then (기대 결과)</label><textarea name="then" rows="2" required>{e(v("then"))}</textarea></div>'
-            f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="/catalog">TC 목록</a></div></form>{delete}'
+            f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="/catalog">테스트 조건 목록</a></div></form>{delete}'
             f'<datalist id="dl-docs">{dl_docs}</datalist><datalist id="dl-ops2">{dl_ops}</datalist>')
 
 
@@ -285,7 +285,7 @@ def jobs_list(rows: list[dict]) -> str:
         body += (f'<tr><td><a href="/jobs/{e(r["id"])}" class="mono">{e(r["id"])}</a></td><td>{e(KINDS.get(r["kind"], r["kind"]))}</td><td class="small">{e(r.get("label"))}</td>'
                  f'<td>{e(r["operator"])}</td><td>{badge(STATUS_KO.get(r["status"], r["status"]))}</td><td class="small mut">{kst(r["created_at"])}</td>'
                  f'<td class="small">{links or e((r.get("error") or "")[:80])}</td></tr>')
-    return (f'<h1>Hermes 작업{h("jobs.list")} <span class="small mut">스크립트 쓰기·TC 제안·고치기·실패 분석 — 누가 언제 돌렸고 어떻게 끝났나</span></h1>'
+    return (f'<h1>Hermes 작업{h("jobs.list")} <span class="small mut">스크립트 쓰기·테스트 조건 제안·고치기·실패 분석 — 누가 언제 돌렸고 어떻게 끝났나</span></h1>'
             f'<div class="card"><table><tr><th>작업</th><th>종류</th><th>대상</th><th>담당자</th><th>상태</th><th>시작</th><th>결과</th></tr>'
             f'{body or "<tr><td colspan=7 class=mut>아직 없다</td></tr>"}</table></div>')
 
@@ -306,7 +306,7 @@ JOBS_JS = r"""
     function detail(){var inf=S.info||{},o=[];if(S.stage==='대기')o.push('앞에 '+(inf.queue_ahead||0)+'건');
       if(S.stage==='Hermes 에게 보냄'&&inf.prompt_chars)o.push('프롬프트 '+fmt(inf.prompt_chars)+'자');
       if(S.stage==='Hermes 가 쓰는 중'){o.push(fmt(inf.received_chars)+'자 받음');if(S.since_recv!=null)o.push('마지막 수신 '+(S.since_recv+Math.floor((Date.now()-at)/1000))+'초 전')}
-      if(S.stage==='근거 모으기')o.push('TC·OpenAPI·PRD 절을 모은다');return o.join(' · ')}
+      if(S.stage==='근거 모으기')o.push('테스트 조건·OpenAPI·PRD 절을 모은다');return o.join(' · ')}
     function elapsed(){if(S.elapsed==null)return '';var t=S.elapsed+(TERM.indexOf(S.status)<0&&S.status!=='queued'?Math.floor((Date.now()-at)/1000):0);return Math.floor(t/60)+':'+('0'+t%60).slice(-2)}
     function render(){if(!S)return;var term=TERM.indexOf(S.status)>=0,idx=S.stages.indexOf(S.stage);
       var st=S.stages.map(function(n,i){var ic=(S.status==='done'||i<idx)?'✅':(i===idx?(term?'❌':'⏳'):'○');var d=(i===idx&&!term)?detail():'';

@@ -1,7 +1,7 @@
-"""폼으로 스크립트·수동 TC 만들기·고치기·지우기 (docs/qa-platform-editor.md, 사용자 요청 2026-09-23).
+"""폼으로 스크립트·수동 테스트 조건 만들기·고치기·지우기 (docs/qa-platform-editor.md, 사용자 요청 2026-09-23).
 
 폼 상태 ⇄ YAML 왕복, 파일에서 항목 하나만 바꾸기, 사람 검증, 승인 → main 커밋(가짜 GitHub Contents API) → 플랫폼 즉시 반영,
-삭제 요청, 수동 TC 번호 매기기, 본문 스키마 경고, 화면 라우트.
+삭제 요청, 수동 테스트 조건 번호 매기기, 본문 스키마 경고, 화면 라우트.
 """
 from __future__ import annotations
 

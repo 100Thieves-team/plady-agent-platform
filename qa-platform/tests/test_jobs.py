@@ -120,7 +120,7 @@ class JobsTest(unittest.TestCase):
             out = job.ask("SYS", "PROMPT-TEXT", "qa-draft")
             stages.append(job.stage)
             return {"summary": f"받음 {out}", "links": [{"href": "/drafts/d-1", "label": "초안"}]}
-        job = jobs.submit("draft", "bebe", "TC x", fn, sync=True)
+        job = jobs.submit("draft", "bebe", "테스트 조건 x", fn, sync=True)
         self.assertEqual(stages, ["근거 모으기", "검증하고 저장"])
         s = job.snapshot(with_text=True)
         self.assertEqual((s["status"], s["stage"], s["text"]), ("done", "끝", "abc"))
@@ -141,9 +141,9 @@ class JobsTest(unittest.TestCase):
         jobs = Jobs(self.cfg, self.store, asker=fake_asker([]))
 
         def fn(job):
-            raise ValueError("TC 목록이 없어 초안을 만들 수 없다")
+            raise ValueError("테스트 조건 목록이 없어 초안을 만들 수 없다")
         job = jobs.submit("draft", "bebe", "x", fn, sync=True)
-        self.assertEqual((job.status, job.error), ("failed", "TC 목록이 없어 초안을 만들 수 없다"))
+        self.assertEqual((job.status, job.error), ("failed", "테스트 조건 목록이 없어 초안을 만들 수 없다"))
         self.assertEqual(self.store.get_job(job.id)["status"], "failed")
 
     def test_queue_and_cancel(self):
@@ -224,7 +224,7 @@ class AppJobTest(unittest.TestCase):
     def test_bad_input_fails_job_with_reason(self):
         job = self.app.job_generate(["없는.TC"], "bebe", sync=True)
         self.assertEqual(job.status, "failed")
-        self.assertIn("TC 목록에 있는 TC", job.error)
+        self.assertIn("테스트 조건 목록에 있는 테스트 조건", job.error)
 
 
 @unittest.skipUnless(HAS_WIKI, "wiki-workspace 체크아웃 없음")
@@ -261,7 +261,7 @@ class SseTest(unittest.TestCase):
     def test_live_stream(self):
         gate = threading.Event()
         self.app.jobs.asker = fake_asker(["cases:", "\n  - id: a"], gate=gate)
-        job = self.app.start_job("draft", operator="bebe", label="TC x", fn=lambda j: {"summary": "끝남 " + j.ask("s", "p", "q")[:6]})
+        job = self.app.start_job("draft", operator="bebe", label="테스트 조건 x", fn=lambda j: {"summary": "끝남 " + j.ask("s", "p", "q")[:6]})
         got = []
         t = threading.Thread(target=lambda: got.extend(self.read_events(job.id)))
         t.start()

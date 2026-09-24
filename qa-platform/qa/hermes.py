@@ -2,7 +2,7 @@
 
 - `chat()`: chat completions 한 번. 실패 진단(triage)과 초안 생성(qa/drafts.py)이 쓴다. 도구 호출은 기대하지 않는다.
 - `ask_stream()`: 한 번 묻고 답을 받되, `/v1/responses` 스트리밍으로 받으며 조각·도구 호출을 콜백으로 알린다. Hermes 작업
-  (qa/jobs.py — 초안 생성·TC 제안·고치기·실패 분석)이 쓴다. 그만두기·시간 한도를 이벤트마다 확인한다.
+  (qa/jobs.py — 초안 생성·테스트 조건 제안·고치기·실패 분석)이 쓴다. 그만두기·시간 한도를 이벤트마다 확인한다.
 - `stream_respond()`: `/v1/responses` 한 턴을 SSE 로 받는다. 채팅 위젯(qa/chat.py)이 쓴다. 본문 델타·도구 호출·도구 결과가
   이벤트로 오고 마지막 `response.completed` 에 전체 응답이 온다. previous_response_id 로 서버가 대화를 잇는다
   (hermes-agent v2026.6.19 api_server.py `_write_sse_responses` 확인).

@@ -1,4 +1,4 @@
-"""P4c — 바뀐 TC 에 맞게 스크립트 다시 쓰기 (docs/qa-platform-hermes.md §3.3): 변경 이력 스냅샷·대체 후보·조립·검증·초안·diff 화면."""
+"""P4c — 바뀐 테스트 조건에 맞게 스크립트 다시 쓰기 (docs/qa-platform-hermes.md §3.3): 변경 이력 스냅샷·대체 후보·조립·검증·초안·diff 화면."""
 from __future__ import annotations
 
 import json
@@ -74,7 +74,7 @@ class ReviseTest(unittest.TestCase):
         self.assertEqual(len(h), 12)
         self.assertIn("# 현재 스크립트", text)
         self.assertIn("(옛 제목)", text)                       # 변경 전 스냅샷
-        self.assertIn("사라진 TC op.roomDetail:200", text)
+        self.assertIn("사라진 테스트 조건 op.roomDetail:200", text)
         self.assertNotIn("op.roomDetail:200", allowed)       # 사라진 것은 허용 목록에서 빠진다
         self.assertIn("C.room.create", allowed)
         self.assertIn("# 허용되는 covers", text)
@@ -86,7 +86,7 @@ class ReviseTest(unittest.TestCase):
         out = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
         d = self.app.store.get_draft(out["id"])
         self.assertEqual((d["source"], d["case_id"], d["status"]), ("hermes-revise", self.case.id, "approved"))     # 초안 없이 바로 저장
-        self.assertTrue(d["note"].startswith("바뀐 TC 에 맞게 다시 씀"))
+        self.assertTrue(d["note"].startswith("바뀐 테스트 조건에 맞게 다시 씀"))
         self.assertTrue(d["prompt_hash"])
         self.assertIn("고침 — ", d["yaml"])
         sent = httpx.request.bodies[-1]

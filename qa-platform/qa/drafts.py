@@ -1,6 +1,6 @@
 """Hermes 초안 생성 — 근거 조립 → 호출 → 결정론 검증 → 스크립트 초안. docs/qa-platform-tc.md §7.
 
-원칙: Hermes 는 플랫폼이 넣어 준 근거(TC 레코드·OpenAPI 발췌·PRD 절 본문)만으로 쓴다. 위키 도구를 쓰게 하지 않는다 —
+원칙: Hermes 는 플랫폼이 넣어 준 근거(테스트 조건 레코드·OpenAPI 발췌·PRD 절 본문)만으로 쓴다. 위키 도구를 쓰게 하지 않는다 —
 그래야 "근거 = 프롬프트에 있던 것" 이 성립하고, 아래 검증이 그 근거와 대조할 수 있다.
 검증을 통과한 것만 스크립트 초안(drafts)에 들어간다. 버린 것은 사유와 함께 감사 로그에 남긴다.
 """
@@ -24,19 +24,19 @@ _FIXTURE = re.compile(r"\{\{\s*fixture\.([^}\s]+)\s*\}\}")
 _ACTOR = re.compile(r"\{\{\s*actor\.([^.\s}]+)\.memberId\s*\}\}")
 
 DRAFT_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 아래에 주어진 근거(TC 레코드, OpenAPI 발췌, PRD 절 본문)만으로 "
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 아래에 주어진 근거(테스트 조건 레코드, OpenAPI 발췌, PRD 절 본문)만으로 "
     "dev 서버에서 실행할 API 스크립트 초안을 YAML 로 쓴다. 근거에 없는 사실은 지어내지 말고 `TODO:` 로 남긴다. 한국어로 쓴다.\n\n"
     "출력 규칙(어기면 버려진다):\n"
     "1. 출력은 ```yaml 코드 블록 하나, 최상위는 `cases:` 목록. 설명 문장은 블록 밖에 두지 말고 아예 쓰지 않는다.\n"
-    "2. 스크립트마다 `covers:` 를 쓴다. 값은 요청한 TC id 의 부분집합이어야 한다. 단계에도 `covers:` 를 달아 어느 단계가 어느 TC 를 덮는지 밝힌다.\n"
-    "3. API 계약 TC(`op.X:E####`)를 덮는 단계는 그 op 의 method·path 를 부르고 `expect.error_code` 가 그 코드여야 한다. "
+    "2. 스크립트마다 `covers:` 를 쓴다. 값은 요청한 테스트 조건 id 의 부분집합이어야 한다. 단계에도 `covers:` 를 달아 어느 단계가 어느 테스트 조건을 덮는지 밝힌다.\n"
+    "3. API 계약 테스트 조건(`op.X:E####`)을 덮는 단계는 그 op 의 method·path 를 부르고 `expect.error_code` 가 그 코드여야 한다. "
     "`op.X:2xx` 를 덮는 단계는 `expect.status` 가 2xx 여야 한다.\n"
-    "4. 거절 TC(`G.x#n`)는 `must_pass_first` 의 앞 검사들을 모두 통과하는 상태를 먼저 만든 뒤에 n 번째 검사만 걸리게 한다.\n"
+    "4. 거절 테스트 조건(`G.x#n`)은 `must_pass_first` 의 앞 검사들을 모두 통과하는 상태를 먼저 만든 뒤에 n 번째 검사만 걸리게 한다.\n"
     "5. 쓰기 스크립트(POST/PUT/PATCH/DELETE)는 자기가 만든 데이터를 자기가 닫는 정리 단계(취소·철회·삭제)로 끝난다. 만든 데이터의 title 은 `[QA]` 로 시작한다.\n"
     "6. 로그인이 필요하면 `actor:` 에 주어진 테스트 계정 이름만 쓴다. 픽스처는 주어진 키만 `{{fixture.키}}` 로 쓴다.\n"
     "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} 만.\n"
     "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
-    "9. 전제 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
+    "9. 테스트 데이터 만들기 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
     "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다."
 )
 
@@ -47,7 +47,7 @@ DRAFT_SYSTEM = (
 def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None) -> tuple[str, str]:
     """(프롬프트 본문, 프롬프트 해시). 같은 근거로 다시 만들면 해시가 같다 — 초안끼리 비교하는 열쇠."""
     recs = [catalog.records[t] for t in tc_ids if t in catalog.records]
-    parts = ["# 요청한 TC (이 목록의 부분집합만 covers 에 쓴다)"]
+    parts = ["# 요청한 테스트 조건 (이 목록의 부분집합만 covers 에 쓴다)"]
     for r in recs:
         slim = {k: r.get(k) for k in ("id", "layer", "kind", "domain", "title", "gate", "command", "actor", "expect_hint", "binding", "source") if r.get(k) not in (None, [], {})}
         if r["layer"] == "contract":
@@ -92,7 +92,7 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
                  f"- 대상: {cfg.target_base_url} (dev). 응답 규약 {{result, data, error{{code}}}}.")
     if example is not None:
         parts.append("# 잘 만든 스크립트 예시 (형식 참고)\n```yaml\n" + example.to_yaml().strip() + "\n```")
-    parts.append("# 출력\n요청한 TC 를 검증하는 스크립트 1개 이상을 ```yaml 블록 하나로.")
+    parts.append("# 출력\n요청한 테스트 조건을 검증하는 스크립트 1개 이상을 ```yaml 블록 하나로.")
     text = "\n\n".join(parts)
     return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
@@ -138,7 +138,7 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
         return None, ["covers 가 비어 있다"], []
     extra = [t for t in case.covers if t not in requested]
     if extra:
-        return None, [f"요청하지 않은 TC 를 덮는다고 주장: {', '.join(extra)}"], []
+        return None, [f"요청하지 않은 테스트 조건을 덮는다고 주장: {', '.join(extra)}"], []
     audit({case.id: case}, catalog)
     errors.extend(case.audit["errors"])
     warnings.extend(case.audit["warnings"])
@@ -168,7 +168,7 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
 
 
 def validate_manual_tc(text: str) -> tuple[list[dict], list[str]]:
-    """수동 TC 제안(kind tc) YAML — manual-tc.yaml 의 `cases:` 형식인지. 반환 (항목, 오류)."""
+    """수동 테스트 조건 제안(kind tc) YAML — manual-tc.yaml 의 `cases:` 형식인지. 반환 (항목, 오류)."""
     try:
         doc = yaml.safe_load(text)
     except yaml.YAMLError as ex:
@@ -206,7 +206,7 @@ def _asker(cfg: Config, ask):
 def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None,
              existing_ids: set[str], ask=None, library: dict | None = None, extra: str | None = None, variant: str | None = None) -> dict:
     """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}.
-    extra 는 근거 뒤에 붙일 절(변형 설명·전제 카드), variant 가 있으면 나온 스크립트에 `variant:` 를 박는다."""
+    extra 는 근거 뒤에 붙일 절(케이스 설명·테스트 데이터 만들기 카드), variant 가 있으면 나온 스크립트에 `variant:` 를 박는다."""
     prompt, phash = assemble(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, tc_ids=tc_ids, example=example)
     if extra:
         prompt = prompt.replace("\n\n# 출력\n", "\n\n" + extra.strip() + "\n\n# 출력\n", 1)
@@ -229,11 +229,11 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
 # 바뀐 TC 에 맞게 스크립트 다시 쓰기 (docs/qa-platform-hermes.md §3.3, P4c)
 # ---------------------------------------------------------------------------------------------
 REVISE_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 이미 있는 API 테스트 스크립트(YAML) 하나를, 그것이 검증하는 TC 가 바뀐 만큼만 고친다. 한국어로 쓴다.\n\n"
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 이미 있는 API 테스트 스크립트(YAML) 하나를, 그것이 검증하는 테스트 조건이 바뀐 만큼만 고친다. 한국어로 쓴다.\n\n"
     "규칙(어기면 버려진다):\n"
     "1. 출력은 ```yaml 코드 블록 하나, 스크립트 맵 하나(`cases:` 목록 아님). id 는 바꾸지 않는다.\n"
-    "2. 바뀐 TC 와 관련된 단계·expect·covers 만 고친다. 바뀌지 않은 단계는 글자 하나도 건드리지 않는다.\n"
-    "3. 사라진 TC id 는 covers 에서 뺀다. 대체 후보가 주어지면 그중 맞는 것을 넣고, 없으면 그 단계의 covers 를 비운다.\n"
+    "2. 바뀐 테스트 조건과 관련된 단계·expect·covers 만 고친다. 바뀌지 않은 단계는 글자 하나도 건드리지 않는다.\n"
+    "3. 사라진 테스트 조건 id 는 covers 에서 뺀다. 대체 후보가 주어지면 그중 맞는 것을 넣고, 없으면 그 단계의 covers 를 비운다.\n"
     "4. 새 기대값(status·error_code 등)은 주어진 '변경 후' 레코드와 OpenAPI 발췌에서만 가져온다. 근거에 없는 것은 `TODO:` 주석 대신 값을 바꾸지 말고 그대로 둔다.\n"
     "5. covers 는 주어진 허용 목록의 부분집합이어야 한다.\n"
     "6. 고친 이유를 YAML 맨 위 주석 한 줄(`# 변경: …`)로 적는다."
@@ -241,7 +241,7 @@ REVISE_SYSTEM = (
 
 
 def _candidates(removed: str, catalog, changes: dict) -> list[str]:
-    """사라진 TC 의 대체 후보 — 같은 변경 배치에서 추가됐고 id 앞부분(#·: 앞)이 같은 것. 없으면 지금 TC 목록에서 앞부분이 같은 것."""
+    """사라진 테스트 조건의 대체 후보 — 같은 변경 배치에서 추가됐고 id 앞부분(#·: 앞)이 같은 것. 없으면 지금 테스트 조건 목록에서 앞부분이 같은 것."""
     stem = removed.split("#")[0] if "#" in removed else removed.rsplit(":", 1)[0]
     at = (changes.get(removed) or {}).get("at")
     same_batch = [i for i, ch in changes.items() if ch.get("kind") == "added" and ch.get("at") == at and i in catalog.records and (i.split("#")[0] if "#" in i else i.rsplit(":", 1)[0]) == stem]
@@ -251,7 +251,7 @@ def _candidates(removed: str, catalog, changes: dict) -> list[str]:
 
 
 def assemble_revision(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict) -> tuple[str, str, list[str]]:
-    """(프롬프트, 근거 해시, 허용 covers). 허용 = 현재 covers − 사라진 TC + 대체 후보."""
+    """(프롬프트, 근거 해시, 허용 covers). 허용 = 현재 covers − 사라진 테스트 조건 + 대체 후보."""
     removed = [d["id"] for d in drift if d.get("kind") == "removed"]
     allowed = [t for t in case.covers if t not in removed]
     parts = ["# 현재 스크립트 (이것을 고친다)\n```yaml\n" + case.to_yaml().strip() + "\n```"]
@@ -266,15 +266,15 @@ def assemble_revision(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki
             for c in cands:
                 if c not in allowed:
                     allowed.append(c)
-            parts.append(f"# 사라진 TC {tid}\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
-                         f"대체 후보: {', '.join(cands) or '없음 — 이 TC 를 검증하던 단계의 covers 를 비운다'}")
+            parts.append(f"# 사라진 테스트 조건 {tid}\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
+                         f"대체 후보: {', '.join(cands) or '없음 — 이 테스트 조건을 검증하던 단계의 covers 를 비운다'}")
             for c in cands:
                 r = catalog.records.get(c) or {}
                 parts.append(f"## 대체 후보 {c}\n```json\n{json.dumps(_slim(r), ensure_ascii=False, indent=1)}\n```")
                 _collect(r, ops, prd_refs)
         else:
-            parts.append(f"# 바뀐 TC {tid} ({d.get('kind')})\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
-                         f"변경 후:\n```json\n{json.dumps(_slim(cur), ensure_ascii=False, indent=1) if cur else '(TC 목록에 없음)'}\n```")
+            parts.append(f"# 바뀐 테스트 조건 {tid} ({d.get('kind')})\n변경 전:\n```json\n{json.dumps(before, ensure_ascii=False, indent=1) if before else '(스냅샷 없음)'}\n```\n"
+                         f"변경 후:\n```json\n{json.dumps(_slim(cur), ensure_ascii=False, indent=1) if cur else '(테스트 조건 목록에 없음)'}\n```")
             _collect(cur or {}, ops, prd_refs)
     if spec and ops:
         parts.append("# OpenAPI 발췌 (dev 브랜치 계약)")
@@ -339,10 +339,10 @@ def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Cas
 # PRD 절에서 수동 작성 TC 제안 (docs/qa-platform-hermes.md §3 트리 4, P4d). MCP 도구 qa_manual_tc_save 와 버튼이 같이 쓴다
 # ---------------------------------------------------------------------------------------------
 PROPOSE_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 주어진 PRD 절 본문에서, SSOT 로 형식화되지 않아 자동으로 뽑히지 않은 확인 항목(테스트 케이스)을 골라낸다. 한국어로 쓴다.\n\n"
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 주어진 PRD 절 본문에서, SSOT 로 형식화되지 않아 자동으로 뽑히지 않은 확인 항목(테스트 조건)을 골라낸다. 한국어로 쓴다.\n\n"
     "규칙(어기면 버려진다):\n"
     "1. 출력은 ```yaml 코드 블록 하나, 최상위는 `items:` 목록. 항목은 title(한 문장, ~할 수 있다/~이다 꼴)·given·when(요청이나 행동)·then(기대 결과) 네 키, 선택으로 operations(OpenAPI operationId 목록).\n"
-    "2. 본문에 적힌 것만 쓴다. 추측한 규칙이나 수치는 넣지 않는다. 이미 주어진 '기존 TC' 와 같은 내용은 다시 내지 않는다.\n"
+    "2. 본문에 적힌 것만 쓴다. 추측한 규칙이나 수치는 넣지 않는다. 이미 주어진 '기존 테스트 조건' 와 같은 내용은 다시 내지 않는다.\n"
     "3. API 로 확인할 수 있는 것을 우선하되, 화면·운영 기준도 된다. 많아도 8개, 없으면 빈 목록."
 )
 
@@ -350,7 +350,7 @@ PROPOSE_SYSTEM = (
 def build_manual_tc(*, catalog, doc: str, section: str, items: list, domain: str | None, wiki: Wiki | None) -> tuple[list[dict], list[str], str]:
     """items(title·given·when·then·operations) → manual-tc.yaml 형식 레코드. 번호는 기존 다음부터. 반환 (레코드, 경고, 도메인).
 
-    형식 오류는 ValueError. 도메인이 없으면 같은 문서의 기존 수동 TC 에서, 그것도 없으면 other."""
+    형식 오류는 ValueError. 도메인이 없으면 같은 문서의 기존 수동 테스트 조건에서, 그것도 없으면 other."""
     from .cases import _TC
     from .wiki import doc_slug
     slug = doc_slug(str(doc))
@@ -399,7 +399,7 @@ def propose_manual_tc(*, cfg: Config, catalog, wiki: Wiki, doc: str, section: st
     existing = [r for r in catalog.records.values() if r["layer"] == "manual" and r["id"].startswith(prefix)]
     parts = [f"# PRD/{doc} §{sec} 본문\n{text}"]
     if existing:
-        parts.append("# 기존 TC (이 절에서 이미 뽑힌 것 — 다시 내지 않는다)\n" + "\n".join(f"- {r['id']}: {r['title']}" for r in existing))
+        parts.append("# 기존 테스트 조건 (이 절에서 이미 뽑힌 것 — 다시 내지 않는다)\n" + "\n".join(f"- {r['id']}: {r['title']}" for r in existing))
     parts.append("# 출력\n```yaml\nitems:\n  - title: …\n    given: …\n    when: …\n    then: …\n    operations: [operationId]\n```")
     prompt = "\n\n".join(parts)
     phash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]

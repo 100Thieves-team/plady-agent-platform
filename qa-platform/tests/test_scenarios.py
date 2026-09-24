@@ -1,4 +1,4 @@
-"""시나리오 읽기 (docs/qa-platform-scenarios.md §5, §6.1, §12) — PRD 2장 파서, 파일 형식, 결정론 검증, 상태·테스트 없는 거절 규칙, 화면."""
+"""시나리오 읽기 (docs/qa-platform-scenarios.md §5, §6.1, §12) — PRD 2장 파서, 파일 형식, 결정론 검증, 상태·아직 테스트가 없는 거절 조건, 화면."""
 from __future__ import annotations
 
 import json
@@ -136,7 +136,7 @@ class FormatTest(unittest.TestCase):
         self.bad(lambda d: d["scenarios"][0]["variants"].append({"key": "happy", "kind": "extra", "title": "t"}), "겹친다")
         self.bad(lambda d: d["scenarios"][0]["variants"][2].pop("at"), "at")
         self.bad(lambda d: d["scenarios"][0]["variants"][0].update(kind="other"), "kind")
-        self.bad(lambda d: d["scenarios"][0]["variants"][0].update(checks=["nope"]), "TC id")
+        self.bad(lambda d: d["scenarios"][0]["variants"][0].update(checks=["nope"]), "테스트 조건 id")
         self.bad(lambda d: d["scenarios"][0].update(gates={"R6": ["room.create"]}), "게이트 id")
         self.bad(lambda d: d["scenarios"][0].update(gates={"6": ["G.room.create"]}), "요구 id")
         self.bad(lambda d: d["scenarios"][0]["variants"][0].update(mode="later"), "mode")
@@ -195,8 +195,8 @@ class CheckTest(unittest.TestCase):
         cases = {"room.b": script("room.b", "룸-생성/S1/gone", ["C.room.create"])}
         r = S.check(self.feats(m), wiki=self.wiki, catalog=self.cat, cases=cases)
         text = "\n".join(r["errors"])
-        for frag in ("S9 가 PRD 2장에 없다", "gates 의 R10 가 그 시나리오의 단계에 없다", "G.room.nope 가 TC 목록에 없다",
-                     "S1/pasted 의 at R11", "op.createRoom:200 가 TC 목록에 없다", "variant 룸-생성/S1/gone 가 시나리오 파일에 없다"):
+        for frag in ("S9 가 PRD 2장에 없다", "gates 의 R10 가 그 시나리오의 단계에 없다", "G.room.nope 가 테스트 조건 목록에 없다",
+                     "S1/pasted 의 at R11", "op.createRoom:200 가 테스트 조건 목록에 없다", "variant 룸-생성/S1/gone 가 시나리오 파일에 없다"):
             self.assertIn(frag, text)
         self.assertNotIn("G.room.create#6", text)
         self.assertEqual(r["scripts"], {"room.b": ["variant 룸-생성/S1/gone 가 시나리오 파일에 없다"]})
@@ -209,7 +209,7 @@ class CheckTest(unittest.TestCase):
                  "room.d": script("room.d", "룸-생성/S1/headcount", ["G.room.create#headcount-range"])}
         r = S.check(self.feats(m), wiki=self.wiki, catalog=self.cat, cases=cases)
         text = "\n".join(r["warnings"])
-        for frag in ("G.room.cancel#host-only 가 R6 단계의 gates 밖", "검사 2개를 한 변형이", "스크립트 2개가 구현한다", "covers 에 변형이 확인할 G.room.cancel#host-only 가 없다"):
+        for frag in ("G.room.cancel#host-only 가 R6 단계의 gates 밖", "검사 2개를 한 케이스가", "스크립트 2개가 구현한다", "covers 에 케이스가 확인할 G.room.cancel#host-only 가 없다"):
             self.assertIn(frag, text)
         self.assertEqual(r["errors"], [])
 
@@ -231,7 +231,7 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(f["scenarios"][1]["variants"], [])
         # 화면
         html = ui.scenario_tree(ov, errors=["x.yaml: 틀림"])
-        for frag in ("룸 생성", "변형 없음", "테스트 없는 거절 규칙 2", "/features/%EB%A3%B8-%EC%83%9D%EC%84%B1/S1/happy", "시나리오 파일 오류"):
+        for frag in ("룸 생성", "케이스 없음", "아직 테스트가 없는 거절 조건 2", "/features/%EB%A3%B8-%EC%83%9D%EC%84%B1/S1/happy", "시나리오 파일 오류"):
             self.assertIn(frag, html)
         chk = S.check(feats, wiki=self.wiki, catalog=self.cat, cases=cases)
         page = ui.feature_page(f, check=chk, gate_names={"G.room.create": "룸 생성 가능"}, prd_url="https://w/raw/product/룸-생성/")
@@ -246,7 +246,7 @@ class CheckTest(unittest.TestCase):
 
 @unittest.skipUnless((WIKI_DIR / "wiki/policy/_src/상태-SSOT.yaml").is_file(), "위키 체크아웃 없음")
 class SeedTest(unittest.TestCase):
-    """레포의 시나리오 파일(룸 생성, 룸 참여)과 옮긴 스크립트가 지금 위키·TC 목록과 맞는다 (§13)."""
+    """레포의 시나리오 파일(룸 생성, 룸 참여)과 옮긴 스크립트가 지금 위키·테스트 조건 목록과 맞는다 (§13)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

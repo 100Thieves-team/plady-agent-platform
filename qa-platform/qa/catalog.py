@@ -1,16 +1,16 @@
-"""TC 카탈로그 — 기획 문서(SSOT·PRD)와 API 계약(OpenAPI)에서 결정론적으로 파생한다. docs/qa-platform-tc.md §4.
+"""테스트 조건 카탈로그 — 기획 문서(SSOT·PRD)와 API 계약(OpenAPI)에서 결정론적으로 파생한다. docs/qa-platform-tc.md §4.
 
 세 층:
   policy    상태-SSOT.yaml → render_tests.cases() (team-wiki-v2 의 함수를 import, 복제 없음)
               거절 `G.room.create#duplicate-slot-left` · 성공 `C.room.create`
   contract  OpenAPI → op 별 성공 응답 `op.createRoom:200` · 문서화된 에러 코드 `op.createRoom:E1402`
-  manual    사람이 적은 서술 TC `PRD.룸-탐색.4.2#1` · `OPS.platform.health#1` (qa-platform/catalog/manual-tc.yaml)
+  manual    사람이 적은 서술 테스트 조건 `PRD.룸-탐색.4.2#1` · `OPS.platform.health#1` (qa-platform/catalog/manual-tc.yaml)
 
 바인딩(bindings.yaml)이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다. 1:1 이 아니다.
-제외(exclusions.yaml)는 자동화 못 하는 TC 를 사유와 함께 뺀다 — 분모에서 빼되 화면에는 남긴다.
+제외(exclusions.yaml)는 자동화 못 하는 테스트 조건을 사유와 함께 뺀다 — 분모에서 빼되 화면에는 남긴다.
 
-카탈로그는 DB 에 넣지 않는다. 입력 버전(SSOT·OpenAPI·바인딩·제외·서술 TC 해시)으로 캐시하고,
-직전 캐시와 레코드 해시를 비교해 변경 이력(changes.json)을 쌓는다 — 케이스 화면의 드리프트 배지가 이걸 본다.
+카탈로그는 DB 에 넣지 않는다. 입력 버전(SSOT·OpenAPI·바인딩·제외·서술 테스트 조건 해시)으로 캐시하고,
+직전 캐시와 레코드 해시를 비교해 변경 이력(changes.json)을 쌓는다 — 스크립트 화면의 드리프트 배지가 이걸 본다.
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ class Catalog:
         return {"records": self.records, "versions": self.versions, "built_at": self.built_at, "warnings": self.warnings, "aliases": self.aliases}
 
     def by_operation(self) -> dict[str, list[str]]:
-        """operationId → 그 API 에 걸린 TC id 목록 (API 계약 TC 는 `operation`, 비즈니스 규칙·수동 작성 TC 는 `binding.operations`).
+        """operationId → 그 API 에 걸린 테스트 조건 id 목록 (API 계약 테스트 조건은 `operation`, 비즈니스 규칙·수동 작성 테스트 조건은 `binding.operations`).
         API 별로 모아 보기(docs/qa-platform-api.md §5.2)와 호출 카드의 QA 배지가 쓴다. 처음 부를 때 한 번 계산해 둔다."""
         cached = getattr(self, "_by_op", None)
         if cached is not None:
@@ -253,7 +253,7 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
                 warnings.append(f"bindings.commands: SSOT 에 없는 command {cmd}")
         for rid in bind_checks:
             if rid not in records:
-                warnings.append(f"bindings.checks: 카탈로그에 없는 검사 {rid}")
+                warnings.append(f"bindings.checks: 테스트 조건 목록에 없는 검사 {rid}")
 
     # ---- contract (OpenAPI) ------------------------------------------------------------
     if spec is not None:
@@ -345,7 +345,7 @@ def _legacy_id(rec: dict) -> str:
 
 def _source_view(sources) -> list:
     """해시용 출처 — 문서와 장(4.3 → 4) 단위로 줄인다. 절 인용(§4.3)을 요구 인용(R21·R22)으로 좁힌 것처럼
-    형식만 바뀐 것은 TC 변경으로 보지 않는다. 요구 문장이 바뀐 것은 SSOT 드리프트 검사가 잡는다."""
+    형식만 바뀐 것은 테스트 조건 변경으로 보지 않는다. 요구 문장이 바뀐 것은 SSOT 드리프트 검사가 잡는다."""
     out = set()
     for s in sources or []:
         s = str(s)
@@ -477,9 +477,9 @@ class CatalogService:
                 errors.append(str(e))
                 ssot, rt = None, None
         else:
-            errors.append("위키 체크아웃이 없다 (QA_WIKI_DIR) — 정책 TC 없음")
+            errors.append("위키 체크아웃이 없다 (QA_WIKI_DIR) — 정책 테스트 조건 없음")
         if spec is None:
-            errors.append(self.spec.last_error or "OpenAPI 없음 — 계약 TC 없음")
+            errors.append(self.spec.last_error or "OpenAPI 없음 — 계약 테스트 조건 없음")
         inputs = load_inputs(self.catalog_dir)
         cat = build(ssot=ssot, ssot_hash=ssot_hash, rt_mod=rt, spec=spec, inputs=inputs, wiki=self.wiki, wiki_head=self.wiki.head())
         cat.warnings = errors + cat.warnings
@@ -501,7 +501,7 @@ class CatalogService:
         return cat
 
     def drift_for(self, tc_ids: list[str], reviewed_at: str | None) -> list[dict]:
-        """케이스가 덮는 TC 중 마지막 검토 이후에 바뀐 것. reviewed_at 이 없으면 기록된 변경 전부."""
+        """스크립트가 덮는 테스트 조건 중 마지막 검토 이후에 바뀐 것. reviewed_at 이 없으면 기록된 변경 전부."""
         out = []
         for i in tc_ids:
             ch = self.changes.get(i)

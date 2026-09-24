@@ -113,7 +113,7 @@ class LoaderTest(unittest.TestCase):
             return cases
         s = clone(SCRIPT)
         s["uses"] = {"setup": "setup.nope"}
-        self.assertNotIn(s["id"], err([CARD_OPEN, s], "전제 카드 setup.nope 가 없다"))
+        self.assertNotIn(s["id"], err([CARD_OPEN, s], "테스트 데이터 만들기 카드 setup.nope 가 없다"))
         s["uses"] = {"setup": "room.other"}
         other = {"id": "room.other", "title": "t", "suite": "manual", "steps": [{"request": {"method": "GET", "path": "/v1/rooms"}}]}
         err([other, s], "suite setup")
@@ -226,7 +226,7 @@ class RunTest(unittest.TestCase):
         run = self.app.store.get_run(rid)
         self.assertEqual(run["verdict"], "error")
         page = ui.run_detail(run, [rc], {rc["id"]: steps}, operators=["bebe"], operator="bebe", checklist=[], public_url="")
-        self.assertIn("전제 카드", page)
+        self.assertIn("테스트 데이터 만들기 카드", page)
         self.assertIn('class="given" open', page)                                # 실패하면 펼쳐 보인다
 
     def test_setup_run_of_nested_card(self):

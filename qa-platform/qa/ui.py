@@ -122,7 +122,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성 (예전)", "draft.rejected_by_validation": "스크립트 초안 검증 탈락 (예전)",
              "draft.save": "스크립트 초안 편집 (예전)", "draft.check": "스크립트 초안 시험 실행 (예전)", "draft.approve": "남은 초안 저장", "draft.reject": "남은 초안 버림",
-             "case.save": "스크립트 저장", "case.delete": "스크립트 삭제", "case.try": "저장 전 실행", "manual_tc.save": "수동 작성 TC 저장", "manual_tc.delete": "수동 작성 TC 삭제",
+             "case.save": "스크립트 저장", "case.delete": "스크립트 삭제", "case.try": "저장 전 실행", "manual_tc.save": "수동 작성 테스트 조건 저장", "manual_tc.delete": "수동 작성 테스트 조건 삭제",
              "hermes.generate": "Hermes 가 쓰기", "hermes.rejected_by_validation": "Hermes 결과 검증 탈락", "explorer.to_form": "API 호출을 스크립트 폼으로",
              "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 봄", "approved": "저장됨", "rejected": "버림", "failed": "저장 실패"}
@@ -135,7 +135,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
     nav = "".join(
         f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("features", "/features", "시나리오"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 케이스 (TC)"), ("drafts", "/drafts", "변경 기록"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
+        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("features", "/features", "시나리오"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 조건"), ("drafts", "/drafts", "변경 기록"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
     )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
@@ -157,7 +157,7 @@ def tc_link(tid: str, label: str | None = None) -> str:
 
 def coverage_card(catalog, coverage: dict | None, error: str | None) -> str:
     if catalog is None or coverage is None:
-        return f'<div class="card"><h3 style="margin-top:0">TC 커버리지</h3><p class="mut small">TC 목록 없음{(": " + e(error)) if error else ""}</p></div>'
+        return f'<div class="card"><h3 style="margin-top:0">테스트 조건 커버리지</h3><p class="mut small">테스트 조건 목록 없음{(": " + e(error)) if error else ""}</p></div>'
     layers = [l for l in ("policy", "contract", "manual") if any(l in v for v in coverage["matrix"].values())]
     head = "".join(f"<th>{l}</th>" for l in layers)
     rows = ""
@@ -176,7 +176,7 @@ def coverage_card(catalog, coverage: dict | None, error: str | None) -> str:
                 tot[k] += c[k]
         rows += f'<tr><td><a href="/catalog?domain={e(d)}">{e(d)}</a></td>{cells}</tr>'
     v = catalog.versions
-    return (f'<div class="card"><h3 style="margin-top:0">TC 커버리지{h("dash.coverage")} <span class="small mut">자동화됨 {tot["covered"]} / {tot["total"] - tot["excluded"]} (자동화 제외 {tot["excluded"]})</span></h3>'
+    return (f'<div class="card"><h3 style="margin-top:0">테스트 조건 커버리지{h("dash.coverage")} <span class="small mut">자동화됨 {tot["covered"]} / {tot["total"] - tot["excluded"]} (자동화 제외 {tot["excluded"]})</span></h3>'
             f'<table class="mx"><tr><th>도메인</th>{head}</tr>{rows}</table>'
             f'<p class="small mut" style="margin-bottom:0">SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · {kst(catalog.built_at)} 계산'
             f'{(" · <b style=\"color:var(--warn)\">경고 " + str(len(catalog.warnings)) + "</b>") if catalog.warnings else ""}</p></div>')
@@ -337,8 +337,8 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         "대상": f'<span class="mono">{e(run["base_url"])}</span>',
         "SHA / PR": f'<span class="mono">{e(run.get("sha") or "–")}</span>' + (f' · <a href="{e(meta.get("pr_url"))}">#{run["pr_number"]}</a> {e(meta.get("pr_title") or "")}' if run.get("pr_number") else ""),
         "선택 이유": e(meta.get("basis") or "–"), "사유": e(meta.get("reason") or "–"),
-        "TC 소스 버전": (f'SSOT <span class="mono">{e((meta.get("catalog") or {}).get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e((meta.get("catalog") or {}).get("openapi") or "–")}</span>'
-                   f' · 검증하는 TC {len(meta.get("covers") or [])}') if meta.get("catalog") else "–",
+        "테스트 조건 소스 버전": (f'SSOT <span class="mono">{e((meta.get("catalog") or {}).get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e((meta.get("catalog") or {}).get("openapi") or "–")}</span>'
+                   f' · 검증하는 테스트 조건 {len(meta.get("covers") or [])}') if meta.get("catalog") else "–",
         "시각": f'{kst(run["created_at"])} 생성 · {kst(run.get("started_at"))} 시작 · {kst(run.get("finished_at"))} 종료',
         "결과": f'{run_badge(run)}{h("run.verdict")} 통과 {run["passed"]} · 실패 {run["failed"]} · 오류 {run["errored"]} · skip {run["skipped"]} / {run["total"]}',
     }
@@ -378,7 +378,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         if given:
             gs = [s for s in steps if s["request"].get("given")]
             ok = all(s["verdict"] == "pass" for s in gs)
-            st = (f'<details class="given" {"" if ok else "open"}><summary>{badge("pass" if ok else "error")} 전제 카드 '
+            st = (f'<details class="given" {"" if ok else "open"}><summary>{badge("pass" if ok else "error")} 테스트 데이터 만들기 카드 '
                   f'<a href="/cases/{e(gs[0]["request"]["given"])}" class="mono">{e(gs[0]["request"]["given"])}</a> <span class="small mut">단계 {len(gs)}개{h("editor.uses")}</span></summary>'
                   f'<div style="padding-left:14px">{given}</div></details>') + st
         tri = ""
@@ -453,20 +453,20 @@ def stats_badge(st: dict | None, *, what: str = "실행") -> str:
     return out
 
 
-# ---- 케이스 --------------------------------------------------------------------------------------
+# ---- 스크립트 ------------------------------------------------------------------------------------
 def audit_badge(c, drift: list | None = None) -> str:
     st = c.audit.get("status", "unchecked")
     label = {"ok": "정합", "warn": "경고", "error": "불일치", "unchecked": "미검사"}[st]
     n = len(c.audit.get("errors") or []) + len(c.audit.get("warnings") or [])
     out = f'<span class="b {"pass" if st == "ok" else ("warn" if st == "warn" else ("fail" if st == "error" else "unchecked"))}" title="{e("; ".join((c.audit.get("errors") or []) + (c.audit.get("warnings") or [])))}">{label}{(" " + str(n)) if n and st != "ok" else ""}</span>'
     if drift:
-        out += f' <span class="b drift" title="{e("; ".join(d["id"] + " " + d["kind"] + " " + d["at"] for d in drift))}">TC 변경 {len(drift)}</span>'
+        out += f' <span class="b drift" title="{e("; ".join(d["id"] + " " + d["kind"] + " " + d["at"] for d in drift))}">테스트 조건 변경 {len(drift)}</span>'
     return out
 
 
 def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dict | None = None, stats: dict | None = None,
                variants: dict | None = None, variant_errors: dict | None = None) -> str:
-    """variants: 변형 id → 제목. 변형을 구현한 스크립트를 변형 순서로 먼저, variant: 없는 것은 "시나리오 밖" 으로 뒤에 모은다."""
+    """variants: 케이스 id → 제목. 케이스를 구현한 스크립트를 케이스 순서로 먼저, variant: 없는 것은 "시나리오에 연결되지 않은 스크립트"로 뒤에 모은다."""
     drift = drift or {}
     stats = stats or {}
     variants = variants or {}
@@ -477,7 +477,7 @@ def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dic
             return ""
         bad = variant_errors.get(c.id)
         link = (f'<a href="{variant_url(c.variant)}" class="mono small">{e(c.variant)}</a>' if c.variant in variants else f'<span class="mono small">{e(c.variant)}</span>')
-        return f'<div>{link}{(" <span class=\"b fail\" title=\"" + e("; ".join(bad)) + "\">없는 변형</span>") if bad else ""}</div>'
+        return f'<div>{link}{(" <span class=\"b fail\" title=\"" + e("; ".join(bad)) + "\">없는 케이스</span>") if bad else ""}</div>'
 
     def row(c) -> str:
         return (f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a>{vcell(c)}</td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
@@ -490,21 +490,21 @@ def cases_list(cases: list, last: dict[str, dict], errors: list[str], drift: dic
     outside = [c for c in cases if not c.variant]
     rows = "".join(row(c) for c in inside)
     if inside and outside:
-        rows += f'<tr><th colspan="7" style="padding-top:14px">시나리오 밖 {len(outside)}개{h("cases.variant")}</th></tr>'
+        rows += f'<tr><th colspan="7" style="padding-top:14px">시나리오에 연결되지 않은 스크립트 {len(outside)}개{h("cases.variant")}</th></tr>'
     rows += "".join(row(c) for c in outside)
     errs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors)
     blocked = [c.id for c in cases if c.blocked]
     return (f'<h1>테스트 스크립트{h("cases.list")} <span class="small mut">{len(cases)}개 · 원본은 git <span class="mono">qa-platform/cases/</span></span></h1>'
             f'{("<div class=\"flash err\"><b>로드 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
-            f'{("<div class=\"flash err\"><b>TC 정합성 불일치</b> — covers 선언이 TC 목록와 맞지 않아 스위트에서 빠진 스크립트: " + e(", ".join(blocked)) + "</div>") if blocked else ""}'
-            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트{h("cases.suite")}</th><th>도메인</th><th>테스트 계정{h("x.actor")}</th><th>검증하는 TC{h("cases.covers")} · 정합성{h("cases.audit")}</th><th>마지막 결과 · 최근 통계{h("cases.last")}</th></tr>{rows}</table>'
-            f'<p class="small mut">정합성 = covers 의 TC 가 TC 목록에 있고 단계의 method·path·기대 코드가 계약과 맞는지. TC 변경 = 검증하는 TC 가 마지막 검토(reviewed) 이후 바뀜. '
+            f'{("<div class=\"flash err\"><b>테스트 조건 정합성 불일치</b> — covers 선언이 테스트 조건 목록와 맞지 않아 스위트에서 빠진 스크립트: " + e(", ".join(blocked)) + "</div>") if blocked else ""}'
+            f'<div class="card"><table><tr><th>ID</th><th>제목</th><th>스위트{h("cases.suite")}</th><th>도메인</th><th>테스트 계정{h("x.actor")}</th><th>검증하는 테스트 조건{h("cases.covers")} · 정합성{h("cases.audit")}</th><th>마지막 결과 · 최근 통계{h("cases.last")}</th></tr>{rows}</table>'
+            f'<p class="small mut">정합성 = covers 의 테스트 조건이 테스트 조건 목록에 있고 단계의 method·path·기대 코드가 계약과 맞는지. 테스트 조건 변경 = 검증하는 테스트 조건이 마지막 검토(reviewed) 이후 바뀜. '
             f'최근 통계 = 최근 20회 통과율(skip 제외)·평균 소요. 불안정(flaky) = 스크립트를 안 고쳤는데 최근 {FLAKY_WINDOW}회 안에서 통과↔실패가 {FLAKY_FLIPS}번 이상 뒤집힘.</p>'
             f'<form method="post" action="/cases/reload" class="actions"><a class="btn primary" href="/cases/new">+ 새 스크립트 (폼)</a>{h("cases.new")} <a class="btn" href="/cases/new?suite=setup">+ 테스트 데이터 만들기 카드</a> <button>main 에서 다시 읽기</button>{h("cases.reload")}</form></div>')
 
 
 def changes_card(changes: list[dict] | None) -> str:
-    """스크립트·TC 화면의 최근 변경 — 누가 언제 무엇으로 저장했나, 커밋 링크. 되돌리기는 그 판을 보고 폼으로 다시 저장한다."""
+    """스크립트·테스트 조건 화면의 최근 변경 — 누가 언제 무엇으로 저장했나, 커밋 링크. 되돌리기는 그 판을 보고 폼으로 다시 저장한다."""
     if not changes:
         return ""
     src = {"form": "폼", "form-edit": "폼", "form-delete": "삭제", "hermes": "Hermes", "hermes-revise": "Hermes 고침", "hermes-propose": "Hermes", "hermes-chat": "Hermes 대화", "explorer": "API 호출"}
@@ -529,14 +529,14 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
         ops = "".join(f'<option value="{e(o)}" {"selected" if o == op else ""}>{e(o)}</option>' for o in revise.get("operators") or [])
         dis = "" if (op and revise.get("hermes")) else ("disabled title=\"담당자를 먼저 고르세요\"" if revise.get("hermes") else "disabled title=\"HERMES_API_KEY 없음\"")
         revise_html = (f'<form method="post" action="/cases/{e(c.id)}/revise" class="actions" style="margin-top:10px" onsubmit="this.querySelector(\'button\').disabled=true">'
-                       f'<input type="hidden" name="operator" value="{e(op)}"><button class="primary" {dis}>바뀐 TC 에 맞게 Hermes 가 고치기</button>{h("case.revise")}'
+                       f'<input type="hidden" name="operator" value="{e(op)}"><button class="primary" {dis}>바뀐 테스트 조건에 맞게 Hermes 가 고치기</button>{h("case.revise")}'
                        f'<select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 담당자 —</option>{ops}</select>'
-                       f'<span class="small mut">현재 YAML 과 바뀐 TC 의 전/후·새 PRD 절을 Hermes 에게 주고 바뀐 부분만 고치게 한다. 검증을 통과하면 같은 id 로 바로 저장되고 "Hermes 작성" 표시가 붙는다. 진행은 Hermes 작업 화면에서 실시간으로 보인다.</span></form>')
+                       f'<span class="small mut">현재 YAML 과 바뀐 테스트 조건의 전/후·새 PRD 절을 Hermes 에게 주고 바뀐 부분만 고치게 한다. 검증을 통과하면 같은 id 로 바로 저장되고 "Hermes 작성" 표시가 붙는다. 진행은 Hermes 작업 화면에서 실시간으로 보인다.</span></form>')
     changed = {d["id"]: d for d in (drift or [])}
     covers_html = "".join(
-        f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">TC 목록에 없음</span>"} {e(r["title"]) if r else ""}'
+        f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">테스트 조건 목록에 없음</span>"} {e(r["title"]) if r else ""}'
         f'{(" <span class=\"b drift\">" + e(changed[t]["kind"]) + " " + kst(changed[t]["at"]) + "</span>") if t in changed else ""}</li>'
-        for t, r in ((t, tc_records.get(t)) for t in c.covers)) or '<li class="mut">검증하는 TC 없음 (manual 스위트만 허용)</li>'
+        for t, r in ((t, tc_records.get(t)) for t in c.covers)) or '<li class="mut">검증하는 테스트 조건 없음 (manual 스위트만 허용)</li>'
     problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in c.audit.get("errors") or []) + \
         "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in c.audit.get("warnings") or [])
     audit_html = (f'<div class="kv"><div>정합성</div><div>{audit_badge(c, drift)}{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div>'
@@ -551,15 +551,15 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
                 f'onsubmit="return confirm(\'{e(c.id)} 를 지운다. main 의 {e(c.file)} 에서 바로 빠진다.\')">'
                 f'<input type="hidden" name="operator" value="{e(op_)}"><input name="reason" placeholder="사유 (선택, 커밋 메시지에 남는다)" style="flex:1">'
                 f'<button class="danger" {"" if op_ else "disabled title=\"담당자를 먼저 고르세요\""}>지우기</button></form>'
-                f'<p class="small mut" style="margin:0">누르면 main 의 {e(c.file)} 에서 바로 빠진다. 이 스크립트만 검증하던 TC 는 미자동화가 된다. 되돌리려면 최근 변경의 커밋에서 그 판을 보고 새 스크립트로 저장한다.</p></details>')
+                f'<p class="small mut" style="margin:0">누르면 main 의 {e(c.file)} 에서 바로 빠진다. 이 스크립트만 검증하던 테스트 조건은 미자동화가 된다. 되돌리려면 최근 변경의 커밋에서 그 판을 보고 새 스크립트로 저장한다.</p></details>')
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}{hermes_badge(c.raw)} <a class="btn" href="/chat/new?case={e(c.id)}">Hermes 와 이야기</a> <a class="btn" href="/cases/{e(c.id)}/edit">폼으로 고치기</a>{h("case.edit")}</h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
-            f'{("<div>변형</div><div><a class=\"mono\" href=\"" + variant_url(c.variant) + "\">" + e(c.variant) + "</a>" + h("cases.variant") + "</div>") if c.variant else ""}'
+            f'{("<div>케이스</div><div><a class=\"mono\" href=\"" + variant_url(c.variant) + "\">" + e(c.variant) + "</a>" + h("cases.variant") + "</div>") if c.variant else ""}'
             f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div>'
-            f'{("<div>전제 카드</div><div><a class=\"mono\" href=\"/cases/" + e(c.uses["setup"]) + "\">" + e(c.uses["setup"]) + "</a> <span class=\"small mut\">단계 " + str(len(c.steps) - len(c.own_steps)) + "개를 먼저 돈다</span>" + h("editor.uses") + "</div>") if c.uses else ""}'
+            f'{("<div>테스트 데이터 만들기 카드</div><div><a class=\"mono\" href=\"/cases/" + e(c.uses["setup"]) + "\">" + e(c.uses["setup"]) + "</a> <span class=\"small mut\">단계 " + str(len(c.steps) - len(c.own_steps)) + "개를 먼저 돈다</span>" + h("editor.uses") + "</div>") if c.uses else ""}'
             f'<div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
-            f'<h2>검증하는 TC (covers){h("cases.covers")}{h("case.drift")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
+            f'<h2>검증하는 테스트 조건 (covers){h("cases.covers")}{h("case.drift")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
             f'<h2>정의{h("case.yaml")}</h2><pre>{e(c.to_yaml())}</pre>'
             f'<h2>실행 이력{h("case.history")} <span class="small mut">최근 통계: {stats_badge(stats) if stats else "기록 없음"}{h("cases.last")}</span></h2>'
             f'<div class="card"><table><tr><th>실행</th><th>결과</th><th>실행 종류</th><th>담당자</th><th>SHA</th><th>시각</th><th>오류</th></tr>{hist}</table></div>{changes_card(changes)}{del_form}')
@@ -632,22 +632,22 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
     warns = "".join(f'<li class="small">{e(w)}</li>' for w in catalog.warnings)
     c = catalog.counts()
     v = catalog.versions
-    return (f'<h1>테스트 케이스 (TC) 목록{h("tc.layers")} <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
+    return (f'<h1>테스트 조건 목록{h("tc.layers")} <span class="small mut">{c["total"]}건 (비즈니스 규칙 {c["by_layer"].get("policy", 0)} · API 계약 {c["by_layer"].get("contract", 0)} · 수동 작성 {c["by_layer"].get("manual", 0)} · 자동화 제외 {c["excluded"]})</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">원본은 llm-wiki 의 <span class="mono">상태-SSOT.yaml</span>(비즈니스 규칙)과 백엔드 OpenAPI(API 계약), 사람이 적은 <span class="mono">catalog/manual-tc.yaml</span>(수동 작성)이다. 플랫폼은 파생만 한다.'
-            f' TC 소스 버전{h("tc.versions")}: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
-            f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 TC 없음</b>"} &nbsp; {refresh_form(operator=operator, next_url="/catalog?domain=" + domain, spec_hash=v.get("openapi"), fetched_ago=None)}</p>'
-            f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 TC 만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
+            f' 테스트 조건 소스 버전{h("tc.versions")}: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
+            f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 테스트 조건 없음</b>"} &nbsp; {refresh_form(operator=operator, next_url="/catalog?domain=" + domain, spec_hash=v.get("openapi"), fetched_ago=None)}</p>'
+            f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 테스트 조건만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
             f'<div class="tabs">{h("tc.filter")} {tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
             f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목" + h("tc.warnings") + "</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
             f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
             f'<select name="operator" required><option value="">— 담당자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
-            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 Hermes 가 스크립트 쓰기</button>{h("tc.draft")}'
-            f'<button formaction="/cases/new" formmethod="get">고른 TC 로 직접 쓰기 (폼)</button>{h("cases.new")}'
-            f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 TC·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 바로 저장되고 "Hermes 작성" 표시가 붙는다</span></div>'
-            f'<table><tr><th>TC</th><th>내용 ({n})</th><th>API 매핑{h("tc.mapping")}</th><th>자동화 · 스크립트 · 마지막 결과{h("tc.state")}</th></tr>{rows}</table></div></form>'
+            f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 테스트 조건으로 Hermes 가 스크립트 쓰기</button>{h("tc.draft")}'
+            f'<button formaction="/cases/new" formmethod="get">고른 테스트 조건으로 직접 쓰기 (폼)</button>{h("cases.new")}'
+            f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 테스트 조건·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 바로 저장되고 "Hermes 작성" 표시가 붙는다</span></div>'
+            f'<table><tr><th>테스트 조건</th><th>내용 ({n})</th><th>API 매핑{h("tc.mapping")}</th><th>자동화 · 스크립트 · 마지막 결과{h("tc.state")}</th></tr>{rows}</table></div></form>'
             f'<form method="post" action="/catalog/propose-tc" class="card" onsubmit="this.querySelector(\'button\').disabled=true">'
-            f'<h3 style="margin-top:0">PRD 절에서 수동 작성 TC 제안 (Hermes){h("tc.propose")}</h3>'
-            f'<p class="small mut">SSOT 로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라낸다. 결과는 형식 검사를 거쳐 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 저장되고 "Hermes 작성" 표시가 붙는다. 직접 적으려면 <a href="/catalog/manual/new">수동 작성 TC 추가 (폼)</a>{h("tc.manual_form")}.</p>'
+            f'<h3 style="margin-top:0">PRD 절에서 수동 작성 테스트 조건 제안 (Hermes){h("tc.propose")}</h3>'
+            f'<p class="small mut">SSOT 로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라낸다. 결과는 형식 검사를 거쳐 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 저장되고 "Hermes 작성" 표시가 붙는다. 직접 적으려면 <a href="/catalog/manual/new">수동 작성 테스트 조건 추가 (폼)</a>{h("tc.manual_form")}.</p>'
             f'<p><input name="doc" placeholder="PRD 문서 이름 (예: 룸 탐색)" required style="width:220px"> <input name="section" placeholder="절 번호 (예: 4.2)" required style="width:120px"> '
             f'<input name="domain" placeholder="도메인 (선택, 예: room)" style="width:160px"> <input type="hidden" name="operator" value="{e(operator)}">'
             f'<button class="primary" {"" if (hermes and operator) else ("disabled title=\"담당자를 먼저 고르세요\"" if hermes else "disabled title=\"HERMES_API_KEY 없음\"")}>제안 받기</button></p></form>')
@@ -675,7 +675,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
     cov = "".join(
         f'<tr><td><a href="/cases/{e(c.id)}" class="mono">{e(c.id)}</a></td><td>{e(c.title)}</td><td>{badge(c.suite)}</td>'
         f'<td>{(("<a href=\"/runs/" + e(last[c.id]["run_id"]) + "\">" + badge(last[c.id]["verdict"]) + "</a> <span class=\"small mut\">" + kst(last[c.id]["created_at"]) + "</span>") if c.id in last else "<span class=\"mut\">–</span>")}</td></tr>'
-        for c in covering) or '<tr><td colspan="4" class="mut">이 TC 를 검증하는 스크립트 없음</td></tr>'
+        for c in covering) or '<tr><td colspan="4" class="mut">이 테스트 조건을 검증하는 스크립트 없음</td></tr>'
     state = "자동화 제외" if rec.get("excluded") else ("자동화됨" if covering else "미자동화")
     from urllib.parse import quote
     if rec["layer"] == "manual":
@@ -685,9 +685,9 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
         edit_html = ""
         where = ("llm-wiki 의 <span class=\"mono\">wiki/policy/_src/상태-SSOT.yaml</span> (PRD 를 고치면 같은 작업에서 같이 고친다)" if rec["layer"] == "policy"
                  else "백엔드 OpenAPI (REST Docs 테스트가 만든다 — 백엔드 코드의 문서화 테스트를 고친다)")
-        origin_html = (f'<div class="card small" style="background:#f8fafc">이 TC 는 {where} 에서 파생된다. 플랫폼에서 고치거나 지우지 않는다{h("tc.source_edit")}'
+        origin_html = (f'<div class="card small" style="background:#f8fafc">이 테스트 조건은 {where} 에서 파생된다. 플랫폼에서 고치거나 지우지 않는다{h("tc.source_edit")}'
                        f'{(" · <a href=\"" + e(source_link) + "\">원본 보기</a>") if source_link else ""}. 자동화하지 않을 것이면 <span class="mono">catalog/exclusions.yaml</span> 에 사유와 함께 넣는다.</div>')
-    new_script = f' <a class="btn" href="/cases/new?tc={quote(rec["id"], safe="")}">이 TC 로 스크립트 쓰기 (폼)</a>' if not rec.get("excluded") else ""
+    new_script = f' <a class="btn" href="/cases/new?tc={quote(rec["id"], safe="")}">이 테스트 조건으로 스크립트 쓰기 (폼)</a>' if not rec.get("excluded") else ""
     return (f'<h1><span class="mono">{e(rec["id"])}</span> {badge(rec["layer"])} {badge(state, "excluded" if rec.get("excluded") else ("covered" if covering else "uncovered"))} <a class="btn" href="/chat/new?tc={e(rec["id"])}">Hermes 와 이야기</a>{edit_html}{new_script}{h("tc.detail")}{h("tc.state")}'
             f'{(" <span class=\"b drift\">" + e(change["kind"]) + " " + kst(change["at"]) + "</span>") if change else ""}</h1>'
             f'<div class="card"><b>{e(rec["title"])}</b>'
@@ -704,7 +704,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
 
 
 # ---- 변경 기록 (예전 스크립트 초안) --------------------------------------------------------------------------------------
-KIND_BADGE = {"scenario": ("시나리오", "policy"), "scenario-delete": ("시나리오 삭제", "fail"), "case-unlink": ("변형 떼기", "manual"), "tc": ("수동 TC 제안", "warn"), "case-delete": ("스크립트 삭제 요청", "fail"), "tc-delete": ("TC 삭제 요청", "fail")}
+KIND_BADGE = {"scenario": ("시나리오", "policy"), "scenario-delete": ("시나리오 삭제", "fail"), "case-unlink": ("케이스 연결 끊기", "manual"), "tc": ("수동 작성 테스트 조건 제안", "warn"), "case-delete": ("스크립트 삭제 요청", "fail"), "tc-delete": ("테스트 조건 삭제 요청", "fail")}
 
 
 def drafts_list(drafts: list[dict], counts: dict, status: str, active_jobs: list | None = None) -> str:
@@ -715,11 +715,11 @@ def drafts_list(drafts: list[dict], counts: dict, status: str, active_jobs: list
         f'<td class="mono">{e(d.get("case_id") or "–")}</td><td class="small">{" ".join(tc_link(t) for t in d["tc_ids"][:4])}{" …" if len(d["tc_ids"]) > 4 else ""}</td>'
         f'<td class="small">{e((d.get("validation") or {}).get("status") or "–")}{(" · 경고 " + str(len((d.get("validation") or {}).get("warnings") or []))) if (d.get("validation") or {}).get("warnings") else ""}</td>'
         f'<td class="small">{e(d["source"])} · {e(d["operator"])}</td><td class="small mut">{kst(d["created_at"])}</td></tr>'
-        for d in drafts) or '<tr><td colspan="7" class="mut">변경 없음 — 폼이나 Hermes 로 스크립트·수동 작성 TC 를 저장하면 여기에 쌓인다</td></tr>'
-    return (f'<h1>변경 기록{h("drafts.status")} <span class="small mut">폼·Hermes 가 저장한 스크립트·수동 작성 TC 변경 — 누가 언제 무엇을 main 에 넣었나</span></h1>{active_jobs_line(active_jobs or [])}<div class="card"><div class="tabs">{tabs}</div>'
+        for d in drafts) or '<tr><td colspan="7" class="mut">변경 없음 — 폼이나 Hermes 로 스크립트·수동 작성 테스트 조건을 저장하면 여기에 쌓인다</td></tr>'
+    return (f'<h1>변경 기록{h("drafts.status")} <span class="small mut">폼·Hermes 가 저장한 스크립트·수동 작성 테스트 조건 변경 — 누가 언제 무엇을 main 에 넣었나</span></h1>{active_jobs_line(active_jobs or [])}<div class="card"><div class="tabs">{tabs}</div>'
             f'<p class="small mut" style="margin-bottom:0">저장하면 검증을 거쳐 이 레포의 main 에 바로 커밋되고(<span class="mono">[skip ci]</span>, 재배포 없음) 플랫폼에 바로 반영된다. 초안·승인 단계는 없다. '
             f'"저장 안 됨" 은 예전 방식으로 남은 초안과 API 호출 화면에서 폼으로 담다 만 것이다. <a href="/jobs">Hermes 작업 목록</a></p></div>'
-            f'<div class="card"><table><tr><th>ID</th><th>상태{h("drafts.status")}</th><th>대상</th><th>TC{h("cases.covers")}</th><th>검증</th><th>어떻게 · 누가</th><th>시각</th></tr>{rows}</table></div>')
+            f'<div class="card"><table><tr><th>ID</th><th>상태{h("drafts.status")}</th><th>대상</th><th>테스트 조건{h("cases.covers")}</th><th>검증</th><th>어떻게 · 누가</th><th>시각</th></tr>{rows}</table></div>')
 
 
 def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str, original_yaml: str | None = None,
@@ -735,7 +735,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
                      f'<p class="small mut">저장하면 main 의 원본 항목이 이 YAML 로 바뀐다. reviewed 는 오늘 날짜·저장한 사람으로 올라간다.</p></div>')
     problems = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in v.get("errors") or []) + \
         "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in v.get("warnings") or [])
-    tcs = "".join(f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">TC 목록에 없음</span>"} {e(r["title"]) if r else ""}</li>'
+    tcs = "".join(f'<li>{tc_link(t)} {badge(r["layer"]) if r else "<span class=\"b fail\">테스트 조건 목록에 없음</span>"} {e(r["title"]) if r else ""}</li>'
                   for t, r in tc_records.items()) or '<li class="mut">–</li>'
     ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
     decided = d["status"] in ("approved", "rejected")
@@ -774,8 +774,8 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
                          + done + f'<pre id="y">{e(d["yaml"])}</pre><button onclick="navigator.clipboard.writeText(document.getElementById(\'y\').innerText)">복사</button></div>')
     elif d["status"] == "rejected":
         approved_html = f'<div class="card" style="background:#fef2f2"><b>버림</b> · {e(d.get("decided_by"))} · {kst(d.get("decided_at"))}{(" · " + e(d.get("note"))) if d.get("note") else ""}<pre>{e(d["yaml"])}</pre></div>'
-    kind_html = (' <span class="b warn">수동 작성 TC</span> <span class="small mut">TC 목록(manual-tc.yaml)의 항목 — 스크립트가 아니라 실행하지 않는다</span>' if is_tc else
-                 (f' <span class="b fail">{"스크립트" if kind == "case-delete" else "TC"} 삭제</span>{h("draft.delete")}' if is_delete else ""))
+    kind_html = (' <span class="b warn">수동 작성 테스트 조건</span> <span class="small mut">테스트 조건 목록(manual-tc.yaml)의 항목 — 스크립트가 아니라 실행하지 않는다</span>' if is_tc else
+                 (f' <span class="b fail">{"스크립트" if kind == "case-delete" else "테스트 조건"} 삭제</span>{h("draft.delete")}' if is_delete else ""))
     if is_delete:
         kind_html += f'<div class="card" style="margin-top:10px;background:#fef2f2"><b>사유</b> {e(d.get("note") or "–")}<p class="small mut" style="margin:4px 0 0">아래 항목을 main 의 파일에서 뺐다.</p></div>'
     if d["status"] == "failed":
@@ -783,7 +783,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
     return (f'<h1>변경 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}{kind_html}</h1>'
             f'<div class="card"><div class="kv"><div>대상</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
             f'{(" · 프롬프트 해시 <span class=\"mono\">" + e(d.get("prompt_hash")) + "</span>") if d.get("prompt_hash") else ""}</div>'
-            f'<div>검증하는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
+            f'<div>검증하는 테스트 조건</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
             f'<div>검증</div><div>{badge({"ok": "OK", "warn": "경고", "error": "오류"}.get(v.get("status"), v.get("status") or "–"), {"ok": "pass", "warn": "warn", "error": "fail"}.get(v.get("status"), ""))}'
             f'{("<ul style=\"margin:4px 0 0;padding-left:18px\">" + problems + "</ul>") if problems else ""}</div></div>{run_html}</div>'
             f'{diff_html}{approved_html}{forms}')
@@ -812,17 +812,17 @@ def _path_param_values(template: str, path: str) -> dict:
 
 
 def qa_badge(qa: dict | None, op_id: str) -> str:
-    """호출 카드 머리의 검증 상태 한 줄 — "TC 5 · 자동화 3/5 · 마지막 pass 09-21". 클릭하면 그 API 의 TC 목록."""
+    """호출 카드 머리의 검증 상태 한 줄 — "테스트 조건 5 · 자동화 3/5 · 마지막 pass 09-21". 클릭하면 그 API 의 테스트 조건 목록."""
     if qa is None:
-        return '<span class="qab none" title="TC 목록을 만들지 못했다">TC 목록 없음</span>'
+        return '<span class="qab none" title="테스트 조건 목록을 만들지 못했다">테스트 조건 목록 없음</span>'
     if not qa["tc"]:
-        return f'<a class="qab none" href="/apis/{e(op_id)}" title="이 API 에 해당하는 TC 가 없다 — OpenAPI 응답 예시·API 매핑을 확인">TC 없음</a>'
+        return f'<a class="qab none" href="/apis/{e(op_id)}" title="이 API 에 해당하는 테스트 조건이 없다 — OpenAPI 응답 예시·API 매핑을 확인">테스트 조건 없음</a>'
     denom = qa["tc"] - qa["excluded"]
     cls = "ok" if denom and qa["covered"] == denom else ("warn" if qa["uncovered"] else "none")
     last = qa.get("last")
     tail = f' · 마지막 {badge(last["verdict"])} <span class="small">{kst(last["created_at"])}</span>' if last else " · 실행 기록 없음"
     ex = f' (제외 {qa["excluded"]})' if qa["excluded"] else ""
-    return (f'<a class="qab {cls}" href="/apis/{e(op_id)}" title="{e(", ".join(qa["ids"]))}">TC {qa["tc"]} · 자동화됨 {qa["covered"]}/{denom}{ex}{tail}</a>')
+    return (f'<a class="qab {cls}" href="/apis/{e(op_id)}" title="{e(", ".join(qa["ids"]))}">테스트 조건 {qa["tc"]} · 자동화됨 {qa["covered"]}/{denom}{ex}{tail}</a>')
 
 
 EXPLORER_JS = r"""
@@ -973,7 +973,7 @@ def explorer(spec, op, run: dict | None, steps: list[dict], *, actors: list[str]
             f'<input type="hidden" name="op" value="{e(op.id)}">'
             f'<div class="callhead"><div><b>{e(op.summary or op.id)}</b> <span class="mono mut small">{e(op.id)}</span><br>{method_badge(op.method)} <span class="mono pathv">{e(op.path)}</span></div>'
             f'<div class="seg" id="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·파라미터·JSON)">Swagger</button>{h("x.views")}</div></div>'
-            f'<div class="qaline">{qa_badge(qa, op.id)}{h("x.badge")} <span class="small mut">이 API 의 TC 수와 자동화 상태 — 클릭하면 이 API 의 상세</span></div>'
+            f'<div class="qaline">{qa_badge(qa, op.id)}{h("x.badge")} <span class="small mut">이 API 의 테스트 조건 수와 자동화 상태 — 클릭하면 이 API 의 상세</span></div>'
             f'<div id="nv" class="view">{normal}</div><div id="sv" class="view" hidden>{swagger}</div>'
             f'<div class="callfoot"><div class="field"><label>테스트 계정{h("x.actor")} <span class="hint">dev-sessions 로 토큰을 받아 Authorization 에 넣는다</span></label>{acts}</div>'
             f'<div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
@@ -1023,7 +1023,7 @@ def _call_verdict(c: dict) -> str:
 
 
 def refresh_form(*, operator: str, next_url: str, spec_hash: str | None, fetched_ago: int | None) -> str:
-    """[API 문서 다시 읽기] — OpenAPI 캐시를 무시하고 다시 받아 TC 목록을 다시 계산한다. 새 API 를 배포한 직후 누른다."""
+    """[API 문서 다시 읽기] — OpenAPI 캐시를 무시하고 다시 받아 테스트 조건 목록을 다시 계산한다. 새 API 를 배포한 직후 누른다."""
     ago = "" if fetched_ago is None else (f"{fetched_ago // 60}분 전 읽음" if fetched_ago >= 60 else f"{fetched_ago}초 전 읽음")
     dis = "" if operator else "disabled title=\"담당자를 먼저 고르세요\""
     return (f'<form method="post" action="/spec/refresh" class="inline" onsubmit="var b=this.querySelector(\'button\');b.disabled=true;b.textContent=\'읽는 중…\'">'
@@ -1038,7 +1038,7 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
     link = lambda d, o: f'/apis?domain={e(d)}{("&only=" + e(o)) if o else ""}{("&q=" + e(q)) if q else ""}'  # noqa: E731
     tabs = "".join(f'<a href="{link(d, only)}" class="{"on" if d == domain else ""}">{e(d)}</a>' for d in domains)
     otabs = "".join(f'<a href="{link(domain, o)}" class="{"on" if (only or "") == o else ""}">{lab}</a>'
-                    for o, lab in (("", "모두"), ("noscript", "호출하는 스크립트 없음"), ("uncovered", "미자동화 TC 있음"), ("noerrors", "문서화된 에러 없음")))
+                    for o, lab in (("", "모두"), ("noscript", "호출하는 스크립트 없음"), ("uncovered", "미자동화 테스트 조건 있음"), ("noerrors", "문서화된 에러 없음")))
     trs = ""
     n = 0
     for r in rows:
@@ -1067,13 +1067,13 @@ def apis_list(rows: list[dict], *, domains: list[str], domain: str, only: str, q
                 f'<td>{tc}</td><td>{auto}</td><td>{r["scripts"] or "<span class=\"mut\">0</span>"}</td><td>{last}</td><td class="small">{r["errors"] or "<span class=\"mut\">0</span>"}</td></tr>')
     if not trs:
         trs = '<tr><td colspan="6" class="mut">해당 없음</td></tr>'
-    return (f'<h1>API{h("apis.list")} <span class="small mut">API 하나를 축으로 TC·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
+    return (f'<h1>API{h("apis.list")} <span class="small mut">API 하나를 축으로 테스트 조건·스크립트·실행 기록을 모아 본다 — "이 API 는 검증이 어디까지 됐고 지난번엔 어땠나"</span></h1>'
             f'<div class="card"><p class="small mut" style="margin-top:0">OpenAPI(dev 브랜치) <span class="mono">{e(spec_hash or "–")}</span> · 출처 {e(spec_source or "–")}'
             f'{(" · <a href=\"" + e(docs_url) + "\">REST Docs 문서</a>") if docs_url else ""} · OpenAPI 의 tags 가 전부 v1 이라 URL 경로로 도메인을 나눴다 &nbsp; {refresh_form(operator=operator, next_url="/apis", spec_hash=spec_hash, fetched_ago=fetched_ago)}</p>'
             f'<form method="get" style="margin:0 0 8px"><input name="q" value="{e(q)}" placeholder="검색 (operationId · 경로 · 요약) — 검색 중엔 모든 도메인" style="width:100%"></form>'
             f'<div class="tabs">{tabs}</div><div class="tabs">{h("apis.filter")} {otabs}</div></div>'
-            f'<div class="card"><table><tr><th>API ({n})</th><th>TC{h("apis.tc")}</th><th>자동화됨{h("apis.auto")}</th><th>호출하는 스크립트{h("apis.scripts")}</th><th>마지막 호출{h("apis.last")}</th><th>에러 코드{h("apis.errors")}</th></tr>{trs}</table>'
-            f'<p class="hint">TC = 그 API 에 해당하는 테스트 케이스 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화됨 = 검증하는 스크립트가 있는 TC / 제외를 뺀 TC. '
+            f'<div class="card"><table><tr><th>API ({n})</th><th>테스트 조건{h("apis.tc")}</th><th>자동화됨{h("apis.auto")}</th><th>호출하는 스크립트{h("apis.scripts")}</th><th>마지막 호출{h("apis.last")}</th><th>에러 코드{h("apis.errors")}</th></tr>{trs}</table>'
+            f'<p class="hint">테스트 조건 = 그 API 에 해당하는 테스트 조건 수(API 계약 · 비즈니스 규칙 · 수동 작성). 자동화됨 = 검증하는 스크립트가 있는 테스트 조건 / 제외를 뺀 테스트 조건. '
             f'호출하는 스크립트 = 단계의 method·경로가 이 API 인 스크립트. 마지막 호출 = 이 API 를 호출한 가장 최근 단계(API 호출 화면 전송 포함). '
             f'그 아래 통계 = 이 API 를 호출한 최근 20회 단계의 통과율(skip 제외)·평균 소요 — 이 배포 이후 기록만.</p></div>')
 
@@ -1093,7 +1093,7 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
             f'<h4>Parameters</h4>{("<table class=\"params\"><tr><th>Name</th><th>In</th><th>설명</th></tr>" + prow + "</table>") if prow else "<p class=\"hint\">없음</p>"}'
             f'{("<h4>Request Body 예시</h4><pre>" + e(_fmt_json(o["request_example"])) + "</pre>") if o.get("request_example") is not None else ""}'
             f'<h4>성공 응답</h4>{succ or "<p class=\"hint\">예시 없음</p>"}'
-            f'<h4>문서화된 에러 코드</h4>{("<table><tr><th>코드</th><th>status</th><th>메시지</th></tr>" + errs + "</table>") if errs else "<p class=\"hint\">없음 — API 계약 TC 가 성공 하나뿐이다. 거절 조건이 있다면 백엔드 REST Docs 에 4xx 예시가 빠진 것</p>"}</div>')
+            f'<h4>문서화된 에러 코드</h4>{("<table><tr><th>코드</th><th>status</th><th>메시지</th></tr>" + errs + "</table>") if errs else "<p class=\"hint\">없음 — API 계약 테스트 조건이 성공 하나뿐이다. 거절 조건이 있다면 백엔드 REST Docs 에 4xx 예시가 빠진 것</p>"}</div>')
     # TC (층별)
     def tc_rows(items: list[dict]) -> str:
         out = ""
@@ -1109,13 +1109,13 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
     for layer, lab in (("contract", "API 계약 (OpenAPI 응답·에러 코드)"), ("policy", "비즈니스 규칙 (SSOT, API 매핑으로 연결)"), ("manual", "수동 작성 (manual-tc.yaml)")):
         items = d["tcs"].get(layer) or []
         if items:
-            sections += f'<h3>{badge(layer)} {e(lab)} <span class="mut small">{len(items)}</span></h3><table><tr><th>TC</th><th>내용</th><th>자동화 · 검증하는 스크립트</th></tr>{tc_rows(items)}</table>'
+            sections += f'<h3>{badge(layer)} {e(lab)} <span class="mut small">{len(items)}</span></h3><table><tr><th>테스트 조건</th><th>내용</th><th>자동화 · 검증하는 스크립트</th></tr>{tc_rows(items)}</table>'
     ops = "".join(f'<option value="{e(x)}" {"selected" if x == operator else ""}>{e(x)}</option>' for x in operators)
-    tcs = (f'<h2>이 API 의 TC{h("api.tcs")}{h("tc.state")} <span class="small mut">{qa["tc"]}건 · 자동화됨 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
+    tcs = (f'<h2>이 API 의 테스트 조건{h("api.tcs")}{h("tc.state")} <span class="small mut">{qa["tc"]}건 · 자동화됨 {qa["covered"]}/{denom}{(" · 제외 " + str(qa["excluded"])) if qa["excluded"] else ""}</span></h2>'
            f'<form method="post" action="/drafts/generate"><div class="card">'
-           + (sections or '<p class="mut">이 API 에 해당하는 TC 가 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
+           + (sections or '<p class="mut">이 API 에 해당하는 테스트 조건이 없다. OpenAPI 에 응답 예시가 없거나, SSOT command 가 <span class="mono">catalog/bindings.yaml</span> 에 매핑되지 않았다.</p>')
            + (f'<div class="actions"><select name="operator" required><option value="">— 담당자 —</option>{ops}</select>'
-              f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 TC 로 Hermes 가 스크립트 쓰기</button>'
+              f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 테스트 조건으로 Hermes 가 스크립트 쓰기</button>'
               f'<span class="small mut">같은 도메인 1~10건</span></div>' if sections else "") + '</div></form>')
     # 부르는 스크립트
     srows = "".join(
@@ -1294,18 +1294,18 @@ def _sec(title: str, body: str) -> str:
 
 def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> str:
     intro = ('<h1>가이드 — 이 플랫폼은 무엇을 하고, 어떻게 쓰는가</h1>'
-             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(TC)</b> 을 뽑고 '
-             '그 TC 를 검증하는 <b>스크립트</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
+             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(테스트 조건)</b> 을 뽑고 '
+             '그 테스트 조건을 검증하는 <b>스크립트</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
 
     # ---- 0. 개발 과정에서 이렇게 쓴다 (사용자 요청 2026-09-22: 개발 프로세스 기준 + 예시 시나리오 하나. 일반 QA 용어만, 첫 등장에 풀이) ----
     s_howto = """
 <p class="small mut" style="margin-top:0">기획 → 구현 → PR → dev 배포 → 확인 → 스프린트 마감 → 릴리스. 이 순서에서 플랫폼이 등장하는 곳은 다섯 군데다. 처음 나오는 말은 그 자리에서 풀이하고, 아래 <a href="#terms">용어</a> 표에도 모아 두었다.</p>
 <table><tr><th style="width:150px">단계</th><th style="width:70px">누가</th><th>플랫폼에서 하는 일</th><th>결과</th></tr>
-<tr><td><b>1. 기획 확정</b></td><td>기획</td><td>위키의 기획 문서(PRD)와 정책 규칙표(SSOT — 기능마다 "누가 · 어떤 조건이면 · 무엇이 바뀐다"를 적은 표)를 고친다. 플랫폼은 여기서 <b>테스트 케이스(TC, "무엇을 확인해야 하는가" 한 건)</b>를 자동으로 뽑는다</td><td><a href="/catalog">테스트 케이스 (TC)</a> 화면에 확인 항목이 생긴다. 사람이 플랫폼에서 TC 를 손으로 쓰지 않는다 — 빠졌으면 위키를 고친다</td></tr>
-<tr><td><b>2. 구현 · PR · dev 머지</b></td><td>개발</td><td><b>평소와 같다.</b> 새 API 가 생겼으면 API 문서(OpenAPI)에 응답 예시·에러 코드가 실리게 하고, 규칙표의 기능과 API 를 잇는 표(API 매핑, <span class="mono">catalog/bindings.yaml</span>)에 한 줄 더한다</td><td>TC 화면에 "API 계약" TC 가 생긴다</td></tr>
+<tr><td><b>1. 기획 확정</b></td><td>기획</td><td>위키의 기획 문서(PRD)와 정책 규칙표(SSOT — 기능마다 "누가 · 어떤 조건이면 · 무엇이 바뀐다"를 적은 표)를 고친다. 플랫폼은 여기서 <b>테스트 조건(테스트 조건, "무엇을 확인해야 하는가" 한 건)</b>를 자동으로 뽑는다</td><td><a href="/catalog">테스트 조건</a> 화면에 확인 항목이 생긴다. 사람이 플랫폼에서 테스트 조건을 손으로 쓰지 않는다 — 빠졌으면 위키를 고친다</td></tr>
+<tr><td><b>2. 구현 · PR · dev 머지</b></td><td>개발</td><td><b>평소와 같다.</b> 새 API 가 생겼으면 API 문서(OpenAPI)에 응답 예시·에러 코드가 실리게 하고, 규칙표의 기능과 API 를 잇는 표(API 매핑, <span class="mono">catalog/bindings.yaml</span>)에 한 줄 더한다</td><td>테스트 조건 화면에 "API 계약" 테스트 조건이 생긴다</td></tr>
 <tr class="ex"><td>dev 자동 배포</td><td>자동</td><td>없음 — 플랫폼은 배포를 <b>감지만</b> 한다</td><td><a href="/">대시보드</a>에 그 배포가 <span class="b warn">미검증</span> 으로 뜬다</td></tr>
 <tr><td><b>3. 배포 검증</b></td><td>개발</td><td>대시보드에서 [검증]. 플랫폼이 PR 이 바꾼 파일에서 도메인(룸·신청·회원 같은 기능 영역)을 읽어 그 도메인의 <b>sanity 테스트 스크립트</b>(바뀐 부분 위주로 dev 에 요청을 보내 확인하는 것)를 제안한다. 담당자를 고르고 실행</td><td>Slack 에 결과. 통과하면 배포에 ✓. 실패하면 실행 상세의 [Hermes 실패 분석] — 팀 AI 비서 Hermes 가 <b>버그 / 스크립트 노후 / 환경 문제</b> 중 무엇인지 근거와 함께 제안</td></tr>
-<tr><td><b>4. 테스트 스크립트 늘리기</b></td><td>개발 · QA</td><td>새 기능의 TC 가 <span class="b uncovered">미자동화</span>(확인하는 스크립트가 없음)로 남아 있다. <a href="/apis">API</a> 화면에서 그 API 를 열어 TC 를 고르고 [고른 TC 로 Hermes 가 스크립트 쓰기](진행이 실시간으로 보이고, 검증을 통과하면 바로 저장된다) 또는 [고른 TC 로 직접 쓰기 (폼)]. 폼은 [저장 전에 한 번 실행해 보기] 로 먼저 돌려 본다. 저장하면 플랫폼이 main 에 커밋하고 바로 실행 스위트에 넣는다</td><td>검증(형식·TC 대조·계약 일치)을 통과하지 못한 스크립트는 저장되지 않는다</td></tr>
+<tr><td><b>4. 테스트 스크립트 늘리기</b></td><td>개발 · QA</td><td>새 기능의 테스트 조건이 <span class="b uncovered">미자동화</span>(확인하는 스크립트가 없음)로 남아 있다. <a href="/apis">API</a> 화면에서 그 API 를 열어 테스트 조건을 고르고 [고른 테스트 조건으로 Hermes 가 스크립트 쓰기](진행이 실시간으로 보이고, 검증을 통과하면 바로 저장된다) 또는 [고른 테스트 조건으로 직접 쓰기 (폼)]. 폼은 [저장 전에 한 번 실행해 보기] 로 먼저 돌려 본다. 저장하면 플랫폼이 main 에 커밋하고 바로 실행 스위트에 넣는다</td><td>검증(형식·테스트 조건 대조·계약 일치)을 통과하지 못한 스크립트는 저장되지 않는다</td></tr>
 <tr><td><b>5. 스프린트 마감 · 릴리스</b></td><td>QA</td><td>스프린트(Linear 사이클, 7일)마다 [스프린트 smoke 실행] — 핵심 기능이 죽지 않았는지 전체를 빠르게 확인하는 읽기 위주 묶음. 릴리스 전 [릴리스 QA] + 체크리스트 + GO / NO-GO <b>기록</b></td><td>안 돌리면 대시보드 배지와 Slack 리마인드(자동 실행은 없다). main 승격은 사람이 따로 — 플랫폼은 막지 않고 근거만 남긴다</td></tr></table>
 
 <h3 style="margin-top:18px">예시 — 참가 신청 반려에 사유를 붙인다</h3>
@@ -1313,19 +1313,19 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <table><tr><th style="width:110px">언제</th><th>무슨 일</th></tr>
 <tr><td><b>월</b><br><span class="small mut">기획</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>A</b> 가 위키 PRD 「룸 참여 및 참여자 관리」에 반려 사유 항목을 적고, 규칙표(SSOT)의 "신청 반려"에 "사유는 선택지 중 하나" 조건을 더한다.</li>
-<li>플랫폼이 규칙표를 다시 읽어 TC 화면에 새 TC(<span class="mono">G.application.reject#reason-in-options</span> "선택지에 없는 사유는 거절")를 만든다. 기존 반려 스크립트에 <span class="b drift">TC 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
+<li>플랫폼이 규칙표를 다시 읽어 테스트 조건 화면에 새 테스트 조건(<span class="mono">G.application.reject#reason-in-options</span> "선택지에 없는 사유는 거절")을 만든다. 기존 반려 스크립트에 <span class="b drift">테스트 조건 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
 <tr><td><b>화</b><br><span class="small mut">구현·배포</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 구현. 반려 API(<span class="mono">POST /v1/rooms/{roomId}/applications/{applicationId}/reject</span>)가 본문에 <span class="mono">reason</span> 을 받고, 없는 값이면 400 <span class="mono">E400</span>. 선택지 조회 API(<span class="mono">GET /v1/rooms/reject-reasons</span>)가 새로 생긴다. REST Docs 테스트에 요청 예시와 400 예시를 넣는다.</li>
-<li>PR → 리뷰 → dev 머지 → 자동 배포. 대시보드에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" TC(<span class="mono">op.rejectApplication:E400</span>)가 생긴다.</li></ul></td></tr>
+<li>PR → 리뷰 → dev 머지 → 자동 배포. 대시보드에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" 테스트 조건(<span class="mono">op.rejectApplication:E400</span>)이 생긴다.</li></ul></td></tr>
 <tr><td><b>화 오후</b><br><span class="small mut">배포 검증</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 [검증]. PR 변경 파일 → 도메인 <span class="mono">application</span> → sanity 3개 제안. 실행. <span class="b fail">2 통과 · 1 실패</span> — 기존 반려 스크립트의 반려 단계가 400 을 받았다.</li>
 <li>[Hermes 실패 분석] → "스크립트 노후: 반려 요청에 <span class="mono">reason</span> 이 필수가 됐는데 스크립트가 안 보낸다. 버그 아님." B 가 동의.</li>
-<li>스크립트 상세의 [바뀐 TC 에 맞게 Hermes 가 고치기]. 검증을 통과하면 main 의 그 항목이 바로 바뀌고 "Hermes 작성" 표시가 붙는다. 최근 변경의 커밋에서 무엇이 바뀌었는지 본다. 한두 칸만 고치면 되면 [폼으로 고치기].</li>
+<li>스크립트 상세의 [바뀐 테스트 조건에 맞게 Hermes 가 고치기]. 검증을 통과하면 main 의 그 항목이 바로 바뀌고 "Hermes 작성" 표시가 붙는다. 최근 변경의 커밋에서 무엇이 바뀌었는지 본다. 한두 칸만 고치면 되면 [폼으로 고치기].</li>
 <li>다시 [검증] → <span class="b pass">3/3 통과</span>. 배포에 ✓. Slack: "B 가 PR #131 배포 검증 → 3/3 통과".</li></ul></td></tr>
 <tr><td><b>수</b><br><span class="small mut">스크립트 추가</span></td><td><ul style="margin:0;padding-left:18px">
-<li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. TC 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#reason-in-options</span>). 둘을 체크 → [고른 TC 로 Hermes 가 스크립트 쓰기]. Hermes 가 쓴 스크립트가 형식·TC 일치 검사를 통과해 바로 저장된다.</li>
+<li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. 테스트 조건 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#reason-in-options</span>). 둘을 체크 → [고른 테스트 조건으로 Hermes 가 스크립트 쓰기]. Hermes 가 쓴 스크립트가 형식·테스트 조건 일치 검사를 통과해 바로 저장된다.</li>
 <li>손으로도 한 번 본다. <a href="/setup">테스트 데이터 만들기</a>에서 "신청이 하나 들어온 룸" 실행 → 결과값 <span class="mono">roomId</span>·<span class="mono">applicationId</span>. <a href="/explorer">API 호출</a>에서 <span class="mono">rejectApplication</span> 을 열면 그 값이 입력칸에 이미 들어 있다. Normal(값만 넣는 입력 폼)에 <span class="mono">reason</span> 을 엉뚱한 값으로 넣고 보내기 → 400 <span class="mono">E400</span> 확인. Swagger(실제로 나가는 요청 원문)로 보낸 JSON 도 확인.</li>
-<li>저장과 동시에 main 에 커밋. 바로 sanity 에 실린다. TC 화면의 <span class="mono">application</span> 도메인 자동화 수가 올라간다.</li></ul></td></tr>
+<li>저장과 동시에 main 에 커밋. 바로 sanity 에 실린다. 테스트 조건 화면의 <span class="mono">application</span> 도메인 자동화 수가 올라간다.</li></ul></td></tr>
 <tr><td><b>금</b><br><span class="small mut">스프린트 마감</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>C</b> 가 [스프린트 smoke 실행]. 실행 상세에 요약 카드(전체·완료·통과율·실패)와 도메인별 막대. <span class="b pass">전부 통과</span>. Slack 에 결과.</li>
 <li>스크립트 목록의 "최근 5회 통과율 80%" 로 화요일 실패가 스크립트 노후였음을 다시 확인. <span class="b warn">불안정 (flaky)</span> 표시(스크립트를 안 고쳤는데 결과가 오락가락함)는 없다 — 고친 뒤로는 계속 통과.</li></ul></td></tr>
@@ -1337,7 +1337,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <ul style="margin:0;padding-left:18px">
 <li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 대시보드 표시와 Slack 알림까지만.</li>
 <li>live(운영) 서버를 건드리지 않는다. 확인 대상은 항상 dev.</li>
-<li>TC 를 플랫폼 안에서 만들지 않는다. 확인 항목이 빠졌으면 위키(규칙표·기획 문서)나 API 문서를 고친다.</li>
+<li>테스트 조건을 플랫폼 안에서 만들지 않는다. 확인 항목이 빠졌으면 위키(규칙표·기획 문서)나 API 문서를 고친다.</li>
 <li>AI 가 실행·발행하지 않는다. Hermes 는 스크립트 쓰기(검증을 통과하면 저장, "Hermes 작성" 표시)와 분석과 답변까지.</li>
 <li>스크립트가 만든 데이터는 스크립트가 지운다. 예외는 "테스트 데이터 만들기" — 남기는 게 목적이라 제목을 <span class="mono">[QA]</span> 로 시작해 사람이 지운다.</li></ul>
 <p class="small mut" style="margin:10px 0 0">화면 하나하나는 아래 "화면별로 무엇을 하나", 실행 버튼을 눌렀을 때 벌어지는 일은 "1. 실행 버튼을 누르면" 절.</p>
@@ -1347,7 +1347,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <ol>
 <li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [수동 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
 <li><b>확인 화면</b>에서는 플랫폼이 범위를 <i>제안</i>한다. 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 스크립트, 스프린트면 smoke 전체다. 담당자(자기 신고)를 고르고 스크립트를 조정한 뒤 [실행].</li>
-<li><b>테스트 실행이 만들어지면서</b> 그 시점의 스크립트 본문(스냅샷)·TC 소스 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 실행 기록에 고정된다. 나중에 스크립트나 TC 가 바뀌어도 과거 기록은 그대로다.</li>
+<li><b>테스트 실행이 만들어지면서</b> 그 시점의 스크립트 본문(스냅샷)·테스트 조건 소스 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 실행 기록에 고정된다. 나중에 스크립트나 테스트 조건이 바뀌어도 과거 기록은 그대로다.</li>
 <li><b>러너가 순서대로 보낸다.</b> 한 번에 실행 하나, 스크립트는 순차, 단계는 요청 → 응답 → 검증 항목(assertion)(expect 5종: status · result · error_code · json · exists). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
 <li><b>판정.</b> 검증 항목(assertion) 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정 = <b>skipped</b>(설정 문제, 실패 아님). 실행 전체의 결과는 스크립트 결과의 합. Slack 에 시작·종료가 간다.</li>
 <li><b>실패하면</b> 실행 상세에서 단계별 요청·응답·검증 항목(assertion)을 본다. [Hermes 실패 분석] 을 누르면 AI 가 <i>버그 / 스크립트 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
@@ -1355,26 +1355,26 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <p class="small mut">모든 버튼은 감사 로그 화면(감사 로그)에 담당자·세션 해시·IP 와 함께 남는다. 세션은 팀 공용이라 담당자는 자기 신고다.</p>"""
 
     s2 = f"""
-<p>플랫폼은 TC 를 <b>만들지 않는다</b>. 원본에서 <b>파생</b>하고 같은 입력이면 같은 TC 목록이 나온다.</p>
-<table><tr><th>층</th><th>원본</th><th>TC 예</th><th>답하는 질문</th></tr>
+<p>플랫폼은 테스트 조건을 <b>만들지 않는다</b>. 원본에서 <b>파생</b>하고 같은 입력이면 같은 테스트 조건 목록이 나온다.</p>
+<table><tr><th>층</th><th>원본</th><th>테스트 조건 예</th><th>답하는 질문</th></tr>
 <tr><td>정책</td><td><a href="{e(wiki_url)}/policy/">상태-SSOT.yaml</a> (기획 SSOT) — team-wiki-v2 의 <span class="mono">render_tests.cases()</span> 를 그대로 가져와 쓴다</td><td><span class="mono">G.room.create#duplicate-slot-left</span> (게이트 8번째 검사에서 거절) · <span class="mono">C.room.create</span> (성공 전이)</td><td>기획이 정한 규칙이 지켜지는가</td></tr>
 <tr><td>계약</td><td>백엔드 OpenAPI (dev 브랜치, REST Docs 산출물)</td><td><span class="mono">op.createRoom:200</span> · <span class="mono">op.createRoom:E1402</span></td><td>API 가 문서대로 응답하는가</td></tr>
 <tr><td>수동 작성</td><td>사람이 적는 <span class="mono">qa-platform/catalog/manual-tc.yaml</span> (PRD 절 · 운영 기준)</td><td><span class="mono">PRD.룸-탐색.4.1#1</span> · <span class="mono">OPS.platform.health#1</span></td><td>SSOT 로 형식화되지 않은 요구</td></tr></table>
-<p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 TC(시스템 전이·OAuth·담당자 전용)는 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다. 분모에서 빠지지만 화면에는 보인다.</p>
-<p><b>스크립트는 <span class="mono">covers:</span> 로 어떤 TC 를 검증하는지 선언</b>하고 플랫폼이 그 선언을 검증한다 — TC id 가 실재하는지, API 계약 TC 라면 단계의 method·path·기대 코드가 실제로 그 계약과 맞는지. 거짓 선언은 "불일치" 로 스위트에서 빠진다. 커버리지 분모는 전체 TC 다.</p>
-<p><b>TC 가 바뀌면.</b> 위키 SSOT 나 OpenAPI 가 바뀌면 TC 목록이 다시 계산되고(읽기라 자동), 검증하는 TC 가 바뀐 스크립트에 <span class="b drift">TC 변경</span> 배지가 붙는다. 스크립트를 다시 본 뒤 <span class="mono">reviewed: {{at, by}}</span> 를 적으면 그 이후 변경만 배지로 뜬다. 스크립트를 자동으로 고치거나 테스트를 자동으로 돌리지는 않는다.</p>"""
+<p><b>기획과 API 는 1:1 이 아니다.</b> 그래서 <span class="mono">catalog/bindings.yaml</span> 이 SSOT command ↔ operationId, 게이트 검사 ↔ 에러 코드를 잇는다(다대다 허용). 못 잇는 것은 "API 없음" 으로 남는다. 자동화할 수 없는 테스트 조건(시스템 전이·OAuth·담당자 전용)은 <span class="mono">catalog/exclusions.yaml</span> 에 <b>사유와 함께</b> 뺀다. 분모에서 빠지지만 화면에는 보인다.</p>
+<p><b>스크립트는 <span class="mono">covers:</span> 로 어떤 테스트 조건을 검증하는지 선언</b>하고 플랫폼이 그 선언을 검증한다 — 테스트 조건 id 가 실재하는지, API 계약 테스트 조건 라면 단계의 method·path·기대 코드가 실제로 그 계약과 맞는지. 거짓 선언은 "불일치" 로 스위트에서 빠진다. 커버리지 분모는 전체 테스트 조건이다.</p>
+<p><b>테스트 조건이 바뀌면.</b> 위키 SSOT 나 OpenAPI 가 바뀌면 테스트 조건 목록이 다시 계산되고(읽기라 자동), 검증하는 테스트 조건이 바뀐 스크립트에 <span class="b drift">테스트 조건 변경</span> 배지가 붙는다. 스크립트를 다시 본 뒤 <span class="mono">reviewed: {{at, by}}</span> 를 적으면 그 이후 변경만 배지로 뜬다. 스크립트를 자동으로 고치거나 테스트를 자동으로 돌리지는 않는다.</p>"""
 
     s3 = """
 <table><tr><th>화면</th><th>언제 여나</th><th>하는 일</th></tr>
-<tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, TC 커버리지 매트릭스, 최근 테스트 실행</td></tr>
+<tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, 테스트 조건 커버리지 매트릭스, 최근 테스트 실행</td></tr>
 <tr><td><a href="/runs">실행 기록</a></td><td>실행 후</td><td>테스트 실행 목록·상세(단계별 요청·응답·검증 항목(assertion)), Hermes 실패 분석, 릴리스 판단 기록</td></tr>
-<tr><td><a href="/cases">테스트 스크립트</a></td><td>스크립트 관리</td><td>원본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 정합성·TC 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
-<tr><td><a href="/catalog">테스트 케이스</a></td><td>커버리지 확인 · 스크립트 늘릴 때</td><td>도메인×층 TC 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). TC 를 골라 [Hermes 가 스크립트 쓰기] 또는 [직접 쓰기 (폼)]</td></tr>
-<tr><td><a href="/drafts">변경 기록</a></td><td>누가 무엇을 바꿨나 볼 때</td><td>폼·Hermes 가 저장한 스크립트·수동 작성 TC 변경과 커밋 링크. 저장은 초안·승인 없이 바로 된다</td></tr>
-<tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 저장한 스크립트가 대화에 남는다</td></tr>
-<tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 해당하는 TC(층별, 자동화 여부), 호출하는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "호출하는 스크립트 없음" 필터가 테스트 커버리지가 비는 API</td></tr>
+<tr><td><a href="/cases">테스트 스크립트</a></td><td>스크립트 관리</td><td>원본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 정합성·테스트 조건 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
+<tr><td><a href="/catalog">테스트 조건</a></td><td>커버리지 확인 · 스크립트 늘릴 때</td><td>도메인×층 테스트 조건 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). 테스트 조건을 골라 [Hermes 가 스크립트 쓰기] 또는 [직접 쓰기 (폼)]</td></tr>
+<tr><td><a href="/drafts">변경 기록</a></td><td>누가 무엇을 바꿨나 볼 때</td><td>폼·Hermes 가 저장한 스크립트·수동 작성 테스트 조건 변경과 커밋 링크. 저장은 초안·승인 없이 바로 된다</td></tr>
+<tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·테스트 조건 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 저장한 스크립트가 대화에 남는다</td></tr>
+<tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 해당하는 테스트 조건(층별, 자동화 여부), 호출하는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "호출하는 스크립트 없음" 필터가 테스트 커버리지가 비는 API</td></tr>
 <tr><td><a href="/setup">테스트 데이터 만들기</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 같은 화면 아래 "QA 데이터 정리"에서 지운다(dev 전용 API, [QA] 제목만). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
-<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 입력 폼에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 입력 폼, <b>Swagger</b> 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 폼 위의 배지가 그 API 의 TC 수와 자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
+<tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 입력 폼에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 입력 폼, <b>Swagger</b> 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 폼 위의 배지가 그 API 의 테스트 조건 수와 자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
     s4 = """
@@ -1382,8 +1382,8 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li><b>PR 을 dev 에 머지한다.</b> 백엔드 CI 가 dev 에 배포하면 대시보드 "dev 배포" 에 <span class="b warn">미검증</span> 으로 뜬다 (GitHub Actions 조회, 1분 캐시).</li>
 <li><b>[검증] 을 누른다.</b> 플랫폼이 PR 변경 파일에서 도메인을 읽어 그 도메인의 sanity 를 제안한다. 확인하고 실행. 통과하면 그 배포에 ✅ 가 붙는다.</li>
 <li><b>실패하면 셋 중 하나다.</b> (a) 버그 → 고친다. (b) 스크립트 노후 — 기획이 바뀌어 스크립트가 틀렸다 → 스크립트 상세의 [폼으로 고치기] → 저장. (c) 환경 — 픽스처(공고 id 등)가 바뀜 → SSM <span class="mono">qa-fixtures</span> 를 고친다. Hermes 실패 분석이 셋 중 무엇인지 제안한다.</li>
-<li><b>새 기능이면 TC 를 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 테스트 케이스 화면에 TC 가 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다. 플랫폼에서 TC 를 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
-<li><b>스크립트를 늘린다.</b> 테스트 케이스 화면에서 미자동화 TC 를 골라 [Hermes 가 스크립트 쓰기] 또는 [직접 쓰기 (폼)]. 폼은 [저장 전에 한 번 실행해 보기] 로 먼저 돌려 볼 수 있다. 저장하면 플랫폼이 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 커밋하고 바로 실행 스위트에 넣는다. 사람이 직접 쓰려면 [+ 새 스크립트 (폼)]. 검증을 통과하지 못한 스크립트는 저장되지 않는다.</li>
+<li><b>새 기능이면 테스트 조건을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 테스트 조건 화면에 테스트 조건이 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다. 플랫폼에서 테스트 조건을 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
+<li><b>스크립트를 늘린다.</b> 테스트 조건 화면에서 미자동화 테스트 조건을 골라 [Hermes 가 스크립트 쓰기] 또는 [직접 쓰기 (폼)]. 폼은 [저장 전에 한 번 실행해 보기] 로 먼저 돌려 볼 수 있다. 저장하면 플랫폼이 <span class="mono">qa-platform/cases/&lt;도메인&gt;.yaml</span> 에 커밋하고 바로 실행 스위트에 넣는다. 사람이 직접 쓰려면 [+ 새 스크립트 (폼)]. 검증을 통과하지 못한 스크립트는 저장되지 않는다.</li>
 <li><b>쓰기 스크립트 규칙.</b> 만든 데이터는 같은 스크립트 안에서 닫고(취소·철회·삭제) 만드는 데이터의 title 은 <span class="mono">[QA]</span> 로 시작한다. 테스트 계정(qa-host · qa-guest)만 쓴다 — 목데이터 회원은 참여 슬롯이 차 있어 쓰기에 못 쓴다.</li>
 </ol>"""
 
@@ -1395,30 +1395,37 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 </ul>"""
 
     s6 = f"""
-<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고 dev 데이터 오염·실행 폭주·알림 피로가 구조적으로 막힌다. TC 목록 <i>계산</i>은 읽기라 자동이지만 실행·전송·Hermes 호출·발행은 전부 버튼이다.</p>
+<p><b>왜 자동으로 안 도나?</b> 결정이다. 실행의 시작은 언제나 사람이어야 이력에 의미가 있고 dev 데이터 오염·실행 폭주·알림 피로가 구조적으로 막힌다. 테스트 조건 목록 <i>계산</i>은 읽기라 자동이지만 실행·전송·Hermes 호출·발행은 전부 버튼이다.</p>
 <p><b>skipped 는 실패인가?</b> 아니다. 테스트 계정(<span class="mono">qa-actors</span>)이나 픽스처(<span class="mono">qa-fixtures</span>)가 없어 못 보낸 것이다. 설정을 먼저 본다.</p>
 <p><b>스펙 불일치 경고는?</b> 매핑한 에러 코드가 OpenAPI 예시에 없다는 뜻이다(예: E1425·E1427 은 dev 에서 확인됐지만 스펙에 아직 없음). 백엔드 REST Docs 에 예시를 추가하면 사라진다.</p>
-<p><b>원본은 어디?</b> 스크립트 = git <span class="mono">qa-platform/cases/</span>. TC = llm-wiki SSOT·PRD + OpenAPI. API 매핑·자동화 제외·수동 작성 TC = <span class="mono">qa-platform/catalog/</span>. DB 에는 실행 기록·감사 로그·변경 기록만 있다.</p>
+<p><b>원본은 어디?</b> 스크립트 = git <span class="mono">qa-platform/cases/</span>. 테스트 조건 = llm-wiki SSOT·PRD + OpenAPI. API 매핑·자동화 제외·수동 작성 테스트 조건 = <span class="mono">qa-platform/catalog/</span>. DB 에는 실행 기록·감사 로그·변경 기록만 있다.</p>
 <p class="small mut">설계 문서: <span class="mono">docs/qa-platform.md</span>(P0·P1, 런북) · <span class="mono">docs/qa-platform-tc.md</span>(P2, 기준 관리). 이 화면은 <span class="mono">{e(public_url)}/guide</span>.</p>"""
 
     s_ai = """
 <p><b>런타임에는 AI 가 없다.</b> 실행 버튼을 누르면 도는 것은 결정론 러너다 — 스크립트에 적힌 요청을 보내고 적힌 검증 항목(assertion)과 비교한다. 같은 스크립트·같은 서버면 같은 판정이 나온다. 매 실행마다 LLM 이 판단하면 비용이 들고 결과가 흔들리고 이력을 믿을 수 없어서 설계에서 뺐다.</p>
-<p><b>TC 도 AI 가 만들지 않고</b> SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 TC 를 만들면 검증 기준이 원본에서 떠난다.</p>
+<p><b>테스트 조건도 AI 가 만들지 않고</b> SSOT·OpenAPI 에서 규칙으로 파생된다(§2). AI 가 테스트 조건을 만들면 검증 기준이 원본에서 떠난다.</p>
 <p>AI(Hermes)가 개입하는 지점은 <b>셋이고, 셋 다 실행·발행 버튼에는 손이 닿지 않는다.</b></p>
 <table><tr><th>시점</th><th>버튼</th><th>AI 가 하는 것</th><th>AI 가 못 하는 것</th></tr>
-<tr><td>스크립트를 늘릴 때</td><td>테스트 케이스 화면 [Hermes 가 스크립트 쓰기]</td><td>고른 TC + OpenAPI 발췌 + PRD 절 본문을 근거로 스크립트 YAML 을 쓴다</td><td>플랫폼의 결정론 검증(covers ⊆ 요청 TC, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 저장된다. 저장된 것에는 "Hermes 작성" 표시가 붙고, 실행은 사람이 누른다</td></tr>
+<tr><td>스크립트를 늘릴 때</td><td>테스트 조건 화면 [Hermes 가 스크립트 쓰기]</td><td>고른 테스트 조건 + OpenAPI 발췌 + PRD 절 본문을 근거로 스크립트 YAML 을 쓴다</td><td>플랫폼의 결정론 검증(covers ⊆ 요청 테스트 조건, method·path·코드 일치, 테스트 계정 실재)을 통과한 것만 저장된다. 저장된 것에는 "Hermes 작성" 표시가 붙고, 실행은 사람이 누른다</td></tr>
 <tr><td>테스트 실행이 실패한 뒤</td><td>실행 상세 [Hermes 실패 분석]</td><td>단계별 요청·응답·검증 항목(assertion)만 보고 <i>버그 / 스크립트 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다</td><td>판정을 바꾸지 못한다. 분석 결과는 실행 기록의 스크립트에 메모로 붙을 뿐이다</td></tr>
-<tr><td>Hermes 에게 물을 때 (<a href="/chat">Hermes</a> 화면 · Slack)</td><td>대화</td><td>QA 도구(<span class="mono">qa_*</span> 14개)로 테스트 케이스·스크립트·실행 기록·커버리지·OpenAPI·PRD 절을 읽고 답한다. 스크립트를 쓰거나 고치면 검증을 거쳐 바로 저장하고, PRD 절에서 뽑은 수동 작성 TC 도 바로 저장한다</td><td>테스트 실행·API 직접 호출·위키 보고서 게시 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 감사 로그 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
+<tr><td>Hermes 에게 물을 때 (<a href="/chat">Hermes</a> 화면 · Slack)</td><td>대화</td><td>QA 도구(<span class="mono">qa_*</span> 14개)로 테스트 조건·스크립트·실행 기록·커버리지·OpenAPI·PRD 절을 읽고 답한다. 스크립트를 쓰거나 고치면 검증을 거쳐 바로 저장하고, PRD 절에서 뽑은 수동 작성 테스트 조건도 바로 저장한다</td><td>테스트 실행·API 직접 호출·위키 보고서 게시 도구가 <b>서버에 없다</b>. "돌려 줘" 라고 하면 이 화면의 링크를 준다. 부른 도구는 전부 감사 로그 화면에 <span class="mono">hermes</span> 이름으로 남는다</td></tr></table>
 <p class="small mut">[Hermes 가 스크립트 쓰기] 버튼 경로에서는 위키 도구를 AI 에게 주지 않는다. 근거는 플랫폼이 프롬프트에 넣어 주므로 Hermes 가 쓴 스크립트가 무엇을 근거로 했는지가 해시로 남고 검증이 그 근거와 맞춰 볼 수 있다. 런타임에 AI 가 탐색적으로 API 를 두드리는 "에이전트 런" 은 만들지 않았다. 필요하면 별도 결정이다.</p>"""
     s_terms = """
 <p class="small mut" style="margin-top:0">이 화면들에서 쓰는 말. 일반 QA 용어를 따르고, 코드·URL 의 영어 키(run, case, catalog, covers, audit)는 그대로 둔다.</p>
 <table><tr><th>말</th><th>뜻</th><th>영어 · 코드</th></tr>
-<tr><td><b>테스트 케이스 (TC)</b></td><td>"무엇을 확인해야 하는가" 한 건. 기획(SSOT·PRD)과 API 계약(OpenAPI)에서 규칙으로 뽑는다. 사람이 손으로 쓰지 않는다(수동 작성 층만 예외). id 는 <span class="mono">G.room.create#duplicate-slot-left</span>, <span class="mono">op.createRoom:E1402</span> 같은 꼴</td><td>test case · <span class="mono">catalog</span></td></tr>
-<tr><td><b>테스트 스크립트</b></td><td>TC 를 실제로 확인하는 실행 단위. 요청·기대 응답을 적은 YAML 이고 git 이 원본. 스크립트 하나가 TC 여러 건을 검증할 수 있다</td><td>test script · <span class="mono">cases/*.yaml</span></td></tr>
-<tr><td><b>검증하는 TC</b></td><td>스크립트가 "이 TC 들을 확인한다" 고 선언한 목록. 커버리지의 근거</td><td><span class="mono">covers</span></td></tr>
-<tr><td><b>정합성</b></td><td>스크립트의 선언이 TC 목록·API 계약과 맞는지 플랫폼이 검사한 결과. 정합 / 경고 / 불일치. 불일치면 스위트에서 빠진다</td><td><span class="mono">audit</span></td></tr>
-<tr><td><b>TC 변경</b></td><td>스크립트가 검증하는 TC 가 마지막 검토 이후 바뀌었다는 표시. 기획이나 API 가 바뀐 것이니 스크립트를 다시 본다</td><td>drift</td></tr>
-<tr><td><b>자동화됨 · 미자동화 · 자동화 제외</b></td><td>TC 를 검증하는 스크립트가 있음 · 없음 · 자동으로 확인할 수 없어 사유와 함께 뺌</td><td>covered · uncovered · excluded</td></tr>
+<tr><td><b>테스트 조건</b></td><td>"무엇을 확인해야 하는가" 한 건. 기획(SSOT·PRD)과 API 계약(OpenAPI)에서 규칙으로 뽑는다. 사람이 손으로 쓰지 않는다(수동 작성 층만 예외). id 는 <span class="mono">G.room.create#duplicate-slot-left</span>, <span class="mono">op.createRoom:E1402</span> 같은 꼴</td><td>test condition · <span class="mono">catalog</span></td></tr>
+<tr><td><b>시나리오</b></td><td>사용자가 결과 하나를 얻기까지 여러 행동을 잇는 흐름. PRD 2장의 "시나리오 S1" 을 그대로 따른다</td><td>scenario · PRD 2장</td></tr>
+<tr><td><b>케이스</b></td><td>시나리오 안의 한 가지 경우. 정상 흐름, PRD 의 분기, 거절(규칙 하나에 걸리는 경우), 사람이 더한 경우가 있다. 스크립트 하나가 케이스 하나를 구현한다</td><td>case · <span class="mono">variant:</span> · <span class="mono">scenarios/*.yaml</span></td></tr>
+<tr><td><b>요구 id</b></td><td>PRD 문장 끝에 붙은 번호. 예: <span class="mono">R6</span></td><td>requirement id</td></tr>
+<tr><td><b>분기·거절이 일어나는 단계</b></td><td>케이스가 정상 흐름에서 갈라지는 PRD 단계의 요구 id</td><td><span class="mono">at</span></td></tr>
+<tr><td><b>게이트 · 검사</b></td><td>규칙표(위키의 상태 SSOT)에서 온 말. 게이트는 어떤 행동을 해도 되는지 판단하는 조건 묶음이고, 검사는 그 안의 조건 하나다. 검사 하나가 거절 테스트 조건 하나가 된다</td><td>gate · check · <span class="mono">G.room.create#headcount-range</span></td></tr>
+<tr><td><b>아직 테스트가 없는 거절 조건</b></td><td>시나리오 단계에 걸린 게이트의 검사 중 어느 케이스도 확인하지 않고 자동화 제외도 아닌 것. 플랫폼이 AI 없이 계산한다</td><td>untested reject</td></tr>
+<tr><td><b>시나리오에 연결되지 않은 스크립트</b></td><td><span class="mono">variant:</span> 가 비어 있는 스크립트. smoke 처럼 사용자 흐름이 아닌 API 점검이 여기 든다</td><td>–</td></tr>
+<tr><td><b>테스트 스크립트</b></td><td>테스트 조건을 실제로 확인하는 실행 단위. 요청·기대 응답을 적은 YAML 이고 git 이 원본. 스크립트 하나가 테스트 조건 여러 건을 검증할 수 있다</td><td>test script · <span class="mono">cases/*.yaml</span></td></tr>
+<tr><td><b>검증하는 테스트 조건</b></td><td>스크립트가 "이 테스트 조건들을 확인한다" 고 선언한 목록. 커버리지의 근거</td><td><span class="mono">covers</span></td></tr>
+<tr><td><b>정합성</b></td><td>스크립트의 선언이 테스트 조건 목록·API 계약과 맞는지 플랫폼이 검사한 결과. 정합 / 경고 / 불일치. 불일치면 스위트에서 빠진다</td><td><span class="mono">audit</span></td></tr>
+<tr><td><b>테스트 조건 변경</b></td><td>스크립트가 검증하는 테스트 조건이 마지막 검토 이후 바뀌었다는 표시. 기획이나 API 가 바뀐 것이니 스크립트를 다시 본다</td><td>drift</td></tr>
+<tr><td><b>자동화됨 · 미자동화 · 자동화 제외</b></td><td>테스트 조건을 검증하는 스크립트가 있음 · 없음 · 자동으로 확인할 수 없어 사유와 함께 뺌</td><td>covered · uncovered · excluded</td></tr>
 <tr><td><b>API 매핑</b></td><td>SSOT 의 기능(command)·검사와 OpenAPI 의 operation·에러 코드를 잇는 표. 1:1 이 아니라 사람이 적는다</td><td><span class="mono">catalog/bindings.yaml</span></td></tr>
 <tr><td><b>스펙 불일치 경고</b></td><td>API 매핑이 가리키는 operation 이나 에러 코드가 OpenAPI 에 없을 때</td><td>catalog warnings</td></tr>
 <tr><td><b>테스트 실행</b></td><td>사람이 버튼을 눌러 스크립트 묶음을 dev 에 한 번 돌린 기록. 결과·단계별 요청·응답이 남고 바뀌지 않는다</td><td>test run · <span class="mono">/runs</span></td></tr>
@@ -1428,15 +1435,15 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <tr><td><b>스위트</b></td><td>스크립트 묶음. smoke(읽기 전용, 빠름) · sanity(쓰기 포함, 도메인별) · manual(직접 고를 때만)</td><td>suite</td></tr>
 <tr><td><b>검증 항목</b></td><td>단계마다 응답을 비교하는 조건. status · result · error_code · json 경로 · 존재 여부</td><td>assertion · <span class="mono">expect</span></td></tr>
 <tr><td><b>테스트 계정 · 픽스처</b></td><td>dev 에 있는 QA 전용 회원 · 스크립트가 참조하는 dev 데이터 id(공고 id 등). 값은 SSM 에만</td><td><span class="mono">actor</span> · fixture</td></tr>
-<tr><td><b>변경 기록</b></td><td>폼·Hermes 가 스크립트·수동 작성 TC 를 저장한 기록. 저장은 검증을 거쳐 main 에 바로 커밋된다. Hermes 가 쓴 것에는 "Hermes 작성" 표시가 붙고, 사람이 폼으로 저장하면 사라진다</td><td>draft</td></tr>
-<tr><td><b>Hermes 작업</b></td><td>스크립트 쓰기·TC 제안·고치기·실패 분석처럼 Hermes 를 부르는 일. 뒤에서 돌고 진행이 실시간으로 보인다</td><td>job</td></tr>
+<tr><td><b>변경 기록</b></td><td>폼·Hermes 가 스크립트·수동 작성 테스트 조건을 저장한 기록. 저장은 검증을 거쳐 main 에 바로 커밋된다. Hermes 가 쓴 것에는 "Hermes 작성" 표시가 붙고, 사람이 폼으로 저장하면 사라진다</td><td>draft</td></tr>
+<tr><td><b>Hermes 작업</b></td><td>스크립트 쓰기·테스트 조건 제안·고치기·실패 분석처럼 Hermes 를 부르는 일. 뒤에서 돌고 진행이 실시간으로 보인다</td><td>job</td></tr>
 <tr><td><b>Normal · Swagger 보기</b></td><td>같은 요청을 두 모양으로 본다. Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON 본문, 편집 가능). 토스 QA 플랫폼의 용례를 따랐다</td><td>view</td></tr>
-<tr><td><b>테스트 데이터 만들기</b></td><td>여러 API 를 순서대로 호출해 dev 에 데이터(룸 등)를 만드는 스크립트를 버튼 하나로 돌리는 것. 입력칸(<span class="mono">inputs</span>)과 결과값(<span class="mono">outputs</span>)이 있고 만든 데이터는 지우지 않는다</td><td>suite <span class="mono">setup</span></td></tr>
+<tr><td><b>테스트 데이터 만들기</b></td><td>여러 API 를 순서대로 호출해 dev 에 데이터(룸 등)를 만드는 스크립트를 버튼 하나로 돌리는 것. 입력칸(<span class="mono">inputs</span>)과 결과값(<span class="mono">outputs</span>)이 있고 만든 데이터는 지우지 않는다. 다른 스크립트 앞에 붙여 준비 단계로도 쓴다(<span class="mono">uses:</span>)</td><td>suite <span class="mono">setup</span></td></tr>
 <tr><td><b>최근 통계 · 불안정 (flaky)</b></td><td>스크립트나 API 의 최근 20회 통과율(skip 은 뺀다)과 평균 소요. 불안정 = 스크립트를 안 고쳤는데 최근 10회 안에서 통과↔실패가 2번 이상 뒤집힘 — dev 데이터·타이밍 문제를 의심한다</td><td>pass rate · flaky</td></tr>
 <tr><td><b>최근 호출</b></td><td>어떤 API 를 호출한 단계들을 최신순으로 모은 것 — 스크립트 실행과 API 호출 화면 전송 모두. "이 API 지난번에 어땠나" 의 답</td><td><span class="mono">run_steps.op_id</span></td></tr>
 <tr><td><b>담당자</b></td><td>버튼을 누른 사람. 팀 세션은 공용이라 본인이 고른다(자기 신고)</td><td><span class="mono">operator</span></td></tr>
 <tr><td><b>감사 로그</b></td><td>누가 언제 무엇을 했는지 전부. Hermes 가 부른 도구도 <span class="mono">hermes</span> 이름으로 남는다</td><td>audit log · <span class="mono">events</span></td></tr></table>"""
-    return (intro + _sec("개발 과정에서 이렇게 쓴다 — 예시 하나와 함께", s_howto) + '<div id="terms"></div>' + _sec("용어", s_terms) + _sec("1. 실행 버튼을 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(TC)은 어디서 오나", s2)
+    return (intro + _sec("개발 과정에서 이렇게 쓴다 — 예시 하나와 함께", s_howto) + '<div id="terms"></div>' + _sec("용어", s_terms) + _sec("1. 실행 버튼을 누르면 무슨 일이 일어나나", s1) + _sec("2. 검증 기준(테스트 조건)은 어디서 오나", s2)
             + _sec("3. AI 는 언제 개입하나", s_ai)
             + _sec("4. 화면별로 무엇을 하나", s3) + _sec("5. 기능을 개발하고 나면 — 개발자 워크플로우", s4)
             + _sec("6. QA 워크플로우 — 스프린트와 릴리스", s5) + _sec("7. 자주 묻는 것", s6))
@@ -1455,7 +1462,7 @@ def _ctx_label(ctx: dict) -> str:
     if ctx.get("case"):
         return f'스크립트 <a href="/cases/{e(ctx["case"])}" class="mono">{e(ctx["case"])}</a>'
     if ctx.get("tc"):
-        return f'TC {tc_link(ctx["tc"])}'
+        return f'테스트 조건 {tc_link(ctx["tc"])}'
     if ctx.get("op"):
         return f'API <a href="/apis/{e(ctx["op"])}" class="mono">{e(ctx["op"])}</a>'
     return "–"
@@ -1468,8 +1475,8 @@ def chats_list(chats: list[dict], *, stale: dict, hermes: bool, operator: str, o
         f'<td>{badge("닫힘", "skipped") if c["status"] != "open" else (badge("오래됨", "skipped") if stale.get(c["id"]) else badge("열림", "pass"))}</td>'
         f'<td class="right">{c["turns"]}</td><td class="right">{c["drafts"]}</td><td>{e(c["operator"])}</td><td class="small mut">{kst(c["updated_at"])}</td></tr>'
         for c in chats) or '<tr><td colspan="7" class="mut">대화 없음</td></tr>'
-    return (f'<h1>Hermes{h("hermes.widget")}{h("hermes.list")} <span class="small mut">QA 를 아는 Hermes 와 이야기한다 — 테스트 케이스·스크립트·실행 기록을 읽고, 스크립트를 쓰고, 실패를 해석한다</span></h1>{warn}'
-            f'<div class="card"><div class="actions"><a class="btn" href="/chat/new">새 대화</a> <span class="small mut">실행·스크립트·TC 상세의 [Hermes 와 이야기] 로 열면 그 객체가 첨부된다. '
+    return (f'<h1>Hermes{h("hermes.widget")}{h("hermes.list")} <span class="small mut">QA 를 아는 Hermes 와 이야기한다 — 테스트 조건·스크립트·실행 기록을 읽고, 스크립트를 쓰고, 실패를 해석한다</span></h1>{warn}'
+            f'<div class="card"><div class="actions"><a class="btn" href="/chat/new">새 대화</a> <span class="small mut">실행·스크립트·테스트 조건 상세의 [Hermes 와 이야기] 로 열면 그 객체가 첨부된다. '
             f'실행·발행은 Hermes 가 못 한다 — 사람이 버튼을 누른다.</span></div></div>'
             f'<div class="card"><table><tr><th>제목</th><th>첨부{h("hermes.attach")}</th><th>상태</th><th>턴</th><th>저장</th><th>담당자</th><th>마지막</th></tr>{rows}</table></div>')
 
@@ -1485,7 +1492,7 @@ HERMES_JS = r"""
   function el(tag, cls, html){var x=document.createElement(tag); if(cls) x.className=cls; if(html!=null) x.innerHTML=html; return x;}
   function kst(iso){ if(!iso) return ''; var d=new Date(iso); return isNaN(d)?'':d.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}); }
   function linkify(t){ return h(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1">$1</a>').replace(/\b(d-[0-9a-f]{8})\b/g,'<a href="/drafts/$1" class="mono">$1</a>'); }
-  function ctxLabel(c){ c=c||{}; if(c.run) return '실행 <a href="/runs/'+h(c.run)+'" class="mono">'+h(c.run)+'</a>'; if(c.case) return '스크립트 <a href="/cases/'+h(c.case)+'" class="mono">'+h(c.case)+'</a>'; if(c.tc) return 'TC <a href="/catalog/tc?id='+encodeURIComponent(c.tc)+'" class="mono">'+h(c.tc)+'</a>'; if(c.op) return 'API <a href="/apis/'+h(c.op)+'" class="mono">'+h(c.op)+'</a>'; return ''; }
+  function ctxLabel(c){ c=c||{}; if(c.run) return '실행 <a href="/runs/'+h(c.run)+'" class="mono">'+h(c.run)+'</a>'; if(c.case) return '스크립트 <a href="/cases/'+h(c.case)+'" class="mono">'+h(c.case)+'</a>'; if(c.tc) return '테스트 조건 <a href="/catalog/tc?id='+encodeURIComponent(c.tc)+'" class="mono">'+h(c.tc)+'</a>'; if(c.op) return 'API <a href="/apis/'+h(c.op)+'" class="mono">'+h(c.op)+'</a>'; return ''; }
 
   // ---- DOM ----
   var inline = !!Q.inline, root = inline ? document.getElementById('hx-inline') : document.body;
@@ -1520,7 +1527,7 @@ HERMES_JS = r"""
     st.id=null; st.chat=null; st.view='new'; st.ctx = ctx||{}; title.textContent='새 대화';
     if(!guard()) return;
     var lab = ctxLabel(st.ctx);
-    body.innerHTML = '<div class="hx-note">QA 를 아는 Hermes 다 — 테스트 케이스·스크립트·실행 기록을 읽고, 스크립트를 쓰고, 실패를 해석한다. 실행·발행은 못 한다(사람이 버튼).'+
+    body.innerHTML = '<div class="hx-note">QA 를 아는 Hermes 다 — 테스트 조건·스크립트·실행 기록을 읽고, 스크립트를 쓰고, 실패를 해석한다. 실행·발행은 못 한다(사람이 버튼).'+
       (lab ? '<p><label><input type="checkbox" id="hx-attach" checked> 이 화면의 '+lab+' 을 첨부</label></p>' : '')+'</div>';
     setBusy(false); status(''); ta.focus();
   }

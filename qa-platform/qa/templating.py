@@ -1,4 +1,4 @@
-"""케이스 안의 `{{…}}` 치환. docs/qa-platform.md §8.
+"""스크립트 안의 `{{…}}` 치환. docs/qa-platform.md §8.
 
 지원:
   {{name}}                  save 로 저장된 변수
@@ -21,7 +21,7 @@ _PART = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 
 
 class TemplateError(KeyError):
-    """치환할 값이 없다. `kind` 가 actor/fixture 면 설정 부재(케이스 skip 사유)다."""
+    """치환할 값이 없다. `kind` 가 actor/fixture 면 설정 부재(스크립트 skip 사유)다."""
 
     def __init__(self, expr: str, kind: str = "var"):
         super().__init__(expr)

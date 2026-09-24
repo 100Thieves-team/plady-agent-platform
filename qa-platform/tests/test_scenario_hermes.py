@@ -1,4 +1,4 @@
-"""Hermes 로 변형 채우기·변형에서 스크립트 만들기 (docs/qa-platform-scenarios.md §7, §14 6단계)."""
+"""Hermes 로 케이스 채우기·케이스에서 스크립트 만들기 (docs/qa-platform-scenarios.md §7, §14 6단계)."""
 from __future__ import annotations
 
 import json
@@ -107,7 +107,7 @@ class HermesScenarioTest(unittest.TestCase):
         out = self.app.fill_scenarios("룸-생성", operator="bebe")
         self.assertEqual(out["added"], 2)
         prompt = r.bodies[0]["messages"][-1]["content"]
-        for frag in ("# PRD 2장", "R143", "G.room.create#schedule-not-passed", "E1407", "테스트 없는 거절 규칙", "headcount-range", "POST /v1/rooms"):
+        for frag in ("# PRD 2장", "R143", "G.room.create#schedule-not-passed", "E1407", "아직 테스트가 없는 거절 조건", "headcount-range", "POST /v1/rooms"):
             self.assertIn(frag, prompt)
         s1 = self.s1()
         self.assertEqual(s1.variant("happy").title, "온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다")    # 사람이 쓴 것은 그대로
@@ -116,7 +116,7 @@ class HermesScenarioTest(unittest.TestCase):
         self.assertEqual((s1.actor, s1.gates), ("qa-host", {"R6": ["G.room.create"], "R143": ["G.room.create_batch"], "R4": ["G.room.create"]}))   # 비어 있던 단계만
         put = self.gh.puts[-1]
         self.assertEqual(put["path"], "qa-platform/scenarios/룸-생성.yaml")
-        self.assertIn("룸-생성 변형 채우기 (Hermes", put["message"])
+        self.assertIn("룸-생성 케이스 채우기 (Hermes", put["message"])
         d = self.app.store.get_draft(out["id"])
         self.assertEqual((d["kind"], d["source"], d["case_id"]), ("scenario", "hermes-scenario", "룸-생성"))
         self.assertTrue(d["prompt_hash"])
@@ -169,7 +169,7 @@ class HermesScenarioTest(unittest.TestCase):
         job = self.app.job_variant_script("룸-생성/S1/headcount-range", "bebe", sync=True)
         self.assertEqual(job.status, "done", job.error)
         prompt = r.bodies[0]["messages"][-1]["content"]
-        for frag in ("이 스크립트가 구현할 변형 룸-생성/S1/headcount-range", "갈라지는 단계: R6 입력 내용을 확인하고 룸을 생성한다.", "전제: minParticipants 4",
+        for frag in ("이 스크립트가 구현할 케이스 룸-생성/S1/headcount-range", "분기·거절이 일어나는 단계: R6 입력 내용을 확인하고 룸을 생성한다.", "전제: minParticipants 4",
                      "setup.room-with-application", "G.room.create#headcount-range"):
             self.assertIn(frag, prompt)
         self.assertIn("uses: {setup: 카드 id", r.bodies[0]["messages"][0]["content"])
@@ -196,7 +196,7 @@ class HermesScenarioTest(unittest.TestCase):
         pasted = next(v for v in s1["variants"] if v["variant"].key == "pasted-posting")
         vp = ui.variant_page(f, s1, pasted, check=chk, tc_records={}, history=[], step=None, operator="bebe", hermes=True)
         self.assertIn('action="/features/script"', vp)
-        self.assertIn("확인할 TC(checks)를 먼저 적는다", vp)
+        self.assertIn("확인할 테스트 조건(checks)을 먼저 적는다", vp)
 
 
 class MergeTest(unittest.TestCase):

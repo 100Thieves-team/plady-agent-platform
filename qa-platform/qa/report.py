@@ -60,7 +60,7 @@ def render(run: dict, rcs: list[dict], *, coverage: dict | None, catalog, public
     rel = meta.get("release")
     if rel:
         lines.append(f"| 릴리스 판단 | **{rel.get('decision', '').upper()}** — {rel.get('operator')} · {rel.get('reason') or '(사유 없음)'} |")
-    lines += ["", "## 케이스", "", "| 케이스 | 스위트 | 판정 | 비고 |", "|---|---|---|---|"]
+    lines += ["", "## 스크립트", "", "| 스크립트 | 스위트 | 판정 | 비고 |", "|---|---|---|---|"]
     for rc in rcs:
         note = (rc.get("error") or "").replace("|", "\\|").replace("\n", " ")[:160]
         lines.append(f"| `{rc['case_id']}` {rc['case_title']} | {rc['case_suite']} | {rc['verdict']} | {note} |")
@@ -79,6 +79,6 @@ def render(run: dict, rcs: list[dict], *, coverage: dict | None, catalog, public
                 cells.append("–" if not c else f"{c['covered']}/{c['total'] - c['excluded']}" + (f" (제외 {c['excluded']})" if c["excluded"] else ""))
             lines.append(f"| {d} | " + " | ".join(cells) + " |")
         lines.append("")
-        lines.append("분모는 전체 TC 에서 사유가 적힌 제외를 뺀 수. 정본은 `wiki/policy/_src/상태-SSOT.yaml`(정책)과 백엔드 OpenAPI(계약).")
+        lines.append("분모는 전체 테스트 조건에서 사유가 적힌 제외를 뺀 수. 정본은 `wiki/policy/_src/상태-SSOT.yaml`(정책)과 백엔드 OpenAPI(계약).")
     lines += ["", f"— 생성: qa-platform, {datetime.now(KST).strftime('%Y-%m-%d %H:%M')} KST"]
     return mask_ids("\n".join(lines)) + "\n"

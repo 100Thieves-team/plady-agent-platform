@@ -1,4 +1,4 @@
-"""폼으로 스크립트·수동 작성 TC 만들기·고치기·지우기 — 폼 상태 ⇄ YAML, 사람 검증, 승인 때 바꿀 파일 계획. docs/qa-platform-editor.md.
+"""폼으로 스크립트·수동 작성 테스트 조건 만들기·고치기·지우기 — 폼 상태 ⇄ YAML, 사람 검증, 승인 때 바꿀 파일 계획. docs/qa-platform-editor.md.
 
 폼 상태(JSON, 브라우저 EDITOR_JS 가 만든다)가 정본이다. 저장하면 서버가 스크립트 맵(raw)으로 바꿔 기존 초안 흐름에 넣는다.
 값 칸은 문자열로 온다. `{{...}}` 는 그대로 문자열, 그 밖에는 JSON 으로 읽히면 그 값(200 · true · null · "문자열"), 아니면 문자열.
@@ -226,7 +226,7 @@ def suggest_id(domain: str, title: str) -> str:
 # 사람이 쓴 스크립트 검증 — Hermes 초안 검증(drafts.validate)과 달리 id 를 바꾸지 않고, setup 은 covers 없이도 된다
 # ---------------------------------------------------------------------------------------------
 def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[str], library: dict | None = None):
-    """(Case|None, 오류, 경고). library(지금 스크립트)를 주면 uses 를 펼쳐 전제 카드·입력칸까지 확인한다."""
+    """(Case|None, 오류, 경고). library(지금 스크립트)를 주면 uses 를 펼쳐 테스트 데이터 만들기 카드·입력칸까지 확인한다."""
     try:
         case = _validate(copy.deepcopy(raw), "<form>", library)
     except CaseError as ex:
@@ -355,12 +355,12 @@ def plan_case(d: dict, *, cases: dict, operator: str):
 
 
 def plan_tc(d: dict, *, covered_by: dict) -> tuple:
-    """수동 TC 초안(kind tc · tc-delete) → (rel, change, summary, ids). 폼으로 고친 것은 id 로 바꾸고, 새 것은 번호가 겹치면 다음 번호로."""
+    """수동 테스트 조건 초안(kind tc · tc-delete) → (rel, change, summary, ids). 폼으로 고친 것은 id 로 바꾸고, 새 것은 번호가 겹치면 다음 번호로."""
     from .repo import RepoError, append_item, ids_in, replace_item
     doc = yaml.safe_load(d["yaml"]) or {}
     items = doc.get("cases") if isinstance(doc, dict) else doc
     if not isinstance(items, list) or not items:
-        raise RepoError("초안에 TC 항목이 없다")
+        raise RepoError("초안에 테스트 조건 항목이 없다")
     kind = d.get("kind") or "tc"
     rel = "catalog/manual-tc.yaml"
     if kind == "tc-delete":
@@ -387,7 +387,7 @@ def plan_tc(d: dict, *, covered_by: dict) -> tuple:
                     prefix = str(it.get("id") or "").rsplit("#", 1)[0] + "#"
                     it["id"] = next_manual_id(prefix, taken)
                 if not _TC.match(it["id"]):
-                    raise RepoError(f"TC id 형식 오류: {it['id']}")
+                    raise RepoError(f"테스트 조건 id 형식 오류: {it['id']}")
                 text = append_item(text, it)
             final_ids.append(it["id"])
         return text

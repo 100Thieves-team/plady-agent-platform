@@ -1,10 +1,10 @@
-"""Hermes 로 변형 채우기 (docs/qa-platform-scenarios.md §7). 근거 조립 → Hermes → 결정론 검증(§6.1) → 합쳐 저장.
+"""Hermes 로 케이스 채우기 (docs/qa-platform-scenarios.md §7). 근거 조립 → Hermes → 결정론 검증(§6.1) → 합쳐 저장.
 
 원칙은 스크립트 생성(qa/drafts.py)과 같다. Hermes 는 플랫폼이 넣어 준 근거만으로 쓰고, 위키 도구를 쓰지 않는다.
 - 근거: PRD 2장 원문과 요구 id, 그 기능의 규칙표(게이트·검사·명령), 거절 검사의 ErrorCode·자동화 제외, 명령에 묶인 API 요약,
-  지금 시나리오 파일, 테스트 없는 거절 규칙.
-- 출력: 그 기능의 시나리오 파일. 플랫폼은 그것을 **합친다**. 이미 있는 변형은 건드리지 않고, 새 key 의 변형과 비어 있던 gates 만 더한다.
-  사람이 쓴 것을 Hermes 가 덮어쓰지 않게 하려는 것이다. 더한 변형에는 `written_by: hermes` 가 붙는다.
+  지금 시나리오 파일, 아직 테스트가 없는 거절 조건.
+- 출력: 그 기능의 시나리오 파일. 플랫폼은 그것을 **합친다**. 이미 있는 케이스는 건드리지 않고, 새 key 의 케이스와 비어 있던 gates 만 더한다.
+  사람이 쓴 것을 Hermes 가 덮어쓰지 않게 하려는 것이다. 더한 케이스에는 `written_by: hermes` 가 붙는다.
 """
 from __future__ import annotations
 
@@ -18,21 +18,21 @@ from . import scenarios as S
 from .wiki import doc_slug
 
 FILL_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 한 기능의 PRD 2장 사용자 시나리오마다, QA 가 확인할 갈래(변형)와 단계별 게이트를 채운다. "
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 한 기능의 PRD 2장 사용자 시나리오마다, QA 가 확인할 갈래(케이스)와 단계별 게이트를 채운다. "
     "아래에 주어진 근거만 쓴다. 근거에 없는 조건·거절·코드는 지어내지 않는다. 한국어로 쓴다.\n\n"
     "출력 규칙(어기면 버려진다):\n"
     "1. 출력은 ```yaml 코드 블록 하나. 최상위는 `feature:` 와 `scenarios:` 다. 설명 문장은 쓰지 않는다.\n"
     "2. 시나리오 id 는 PRD 2장에 있는 Sn 만 쓴다. 새 시나리오를 만들지 않는다.\n"
     "3. `gates:` 는 단계 요구 id → 그 행동을 허락하는 게이트 id 목록이다. 주어진 게이트 목록에 있는 id 만 쓴다. 조회만 하는 단계에는 적지 않는다.\n"
-    "4. 변형 kind 는 happy · branch · reject · extra 다.\n"
-    "   - happy: 시나리오마다 하나, key 는 happy. checks 에는 그 흐름이 끝났을 때 확인할 명령 성공 TC(C.x) 를 쓴다.\n"
+    "4. 케이스 kind 는 happy · branch · reject · extra 다.\n"
+    "   - happy: 시나리오마다 하나, key 는 happy. checks 에는 그 흐름이 끝났을 때 확인할 명령 성공 테스트 조건(C.x)을 쓴다.\n"
     "   - branch: PRD 의 `분기:` 줄마다 하나. at 은 그 분기 줄의 요구 id.\n"
-    "   - reject: 테스트 없는 거절 규칙 하나에 변형 하나. key 는 검사 key 그대로(시나리오 안에서 겹치면 `게이트끝이름.key`). "
-    "at 은 그 게이트를 gates 에 적은 단계의 요구 id, checks 는 [그 검사 TC id] 하나. ErrorCode 가 없는 검사는 `mode: manual`.\n"
+    "   - reject: 아직 테스트가 없는 거절 조건 하나에 케이스 하나. key 는 검사 key 그대로(시나리오 안에서 겹치면 `게이트끝이름.key`). "
+    "at 은 그 게이트를 gates 에 적은 단계의 요구 id, checks 는 [그 검사 테스트 조건 id] 하나. ErrorCode 가 없는 검사는 `mode: manual`.\n"
     "5. title 은 한국어 한 문장. given(전제)·then(기대 결과)은 검사의 ref·message·error·note 와 PRD 문장에서만 가져오고, 모르면 비운다.\n"
-    "6. checks 에는 주어진 TC id 만 쓴다.\n"
-    "7. 이미 있는 변형 key 는 다시 쓰지 않아도 된다. 써도 플랫폼이 무시한다. 새로 더할 것에 집중한다.\n"
-    "8. 변형 key 는 소문자·숫자·점·하이픈. new·edit·delete 는 쓰지 않는다."
+    "6. checks 에는 주어진 테스트 조건 id 만 쓴다.\n"
+    "7. 이미 있는 케이스 key 는 다시 쓰지 않아도 된다. 써도 플랫폼이 무시한다. 새로 더할 것에 집중한다.\n"
+    "8. 케이스 key 는 소문자·숫자·점·하이픈. new·edit·delete 는 쓰지 않는다."
 )
 
 
@@ -70,7 +70,7 @@ def assemble_fill(*, doc: str, wiki, ssot: dict, catalog, spec, feature, ov_feat
                                               "message": c.get("message"), "note": (c.get("note") or "")[:300] or None,
                                               "excluded": r.get("excluded")}.items() if v})
         g_out.append({"id": g["id"], "name": g.get("name"), "checks": checks})
-    parts.append("# 게이트와 검사 (거절 TC id 는 `게이트#key`, excluded 는 자동화 제외)\n```json\n" + json.dumps(g_out, ensure_ascii=False, indent=1) + "\n```")
+    parts.append("# 게이트와 검사 (거절 테스트 조건 id 는 `게이트#key`, excluded 는 자동화 제외)\n```json\n" + json.dumps(g_out, ensure_ascii=False, indent=1) + "\n```")
     c_out = []
     for c in cmds:
         r = recs.get(c["id"]) or {}
@@ -81,11 +81,11 @@ def assemble_fill(*, doc: str, wiki, ssot: dict, catalog, spec, feature, ov_feat
             api.append(f"{op.method} {op.path} ({o})" if op else o)
         c_out.append({k: v for k, v in {"tc": c["id"], "name": c.get("name"), "actor": c.get("actor"), "gate": c.get("gate"), "api": api or None,
                                         "excluded": r.get("excluded")}.items() if v})
-    parts.append("# 명령 (성공 TC id 는 명령 id)\n```json\n" + json.dumps(c_out, ensure_ascii=False, indent=1) + "\n```")
+    parts.append("# 명령 (성공 테스트 조건 id 는 명령 id)\n```json\n" + json.dumps(c_out, ensure_ascii=False, indent=1) + "\n```")
     cur = S.dump_feature(feature.raw) if feature else "(아직 시나리오 파일이 없다)"
-    parts.append("# 지금 시나리오 파일 (이미 있는 변형은 그대로 둔다)\n```yaml\n" + cur.strip() + "\n```")
+    parts.append("# 지금 시나리오 파일 (이미 있는 케이스는 그대로 둔다)\n```yaml\n" + cur.strip() + "\n```")
     rej = [f"- {s['id']} at {r['at']}: {r['id']} {r['error_code'] or 'ErrorCode 없음'} — {r['title']}" for s in ov_feature["scenarios"] for r in s["untested_rejects"]]
-    parts.append("# 테스트 없는 거절 규칙 (gates 를 새로 적으면 거기 걸린 거절 검사도 더한다)\n" + ("\n".join(rej) or "(없음)"))
+    parts.append("# 아직 테스트가 없는 거절 조건 (gates 를 새로 적으면 거기 걸린 거절 검사도 더한다)\n" + ("\n".join(rej) or "(없음)"))
     parts.append(f"# 출력\n`feature: {doc}` 와 scenarios 를 ```yaml 블록 하나로.")
     text = "\n\n".join(parts)
     return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
@@ -104,7 +104,7 @@ def parse_fill(text: str) -> dict:
 
 
 def merge_op(doc: str, out: dict, feature) -> dict:
-    """Hermes 출력 → 합치기 변경(op action merge). 이미 있는 변형 key 와 PRD 에 없는 형식의 것은 여기서 거르지 않고 apply_op·검증이 본다."""
+    """Hermes 출력 → 합치기 변경(op action merge). 이미 있는 케이스 key 와 PRD 에 없는 형식의 것은 여기서 거르지 않고 apply_op·검증이 본다."""
     scns = []
     for s in out.get("scenarios") or []:
         if not isinstance(s, dict) or not s.get("id"):

@@ -105,7 +105,7 @@ class ApiViewTest(unittest.TestCase):
         self._send("termsList")
         d = self.app.api_detail("termsList")
         h = ui.api_detail(d, operators=["bebe"], operator="bebe", hermes=False)
-        for frag in ("호출해 보기", "/chat/new?op=termsList", "이 API 의 TC", "호출하는 스크립트", "최근 호출", "같은 요청으로 열기", "catalog.terms"):
+        for frag in ("호출해 보기", "/chat/new?op=termsList", "이 API 의 테스트 조건", "호출하는 스크립트", "최근 호출", "같은 요청으로 열기", "catalog.terms"):
             self.assertIn(frag, h)
 
     def test_mcp_tool_and_chat_context(self):

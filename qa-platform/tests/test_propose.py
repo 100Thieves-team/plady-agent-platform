@@ -1,4 +1,4 @@
-"""P4d — PRD 절에서 수동 작성 TC 제안: 공용 조립(번호·도메인·경고), Hermes 제안 파싱, 버튼 경로 초안(kind tc), 도구 경로와 동일 결과."""
+"""P4d — PRD 절에서 수동 작성 테스트 조건 제안: 공용 조립(번호·도메인·경고), Hermes 제안 파싱, 버튼 경로 초안(kind tc), 도구 경로와 동일 결과."""
 from __future__ import annotations
 
 import json
@@ -62,7 +62,7 @@ class ProposeTest(unittest.TestCase):
         self.assertTrue(d["prompt_hash"])
         sent = httpx.request.bodies[-1]
         self.assertIn("PRD/룸 탐색 §4.1 본문", sent["messages"][1]["content"])
-        self.assertIn("기존 TC", sent["messages"][1]["content"])          # 이미 뽑힌 #1 을 알려 준다
+        self.assertIn("기존 테스트 조건", sent["messages"][1]["content"])          # 이미 뽑힌 #1 을 알려 준다
         # 저장 경로는 tc 형식 검증
         items, errors = drafts.validate_manual_tc(d["yaml"])
         self.assertEqual((len(items), errors), (2, []))

@@ -226,7 +226,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(steps[1]["request"]["url"], "https://api.test/v1/rooms/room-9")
         self.assertEqual(steps[1]["request"]["headers"]["Authorization"], "Bearer ***")
         self.assertEqual(steps[0]["request"]["body"], {"postingId": 7})
-        # 스냅샷 불변: 케이스 본문이 런에 박혀 있다
+        # 스냅샷 불변: 스크립트 본문이 런에 박혀 있다
         self.assertIn("id: b.save", rcs["b.save"]["case_yaml"])
 
     def test_cancel_and_events(self):
@@ -292,7 +292,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(rec["prd"][0]["doc"], "룸 생성")
         self.assertTrue(cat.records["C.room.autocancel_not_started"]["excluded"])   # actor: system 제외
         self.assertEqual(cat.records["op.createRoom:E1402"]["expect_hint"]["status"], 400)
-        # 시드 케이스 13건은 카탈로그와 어긋나지 않는다
+        # 시드 스크립트 13건은 카탈로그와 어긋나지 않는다
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
         audit(cases, cat)
@@ -316,13 +316,13 @@ class CatalogTest(unittest.TestCase):
         }
         audit(cases, cat)
         self.assertEqual(cases["x.ghost"].audit["status"], "error")
-        self.assertIn("카탈로그에 없는 TC G.room.cancel", cases["x.ghost"].audit["errors"][0])
+        self.assertIn("테스트 조건 목록에 없는 G.room.cancel", cases["x.ghost"].audit["errors"][0])
         self.assertEqual(cases["x.wrongcode"].audit["status"], "error")
         self.assertEqual(cases["x.wrongop"].audit["status"], "error")
         self.assertEqual(cases["x.policywarn"].audit["status"], "warn")
         self.assertEqual(cases["x.ok"].audit["status"], "ok")
         self.assertTrue(cases["x.ghost"].blocked)
-        self.assertEqual([c.id for c in select(cases, suite="smoke")], ["x.ok"])          # 오류 케이스는 스위트에서 빠진다
+        self.assertEqual([c.id for c in select(cases, suite="smoke")], ["x.ok"])          # 오류 스크립트는 스위트에서 빠진다
         self.assertEqual(len(select(cases, ids=["x.ghost"])), 1)                          # 직접 고르면 들어간다
 
     def test_key_ids_resolve_on_numeric_catalog(self):
@@ -353,7 +353,7 @@ class CatalogTest(unittest.TestCase):
                                       "steps": [{"request": {"method": "POST", "path": "/v1/rooms"}, "expect": {"status": 409, "error_code": "E1427"}}]}))
         audit({c.id: c}, cat_new)
         self.assertEqual(c.covers, ["G.room.create#duplicate-slot-left"])
-        self.assertTrue(any("옛 TC id" in w for w in c.audit["warnings"]))
+        self.assertTrue(any("옛 테스트 조건 id" in w for w in c.audit["warnings"]))
         # 이름만 바뀐 TC 는 diff 에서 삭제+추가가 아니다
         d = diff(cat_old, cat_new)
         self.assertNotIn("G.room.create#duplicate-slot-left", d["added"])
@@ -486,7 +486,7 @@ cases:
         self.assertGreaterEqual(seen["timeout"], 180)
         self.assertEqual([c.id for c, _ in res["accepted"]], ["room.create-limit-reject"])
         self.assertEqual([r for r, _ in res["rejected"]], ["junk"])           # 요청 밖 TC → 버림
-        # 케이스 초안에 넣고 다시 읽는다 (열 추가 마이그레이션 포함)
+        # 스크립트 초안에 넣고 다시 읽는다 (열 추가 마이그레이션 포함)
         st = Store(Path(self.tmp.name) / "qa.sqlite")
         c, w = res["accepted"][0]
         did = st.add_draft(operator="bebe", source="hermes", domain="room", yaml_text=c.to_yaml(), note=None, case_id=c.id, tc_ids=c.covers,
@@ -583,7 +583,7 @@ class HermesTest(unittest.TestCase):
 
         def fake(method, url, headers=None, body=None, timeout=30):
             seen.update(url=url, headers=headers, body=body)
-            return httpx.HttpResult(200, {}, json.dumps({"choices": [{"message": {"content": "분류: 케이스 노후\n근거: …"}}]}), 1)
+            return httpx.HttpResult(200, {}, json.dumps({"choices": [{"message": {"content": "분류: 스크립트 노후\n근거: …"}}]}), 1)
 
         httpx.request = fake
         try:
@@ -593,7 +593,7 @@ class HermesTest(unittest.TestCase):
             steps = [{"ord": 0, "name": "s", "verdict": "fail", "request": {"method": "GET", "path": "/x", "headers": {"Authorization": "Bearer ***"}},
                       "response": {"status": 500, "json": {"result": "ERROR"}}, "checks": [], "error": "e"}]
             out = hermes.triage(cfg, run, rc, steps)
-            self.assertTrue(out.startswith("분류: 케이스 노후"))
+            self.assertTrue(out.startswith("분류: 스크립트 노후"))
             self.assertEqual(seen["url"], "http://hermes:8642/v1/chat/completions")
             self.assertEqual(seen["headers"]["Authorization"], "Bearer k")
             self.assertEqual(seen["body"]["model"], "gpt-5.5")

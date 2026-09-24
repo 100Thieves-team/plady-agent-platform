@@ -1,4 +1,4 @@
-"""QA 데이터 정리 (백엔드 PR #135 dev 전용 API) — 목록·삭제·초기화 호출, 감사 로그, TC 목록·API 화면에서 /v1/dev 제외, 화면."""
+"""QA 데이터 정리 (백엔드 PR #135 dev 전용 API) — 목록·삭제·초기화 호출, 감사 로그, 테스트 조건 목록·API 화면에서 /v1/dev 제외, 화면."""
 from __future__ import annotations
 
 import json

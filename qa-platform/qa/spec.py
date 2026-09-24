@@ -1,4 +1,4 @@
-"""OpenAPI(백엔드 REST Docs → GitHub Pages openapi3.yaml) 읽기 — 계약 TC 의 원천. docs/qa-platform-tc.md §4.1.
+"""OpenAPI(백엔드 REST Docs → GitHub Pages openapi3.yaml) 읽기 — 계약 테스트 조건의 원천. docs/qa-platform-tc.md §4.1.
 
 - `QA_SPEC_URL` 을 1시간 캐시로 읽고, 성공본은 `<data>/catalog/openapi.yaml` 에 남겨 네트워크가 죽어도 마지막 판으로 돈다.
 - `QA_SPEC_FILE` 이 있으면 파일을 읽는다(로컬·테스트).

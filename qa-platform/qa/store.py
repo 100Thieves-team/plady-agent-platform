@@ -1,4 +1,4 @@
-"""sqlite 저장소 — 런·단계·감사 로그·초안·Hermes 대화. 케이스 정본은 여기 없다. docs/qa-platform.md §9."""
+"""sqlite 저장소 — 런·단계·감사 로그·초안·Hermes 대화. 스크립트 정본은 여기 없다. docs/qa-platform.md §9."""
 from __future__ import annotations
 
 import json
@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS ix_chat_messages_chat ON chat_messages(chat_id, id);
 # P2b 에서 늘어난 초안 열. 이미 만들어진 DB 에는 ALTER 로 더한다 (sqlite 는 IF NOT EXISTS 가 없다).
 DRAFT_COLUMNS = {"case_id": "TEXT", "tc_ids": "TEXT NOT NULL DEFAULT '[]'", "validation": "TEXT NOT NULL DEFAULT '{}'",
                  "prompt_hash": "TEXT", "run_id": "TEXT", "decided_by": "TEXT", "decided_at": "TEXT",
-                 # P4: kind case(케이스 YAML) | tc(서술 TC 제안 — manual-tc.yaml 에 사람이 옮긴다)
+                 # P4: kind case(스크립트 YAML) | tc(서술 TC 제안 — manual-tc.yaml 에 사람이 옮긴다)
                  "kind": "TEXT NOT NULL DEFAULT 'case'",
                  # 폼 편집 (docs/qa-platform-editor.md): kind 에 case-delete · tc-delete 가 더해졌다. 승인 때 main 에 바로 커밋한 결과
                  "commit_sha": "TEXT", "commit_url": "TEXT", "file": "TEXT"}
@@ -284,7 +284,7 @@ class Store:
         self._x("DELETE FROM qa_members WHERE member_id=?", (member_id,))
 
     def last_verdicts(self) -> dict[str, dict]:
-        """케이스별 마지막 판정 (목록 화면용)."""
+        """스크립트별 마지막 판정 (목록 화면용)."""
         rows = self._q(
             "SELECT rc.case_id, rc.verdict, rc.run_id, r.created_at FROM run_cases rc JOIN runs r ON r.id=rc.run_id"
             " WHERE rc.id IN (SELECT MAX(id) FROM run_cases WHERE verdict NOT IN ('queued','running') GROUP BY case_id)"
@@ -357,7 +357,7 @@ class Store:
     def interrupt_jobs(self) -> int:
         return self._x("UPDATE hermes_jobs SET status='interrupted', error='서버 재시작으로 중단', finished_at=? WHERE status IN ('queued','running')", (now_iso(),))
 
-    # ---- drafts (케이스 초안, docs/qa-platform-tc.md §7.3) -------------------------------------
+    # ---- drafts (스크립트 초안, docs/qa-platform-tc.md §7.3) -------------------------------------
     def add_draft(self, *, operator: str, source: str, domain: str | None, yaml_text: str, note: str | None,
                   case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None,
                   prompt_hash: str | None = None, kind: str = "case") -> str:
@@ -395,7 +395,7 @@ class Store:
         return [self._draft(r) for r in rows]
 
     def list_changes(self, *, case_id: str | None = None, tc_id: str | None = None, limit: int = 5) -> list[dict]:
-        """저장된 변경(status approved) 중 이 스크립트·TC 에 대한 것, 최신순. 화면의 "최근 변경" 에 쓴다."""
+        """저장된 변경(status approved) 중 이 스크립트·테스트 조건에 대한 것, 최신순. 화면의 "최근 변경" 에 쓴다."""
         if case_id:
             rows = self._q("SELECT * FROM drafts WHERE status='approved' AND case_id=? ORDER BY decided_at DESC LIMIT ?", (case_id, limit))
         else:

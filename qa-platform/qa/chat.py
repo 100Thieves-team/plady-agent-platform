@@ -1,9 +1,9 @@
 """Hermes 채팅 — 어느 화면에서나 뜨는 위젯(채널톡처럼)과 Hermes 사이. docs/qa-platform-hermes.md §3.2.
 
-플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(실행·스크립트·TC 요약)를 붙인다, (2) Hermes `/v1/responses` 를
+플랫폼이 하는 일은 셋뿐이다. (1) 첫 턴에 시스템 프롬프트와 첨부(실행·스크립트·테스트 조건 요약)를 붙인다, (2) Hermes `/v1/responses` 를
 SSE 로 한 번 부르며 델타·도구 호출·도구 결과를 그대로 브라우저로 흘린다(previous_response_id 로 서버가 대화를 잇고, 밀려났으면
 여기 기록으로 다시 잇는다), (3) 끝나면 응답 본문·도구 호출·그 턴에 저장한 변경 id(d-…)를 기록하고 감사 로그에 남긴다.
-실행·발행은 도구에 없으므로 채팅으로는 일어나지 않는다. 스크립트·수동 작성 TC 저장은 검증을 통과하면 바로 된다.
+실행·발행은 도구에 없으므로 채팅으로는 일어나지 않는다. 스크립트·수동 작성 테스트 조건 저장은 검증을 통과하면 바로 된다.
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ DRAFT_TOOLS = ("qa_case_save", "qa_manual_tc_save", "qa_draft_create", "qa_draft
 Emit = Callable[[str, object], None]
 
 SYSTEM = (
-    "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 테스트 케이스(TC)·스크립트·실행 기록·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
+    "너는 이 팀(Spring 백엔드, dev 환경)의 QA 엔지니어다. QA 플랫폼 도구(qa_*)로 테스트 조건·스크립트·실행 기록·커버리지·OpenAPI·PRD 를 읽고 한국어로 답한다.\n"
     "규칙:\n"
-    "1. 테스트 케이스(TC)는 SSOT·PRD·OpenAPI 에서 파생된 것이고 네가 만들거나 고치지 않는다. TC 를 바꾸려면 위키를 고쳐야 한다고 안내한다.\n"
+    "1. 테스트 조건은 SSOT·PRD·OpenAPI 에서 파생된 것이고 네가 만들거나 고치지 않는다. 테스트 조건을 바꾸려면 위키를 고쳐야 한다고 안내한다.\n"
     "2. 스크립트를 쓰거나 고칠 때는 qa_case_save 로 저장한다(고칠 때는 update=true). 검증을 통과하면 main 에 바로 들어가니, 사람이 부탁한 것만 저장한다. "
-    "검증 사유가 돌아오면 고쳐서 다시 부르고, 세 번 넘게 실패하면 사람에게 넘긴다. covers 는 qa_catalog_search 로 확인한 실재 TC id 만 쓴다.\n"
+    "검증 사유가 돌아오면 고쳐서 다시 부르고, 세 번 넘게 실패하면 사람에게 넘긴다. covers 는 qa_catalog_search 로 확인한 실재 테스트 조건 id 만 쓴다.\n"
     "3. 실행·API 직접 호출·위키 보고서 게시는 사람이 화면 버튼으로 한다 — 요청받으면 어디서 누르는지 링크({public_url})로 안내한다.\n"
     "4. 답은 도구로 읽은 사실에 근거하고, 모르는 것은 모른다고 한다. 회원 UUID 같은 식별값은 답에 옮기지 않는다.\n"
     "5. 이 QA 대화에서는 위키를 쓰지 않는다(wiki_apply 금지). 위키 읽기 도구는 PRD·SSOT 확인에만 쓴다.\n"
@@ -46,10 +46,10 @@ def context_block(app, ctx: dict) -> tuple[str, str | None]:
             return "", None
         o = d["op"]
         qa = d["qa"]
-        text = (f"[첨부: API {o['method']} {o['path']} ({o['id']})] {o['summary']} · TC {qa['tc']}건(자동화 {qa['covered']}, 제외 {qa['excluded']}) "
+        text = (f"[첨부: API {o['method']} {o['path']} ({o['id']})] {o['summary']} · 테스트 조건 {qa['tc']}건(자동화 {qa['covered']}, 제외 {qa['excluded']}) "
                 f"· 부르는 스크립트 {len(d['scripts'])}건 · 최근 호출 {len(d['recent_calls'])}건"
                 + (f" · 마지막 {d['recent_calls'][0]['verdict']} {d['recent_calls'][0]['created_at']}" if d["recent_calls"] else "")
-                + f"\n스펙·TC·최근 호출은 qa_api_get(operationId=\"{o['id']}\") 로 읽어라.")
+                + f"\n스펙·테스트 조건·최근 호출은 qa_api_get(operationId=\"{o['id']}\") 로 읽어라.")
         return text, f"API {o['id']}"
     if ctx.get("run"):
         run = app.store.get_run(ctx["run"])
@@ -66,8 +66,8 @@ def context_block(app, ctx: dict) -> tuple[str, str | None]:
         if not c:
             return "", None
         drift = app.drift_of(c)
-        text = (f"[첨부: 스크립트 {c.id}] {c.title} · suite {c.suite} · 검증하는 TC {len(c.covers)}건 · TC 정합성 검사 {c.audit.get('status')}"
-                + (f" · 바뀐 TC {len(drift)}건: {', '.join(d['id'] for d in drift[:6])}" if drift else "")
+        text = (f"[첨부: 스크립트 {c.id}] {c.title} · suite {c.suite} · 검증하는 테스트 조건 {len(c.covers)}건 · 테스트 조건 정합성 검사 {c.audit.get('status')}"
+                + (f" · 바뀐 테스트 조건 {len(drift)}건: {', '.join(d['id'] for d in drift[:6])}" if drift else "")
                 + f"\nYAML 은 qa_case_get(id=\"{c.id}\") 로 읽어라.")
         return text, f"스크립트 {c.id}"
     if ctx.get("tc"):
@@ -76,10 +76,10 @@ def context_block(app, ctx: dict) -> tuple[str, str | None]:
         if not r:
             return "", None
         cov = app.coverage(cat)["by_tc"].get(r["id"], [])
-        text = (f"[첨부: TC {r['id']}] {r.get('title') or ''} · {r['layer']} · {r['domain']}"
+        text = (f"[첨부: 테스트 조건 {r['id']}] {r.get('title') or ''} · {r['layer']} · {r['domain']}"
                 + (f" · 제외: {r['excluded']}" if r.get("excluded") else "") + f" · 검증하는 스크립트 {len(cov)}건"
                 + f"\n레코드·PRD 절은 qa_tc_get(id=\"{r['id']}\") 로 읽어라.")
-        return text, f"TC {r['id']}"
+        return text, f"테스트 조건 {r['id']}"
     return "", None
 
 

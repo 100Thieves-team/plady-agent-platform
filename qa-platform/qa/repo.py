@@ -1,6 +1,6 @@
-"""이 레포(plady-agent-platform)의 스크립트·수동 TC 파일을 main 에서 읽고 main 에 바로 커밋한다. docs/qa-platform-editor.md §6.
+"""이 레포(plady-agent-platform)의 스크립트·수동 테스트 조건 파일을 main 에서 읽고 main 에 바로 커밋한다. docs/qa-platform-editor.md §6.
 
-- 스크립트(`qa-platform/cases/*.yaml`)와 TC 입력(`qa-platform/catalog/*.yaml`)의 원본은 레포다. 플랫폼은 승인 버튼이 눌렸을 때만 쓴다.
+- 스크립트(`qa-platform/cases/*.yaml`)와 테스트 조건 입력(`qa-platform/catalog/*.yaml`)의 원본은 레포다. 플랫폼은 승인 버튼이 눌렸을 때만 쓴다.
 - 커밋 메시지에 `[skip ci]` 를 붙여 YAML 한 줄 때문에 플랫폼 전체가 다시 배포되지 않게 한다. 대신 플랫폼은 시작할 때와
   [스크립트 다시 읽기] 때 main 의 파일을 `<data>/repo/` 로 받아 그걸 읽는다(sync). 커밋한 파일은 그 자리에 바로 쓴다.
 - 파일 전체를 다시 쓰지 않는다. `cases:` 목록에서 그 항목의 텍스트 구간만 바꾸거나 지운다 — 다른 항목·주석·순서가 남는다.
