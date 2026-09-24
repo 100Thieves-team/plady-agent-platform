@@ -24,7 +24,7 @@ FILL_SYSTEM = (
     "1. 출력은 ```yaml 코드 블록 하나. 최상위는 `feature:` 와 `scenarios:` 다. 설명 문장은 쓰지 않는다.\n"
     "2. 시나리오 id 는 PRD 2장에 있는 Sn 만 쓴다. 새 시나리오를 만들지 않는다.\n"
     "3. `gates:` 는 단계 요구 id → 그 행동을 허락하는 게이트 id 목록이다. 주어진 게이트 목록에 있는 id 만 쓴다. 조회만 하는 단계에는 적지 않는다.\n"
-    "4. 케이스 kind 는 happy · branch · reject · extra 다.\n"
+    "4. 시나리오마다 케이스 목록은 YAML 키 `variants:` 에 쓴다(키 이름은 코드와 같아야 한다). 케이스 kind 는 happy · branch · reject · extra 다.\n"
     "   - happy: 시나리오마다 하나, key 는 happy. checks 에는 그 흐름이 끝났을 때 확인할 명령 성공 테스트 조건(C.x)을 쓴다.\n"
     "   - branch: PRD 의 `분기:` 줄마다 하나. at 은 그 분기 줄의 요구 id.\n"
     "   - reject: 아직 테스트가 없는 거절 조건 하나에 케이스 하나. key 는 검사 key 그대로(시나리오 안에서 겹치면 `게이트끝이름.key`). "
@@ -111,7 +111,8 @@ def merge_op(doc: str, out: dict, feature) -> dict:
             continue
         cur = feature.scenario(str(s["id"])) if feature else None
         have = {v.key for v in cur.variants} if cur else set()
-        vs = [dict(S.variant_raw(v), written_by="hermes") for v in s.get("variants") or [] if isinstance(v, dict) and str(v.get("key") or "") not in have]
+        items = s.get("variants") if s.get("variants") is not None else s.get("cases")      # Hermes 가 화면 이름(케이스)을 따라 cases: 로 쓰기도 한다
+        vs = [dict(S.variant_raw(v), written_by="hermes") for v in items or [] if isinstance(v, dict) and str(v.get("key") or "") not in have]
         scns.append({"id": str(s["id"]), "actor": s.get("actor"), "gates": s.get("gates") or {}, "variants": vs})
     return {"feature": doc, "scenario": "*", "action": "merge", "scenarios": scns}
 
@@ -123,7 +124,7 @@ REALIGN_SYSTEM = (
     "너는 Spring 백엔드 팀의 QA 엔지니어다. 한 시나리오의 PRD 문장이나 규칙표 검사가 바뀌었다. 바뀐 문장에 걸린 케이스만 바뀐 만큼 고친다. "
     "주어진 근거만 쓰고 지어내지 않는다. 한국어로 쓴다.\n\n"
     "출력 규칙(어기면 버려진다):\n"
-    "1. 출력은 ```yaml 코드 블록 하나. 시나리오 하나를 `id`, `gates`, `variants` 로 쓴다.\n"
+    "1. 출력은 ```yaml 코드 블록 하나. 시나리오 하나를 `id`, `gates`, `variants`(케이스 목록) 로 쓴다.\n"
     "2. 고쳐도 되는 케이스 key 목록이 주어진다. 그 밖의 케이스는 쓰지 않는다. 써도 플랫폼이 무시한다.\n"
     "3. 없어진 테스트 조건은 checks 에서 뺀다. 바뀐 문장에 맞게 title·given·then·at·checks 를 고친다. 바뀌지 않은 칸은 그대로 둔다.\n"
     "4. gates 는 바뀐 요구 id 의 것만 적는다.\n"
@@ -166,6 +167,8 @@ def parse_realign(text: str, sid: str) -> dict:
             continue
         if isinstance(d, dict) and isinstance(d.get("scenarios"), list):
             d = next((x for x in d["scenarios"] if isinstance(x, dict) and str(x.get("id")) == sid), None)
+        if isinstance(d, dict) and not isinstance(d.get("variants"), list) and isinstance(d.get("cases"), list):
+            d = {**d, "variants": d["cases"]}
         if isinstance(d, dict) and isinstance(d.get("variants"), list):
             return d
     raise S.ScenarioError("Hermes 출력에서 시나리오(variants)를 찾지 못했다")

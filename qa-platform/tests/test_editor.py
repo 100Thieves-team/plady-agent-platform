@@ -181,7 +181,9 @@ class FakeGitHub:
     def __call__(self, method, url, headers=None, body=None, timeout=30):
         if not url.startswith("https://api.github.com/"):
             return httpx.HttpResult(0, {}, "", 1, error="offline")
-        path = url.split("/contents/", 1)[1].split("?")[0]
+        assert url.isascii(), f"URL 에 인코딩 안 된 글자가 있다: {url}"      # 실제 urllib 은 여기서 UnicodeEncodeError (2026-09-24 룸-방명록.yaml)
+        from urllib.parse import unquote
+        path = unquote(url.split("/contents/", 1)[1].split("?")[0])
         if method == "GET":
             if path in self.files:
                 return httpx.HttpResult(200, {}, json.dumps({"content": base64.b64encode(self.files[path].encode()).decode(), "sha": f"blob-{path}"}), 1)

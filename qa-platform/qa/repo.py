@@ -105,6 +105,11 @@ class Repo:
     def enabled(self) -> bool:
         return bool(self.cfg.repo_token)
 
+    def _q(self, rel: str) -> str:
+        """URL 경로에 넣을 레포 안 경로. 시나리오 파일 이름이 한글이라(룸-방명록.yaml) 퍼센트 인코딩해야 한다."""
+        from urllib.parse import quote
+        return quote(f"{self.root}/{rel}", safe="/")
+
     def _api(self, method: str, path: str, body=None) -> httpx.HttpResult:
         return httpx.request(method, f"https://api.github.com/repos/{self.repo}/{path}", body=body, timeout=20,
                              headers={"Authorization": "Bearer " + self.cfg.repo_token, "Accept": "application/vnd.github+json",
@@ -116,7 +121,7 @@ class Repo:
 
     def read(self, rel: str) -> tuple[str | None, str | None]:
         """(텍스트, blob sha). 파일이 없으면 (None, None)."""
-        r = self._api("GET", f"contents/{self.root}/{rel}?ref={self.branch}")
+        r = self._api("GET", f"contents/{self._q(rel)}?ref={self.branch}")
         if r.status == 404:
             return None, None
         if r.status != 200 or not isinstance(r.json, dict):
@@ -124,7 +129,7 @@ class Repo:
         return base64.b64decode(r.json.get("content") or "").decode("utf-8"), r.json.get("sha")
 
     def list_dir(self, rel: str, missing_ok: bool = False) -> list[str]:
-        r = self._api("GET", f"contents/{self.root}/{rel}?ref={self.branch}")
+        r = self._api("GET", f"contents/{self._q(rel)}?ref={self.branch}")
         if r.status == 404 and missing_ok:
             return []
         if r.status != 200 or not isinstance(r.json, list):
@@ -135,7 +140,7 @@ class Repo:
         body = {"message": message, "content": base64.b64encode(text.encode("utf-8")).decode("ascii"), "branch": self.branch}
         if sha:
             body["sha"] = sha
-        r = self._api("PUT", f"contents/{self.root}/{rel}", body)
+        r = self._api("PUT", f"contents/{self._q(rel)}", body)
         if r.status not in (200, 201) or not isinstance(r.json, dict):
             if r.status in (409, 422):
                 raise RepoError(f"main 의 {rel} 이 그사이 바뀌었다 — 잠시 뒤 다시 승인해 달라 (status {r.status})")

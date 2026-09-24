@@ -157,6 +157,12 @@ class HermesScenarioTest(unittest.TestCase):
         with self.assertRaises(BadRequest):
             self.app.fill_scenarios("룸-생성", operator="bebe")
 
+    def test_fill_accepts_cases_key(self):
+        """2026-09-24 실제 실패: Hermes 가 화면 이름을 따라 variants: 대신 cases: 로 썼다."""
+        self.reply(GOOD.replace("    variants:", "    title: 시나리오 제목도 붙였다\n    cases:"))
+        self.assertEqual(self.app.fill_scenarios("룸-생성", operator="bebe")["added"], 2)
+        self.assertEqual(self.gh.puts[-1]["path"], "qa-platform/scenarios/룸-생성.yaml")       # 한글 파일 이름도 URL 에 인코딩돼 저장된다
+
     def test_fill_new_feature_creates_file(self):
         self.reply("```yaml\nfeature: 룸 탐색\nscenarios:\n  - id: S1\n    variants:\n      - {key: happy, kind: happy, title: 조건으로 룸을 찾는다}\n```")
         out = self.app.fill_scenarios("룸-탐색", operator="bebe")
