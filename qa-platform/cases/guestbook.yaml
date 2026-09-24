@@ -63,11 +63,12 @@ cases:
       save:
         guestCommentId: data.commentId
         guestCommentCreatedAt: data.createdAt
-    - name: 정리(취소)
+    - name: 정리(QA 룸 삭제)
       covers: []
       request:
-        method: POST
-        path: /v1/rooms/{{roomId}}/cancellation
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
       expect:
         status: 200
+        result: SUCCESS
       save: {}
