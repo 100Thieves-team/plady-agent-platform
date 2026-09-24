@@ -70,29 +70,11 @@ cases:
     title: 참가자가 신청하면 PENDING 이고 철회 후 방장이 취소할 수 있다
     suite: sanity
     domains: [room, application]
-    operations: [createRoom, submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
+    operations: [submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
     source: ["PRD/룸 참여 및 참여자 관리 §4.2"]
     actor: qa-host
+    uses: { setup: setup.room-open, with: { title: "[QA] 참가 신청 sanity", daysFromNow: 8 } }
     steps:
-      - name: 방장이 룸 생성
-        covers: [op.createRoom:200]
-        request:
-          method: POST
-          path: /v1/rooms
-          body:
-            postingId: "{{fixture.postingId}}"
-            jobRoleId: "{{fixture.jobRoleId}}"
-            round: FIRST
-            type: JOB
-            method: ONLINE
-            minParticipants: 2
-            maxParticipants: 4
-            schedule: { date: "{{date:+8}}", startTime: "10:00", durationMinutes: 60 }
-            title: "[QA] 참가 신청 sanity {{rand}}"
-            resumeId: "{{fixture.qa-host.resumeId}}"
-            resumePublic: true
-        expect: { status: 200, result: SUCCESS }
-        save: { roomId: data.roomId }
       - name: 참가자가 신청
         covers: [C.application.submit, op.submitRoomApplication:201]
         actor: qa-guest

@@ -1,6 +1,7 @@
 # 준비 작업(suite setup) — 버튼 하나로 dev 에 테스트 데이터를 만든다. docs/qa-platform-api.md §5.4.
 # smoke·sanity 와 달리 covers 가 없고, 만든 데이터를 지우지 않는다(그게 목적). 제목 접두 [QA] 는 유지 — 사람이 지운다.
 # inputs 는 준비 작업 화면의 입력칸, {{input.x}} 로 치환. outputs 는 끝나고 화면에 돌려줄 save 변수.
+# uses 는 다른 카드의 단계를 앞에 붙인다(docs/qa-platform-scenarios.md §8). 룸 생성 요청 본문은 setup.room-open 한 곳에만 있다.
 # 요청 본문은 cases/room.yaml 의 sanity(dev 에서 통과한 것)와 같다. 확정(confirm)까지 가는 셋째는 dev 에서 아직 안 돌려 봤다(§11.3).
 cases:
   - id: setup.room-open
@@ -40,33 +41,16 @@ cases:
   - id: setup.room-with-application
     title: 신청이 하나 들어온 룸 만들기
     suite: setup
-    description: qa-host 가 룸을 만들고 qa-guest 가 신청한다(PENDING). 방장의 신청 목록·수락·반려 화면을 볼 때 쓴다.
+    description: qa-host 가 룸을 만들고(setup.room-open) qa-guest 가 신청한다(PENDING). 방장의 신청 목록·수락·반려 화면을 볼 때 쓴다.
     domains: [room, application]
     operations: [createRoom, submitRoomApplication]
     actor: qa-host
+    uses: { setup: setup.room-open, with: { title: "{{input.title}}", daysFromNow: 8 } }
     inputs:
       title: { label: 룸 제목, default: "[QA] 신청 들어온 룸", required: true }
       note: { label: 신청 한마디, default: "[QA] 준비 작업 신청" }
     outputs: [roomId, applicationId]
     steps:
-      - name: 방장이 룸 생성
-        request:
-          method: POST
-          path: /v1/rooms
-          body:
-            postingId: "{{fixture.postingId}}"
-            jobRoleId: "{{fixture.jobRoleId}}"
-            round: FIRST
-            type: JOB
-            method: ONLINE
-            minParticipants: 2
-            maxParticipants: 4
-            schedule: { date: "{{date:+8}}", startTime: "10:00", durationMinutes: 60 }
-            title: "{{input.title}} {{rand}}"
-            resumeId: "{{fixture.qa-host.resumeId}}"
-            resumePublic: true
-        expect: { status: 200, result: SUCCESS }
-        save: { roomId: data.roomId }
       - name: 참가자가 신청
         actor: qa-guest
         request:
@@ -79,40 +63,15 @@ cases:
   - id: setup.room-confirmed
     title: 참여자를 수락하고 진행 확정까지 간 룸 만들기
     suite: setup
-    description: 룸 생성 → qa-guest 신청 → 방장 수락 → 진행 확정. 진행 화면(레일·출석)을 볼 때 쓴다. 최소 진행 인원을 방장 포함 2명으로 잡았다 — dev 가 E1421(최소 인원 미달)을 주면 SSOT 의 인원 계산(방장 포함 여부)을 확인한다.
+    description: 신청 들어온 룸(setup.room-with-application) → 방장 수락 → 진행 확정. 확정된 룸의 상세·완료 화면을 볼 때 쓴다. 최소 진행 인원을 방장 포함 2명으로 잡았다 — dev 가 E1421(최소 인원 미달)을 주면 SSOT 의 인원 계산(방장 포함 여부)을 확인한다.
     domains: [room, application, participation]
     operations: [createRoom, submitRoomApplication, acceptApplication, confirmRoom]
     actor: qa-host
+    uses: { setup: setup.room-with-application, with: { title: "{{input.title}}" } }
     inputs:
       title: { label: 룸 제목, default: "[QA] 확정된 룸", required: true }
     outputs: [roomId, applicationId]
     steps:
-      - name: 방장이 룸 생성
-        request:
-          method: POST
-          path: /v1/rooms
-          body:
-            postingId: "{{fixture.postingId}}"
-            jobRoleId: "{{fixture.jobRoleId}}"
-            round: FIRST
-            type: JOB
-            method: ONLINE
-            minParticipants: 2
-            maxParticipants: 4
-            schedule: { date: "{{date:+9}}", startTime: "10:00", durationMinutes: 60 }
-            title: "{{input.title}} {{rand}}"
-            resumeId: "{{fixture.qa-host.resumeId}}"
-            resumePublic: true
-        expect: { status: 200, result: SUCCESS }
-        save: { roomId: data.roomId }
-      - name: 참가자가 신청
-        actor: qa-guest
-        request:
-          method: POST
-          path: "/v1/rooms/{{roomId}}/applications"
-          body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] 준비 작업 신청" }
-        expect: { status: 201, result: SUCCESS }
-        save: { applicationId: data.applicationId }
       - name: 방장이 수락
         request: { method: POST, path: "/v1/rooms/{{roomId}}/applications/{{applicationId}}/accept" }
         expect: { status: 200, result: SUCCESS, json: { "data.status": ACCEPTED } }
@@ -145,46 +104,15 @@ cases:
   - id: setup.room-ready-to-start
     title: 진행 시작 직전 상태의 룸 만들기 (확정 + 시작 시각 지남)
     suite: setup
-    description: 룸 생성 → qa-guest 신청 → 방장 수락 → 진행 확정 → dev 전용 API 로 시작 시각을 어제로. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.
+    description: 확정된 룸(setup.room-confirmed) → dev 전용 API 로 시작 시각을 어제로. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.
     domains: [room, application, participation]
     operations: [createRoom, submitRoomApplication, acceptApplication, confirmRoom, rescheduleQaRoom]
     actor: qa-host
+    uses: { setup: setup.room-confirmed, with: { title: "{{input.title}}" } }
     inputs:
       title: { label: 룸 제목, default: "[QA] 진행 직전 룸", required: true }
     outputs: [roomId, applicationId, startAt]
     steps:
-      - name: 방장이 룸 생성
-        request:
-          method: POST
-          path: /v1/rooms
-          body:
-            postingId: "{{fixture.postingId}}"
-            jobRoleId: "{{fixture.jobRoleId}}"
-            round: FIRST
-            type: JOB
-            method: ONLINE
-            minParticipants: 2
-            maxParticipants: 4
-            schedule: { date: "{{date:+9}}", startTime: "10:00", durationMinutes: 60 }
-            title: "{{input.title}} {{rand}}"
-            resumeId: "{{fixture.qa-host.resumeId}}"
-            resumePublic: true
-        expect: { status: 200, result: SUCCESS }
-        save: { roomId: data.roomId }
-      - name: 참가자가 신청
-        actor: qa-guest
-        request:
-          method: POST
-          path: "/v1/rooms/{{roomId}}/applications"
-          body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] 진행 직전 룸 신청" }
-        expect: { status: 201, result: SUCCESS }
-        save: { applicationId: data.applicationId }
-      - name: 방장이 수락
-        request: { method: POST, path: "/v1/rooms/{{roomId}}/applications/{{applicationId}}/accept" }
-        expect: { status: 200, result: SUCCESS }
-      - name: 방장이 진행 확정
-        request: { method: POST, path: "/v1/rooms/{{roomId}}/confirmation" }
-        expect: { status: 200, result: SUCCESS }
       - name: 시작 시각을 어제로 (dev 전용 API)
         request:
           method: POST

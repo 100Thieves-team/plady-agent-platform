@@ -137,5 +137,22 @@ class SetupRunTest(unittest.TestCase):
         self.assertIn('window.SETUP_OUT={"roomId": "room-9"}', h3)
 
 
+class SeedUsesTest(unittest.TestCase):
+    """시드 카드끼리의 중복과 room.apply-and-withdraw 의 준비 단계를 uses 로 줄였다 (docs/qa-platform-scenarios.md §13)."""
+
+    def test_seed_cards_and_scripts_use_uses(self):
+        cases, errors = load_dir(ROOT / "cases")
+        self.assertEqual(errors, [])
+        for cid, card in (("setup.room-with-application", "setup.room-open"), ("setup.room-confirmed", "setup.room-with-application"),
+                          ("setup.room-ready-to-start", "setup.room-confirmed"), ("room.apply-and-withdraw", "setup.room-open")):
+            self.assertEqual((cases[cid].uses or {}).get("setup"), card, cid)
+        ready = cases["setup.room-ready-to-start"]
+        self.assertEqual([s["name"] for s in ready.steps][:4], ["룸 생성", "참가자가 신청", "방장이 수락", "방장이 진행 확정"])
+        aw = cases["room.apply-and-withdraw"]
+        self.assertNotIn("op.createRoom:200", aw.covers)
+        self.assertEqual((aw.steps[0]["given"], aw.steps[0]["request"]["path"]), ("setup.room-open", "/v1/rooms"))
+        self.assertTrue(aw.steps[0]["request"]["body"]["title"].startswith("[QA] 참가 신청 sanity"))
+
+
 if __name__ == "__main__":
     unittest.main()
