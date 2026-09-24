@@ -1,5 +1,6 @@
 # 룸 — 탐색은 비로그인 smoke, 생성·신청 흐름은 테스트 계정이 필요한 sanity.
 # 쓰기 케이스는 자기가 만든 데이터를 자기가 닫는다(취소). 제목 접두 [QA].
+# variant: 는 구현하는 시나리오 변형(scenarios/<기능>.yaml). 없는 것은 "시나리오 밖" 이다 (docs/qa-platform-scenarios.md §13).
 cases:
   - id: room.form-options
     title: 룸 생성 폼 선택지를 조회한다
@@ -25,12 +26,13 @@ cases:
         request: { method: GET, path: /v1/rooms, query: { size: 5 } }
         expect: { status: 200, result: SUCCESS, exists: [data.rooms, data.totalCount] }
 
-  - id: room.create-and-cancel
-    title: 방장이 룸을 만들고 취소하면 CANCELED 가 되고 재취소는 E1410 이다
+  - id: room.create
+    title: 방장이 온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다
     suite: sanity
+    variant: 룸-생성/S1/happy
     domains: [room]
     operations: [createRoom, roomDetail, cancelRoom]
-    source: ["PRD/룸 생성 §4.8", "PRD/룸 참여 및 참여자 관리 §4.9"]
+    source: ["PRD/룸 생성 §4.8"]
     actor: qa-host
     steps:
       - name: 룸 생성
@@ -57,18 +59,47 @@ cases:
         covers: [op.roomDetail:200]
         request: { method: GET, path: "/v1/rooms/{{roomId}}" }
         expect: { status: 200, json: { "data.hostMemberId": "{{actor.qa-host.memberId}}", "data.status": RECRUITING } }
+      - name: 정리(취소)
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        expect: { status: 200 }
+
+  - id: room.cancel
+    title: 일반 참여자가 없는 모집 중인 룸을 방장이 취소한다
+    suite: sanity
+    variant: 룸-생성/S2/cancel
+    domains: [room]
+    operations: [cancelRoom]
+    source: ["PRD/룸 생성 §4.10"]
+    actor: qa-host
+    uses: { setup: setup.room-open, with: { title: "[QA] 룸 취소 sanity" } }
+    steps:
       - name: 취소
-        covers: [C.participation.cancel, op.cancelRoom:200]
+        covers: [C.room.cancel, op.cancelRoom:200]
+        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        expect: { status: 200, result: SUCCESS }
+
+  - id: room.cancel-not-recruiting
+    title: 이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/room-recruiting
+    domains: [room]
+    operations: [cancelRoom]
+    source: ["PRD/룸 생성 §4.10"]
+    actor: qa-host
+    uses: { setup: setup.room-open, with: { title: "[QA] 룸 재취소 sanity" } }
+    steps:
+      - name: 취소
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200, result: SUCCESS }
       - name: 재취소는 모집 중이 아니라 E1410
-        covers: ["G.participation.cancel#participation-joined", op.cancelRoom:E1410]
+        covers: ["G.room.cancel#room-recruiting", op.cancelRoom:E1410]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 409, error_code: E1410 }
 
   - id: room.apply-and-withdraw
     title: 참가자가 신청하면 PENDING 이고 철회 후 방장이 취소할 수 있다
     suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/withdraw
     domains: [room, application]
     operations: [submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
     source: ["PRD/룸 참여 및 참여자 관리 §4.2"]
@@ -101,6 +132,7 @@ cases:
   - id: room.creation-limit
     title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
     suite: sanity
+    variant: 룸-생성/S1/creation-limit
     domains: [room]
     operations: [roomCreationLimit]
     covers: [op.roomCreationLimit:200, PRD.룸-생성.4.7#1]

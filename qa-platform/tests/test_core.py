@@ -86,7 +86,7 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertGreaterEqual(len(cases), 9)
         self.assertEqual(cases["auth.me-without-token"].suite, "smoke")
-        self.assertTrue(cases["room.create-and-cancel"].needs_actor())
+        self.assertTrue(cases["room.create"].needs_actor())
         self.assertEqual(len(cases["platform.health"].hash), 16)
 
     def test_validation_errors(self):
@@ -296,8 +296,7 @@ class CatalogTest(unittest.TestCase):
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
         audit(cases, cat)
-        # 오류(스위트에서 빠짐)는 없어야 한다. 경고는 위키 판에 따라 생길 수 있다 — 예: 최신 SSOT 가 G.participation.cancel 검사에
-        # error E1419 를 채워 room.create-and-cancel 4단계(E1410 기대)에 "바인딩 코드가 다르다" 경고가 붙는다
+        # 오류(스위트에서 빠짐)는 없어야 한다. 경고는 위키 판에 따라 생길 수 있다
         bad = {cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}
         self.assertEqual(bad, {})
         self.assertTrue(all(c.covers for c in cases.values() if c.suite != "setup"))   # 준비 작업(setup)은 covers 가 없다

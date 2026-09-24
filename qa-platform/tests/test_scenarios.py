@@ -244,5 +244,34 @@ class CheckTest(unittest.TestCase):
         self.assertEqual([x["id"] for x in ui.variants_of_tc(ov, "C.room.create")], ["룸-생성/S1/happy"])
 
 
+@unittest.skipUnless((WIKI_DIR / "wiki/policy/_src/상태-SSOT.yaml").is_file(), "위키 체크아웃 없음")
+class SeedTest(unittest.TestCase):
+    """레포의 시나리오 파일(룸 생성, 룸 참여)과 옮긴 스크립트가 지금 위키·TC 목록과 맞는다 (§13)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.app = App(Config({"QA_DATA_DIR": self.tmp.name, "QA_WIKI_DIR": str(WIKI_DIR), "QA_SPEC_FILE": str(SPEC_FIXTURE),
+                               "QA_ACTORS": json.dumps({"qa-host": "m1"})}))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_seed_clean_and_migrated(self):
+        self.assertEqual(self.app.scenario_errors, [])
+        ov, chk = self.app.scenario_view()
+        self.assertEqual((chk["errors"], chk["warnings"]), ([], []))
+        self.assertEqual(sorted(self.app.features), ["룸-생성", "룸-참여-및-참여자-관리"])
+        vmap = {c.id: c.variant for c in self.app.cases.values() if c.variant}
+        self.assertEqual(vmap, {"room.create": "룸-생성/S1/happy", "room.creation-limit": "룸-생성/S1/creation-limit", "room.cancel": "룸-생성/S2/cancel",
+                                "room.cancel-not-recruiting": "룸-생성/S2/room-recruiting", "room.apply-and-withdraw": "룸-참여-및-참여자-관리/S1/withdraw"})
+        self.assertNotIn("room.create-and-cancel", self.app.cases)
+        self.assertEqual(self.app.cases["room.cancel-not-recruiting"].covers, ["G.room.cancel#room-recruiting", "op.cancelRoom:E1410"])   # E1419 검사와 어긋나던 것을 바로잡았다
+        f = next(x for x in ov if x["slug"] == "룸-생성")
+        self.assertGreater(f["counts"]["rejects"], 0)
+        self.assertEqual(len(ov), len(self.app.wiki.prd_docs()))
+        ctx = self.app.editor_context()
+        self.assertIn("룸-생성/S1/happy", [v["id"] for v in ctx["variants"]])
+
+
 if __name__ == "__main__":
     unittest.main()

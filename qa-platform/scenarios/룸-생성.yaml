@@ -1,0 +1,67 @@
+# 「룸 생성」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+# 변형 상태와 테스트 없는 거절 규칙은 플랫폼이 스크립트·TC 목록·자동화 제외를 보고 계산한다.
+feature: 룸 생성
+scenarios:
+  - id: S1
+    actor: qa-host
+    gates:
+      R6: [G.room.create]
+      R143: [G.room.create_batch]
+    variants:
+      - key: happy
+        kind: happy
+        title: 온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다
+        given: 활성 룸이 없는 방장
+        then: 생성 200, 상태 RECRUITING, 상세의 방장이 본인
+        checks: [C.room.create, op.createRoom:200]
+      - key: pasted-posting
+        kind: branch
+        at: R3
+        title: 목록에 없는 공고는 링크를 붙여 그 자리에서 만든다
+        mode: manual
+      - key: batch
+        kind: branch
+        at: R143
+        title: 진행 일정을 여러 개 고르면 같은 설정의 룸이 일정 수만큼 만들어진다
+        checks: [C.room.create_batch]
+      - key: headcount-range
+        kind: reject
+        at: R6
+        title: 최대 모집 인원이 최소 진행 인원보다 작으면 E1402 로 거절된다
+        given: minParticipants 4, maxParticipants 2
+        then: E1402, 룸이 만들어지지 않는다
+        checks: [G.room.create#headcount-range]
+      - key: creation-limit
+        kind: extra
+        title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
+        checks: [op.roomCreationLimit:200]
+
+  - id: S2
+    actor: qa-host
+    gates:
+      R146: [G.room.update]
+      R147: [G.room.cancel]
+      R148: [G.participation.cancel]
+    variants:
+      - key: happy
+        kind: happy
+        title: 방장이 모집 중인 룸의 정보를 고친다
+        checks: [C.room.update]
+      - key: cancel
+        kind: branch
+        at: R147
+        title: 일반 참여자가 없는 모집 중인 룸을 방장이 취소한다
+        given: 방장만 있는 모집 중인 룸
+        then: 취소 200
+        checks: [C.room.cancel, op.cancelRoom:200]
+      - key: host-leave
+        kind: branch
+        at: R148
+        title: 일반 참여자가 있으면 방장이 나가고 가장 먼저 참여한 참여자가 방장이 된다
+      - key: room-recruiting
+        kind: reject
+        at: R147
+        title: 이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다
+        given: 방장이 한 번 취소한 룸
+        then: 409 E1410
+        checks: [G.room.cancel#room-recruiting]

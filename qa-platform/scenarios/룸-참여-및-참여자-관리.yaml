@@ -1,0 +1,32 @@
+# 「룸 참여 및 참여자 관리」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 룸 참여 및 참여자 관리
+scenarios:
+  - id: S1
+    actor: qa-guest
+    gates:
+      R5: [G.application.submit]
+      R7: [G.application.accept, G.application.reject]
+      R179: [G.application.withdraw]
+      R10: [G.participation.cancel, G.participation.kick]
+    variants:
+      - key: happy
+        kind: happy
+        title: 참가를 신청하면 대기 중이 되고 방장이 수락하면 참여자가 된다
+        given: 모집 중인 룸, 신청자가 참여 중인 룸이 없다
+        then: 신청 PENDING, 수락 ACCEPTED, 참여자 목록에 신청자가 보인다
+        checks: [C.application.submit, C.application.accept]
+      - key: withdraw
+        kind: branch
+        at: R179
+        title: 방장이 처리하기 전에 신청을 철회하면 처리 대상에서 빠진다
+        given: 대기 중인 신청
+        then: 철회 200
+        checks: [C.application.withdraw, op.withdrawRoomApplication:200]
+      - key: reapply-after-withdraw
+        kind: branch
+        at: R180
+        title: 신청을 철회한 사람이 같은 룸에 다시 신청한다
+      - key: reapply-after-cancel
+        kind: branch
+        at: R181
+        title: 참여를 직접 취소한 사람이 같은 룸에 다시 신청한다

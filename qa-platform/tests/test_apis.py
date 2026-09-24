@@ -88,7 +88,7 @@ class ApiViewTest(unittest.TestCase):
         d = self.app.api_detail("createRoom")
         self.assertEqual(d["op"]["method"], "POST")
         self.assertTrue(d["tcs"]["contract"] and d["tcs"]["policy"])
-        s = next(x for x in d["scripts"] if x["id"] == "room.create-and-cancel")
+        s = next(x for x in d["scripts"] if x["id"] == "room.create")
         self.assertTrue(s["steps"] and s["declared"])
         self.assertIn("_룸_생성", d["docs_url"])                              # REST Docs 절 앵커 추정
         self.assertIsNone(self.app.api_detail("nope"))

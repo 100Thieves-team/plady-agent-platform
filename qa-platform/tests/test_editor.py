@@ -278,7 +278,7 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(self.app.store.get_draft(res["id"])["source"], "form-edit")
         after = self.gh.files["qa-platform/cases/room.yaml"]
         self.assertIn("(폼으로 고침)", after)
-        self.assertEqual(after.split("  - id: room.create-and-cancel")[1], before.split("  - id: room.create-and-cancel")[1])
+        self.assertEqual(after.split("  - id: room.create\n")[1], before.split("  - id: room.create\n")[1])
         self.assertTrue(after.startswith(before.split("  - id: room.explore")[0]))
         self.assertIn("room.explore 수정", self.gh.puts[-1]["message"])
         self.assertEqual(self.app.cases["room.explore"].title, st["title"])

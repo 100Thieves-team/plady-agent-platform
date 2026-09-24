@@ -36,7 +36,7 @@ class ReviseTest(unittest.TestCase):
         self.app = App(Config({"QA_DATA_DIR": self.tmp.name, "QA_WIKI_DIR": str(WIKI_DIR), "QA_SPEC_FILE": str(SPEC_FIXTURE), "HERMES_API_KEY": "k",
                                "HERMES_API_URL": "http://hermes:8642", "QA_ACTORS": json.dumps({"qa-host": "m1"}), "QA_FIXTURES": json.dumps({"postingId": 1, "jobRoleId": 1, "qa-host.resumeId": "r1"})}))
         self.cat = self.app.current_catalog()
-        self.case = self.app.cases["room.create-and-cancel"]
+        self.case = self.app.cases["room.create"]
         self.orig = httpx.request
 
     def tearDown(self):
@@ -67,15 +67,15 @@ class ReviseTest(unittest.TestCase):
         self.assertTrue(all(x.startswith("op.createRoom:") for x in c) and c)
 
     def test_assemble_revision(self):
-        ch = self._drift(changed="C.room.create", removed="op.cancelRoom:E1410")
+        ch = self._drift(changed="C.room.create", removed="op.roomDetail:200")
         drift = self.app.drift_of(self.case)
-        self.assertEqual({d["id"] for d in drift}, {"C.room.create", "op.cancelRoom:E1410"})
+        self.assertEqual({d["id"] for d in drift}, {"C.room.create", "op.roomDetail:200"})
         text, h, allowed = drafts.assemble_revision(cfg=self.app.cfg, catalog=self.cat, spec=self.app.spec.get(), wiki=self.app.wiki, case=self.case, drift=drift, changes=ch)
         self.assertEqual(len(h), 12)
         self.assertIn("# 현재 스크립트", text)
         self.assertIn("(옛 제목)", text)                       # 변경 전 스냅샷
-        self.assertIn("사라진 TC op.cancelRoom:E1410", text)
-        self.assertNotIn("op.cancelRoom:E1410", allowed)       # 사라진 것은 허용 목록에서 빠진다
+        self.assertIn("사라진 TC op.roomDetail:200", text)
+        self.assertNotIn("op.roomDetail:200", allowed)       # 사라진 것은 허용 목록에서 빠진다
         self.assertIn("C.room.create", allowed)
         self.assertIn("# 허용되는 covers", text)
 
@@ -99,7 +99,7 @@ class ReviseTest(unittest.TestCase):
 
     def test_revise_keeps_id_even_if_hermes_changes_it(self):
         self._drift(changed="C.room.create")
-        httpx.request = _chat_reply("```yaml\n" + self.case.to_yaml().replace("id: room.create-and-cancel", "id: room.other") + "```")
+        httpx.request = _chat_reply("```yaml\n" + self.case.to_yaml().replace("id: room.create\n", "id: room.other\n") + "```")
         out = self.app.revise_case(self.case.id, operator="bebe", session_hash=None, ip=None)
         self.assertEqual(self.app.store.get_draft(out["id"])["case_id"], self.case.id)
 
