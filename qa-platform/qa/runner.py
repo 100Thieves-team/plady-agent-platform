@@ -214,6 +214,11 @@ class Runner:
             total_ms += ms
             if sv != "pass":
                 verdict, err = sv, serr
+                if step.get("given") and sv == "fail":
+                    # 전제 카드(uses) 단계가 틀리면 확인하려던 규칙까지 가지 못한 것 — fail 이 아니라 error (docs/qa-platform-scenarios.md §8.3)
+                    verdict = "error"
+                if step.get("given") and sv != "skipped":
+                    err = f"전제 준비 실패({step['given']}): {serr}"
                 break
         self.store.update_run_case(rcid, verdict=verdict, duration_ms=total_ms, error=err)
         return verdict, total_ms, err
@@ -223,6 +228,8 @@ class Runner:
         name = step.get("name") or f"step {i + 1}"
         actor = step.get("actor", case.actor)
         record = {"method": step["request"]["method"], "path": step["request"].get("path"), "actor": actor}
+        if step.get("given"):
+            record["given"] = step["given"]        # 결과 화면이 전제 단계를 접어 보인다
         op_id = self._op_of(record["method"], record["path"])
         try:
             req = ctx.render(step["request"])

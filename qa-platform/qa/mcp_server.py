@@ -428,7 +428,8 @@ class McpServer:
                 continue
             requested = list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])]
             existing = set(self.app.cases) - ({rid} if update else set())
-            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=existing, actors=self.app.all_actors())
+            case, errors, warnings = draftsmod.validate(raw, requested=requested, catalog=cat, cfg=self.app.cfg, existing_ids=existing, actors=self.app.all_actors(),
+                                                         library=self.app.cases)
             if not case:
                 rejected.append({"case_id": rid, "errors": errors, "warnings": warnings})
                 continue

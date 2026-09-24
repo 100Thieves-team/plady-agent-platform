@@ -15,7 +15,7 @@ import yaml
 from .cases import _TC, CaseError, _validate, audit
 from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE
 
-CASE_KEYS = ("id", "title", "suite", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "inputs", "outputs", "steps")
+CASE_KEYS = ("id", "title", "suite", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
 STEP_KEYS = ("name", "actor", "covers", "request", "expect", "save")
 REQ_KEYS = ("method", "path", "query", "body")
 EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
@@ -83,7 +83,7 @@ def to_state(raw: dict) -> dict:
           "inputs": [{"name": k, "label": (v or {}).get("label", "") if isinstance(v, dict) else "", "default": value_to_cell((v or {}).get("default") if isinstance(v, dict) else v) if ((v or {}).get("default") if isinstance(v, dict) else v) is not None else "",
                       "required": bool((v or {}).get("required")) if isinstance(v, dict) else False, "hint": (v or {}).get("hint", "") if isinstance(v, dict) else ""}
                      for k, v in (raw.get("inputs") or {}).items()],
-          "outputs": list(raw.get("outputs") or []), "steps": []}
+          "outputs": list(raw.get("outputs") or []), "uses": _uses_state(raw.get("uses")), "steps": []}
     step_covers = {t for s in raw.get("steps") or [] if isinstance(s, dict) for t in (s.get("covers") or [])}
     st["covers"] = [t for t in st["covers"] if t not in step_covers]     # 단계 covers 는 단계에만 보인다 (로더가 합친다)
     for s in raw.get("steps") or []:
@@ -102,6 +102,16 @@ def to_state(raw: dict) -> dict:
             "save": [{"name": k, "path": v} for k, v in (s.get("save") or {}).items()],
         })
     return st
+
+
+def _uses_state(u) -> dict:
+    """uses → 폼 상태 {setup, with: {입력: 칸 문자열}}. `uses: setup.x` 축약도 받는다."""
+    if isinstance(u, str):
+        u = {"setup": u}
+    if not isinstance(u, dict):
+        return {"setup": "", "with": {}}
+    return {"setup": str(u.get("setup") or ""),
+            "with": {str(k): ("" if v is None else value_to_cell(v)) for k, v in (u.get("with") or {}).items()}}
 
 
 def _strs(v) -> list[str]:
@@ -179,6 +189,10 @@ def from_state(st: dict, *, op_of=None) -> dict:
         raw["actor"] = str(st["actor"]).strip()
     if st.get("reviewed"):
         raw["reviewed"] = st["reviewed"]
+    u = st.get("uses") or {}
+    if isinstance(u, dict) and str(u.get("setup") or "").strip():
+        w = {str(k).strip(): cell_to_value(v) for k, v in (u.get("with") or {}).items() if str(k).strip() and str(v or "").strip()}
+        raw["uses"] = {"setup": str(u["setup"]).strip(), **({"with": w} if w else {})}
     inputs = {}
     for r in st.get("inputs") or []:
         n = str(r.get("name") or "").strip()
@@ -209,10 +223,10 @@ def suggest_id(domain: str, title: str) -> str:
 # ---------------------------------------------------------------------------------------------
 # 사람이 쓴 스크립트 검증 — Hermes 초안 검증(drafts.validate)과 달리 id 를 바꾸지 않고, setup 은 covers 없이도 된다
 # ---------------------------------------------------------------------------------------------
-def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[str]):
-    """(Case|None, 오류, 경고)."""
+def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[str], library: dict | None = None):
+    """(Case|None, 오류, 경고). library(지금 스크립트)를 주면 uses 를 펼쳐 전제 카드·입력칸까지 확인한다."""
     try:
-        case = _validate(copy.deepcopy(raw), "<form>")
+        case = _validate(copy.deepcopy(raw), "<form>", library)
     except CaseError as ex:
         return None, [str(ex).replace("<form>:", "").strip()], []
     errors, warnings = [], []
@@ -233,7 +247,7 @@ def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[st
         last = case.steps[-1]["request"]
         if not (last["method"] == "DELETE" or CLEANUP_HINT.search(last.get("path") or "")):
             warnings.append("쓰기 스크립트인데 마지막 단계가 정리(취소·철회·삭제)로 보이지 않는다")
-    for i, s in enumerate(case.steps, 1):
+    for i, s in enumerate(case.own_steps, 1):
         body = s["request"].get("body")
         if s["request"]["method"] in WRITE and isinstance(body, dict) and isinstance(body.get("title"), str) and not body["title"].startswith("[QA]"):
             warnings.append(f"단계 {i} 의 title 이 [QA] 로 시작하지 않는다 — 나중에 찾아 지우기 어렵다")

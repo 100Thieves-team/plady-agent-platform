@@ -8,7 +8,7 @@ import json
 
 from .ui import badge, e, h, kst
 
-EDITOR_JS_VERSION = "4"
+EDITOR_JS_VERSION = "5"
 JOBS_JS_VERSION = "1"
 
 EDIT_CSS = """
@@ -54,9 +54,10 @@ def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str |
 EDITOR_JS = r"""
 (function(){
   var el=document.getElementById('ed-state'); if(!el) return;
-  var S=JSON.parse(el.textContent), ED=window.ED||{}, CTX={ops:[],tcs:[],actors:[],fixtures:[]}, OPINFO={}, VIEW={};
+  var S=JSON.parse(el.textContent), ED=window.ED||{}, CTX={ops:[],tcs:[],actors:[],fixtures:[],setups:[]}, OPINFO={}, VIEW={};
   var root=document.getElementById('ed-root');
   S.steps=S.steps&&S.steps.length?S.steps:[blankStep()];
+  S.uses=S.uses||{setup:'',with:{}};S.uses.with=S.uses.with||{};
   function blankStep(){return {name:'',actor:'',covers:[],method:'GET',path:'',query:[],body:'',expect:{status:'',result:'',error_code:'',json:[],exists:[]},save:[]}}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function getP(p){var o=S;p.split('.').forEach(function(k){o=(o==null)?undefined:o[k]});return o}
@@ -75,8 +76,16 @@ EDITOR_JS = r"""
   function matchPath(tpl,path){var a=segs(tpl.split('?')[0]),b=segs((path||'').split('?')[0]);if(a.length!==b.length)return false;for(var i=0;i<a.length;i++){if(a[i].charAt(0)==='{'&&a[i].slice(-1)==='}'){if(!b[i])return false;continue}if(b[i].indexOf('{{')===0)return false;if(a[i]!==b[i])return false}return true}
   function opOf(s){for(var i=0;i<CTX.ops.length;i++){var o=CTX.ops[i];if(o.method===s.method&&s.path&&matchPath(o.path,s.path))return o.id}return ''}
   function vars(){var v=[];(CTX.fixtures||[]).forEach(function(k){v.push('{{fixture.'+k+'}}')});(CTX.actors||[]).forEach(function(a){v.push('{{actor.'+a+'.memberId}}')});
+    usedOuts().forEach(function(n){v.push('{{'+n+'}}')});
     S.steps.forEach(function(s){(s.save||[]).forEach(function(r){if(r.name)v.push('{{'+r.name+'}}')})});(S.inputs||[]).forEach(function(r){if(r.name)v.push('{{input.'+r.name+'}}')});
     return v.concat(['{{date:+7}}','{{rand}}','{{uuid}}'])}
+  function card(id){for(var i=0;i<(CTX.setups||[]).length;i++){if(CTX.setups[i].id===id)return CTX.setups[i]}return null}
+  function usedOuts(){var c=card(S.uses.setup);return c?c.outputs:[]}
+  function usesHtml(){var c=card(S.uses.setup),opts=(CTX.setups||[]).filter(function(x){return x.id!==S.id}).map(function(x){return [x.id,x.id+' — '+x.title]});
+    var h=fld('전제 카드'+help('editor.uses'),sel('uses.setup',opts,'없음 (처음부터 단계를 적는다)'),c?'이 카드의 단계 '+c.steps+'개를 먼저 돈다. 결과값 '+c.outputs.map(function(n){return '{{'+n+'}}'}).join(' ')+' 을 아래 단계에서 쓴다. 전제 단계가 실패하면 판정은 오류다':'룸 만들기·신청 같은 준비 단계를 테스트 데이터 만들기 카드로 대신한다');
+    if(S.uses.setup&&!c)h+='<p class="hint bad">카드 '+esc(S.uses.setup)+' 가 지금 목록에 없다</p>';
+    if(c&&c.inputs.length)h+='<table class="bf">'+c.inputs.map(function(f){return '<tr><td class="nm'+(f.required&&(f['default']==null||f['default']==='')?' req':'')+'">'+esc(f.label)+' <span class="mono small mut">'+esc(f.name)+'</span></td><td><input data-k="uses.with.'+esc(f.name)+'" value="'+esc(S.uses.with[f.name]==null?'':S.uses.with[f.name])+'" list="dl-vars" placeholder="'+esc(f['default']==null?'':'기본값 '+f['default'])+'">'+(f.hint?'<div class="hint">'+esc(f.hint)+'</div>':'')+'</td></tr>'}).join('')+'</table>';
+    return h}
   function refreshVars(){document.getElementById('dl-vars').innerHTML=vars().map(function(x){return '<option value="'+esc(x)+'">'}).join('')}
   function parseBody(s){var t=(s.body||'').trim();if(!t)return {};try{var o=JSON.parse(t);return (o&&typeof o==='object'&&!Array.isArray(o))?o:null}catch(e){return null}}
   function getIn(o,name){return name.split('.').reduce(function(a,k){return a==null?undefined:a[k]},o)}
@@ -130,10 +139,10 @@ EDITOR_JS = r"""
       +fld('제목',inp('title','방장이 룸을 만들고 취소하면 CANCELED 가 된다'),'한국어 한 문장',true)
       +fld('설명','<textarea data-k="description" rows="2">'+esc(S.description)+'</textarea>')
       +'<div class="g2">'+fld('도메인',lst('domains','room'),'API 를 고르면 자동으로 채워진다. 쉼표로 여러 개')+fld('기본 테스트 계정',sel('actor',CTX.actors,'없음 (로그인 안 함)'),'단계마다 따로 정할 수도 있다')+'</div>'
-      +fld('출처',lst('source','PRD/룸 생성 §4.8'),'근거 문서. 쉼표로 여러 개');
+      +fld('출처',lst('source','PRD/룸 생성 §4.8'),'근거 문서. 쉼표로 여러 개')+usesHtml();
     if(S.suite!=='setup')h+=fld('검증하는 TC (covers)'+help('editor.covers'),chips('covers'),'스크립트 전체가 검증하는 TC. 단계별 covers 는 각 단계 카드에서 — 둘을 합친 것이 이 스크립트의 covers 다',S.suite==='smoke'||S.suite==='sanity');
     return h+'</div>'}
-  function setupHtml(){if(S.suite!=='setup')return '';var saved=[];S.steps.forEach(function(s){(s.save||[]).forEach(function(r){if(r.name&&saved.indexOf(r.name)<0)saved.push(r.name)})});
+  function setupHtml(){if(S.suite!=='setup')return '';var saved=usedOuts().slice();S.steps.forEach(function(s){(s.save||[]).forEach(function(r){if(r.name&&saved.indexOf(r.name)<0)saved.push(r.name)})});
     return '<div class="card"><h3 style="margin-top:0">테스트 데이터 만들기 카드'+help('editor.setup')+'</h3><div class="small mut">화면 입력칸 — 단계에서 {{input.이름}} 으로 쓴다</div>'
       +rows('inputs',[['name','이름 (title)'],['label','라벨'],['default','기본값'],['hint','도움말'],['required','필수','chk']])
       +'<div class="field" style="margin-top:10px"><label>끝나면 보여 줄 값 (outputs)</label>'+(saved.length?saved.map(function(n){return '<label class="radio"><input type="checkbox" data-out="'+esc(n)+'"'+((S.outputs||[]).indexOf(n)>=0?' checked':'')+'>'+esc(n)+'</label>'}).join(''):'<p class="hint">단계의 "저장할 값" 에 이름을 적으면 여기서 고를 수 있다</p>')+'</div></div>'}
@@ -153,6 +162,7 @@ EDITOR_JS = r"""
     if(t.dataset.list){setP(t.dataset.list,t.value.split(',').map(function(x){return x.trim()}).filter(Boolean));return}
     if(t.dataset.bf!=null){var i=+t.dataset.bf,o=parseBody(S.steps[i]);if(o===null)return;setIn(o,t.dataset.name,conv(t.value,t.dataset.type));S.steps[i].body=Object.keys(o).length?JSON.stringify(o,null,2):'';return}});
   root.addEventListener('change',function(ev){var t=ev.target;
+    if(t.dataset.k==='uses.setup'){S.uses.with={};render();return}
     if(t.dataset.k==='suite'||t.dataset.k==='actor'||/\.method$/.test(t.dataset.k||'')){render();return}
     if(t.dataset.bf!=null){var i=+t.dataset.bf,o=parseBody(S.steps[i]);if(o!==null){setIn(o,t.dataset.name,conv(t.value,t.dataset.type));S.steps[i].body=Object.keys(o).length?JSON.stringify(o,null,2):''}
       setTimeout(render,0);return}      // 다음 칸으로 포커스가 옮겨 간 뒤 다시 그린다 — 조건부 필드 경고를 갱신하고 커서는 지킨다

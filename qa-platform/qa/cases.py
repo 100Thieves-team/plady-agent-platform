@@ -46,6 +46,7 @@ class Case:
     reviewed: dict | None = None                     # {at: ISO 날짜, by: 운영자} — 드리프트 배지를 이 시각 이후 변경만 보이게
     inputs: dict = field(default_factory=dict)       # setup 전용: 화면 입력 {name: {label, default, required}} → {{input.name}}
     outputs: list = field(default_factory=list)      # setup 전용: 끝나면 화면에 돌려줄 save 변수 이름
+    uses: dict | None = None                         # 전제 카드 {setup: id, with: {입력}} — 로더가 펼쳐 steps 앞에 붙인다 (docs/qa-platform-scenarios.md §8)
     raw: dict = field(default_factory=dict)
     file: str = ""
     hash: str = ""
@@ -57,13 +58,57 @@ class Case:
         return self.audit.get("status") == "error"
 
     def to_yaml(self) -> str:
+        """파일에 있는 모양 (uses 를 펼치지 않은 것). 폼·Hermes·저장이 쓴다."""
         return yaml.safe_dump(self.raw, allow_unicode=True, sort_keys=False)
+
+    @property
+    def own_steps(self) -> list:
+        """전제 카드에서 온 단계(given)를 뺀 이 스크립트의 단계."""
+        return [s for s in self.steps if not s.get("given")]
+
+    def run_raw(self) -> dict:
+        """실행할 모양 — uses 를 펼친 단계 전체. uses 는 given_by 로 남겨 스냅샷을 다시 읽어도 또 펼치지 않는다."""
+        raw = {k: v for k, v in self.raw.items() if k not in ("uses", "steps")}
+        if self.uses:
+            raw["given_by"] = self.uses
+        raw["steps"] = self.steps
+        return json.loads(json.dumps(raw, ensure_ascii=False, default=str))
+
+    def run_yaml(self) -> str:
+        """실행 기록 스냅샷 — 카드가 나중에 바뀌어도 그때 돌린 단계가 남는다."""
+        return yaml.safe_dump(self.run_raw(), allow_unicode=True, sort_keys=False)
 
     def needs_actor(self) -> bool:
         return bool(self.actor) or any(s.get("actor") for s in self.steps)
 
 
-def _validate(d: dict, file: str) -> Case:
+def _uses(d: dict, where: str) -> dict | None:
+    """`uses: setup.x` 또는 `uses: {setup: setup.x, with: {입력: 값}}` → {setup, with?}."""
+    u = d.get("uses")
+    if u is None:
+        return None
+    if isinstance(u, str):
+        u = {"setup": u}
+    if not isinstance(u, dict):
+        raise CaseError(f"{where}: uses 는 {{setup: 카드 id, with: {{입력: 값}}}} 맵")
+    bad = [k for k in u if k not in ("setup", "with")]
+    if bad:
+        raise CaseError(f"{where}: uses 에 모르는 키 {bad} (허용: setup, with)")
+    sid = u.get("setup")
+    if not isinstance(sid, str) or not _ID.match(sid):
+        raise CaseError(f"{where}: uses.setup 은 전제 카드 id: {sid!r}")
+    w = u.get("with") or {}
+    if not isinstance(w, dict) or not all(isinstance(k, str) for k in w):
+        raise CaseError(f"{where}: uses.with 는 입력 이름→값 맵")
+    out = {"setup": sid}
+    if w:
+        out["with"] = w
+    d["uses"] = out
+    return out
+
+
+def _validate(d: dict, file: str, library: dict | None = None) -> Case:
+    """library(id→Case)를 주면 uses 를 펼친다. 안 주면 펼치지 않은 채 돌려준다 (load_dir 는 다 읽은 뒤 펼친다)."""
     if not isinstance(d, dict):
         raise CaseError(f"{file}: 케이스는 맵이어야 한다")
     cid = d.get("id")
@@ -75,12 +120,19 @@ def _validate(d: dict, file: str) -> Case:
     suite = d.get("suite")
     if suite not in SUITES:
         raise CaseError(f"{file}:{cid}: suite 는 {SUITES} 중 하나: {suite!r}")
+    uses = _uses(d, f"{file}:{cid}")
+    if uses and d.get("given_by"):
+        raise CaseError(f"{file}:{cid}: uses 와 given_by 를 같이 쓸 수 없다 (given_by 는 펼친 스냅샷에만 있다)")
+    if d.get("given_by") is not None and not isinstance(d["given_by"], dict):
+        raise CaseError(f"{file}:{cid}: given_by 는 맵")
     steps = d.get("steps")
     if not isinstance(steps, list) or not steps:
         raise CaseError(f"{file}:{cid}: steps 는 비어 있지 않은 목록")
     for i, s in enumerate(steps, 1):
         if not isinstance(s, dict):
             raise CaseError(f"{file}:{cid}: step {i} 는 맵")
+        if s.get("given") is not None and not d.get("given_by"):
+            raise CaseError(f"{file}:{cid}: step {i} 의 given 은 로더가 붙인다 — 전제 단계는 uses 로 쓴다")
         s.setdefault("name", f"step {i}")
         req = s.get("request")
         if not isinstance(req, dict):
@@ -139,7 +191,7 @@ def _validate(d: dict, file: str) -> Case:
                 raise CaseError(f"{file}:{cid}: inputs.{name} 에 모르는 키 {bad} (허용: label, default, required, hint)")
             inputs[name] = {"label": str(spec.get("label") or name), "default": spec.get("default"), "required": bool(spec.get("required", False)),
                             "hint": str(spec.get("hint") or "")}
-    used = {m.group(1) for s in steps for m in _INPUT_EXPR.finditer(json.dumps(s, ensure_ascii=False, default=str))}
+    used = {m.group(1) for s in [*steps, uses or {}] for m in _INPUT_EXPR.finditer(json.dumps(s, ensure_ascii=False, default=str))}
     missing = sorted(used - set(inputs))
     if missing:
         raise CaseError(f"{file}:{cid}: 단계가 쓰는 {{{{input.*}}}} 가 inputs 에 없다: {missing}")
@@ -153,7 +205,7 @@ def _validate(d: dict, file: str) -> Case:
     saved = {k for s in steps for k in (s.get("save") or {})}
     outputs = [str(x) for x in outputs_raw]
     unknown = [x for x in outputs if x not in saved]
-    if unknown:
+    if unknown and not uses:          # uses 가 있으면 카드 단계의 save 도 보고 펼칠 때 확인한다
         raise CaseError(f"{file}:{cid}: outputs 는 어떤 단계의 save 에 있는 변수여야 한다: {unknown}")
     if outputs:
         d["outputs"] = outputs
@@ -165,13 +217,54 @@ def _validate(d: dict, file: str) -> Case:
             raise CaseError(f"{file}:{cid}: reviewed 는 {{at: 날짜, by: 운영자}} 맵")
         reviewed["at"] = str(reviewed["at"])
     canonical = yaml.safe_dump(d, allow_unicode=True, sort_keys=True).encode("utf-8")
-    return Case(
+    case = Case(
         id=cid, title=title.strip(), suite=suite, steps=steps,
         domains=d["domains"], operations=d["operations"], source=d["source"],
         actor=d.get("actor"), description=str(d.get("description") or ""), covers=covers, reviewed=reviewed,
-        inputs=inputs, outputs=outputs,
+        inputs=inputs, outputs=outputs, uses=uses,
         raw=d, file=file, hash=hashlib.sha256(canonical).hexdigest()[:16],
     )
+    return expand(case, library) if (uses and library is not None) else case
+
+
+def expand(case: Case, library: dict, _stack: tuple = ()) -> Case:
+    """uses 를 펼친다 (docs/qa-platform-scenarios.md §8.3). 카드를 입력값을 박아(bake_inputs) 단계 앞에 붙이고 각 단계에 given: 카드 id.
+    카드 단계는 카드의 actor 를 박고 covers 를 비운다 — 전제 단계는 커버리지에 들지 않는다. 카드가 또 uses 를 쓰면 먼저 펼친다. 순환은 오류."""
+    if not case.uses:
+        return case         # 펼친 스냅샷(given_by)도 여기서 끝난다 — uses 가 없다
+    where = f"{case.file}:{case.id}"
+    sid = case.uses["setup"]
+    chain = (*_stack, case.id)
+    if sid in chain:
+        raise CaseError(f"{where}: uses 가 돌고 돈다: {' → '.join((*chain, sid))}")
+    card = library.get(sid)
+    if card is None:
+        raise CaseError(f"{where}: uses 의 전제 카드 {sid} 가 없다")
+    if card.suite != "setup":
+        raise CaseError(f"{where}: uses 는 준비 작업(suite setup) 카드만 받는다: {sid} 는 {card.suite}")
+    card = expand(card, library, chain)
+    given_with = case.uses.get("with") or {}
+    unknown = sorted(k for k in given_with if k not in card.inputs)
+    if unknown:
+        raise CaseError(f"{where}: uses.with 의 {unknown} 는 {sid} 의 입력칸이 아니다 (입력칸: {sorted(card.inputs) or '없음'})")
+    try:
+        _, baked = _bake(card, given_with)
+    except CaseError as e:
+        raise CaseError(f"{where}: 전제 카드 {sid} 입력: {str(e).split(': ', 1)[-1]}") from None
+    given = []
+    for s in baked["steps"]:
+        s["actor"] = s.get("actor", card.actor)       # 스크립트의 actor 가 카드 단계에 새지 않게
+        s["covers"] = []
+        s["given"] = sid
+        given.append(s)
+    steps = given + case.own_steps      # 이미 펼친 것을 다시 펼쳐도 같다 (카드는 매번 원본에서 다시 펼쳐 순환을 놓치지 않는다)
+    saved = {k for s in steps for k in (s.get("save") or {})}
+    missing = [x for x in case.outputs if x not in saved]
+    if missing:
+        raise CaseError(f"{where}: outputs 는 어떤 단계의 save 에 있는 변수여야 한다: {missing}")
+    out = Case(**{**case.__dict__, "steps": steps, "audit": {"status": "unchecked", "errors": [], "warnings": []}})
+    out.hash = hashlib.sha256(yaml.safe_dump(out.run_raw(), allow_unicode=True, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    return out
 
 
 def _coerce_input(raw: str, default):
@@ -191,15 +284,16 @@ def _coerce_input(raw: str, default):
     return raw
 
 
-def bake_inputs(case: Case, values: dict) -> Case:
-    """준비 작업의 화면 입력을 스크립트에 박아 새 Case 를 만든다 — 실행 기록의 스냅샷에 실제 값이 남는다(docs/qa-platform-api.md §5.4).
-    `{{input.x}}` 가 값 전체면 타입을 지키고, 문자열 일부면 문자열로 끼운다. 다른 치환(`{{roomId}}` 등)은 건드리지 않는다."""
-    if case.suite != "setup":
-        raise CaseError(f"{case.id}: 준비 작업(setup) 스크립트가 아니다")
+def _bake(case: Case, values: dict) -> tuple[dict, dict]:
+    """입력값을 정하고 run_raw 의 단계(펼친 전제 단계 포함)에 박는다 → (입력값, raw). 검증은 하지 않는다.
+    문자열 값은 기본값의 타입을 따라 되돌리고(폼은 문자열만 준다), YAML 에서 온 숫자·불린은 그대로 쓴다."""
     final: dict = {}
     for name, spec in case.inputs.items():
         raw = values.get(name)
-        raw = "" if raw is None else str(raw)
+        if raw is not None and not isinstance(raw, str):
+            final[name] = raw
+            continue
+        raw = "" if raw is None else raw
         if raw.strip() == "":
             if spec["required"] and spec["default"] in (None, ""):
                 raise CaseError(f"{case.id}: 입력 '{spec['label']}' 은 필수다")
@@ -219,9 +313,21 @@ def bake_inputs(case: Case, values: dict) -> Case:
             return {k: walk(x) for k, x in v.items()}
         return v
 
-    raw = json.loads(json.dumps(case.raw, ensure_ascii=False, default=str))
+    raw = case.run_raw()
     raw["steps"] = walk(raw["steps"])
+    if raw.get("given_by"):
+        raw["given_by"] = walk(raw["given_by"])
     raw.pop("inputs", None)
+    return final, raw
+
+
+def bake_inputs(case: Case, values: dict) -> Case:
+    """준비 작업의 화면 입력을 스크립트에 박아 새 Case 를 만든다 — 실행 기록의 스냅샷에 실제 값이 남는다(docs/qa-platform-api.md §5.4).
+    `{{input.x}}` 가 값 전체면 타입을 지키고, 문자열 일부면 문자열로 끼운다. 다른 치환(`{{roomId}}` 등)은 건드리지 않는다.
+    uses 로 붙은 전제 단계에도 박는다 (카드끼리 uses 할 때 바깥 카드의 입력을 안쪽 카드로 넘길 수 있다)."""
+    if case.suite != "setup":
+        raise CaseError(f"{case.id}: 준비 작업(setup) 스크립트가 아니다")
+    final, raw = _bake(case, values)
     raw["input_values"] = final       # 스냅샷에 남기는 입력값 (사람이 실행 기록에서 본다)
     return _validate(raw, f"setup:{case.id}")
 
@@ -265,11 +371,22 @@ def load_dir(path: Path) -> tuple[dict[str, Case], list[str]]:
                 errors.append(f"{f.name}: 중복 id {c.id} (먼저 {cases[c.id].file})")
                 continue
             cases[c.id] = c
-    return cases, errors
+    return expand_all(cases, errors), errors
 
 
-def parse_one(text: str, file: str = "<inline>") -> Case:
-    return _validate(yaml.safe_load(text), file)
+def expand_all(cases: dict[str, Case], errors: list[str]) -> dict[str, Case]:
+    """다 읽은 뒤 uses 를 펼친다. 펼치다 틀린 스크립트(없는 카드·순환·입력 오류)는 빼고 errors 에 남긴다."""
+    out: dict[str, Case] = {}
+    for cid, c in cases.items():
+        try:
+            out[cid] = expand(c, cases)
+        except CaseError as e:
+            errors.append(str(e))
+    return out
+
+
+def parse_one(text: str, file: str = "<inline>", library: dict | None = None) -> Case:
+    return _validate(yaml.safe_load(text), file, library)
 
 
 def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | None = None,
@@ -330,7 +447,8 @@ def audit(cases: dict[str, Case], catalog) -> None:
                 s["covers"] = list(dict.fromkeys(canon(t) for t in s["covers"]))
             if legacy:
                 warnings.append(f"covers 의 옛 TC id {', '.join(legacy)} 를 key id 로 읽었다 — 스크립트를 새 id 로 고친다")
-        for step_i, step in enumerate(c.steps, 1):
+        own = c.own_steps          # 전제 단계(given)는 대조하지 않는다 — 커버리지에 들지 않는다
+        for step_i, step in enumerate(own, 1):
             for tid in step["covers"]:
                 rec = recs.get(tid)
                 if not rec:
@@ -353,7 +471,7 @@ def audit(cases: dict[str, Case], catalog) -> None:
             if tid in step_covered:
                 continue
             if rec["layer"] == "contract":
-                hits = [(_step_hits(s, rec["expect_hint"])) for s in c.steps]
+                hits = [(_step_hits(s, rec["expect_hint"])) for s in own]
                 if not any(m for m, _ in hits):
                     errors.append(f"covers {tid}: 그 op 를 부르는 단계가 없다")
                 elif not any(m and not p for m, p in hits):
@@ -363,9 +481,9 @@ def audit(cases: dict[str, Case], catalog) -> None:
                 code = (rec.get("binding") or {}).get("error_code")
                 if ops:
                     op_recs = [r for r in recs.values() if r["layer"] == "contract" and r.get("operation") in ops]
-                    calls = any(_step_hits(s, r["expect_hint"])[0] for s in c.steps for r in op_recs)
+                    calls = any(_step_hits(s, r["expect_hint"])[0] for s in own for r in op_recs)
                     if not calls:
                         warnings.append(f"covers {tid}: 바인딩된 op {', '.join(ops)} 를 부르는 단계가 없다")
-                    elif code and not any((s.get("expect") or {}).get("error_code") == code for s in c.steps):
+                    elif code and not any((s.get("expect") or {}).get("error_code") == code for s in own):
                         warnings.append(f"covers {tid}: 바인딩 코드 {code} 를 기대하는 단계가 없다")
         c.audit = {"status": "error" if errors else ("warn" if warnings else "ok"), "errors": errors, "warnings": warnings}

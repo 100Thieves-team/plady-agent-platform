@@ -44,7 +44,7 @@ class StatsTest(unittest.TestCase):
             st = Store(Path(d) / "t.sqlite")
             class C:  # 최소한의 Case 흉내
                 def __init__(self, i): self.id, self.title, self.suite, self.hash = i, i, "smoke", "h"
-                def to_yaml(self): return "id: x\n"
+                def run_yaml(self): return "id: x\n"
             for k in range(3):
                 rid = st.create_run(trigger="manual", operator="bebe", suite="smoke", env="dev", base_url="u", ref="dev", sha=None, pr_number=None, meta={}, cases=[C("a"), C("b")])
                 for rc in st.list_run_cases(rid):

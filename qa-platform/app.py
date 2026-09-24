@@ -135,7 +135,7 @@ class App:
         """operationId → {"calls": {case_id: [단계 이름]}, "declared": [case_id]} — 단계의 method/path 로 판별, `operations:` 선언은 따로."""
         out: dict[str, dict] = {}
         for c in self.cases.values():
-            for st in c.steps:
+            for st in c.own_steps:            # 전제 카드 단계는 이 스크립트가 확인하는 호출이 아니다
                 req = st.get("request") or {}
                 oid = self.op_of(req.get("method", ""), req.get("path", "")) if req.get("method") and req.get("path") else None
                 if oid:
@@ -331,7 +331,7 @@ class App:
         example = self.cases.get("room.create-and-cancel") or next(iter(self.cases.values()), None)
         try:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
-                                     example=example, existing_ids=set(self.cases), ask=ask)
+                                     example=example, existing_ids=set(self.cases), ask=ask, library=self.cases)
         except Exception as ex:
             self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
@@ -397,7 +397,7 @@ class App:
         if not drift:
             raise BadRequest("바뀐 TC 가 없다 — 고칠 것이 없다")
         try:
-            res = draftsmod.revise(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, case=c, drift=drift, changes=self.catalog.changes, existing_ids=set(self.cases), ask=ask)
+            res = draftsmod.revise(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, case=c, drift=drift, changes=self.catalog.changes, existing_ids=set(self.cases), ask=ask, library=self.cases)
         except Exception as ex:
             self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip, detail={"source": "hermes-revise", "case_id": case_id, "error": str(ex)[:300]})
             raise BadRequest(f"다시 쓰기 실패: {ex}")
@@ -494,8 +494,10 @@ class App:
         cat = self.current_catalog()
         ops = [{"id": o.id, "method": o.method, "path": o.path, "summary": o.summary} for o in sorted((spec.ops.values() if spec else []), key=lambda o: (o.path, o.method))]
         tcs = [{"id": r["id"], "title": r["title"], "layer": r["layer"]} for r in (cat.records.values() if cat else []) if not r.get("excluded")]
+        setups = [{"id": c.id, "title": c.title, "outputs": c.outputs, "steps": len(c.steps), "uses": (c.uses or {}).get("setup"),
+                   "inputs": [{"name": k, **v} for k, v in c.inputs.items()]} for c in self.setup_cases()]
         return {"ops": ops, "tcs": tcs, "actors": sorted(self.all_actors()), "fixtures": sorted(self.cfg.fixtures),
-                "suites": ["smoke", "sanity", "manual", "setup"]}
+                "suites": ["smoke", "sanity", "manual", "setup"], "setups": setups}
 
     def editor_op(self, op_id: str) -> dict | None:
         spec = self.spec.get()
@@ -517,7 +519,8 @@ class App:
         if mode == "edit" and raw.get("id") != original_id:
             return raw, None, [f"id 는 바꿀 수 없다 ({original_id}) — 새 id 가 필요하면 새 스크립트로 만들고 이것은 지운다"], [], ""
         existing = set(self.cases) - ({original_id} if mode == "edit" else set()) - ({draft.get("case_id")} if draft and draft.get("case_id") else set())
-        case, errors, warnings = editormod.validate_case(raw, catalog=self.current_catalog(), cfg=self.cfg, actors=self.all_actors(), existing_ids=existing)
+        case, errors, warnings = editormod.validate_case(raw, catalog=self.current_catalog(), cfg=self.cfg, actors=self.all_actors(), existing_ids=existing,
+                                                         library=self.cases)
         warnings = warnings + editormod.body_warnings(raw, self.spec.get())
         return raw, case, errors, warnings, draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
 
@@ -966,7 +969,7 @@ class App:
         if not isinstance(raw, dict):
             return None, ["스크립트는 맵이어야 한다"], []
         return draftsmod.validate(raw, actors=self.all_actors(), requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
-                                  catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")})
+                                  catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")}, library=self.cases)
 
     def _on_finish(self, run: dict):
         if run["trigger"] in HIDDEN_TRIGGERS:

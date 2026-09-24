@@ -136,7 +136,7 @@ class Store:
                 self._x(
                     "INSERT INTO run_cases(run_id,ord,case_id,case_title,case_suite,case_hash,case_yaml)"
                     " VALUES(?,?,?,?,?,?,?)",
-                    (rid, i, c.id, c.title, c.suite, c.hash, c.to_yaml()),
+                    (rid, i, c.id, c.title, c.suite, c.hash, c.run_yaml()),
                 )
         return rid
 

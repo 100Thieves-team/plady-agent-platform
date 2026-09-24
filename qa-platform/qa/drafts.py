@@ -115,7 +115,8 @@ def parse_output(text: str) -> list[dict]:
     return out
 
 
-def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str], actors: dict | None = None) -> tuple[Case | None, list[str], list[str]]:
+def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str], actors: dict | None = None,
+             library: dict | None = None) -> tuple[Case | None, list[str], list[str]]:
     known = actors if actors is not None else cfg.actors     # SSM 고정 계정 + 플랫폼이 만든 QA 회원(App.all_actors)
     """docs/qa-platform-tc.md §7.2. 반환 (스크립트|None, 버린 사유, 경고)."""
     errors: list[str] = []
@@ -128,7 +129,7 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
         raw["id"] = f"{base}-{n}"
         warnings.append(f"id 가 기존 스크립트와 겹쳐 '{raw['id']}' 로 바꿨다")
     try:
-        case = _validate(raw, "<hermes>")
+        case = _validate(raw, "<hermes>", library)      # library(지금 스크립트)가 있으면 uses 를 펼쳐 카드·입력까지 확인한다
     except CaseError as e:
         return None, [f"형식: {e}"], []
     if not case.covers:
@@ -201,13 +202,13 @@ def _asker(cfg: Config, ask):
 
 
 def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None,
-             existing_ids: set[str], ask=None) -> dict:
+             existing_ids: set[str], ask=None, library: dict | None = None) -> dict:
     """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}."""
     prompt, phash = assemble(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, tc_ids=tc_ids, example=example)
     raw = _asker(cfg, ask)(DRAFT_SYSTEM, prompt, "qa-draft")
     accepted, rejected = [], []
     for d in parse_output(raw):
-        case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids)
+        case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
         if case:
             accepted.append((case, warnings))
         else:
@@ -311,7 +312,8 @@ def _collect(r: dict, ops: list, prd_refs: list) -> None:
         prd_refs.append((ref["doc"], ref["section"]))
 
 
-def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict, existing_ids: set[str], ask=None) -> dict:
+def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Case, drift: list[dict], changes: dict, existing_ids: set[str], ask=None,
+           library: dict | None = None) -> dict:
     """반환 {prompt_hash, raw, allowed, accepted: (Case, warnings)|None, errors, model}. id 는 원본으로 고정한다."""
     prompt, phash, allowed = assemble_revision(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, case=case, drift=drift, changes=changes)
     raw_text = _asker(cfg, ask)(REVISE_SYSTEM, prompt, "qa-revise")
@@ -320,7 +322,7 @@ def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Cas
         return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": None, "errors": ["출력에서 스크립트 YAML 을 찾지 못했다"], "model": cfg.hermes_model}
     d = dict(docs[0])
     d["id"] = case.id                      # 규칙 1 — 원본 id 유지 (사람이 파일을 바꿔치기한다)
-    c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id})
+    c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id}, library=library)
     return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": (c, warnings) if c else None, "errors": errors, "model": cfg.hermes_model}
 
 

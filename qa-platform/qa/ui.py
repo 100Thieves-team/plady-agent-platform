@@ -361,7 +361,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         body_cases = '<div class="card"><p class="mut" style="margin:0">해당 판정의 스크립트가 없다</p></div>'
     for rc in shown:
         steps = steps_by_case.get(rc["id"], [])
-        st = ""
+        st, given = "", ""
         for s in steps:
             req, resp = s["request"], s.get("response") or {}
             rbody = resp.get("json") if resp.get("json") is not None else resp.get("text")
@@ -373,6 +373,14 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                    f'{_checks_html(s["checks"])}'
                    f'<details><summary class="small mut">요청</summary><pre>{e(json.dumps({k: v for k, v in req.items() if k in ("url", "body", "query", "headers")}, ensure_ascii=False, indent=1))}</pre></details>'
                    f'<details><summary class="small mut">응답 {e(resp.get("status"))}</summary><pre>{e(json.dumps(rbody, ensure_ascii=False, indent=1) if not isinstance(rbody, str) else rbody)}</pre></details></details>')
+            if req.get("given"):         # 전제 카드(uses) 단계는 한데 접는다 (docs/qa-platform-scenarios.md §8.3)
+                given, st = given + st, ""
+        if given:
+            gs = [s for s in steps if s["request"].get("given")]
+            ok = all(s["verdict"] == "pass" for s in gs)
+            st = (f'<details class="given" {"" if ok else "open"}><summary>{badge("pass" if ok else "error")} 전제 카드 '
+                  f'<a href="/cases/{e(gs[0]["request"]["given"])}" class="mono">{e(gs[0]["request"]["given"])}</a> <span class="small mut">단계 {len(gs)}개{h("editor.uses")}</span></summary>'
+                  f'<div style="padding-left:14px">{given}</div></details>') + st
         tri = ""
         if rc["verdict"] in ("fail", "error"):
             tri = (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/triage" data-job-form><input type="hidden" name="run_case_id" value="{rc["id"]}">'
@@ -529,7 +537,9 @@ def case_detail(c, history: list[dict], tc_records: dict | None = None, drift: l
     return (f'<h1><span class="mono">{e(c.id)}</span> {badge(c.suite)}{hermes_badge(c.raw)} <a class="btn" href="/chat/new?case={e(c.id)}">Hermes 와 이야기</a> <a class="btn" href="/cases/{e(c.id)}/edit">폼으로 고치기</a>{h("case.edit")}</h1><div class="card"><b>{e(c.title)}</b>'
             f'{("<p>" + e(c.description) + "</p>") if c.description else ""}'
             f'<div class="kv"><div>도메인</div><div>{e(", ".join(c.domains) or "–")}</div><div>operation</div><div class="mono">{e(", ".join(c.operations) or "–")}</div>'
-            f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div><div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
+            f'<div>테스트 계정</div><div>{e(c.actor or "비로그인")}</div>'
+            f'{("<div>전제 카드</div><div><a class=\"mono\" href=\"/cases/" + e(c.uses["setup"]) + "\">" + e(c.uses["setup"]) + "</a> <span class=\"small mut\">단계 " + str(len(c.steps) - len(c.own_steps)) + "개를 먼저 돈다</span>" + h("editor.uses") + "</div>") if c.uses else ""}'
+            f'<div>출처 (PRD)</div><div><ul style="margin:0;padding-left:18px">{src}</ul></div><div>파일</div><div class="mono">{e(c.file)} · {e(c.hash)}</div></div></div>'
             f'<h2>검증하는 TC (covers){h("cases.covers")}{h("case.drift")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{covers_html}</ul><div style="margin-top:10px">{audit_html}</div>{revise_html}</div>'
             f'<h2>정의{h("case.yaml")}</h2><pre>{e(c.to_yaml())}</pre>'
             f'<h2>실행 이력{h("case.history")} <span class="small mut">최근 통계: {stats_badge(stats) if stats else "기록 없음"}{h("cases.last")}</span></h2>'
@@ -1227,7 +1237,7 @@ def setup_page(cases: list, *, actors: list[str], operators: list[str], operator
             body = f'<pre style="margin:4px 0 0">{e(_fmt_json(req["body"]))}</pre>' if req.get("body") is not None else ""
             who = st.get("actor", c.actor)
             sw += (f'<div class="sline"><span class="mut small">{i}.</span> {method_badge(req["method"])} <span class="mono">{e(req["path"])}</span> '
-                   f'<span class="small mut">{e(st["name"])}{(" · " + e(who)) if who else " · 비로그인"}</span>'
+                   f'<span class="small mut">{("전제 " + e(st["given"]) + " · ") if st.get("given") else ""}{e(st["name"])}{(" · " + e(who)) if who else " · 비로그인"}</span>'
                    f'{(" <span class=\"small mut\">→ " + e(", ".join(st["save"].keys())) + "</span>") if st.get("save") else ""}{body}</div>')
         actor_ok = (not c.needs_actor()) or all((a in actors) for a in {c.actor, *[s.get("actor") for s in c.steps]} if a)
         cards += (f'<form method="post" action="/setup/run" class="card call"><input type="hidden" name="case_id" value="{e(c.id)}">'
