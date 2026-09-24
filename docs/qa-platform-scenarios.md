@@ -1,6 +1,6 @@
 # QA 플랫폼 — 사용자 시나리오로 테스트 관리하기 (설계)
 
-> 상태: **설계 3판 확정 (2026-09-24), 구현 중.** 검토 답은 §16, 구현 기록은 §17. 1단계(초안·승인 없애기), 2단계(PRD 2장 구체화, 백엔드 기준 동기화), 3단계(전제 재사용)가 끝났다. 다음은 4단계(시나리오 읽기).
+> 상태: **설계 3판 확정 (2026-09-24), 구현 중.** 검토 답은 §16, 구현 기록은 §17. 1단계(초안·승인 없애기), 2단계(PRD 2장 구체화, 백엔드 기준 동기화), 3단계(전제 재사용), 4단계(시나리오 읽기)가 끝났다. 다음은 5단계(시나리오 폼).
 > 사용자 요청: "스크립트 기반은 너무 비직관적이다. 단일 정책은 결국 유즈케이스 안의 여러 로직 중 하나다. 시나리오는 AI 가 만들고, 사람이 CRUD 를 직접 다 할 수 있게 하자."
 > 관련: [qa-platform-tc.md](qa-platform-tc.md)(TC 카탈로그), [qa-platform-editor.md](qa-platform-editor.md)(폼 편집, 이번에 저장 흐름이 바뀐다), [qa-platform-progress.md](qa-platform-progress.md)(Hermes 작업 SSE), [policy-ssot-split.md](policy-ssot-split.md)(PRD 요구 id, 게이트 검사 key).
 
@@ -291,8 +291,8 @@ scenarios:
 
 | 스크립트 | 옮길 곳 |
 |---|---|
-| `room.create-and-cancel` | 둘로 나눈다. 정상 생성은 `룸-생성/S1/happy`, 재취소 거절은 `룸-생성/S3` 의 취소 거절 변형으로 간다. covers 의 E1419 검사와 기대 E1410 이 어긋난 문제(policy-ssot-split.md §11)도 이때 바로잡는다 |
-| `room.apply-and-withdraw` | `룸-참여-및-참여자-관리/S1/happy`. 앞 단계는 `uses: setup.room-open` 으로 줄인다 |
+| `room.create-and-cancel` | 나눈다. 정상 생성은 `룸-생성/S1/happy`, 재취소 거절은 `룸-생성/S2` 의 취소 거절 변형으로 간다(PRD 구체화에서 취소가 S2 에 들어갔다). covers 의 E1419 검사와 기대 E1410 이 어긋난 문제(policy-ssot-split.md §11)도 이때 바로잡는다 |
+| `room.apply-and-withdraw` | `룸-참여-및-참여자-관리/S1/withdraw`(R179 철회 분기). 스크립트가 확인하는 것이 신청 뒤 철회라 정상 흐름이 아니라 분기로 옮겼다. 앞 단계는 `uses: setup.room-open` 으로 줄인다 |
 | `room.creation-limit` | `룸-생성/S1` 의 `extra` 변형 |
 | smoke 8개 | 시나리오 밖. API 점검이라 사용자 흐름이 아니다 |
 | setup 7개 | 그대로 둔다. 서로 겹치는 단계는 `uses` 로 줄인다 |
@@ -302,7 +302,7 @@ scenarios:
 1. **저장 흐름 바꾸기:** 초안과 승인을 없애고 바로 저장한다. 이미 배포된 폼 편집에 먼저 적용한다. (완료, §17.1)
 2. **PRD 2장 구체화:** 위키 작업. §3.3 대로 사용자 확인을 받고 반영한다. (완료, §17.2·§17.3)
 3. **전제 재사용:** `uses` 로더 펼치기, 검증, 판정, 폼 칸. setup 카드끼리의 중복도 줄인다. (완료, §17.4)
-4. **시나리오 읽기:** 파일 형식, 로더, §6.1 검증, 테스트 없는 거절 규칙 계산, 스크립트 `variant:`, 첫 화면 트리, 기능 화면, 변형 화면. 룸 생성과 룸 참여 두 기능 파일과 §13 옮기기도 여기에 넣는다.
+4. **시나리오 읽기:** 파일 형식, 로더, §6.1 검증, 테스트 없는 거절 규칙 계산, 스크립트 `variant:`, 첫 화면 트리, 기능 화면, 변형 화면. 룸 생성과 룸 참여 두 기능 파일과 §13 옮기기도 여기에 넣는다. (완료, §17.5)
 5. **시나리오 폼:** 변형 만들기, 고치기, 지우기.
 6. **Hermes:** 변형 채우기, 다시 맞추기, 변형에서 스크립트 만들기.
 7. **실행과 드리프트:** 변형 골라 실행, 결과와 보고서 묶기, basis_hash 비교 표시.
@@ -377,3 +377,15 @@ scenarios:
 - **폼:** 기본 정보에 "전제 카드" 드롭다운과 카드 입력칸 표가 생긴다. 카드의 결과값이 변수 자동완성(`{{roomId}}`)과 setup 카드의 outputs 선택지에 뜬다. `/api/editor/context` 가 `setups` 를 준다. `editor.js` v5.
 - **시드:** `setup.room-with-application` 은 `setup.room-open` 을, `setup.room-confirmed` 는 `setup.room-with-application` 을, `setup.room-ready-to-start` 는 `setup.room-confirmed` 를 쓴다. 룸 생성 요청 본문은 `setup.room-open` 한 곳에만 남았다. `room.apply-and-withdraw` 는 `uses: setup.room-open` 으로 줄였고 룸 생성 단계의 `op.createRoom:200` covers 가 빠졌다(`room.create-and-cancel` 이 확인한다).
 - 테스트 152건 통과. 로컬 브라우저로 스크립트 화면, 폼(전제 카드·입력칸·자동완성·검사), 준비 작업 화면을 확인했다. dev 실제 실행은 배포 뒤에 본다.
+
+### 17.5 4단계 — 시나리오 읽기 (2026-09-24)
+
+- **PRD 2장 파서:** `Wiki.prd_scenarios(doc)` 가 `### 시나리오 Sn: 제목` 아래 번호 단계와 `- 분기:` 줄을 요구 id 와 함께 읽는다. 인용(`>`)과 대표 사용자 절은 건너뛴다. `Wiki.prd_docs()` 는 위키의 PRD 11개 이름이다. 지금 위키에서 시나리오는 15개이고 모든 줄에 요구 id 가 있다.
+- **파일과 로더:** `qa-platform/scenarios/<기능>.yaml`, `qa/scenarios.py`. `load_dir` 는 형식만 본다(파일 이름과 feature 일치, `S\d+`, 변형 key 겹침, kind·mode, 분기와 거절의 at, gates·checks id 형식). 스크립트와 같이 `App.reload_cases` 가 읽고, 이미지에 굽고(`QA_SCENARIOS_DIR`), 시작할 때 main 에서 받는다(`Repo.sync`, 폴더가 없어도 된다).
+- **스크립트 `variant:`:** `기능/Sn/key` 형식 검사. 폼 기본 정보에 "구현하는 변형" 칸(자동완성, 제목과 확인할 TC 표시)이 생겼다.
+- **§6.1 검증:** `scenarios.check` 가 PRD 2장·TC 목록·스크립트와 대조한다. 오류 5가지와 경고 4가지를 설계대로 낸다. 옛 번호 TC id 는 별칭으로 풀어 받는다. 저장 때 막는 것은 5단계(시나리오 폼)에서 붙인다. 지금은 화면에 보인다.
+- **상태와 테스트 없는 거절 규칙:** `variant_state`(자동화됨·제외·사람이 확인·테스트 없음 순서로 판정), `untested_rejects`(gates 의 거절 검사 중 어느 변형도 확인하지 않고 제외도 아닌 것, ErrorCode 가 없으면 사람이 확인으로 시작). 저장하지 않고 요청마다 계산한다.
+- **화면:** 대시보드 아래와 `/features` 에 기능·시나리오·변형 트리(합계, 막대, 펼치기). 기능 화면 `/features/<기능>` 은 PRD 단계와 게이트, 변형 표, 테스트 없는 거절 규칙, 검증 결과. 변형 화면 `/features/<기능>/<Sn>/<key>` 는 갈라지는 단계 문장, 전제, 기대 결과, 확인할 TC, 구현한 스크립트, 실행 이력, [스크립트 만들기 (폼)](변형·제목·TC·계정·근거를 채워 연다). 스크립트 목록은 변형 순서로 먼저, "시나리오 밖" 을 뒤에 모은다. TC 상세에 "이 TC 를 확인하는 변형". nav 에 "시나리오".
+- **파일 둘:** 룸 생성(S1 변형 5, S2 변형 4), 룸 참여 및 참여자 관리(S1 변형 4). 변형은 지금 스크립트가 있는 것과 PRD 분기, 예시 거절 하나(headcount-range)만 적었다. 나머지 거절 변형은 6단계 Hermes 로 채운다. 지금 테스트 없는 거절 규칙은 룸 생성 16개, 룸 참여 23개다.
+- **§13 옮기기:** `room.create-and-cancel` 을 `room.create`(S1/happy), `room.cancel`(S2/cancel, `uses: setup.room-open`), `room.cancel-not-recruiting`(S2/room-recruiting) 셋으로 나눴다. 재취소는 `G.room.cancel#room-recruiting`(E1410)으로, 취소 성공은 `C.room.cancel` 로 covers 를 바로잡았다. `room.creation-limit` 은 S1/creation-limit, `room.apply-and-withdraw` 는 S1/withdraw 다.
+- 두 파일은 지금 위키와 TC 목록에 대조해 오류·경고가 없다. 테스트 162건 통과. 로컬 브라우저로 트리, 기능 화면, 변형 화면, 스크립트 목록, TC 상세, 변형에서 연 폼을 확인했다.

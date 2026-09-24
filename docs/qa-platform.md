@@ -251,6 +251,8 @@ wiki-auth는 팀 공용 비밀번호 하나로 세션을 준다. 세션에 개�
 
 ## 8. 케이스 형식
 
+> 2026-09-24: 스크립트에 `variant:`(구현하는 시나리오 변형)와 `uses:`(전제 카드) 칸이 더해졌다. [`qa-platform-scenarios.md`](qa-platform-scenarios.md) §5, §8.
+
 ```yaml
 id: room.create-and-cancel
 title: 방장이 룸을 만들고 취소하면 CANCELED 가 된다
@@ -303,7 +305,8 @@ steps:
 | auth.me-without-token | smoke | – | `/v1/members/me` → 401 E1102 |
 | auth.dev-session-unknown | smoke | – | 없는 회원 → 404 E1006 |
 | member.me | smoke | qa-host | 200, `data.memberId == 테스트 계정` |
-| room.create-and-cancel | sanity | qa-host | 위 예시 |
+| room.create | sanity | qa-host | 생성 → 상세 → 정리(취소). 옛 `room.create-and-cancel` 을 2026-09-24 셋으로 나눴다 |
+| room.cancel / room.cancel-not-recruiting | sanity | qa-host | `uses: setup.room-open` 뒤 취소 200 / 재취소 409 E1410 |
 | room.apply-and-withdraw | sanity | qa-host, qa-guest | 생성 → 신청(201 PENDING) → 철회 → 취소 |
 | room.create-limit | sanity | qa-host | 같은 공고·직무 활성 3개 → 4번째 409 E1427 (정리: 3개 취소) |
 

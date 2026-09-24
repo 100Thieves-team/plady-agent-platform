@@ -288,5 +288,5 @@ team-wiki-v2 브랜치 `ssot-split`(worktree `team-wiki-v2-ssot`)와 이 레포�
 3. **PRD 끼리 또는 SSOT 와 충돌 — decisions_pending 후보**: 진행 시작 권한(룸 진행 R26 "시각·방장 무관" ↔ `P.room.session_start` "+5분 전 방장만"), 진행 모드를 연 사람이 방장이 되는가(룸 진행 준비 R7 ↔ 마무리 R13·R24), 방장 이탈·자동 승계(룸 참여 R31~R35 ↔ `P.participation.exit`), 모집 중 일정 수정(룸 생성 R108 ↔ `P.room.schedule_deadline` open_question), 확정 후 취소(룸 참여 R58 만 "불가").
 4. **PRD 가 이미 답한 open_question**: `F.question.asked`(R36 해제 가능), `F.question.body`(준비 R38), `F.review.deleted_at`(R32 재작성 가능), `P.member.withdrawal`(승계 규칙 R31~R35 존재), `P.room.confirmation_freeze`.
 5. **근거가 약한 검사**: `G.question.create#not-own-cardset`, `G.question.create_followup#parent-question-active`.
-6. **QA 스크립트**: `room.create-and-cancel` 4단계가 `G.participation.cancel#participation-joined`(SSOT error E1419)를 covers 로 두고 E1410 을 기대한다 — 룸 재취소는 참여 취소 게이트가 아닐 수 있다. 최신 SSOT 로 카탈로그를 만들면 정합성 경고가 뜬다.
+6. **QA 스크립트**: `room.create-and-cancel` 4단계가 `G.participation.cancel#participation-joined`(SSOT error E1419)를 covers 로 두고 E1410 을 기대한다 — 룸 재취소는 참여 취소 게이트가 아닐 수 있다. 최신 SSOT 로 카탈로그를 만들면 정합성 경고가 뜬다. → **해결(2026-09-24)**: 스크립트를 나누면서 재취소는 `room.cancel-not-recruiting` 이 `G.room.cancel#room-recruiting`(E1410)으로 확인한다(qa-platform-scenarios.md §17.5).
 7. **API 매핑**: `catalog/bindings.yaml` 의 `G.room.start#5` 는 그 게이트에 검사가 5개가 안 돼 가리키는 TC 가 없다(예전부터).
