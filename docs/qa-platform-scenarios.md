@@ -1,6 +1,6 @@
 # QA 플랫폼 — 사용자 시나리오로 테스트 관리하기 (설계)
 
-> 상태: **설계 3판 확정 (2026-09-24), 구현 중.** 검토 답은 §16, 구현 기록은 §17. 1단계(초안·승인 없애기)가 끝났다.
+> 상태: **설계 3판 확정 (2026-09-24), 구현 중.** 검토 답은 §16, 구현 기록은 §17. 1단계(초안·승인 없애기)가 끝났고 2단계(PRD 2장 구체화)는 위키 브랜치에서 사용자 확인을 기다린다.
 > 사용자 요청: "스크립트 기반은 너무 비직관적이다. 단일 정책은 결국 유즈케이스 안의 여러 로직 중 하나다. 시나리오는 AI 가 만들고, 사람이 CRUD 를 직접 다 할 수 있게 하자."
 > 관련: [qa-platform-tc.md](qa-platform-tc.md)(TC 카탈로그), [qa-platform-editor.md](qa-platform-editor.md)(폼 편집, 이번에 저장 흐름이 바뀐다), [qa-platform-progress.md](qa-platform-progress.md)(Hermes 작업 SSE), [policy-ssot-split.md](policy-ssot-split.md)(PRD 요구 id, 게이트 검사 key).
 
@@ -342,4 +342,14 @@ scenarios:
 - **id 겹침:** Hermes 가 쓴 id 가 겹치면 `-draft` 대신 `-2`, `-3` 을 붙인다.
 - **감사 로그:** `case.save`, `case.delete`, `case.try`, `manual_tc.save`, `manual_tc.delete`, `hermes.generate`, `hermes.rejected_by_validation`, `explorer.to_form`.
 - 테스트 142건 통과(위키 새 판 기준). 로컬 브라우저로 폼 저장, 저장 전 실행, 변경 기록, 스크립트 화면을 확인했다.
+
+### 17.2 2단계 — PRD 2장 구체화 (2026-09-24, 위키 브랜치 `scenarios` 8d36b2b, main 반영 전)
+
+- 8개 PRD 의 2장에 새 줄 33개를 더했다. 기존 요구 id 줄은 문장을 바꾸지 않았고, 회원 R6 만 S1 에서 새 S2 로 옮겼다. 목록 번호는 요구 문장 해시에서 빠지므로 드리프트가 아니다.
+- 새 시나리오는 셋이다. 룸 생성 S2(모집 중 룸 고치기·취소), 후기 S2(받은 후기 보고 신고), 회원 S2(마이페이지에서 프로필·이력서 관리). 나머지는 분기로 더했다.
+- 규칙표의 사람 명령 중 2장에 없는 것은 룸 진행 `question.write_comment` 하나다. PRD 안에서 "댓글" 이 질문 메모의 옛 이름인지 따로 있는 기능인지 갈려 `> ❓` 로 남겼다.
+- 그 밖의 `> ❓`: 회원 이력서 "삭제" 와 "숨김", 후기 원문을 대상자 본인에게 보여 주는지.
+- 룸 참여에서 반려 뒤 재신청과 내보내진 뒤 재신청은 4장에서 막혀 있어 분기로 넣지 않았다. 이 둘은 거절 변형이 된다.
+- 로컬에서 `ssot_load.py check` 와 `check_policy_refs.py` 가 통과했다(요구 참조 417개 이상 없음). `meta.기준_문서` 는 8개 문서 모두 2026-09-24.
+- AGENTS.md 에 "Writing chapter 2 scenarios" 절을 더했다.
 

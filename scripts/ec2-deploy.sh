@@ -150,7 +150,7 @@ QA_REPO_TOKEN="$(ssm_get "$QA_REPO_TOKEN_PARAM")"
 [ "$QA_REPO_TOKEN" = "None" ] && QA_REPO_TOKEN=""
 QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
 [ "$QA_MCP_TOKEN" = "None" ] && QA_MCP_TOKEN=""
-echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); repo write $([ -n "$QA_REPO_TOKEN" ] && echo "present — approvals commit to main" || echo "absent — approvals offer a file"); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
+echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); repo write $([ -n "$QA_REPO_TOKEN" ] && echo "present — saves commit to main" || echo "absent — saves offer a file"); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
 else
