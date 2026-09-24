@@ -1,0 +1,29 @@
+# 「룸 방명록」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 룸 방명록
+scenarios:
+  - id: S1
+    gates:
+      R3: [G.guestbook.post_write]
+      R5: [G.guestbook.freeze]
+    variants:
+      - key: happy
+        kind: happy
+        title: 방장과 참여자가 방명록에 준비 내용을 남기고 종료·취소 24시간 후 읽기 전용으로 전환된다
+        given: 룸이 생성되면 해당 룸의 방명록이 자동으로 생성되고 참가 신청이 수락되면 신청자가 방명록을 볼 수 있다
+        then: 방장과 참여자는 방명록에 준비에 필요한 내용(공지·질문·안내)을 글로 남기고 룸이 종료되거나 취소되면 방명록은 24시간 후에 읽기 전용으로 전환된다
+        checks: [C.guestbook.post, C.guestbook.freeze]
+        written_by: hermes
+    basis:
+      R1: aa9021e5
+      R2: 848a5963
+      R3: 14a84843
+      R4: 2036cdef
+      R5: 9b0809be
+      C.guestbook.freeze: 3abbaf3b
+      C.guestbook.post: 1599ef51
+      G.guestbook.freeze#grace-24h-elapsed: 3cc42fcc
+      G.guestbook.freeze#not-already-readonly: 5b8763f2
+      G.guestbook.freeze#room-completed-or-canceled: c4e21b78
+      G.guestbook.post_write#account-active: bae038b2
+      G.guestbook.post_write#guestbook-not-readonly: ef9d4a94
+      G.guestbook.post_write#joined-member-only: 7a3047aa
