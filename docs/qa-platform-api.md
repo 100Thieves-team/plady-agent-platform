@@ -6,13 +6,13 @@
 
 ## 0. 한 줄 요약
 
-둘을 더한다. **① 토스식 호출 카드** — 사람이 그냥 API 를 호출해 보는 자리를 우리 화면 안에 카드로 만든다. 카드마다 **Normal(폼) / Swagger(보낼 요청 원문)** 토글이 있고, 버튼 하나로 보낸다. API 호출 화면과 준비 작업이 같은 카드를 쓴다. Swagger UI 를 끼우지 않으니 CORS 도 필요 없다(요청은 지금처럼 플랫폼이 보낸다). **② API 별로 모아 보기** — 지금 플랫폼은 TC(무엇을 확인하나)·스크립트(어떻게 확인하나)·실행 기록(언제 어땠나)을 따로 보여 주는데, API 하나를 축으로 셋을 한 화면에 모은다 — "`createRoom` 은 TC 가 몇 개고, 어느 스크립트가 부르고, 지난번엔 어땠나". 그 위에 토스인컴 글의 "사소한 마찰"(값 다시 찾기, 순서대로 여러 번 호출)을 버튼 하나짜리 준비 작업으로 줄인다.
+둘을 더한다. **① 토스식 호출 카드** — 사람이 그냥 API 를 호출해 보는 자리를 우리 화면 안에 카드로 만든다. 카드마다 **Normal(폼) / Swagger(보낼 요청 원문)** 토글이 있고, 버튼 하나로 보낸다. API 호출 화면과 준비 작업이 같은 카드를 쓴다. Swagger UI 를 끼우지 않으니 CORS 도 필요 없다(요청은 지금처럼 플랫폼이 보낸다). **② API 별로 모아 보기** — 지금 플랫폼은 테스트 조건(무엇을 확인하나)·스크립트(어떻게 확인하나)·실행 기록(언제 어땠나)을 따로 보여 주는데, API 하나를 축으로 셋을 한 화면에 모은다 — "`createRoom` 은 테스트 조건이 몇 개고, 어느 스크립트가 부르고, 지난번엔 어땠나". 그 위에 토스인컴 글의 "사소한 마찰"(값 다시 찾기, 순서대로 여러 번 호출)을 버튼 하나짜리 준비 작업으로 줄인다.
 
 ## 1. 전제 — 확인한 사실
 
 1. 백엔드 API 문서(GitHub Pages `…/api/branches/dev/`)는 **Spring REST Docs 의 AsciiDoc HTML 한 장 + `openapi/openapi3.yaml`** 이다. Swagger UI 는 없다. 플랫폼은 이미 이 yaml 을 1시간 캐시로 읽는다(`qa/spec.py`).
-2. dev 스펙은 op 83개. `tags` 는 79개가 `v1`, 나머지 `Auth`·`get`·`post` — **태그로는 묶을 수 없다.** 묶음은 경로 세그먼트 → 도메인 표(`catalog.PATH_DOMAIN`, 이미 TC 목록이 쓰는 것)로 한다.
-3. TC 레코드는 op 를 이미 안다: API 계약 TC 는 `operation`, 비즈니스 규칙 TC 는 `binding.operations`(bindings.yaml), 수동 작성 TC 는 `binding.operations`(manual-tc.yaml 의 `operations`). 스크립트는 `operations:` 선언 + 단계 `request.method/path`. 실행 기록의 단계는 `request.method/path` 만 있고 op id 는 없다 — `spec.op_for(method, path)` 로 경로 템플릿 매칭이 된다(API 호출 화면이 쓰는 함수).
+2. dev 스펙은 op 83개. `tags` 는 79개가 `v1`, 나머지 `Auth`·`get`·`post` — **태그로는 묶을 수 없다.** 묶음은 경로 세그먼트 → 도메인 표(`catalog.PATH_DOMAIN`, 이미 테스트 조건 목록이 쓰는 것)로 한다.
+3. 테스트 조건 레코드는 op 를 이미 안다: API 계약 테스트 조건은 `operation`, 비즈니스 규칙 테스트 조건은 `binding.operations`(bindings.yaml), 수동 작성 테스트 조건은 `binding.operations`(manual-tc.yaml 의 `operations`). 스크립트는 `operations:` 선언 + 단계 `request.method/path`. 실행 기록의 단계는 `request.method/path` 만 있고 op id 는 없다 — `spec.op_for(method, path)` 로 경로 템플릿 매칭이 된다(API 호출 화면이 쓰는 함수).
 4. 실행 기록은 스크립트 스냅샷(`run_cases.case_yaml`)과 단계별 요청·응답·검증 항목·소요를 이미 남긴다. Tossion 의 "런은 그 시점 스냅샷" 은 이미 돼 있다.
 5. API 호출 화면(`/explorer`)은 op 하나를 골라 폼으로 보내고, 전송을 실행 기록(`trigger=explorer`, 목록 기본 숨김)으로 남긴다. 값 기억·즐겨찾기·프리필은 없다.
 6. dev 는 `https://qa.agent.plady.io` 오리진의 브라우저 요청을 CORS 로 막는다(`OPTIONS` 프리플라이트·`Origin` 단 GET 모두 403). v2 에서는 이것 때문에 백엔드 CORS 허용이 필요했으나, **v3 은 요청을 지금처럼 플랫폼 서버가 보내므로 CORS 가 필요 없다.** 백엔드 변경 없음(원칙 복귀).
@@ -30,7 +30,7 @@
 ### 2.2 Tossion — 가져오는 것
 - **"이 기능, 지난번 테스트 결과 어땠죠?" 에 바로 답하기** → API 상세의 최근 호출 기록(§5.2). 우리 데이터로 이미 답할 수 있는데 화면이 없다.
 - **누적 통과율 · flaky · 평균 소요** → 스크립트와 API 에 배지(§5.5).
-- 계층(Project → Suite → Section → TC)은 우리 도메인 × 층 × TC 로 이미 대응된다. 새 계층을 만들지 않는다.
+- 계층(Project → Suite → Section → 테스트 조건)은 우리 도메인 × 층 × 테스트 조건으로 이미 대응된다. 새 계층을 만들지 않는다.
 
 ### 2.3 토스의 "Swagger 모드" 를 그대로 — 우리 화면 안의 토글 (사용자 결정 2026-09-22, v3)
 - 토스인컴의 Normal/Swagger 는 한 카드의 두 보기다. **Normal** = "무슨 값을 넣으면 되나" 만 보이는 폼. **Swagger** = "실제로 무엇이 나가나" 가 보이는 요청 원문(메서드·경로·파라미터 표·JSON 본문), 편집 가능. 우리도 이 두 보기를 가진 **호출 카드** 하나를 만들어 API 호출 화면과 준비 작업이 같이 쓴다.
@@ -39,11 +39,11 @@
 
 ### 2.4 안 가져오는 것
 - 실기기 자동화, 공동 편집(아바타·잠금), PR 위험도 AI 판정. 범위 밖.
-- AI TC 생성의 3중 검증. 우리 초안 생성은 이미 결정론 검증(§7.2)을 통과한 것만 받는다. 더 얹지 않는다.
+- AI 테스트 조건 생성의 3중 검증. 우리 초안 생성은 이미 결정론 검증(§7.2)을 통과한 것만 받는다. 더 얹지 않는다.
 
 ## 3. 원칙 (기존 것에 더한다)
 
-1. **새 정본을 만들지 않는다.** API 화면은 OpenAPI·TC 목록·스크립트·실행 기록을 op 로 묶어 **읽기만** 한다. 저장하는 건 단계의 op id 하나(§6).
+1. **새 정본을 만들지 않는다.** API 화면은 OpenAPI·테스트 조건 목록·스크립트·실행 기록을 op 로 묶어 **읽기만** 한다. 저장하는 건 단계의 op id 하나(§6).
 2. **실행은 여전히 사람이 버튼을 누를 때만.** 준비 작업도 테스트 실행이다 — 실행 기록·감사 로그·Slack 규칙 동일.
 3. **브라우저에만 남는 편의값**(최근 입력값·즐겨찾기)은 localStorage 로 두고 서버에 저장하지 않는다. 감사 대상이 아니다.
 4. 호출 카드에서 보낸 요청은 지금 API 호출 화면과 같이 실행 기록(`trigger=explorer`, 목록 기본 숨김)으로 남는다. 새 기록 종류를 만들지 않는다.
@@ -80,9 +80,9 @@ P5 API 중심 보기
 
 ### 5.1 API 목록 `/apis`
 
-- 도메인 탭(TC 목록과 같은 순서·같은 표 `PATH_DOMAIN`) × 검색(operationId · 경로 · 요약). `/v1/*` 와 `/actuator/*` 만(TC 목록과 같은 범위).
-- 행: `METHOD /v1/rooms/{roomId}` · 요약 · **TC** `계약 3 · 규칙 2 · 수동 1` · **자동화** `4/6`(제외는 분모에서 빼고 `(제외 1)`) · **스크립트** n(이 op 를 부르는 단계가 있는 스크립트 수) · **마지막 호출** 판정 배지 + 시각(이 op 를 부른 가장 최근 단계, API 호출 화면 전송 포함) · 문서화된 에러 코드 수.
-- 필터 탭: 모두 · **부르는 스크립트 없음**(어느 스크립트도 안 부르는 op — 선행 문서 기능 트리 2.4 "커버리지 공백" 을 여기서 닫는다) · 미자동화 TC 있음 · 문서화된 에러 없음(스펙에 4xx 예시가 없는 op — 계약 TC 가 성공 하나뿐인 것).
+- 도메인 탭(테스트 조건 목록과 같은 순서·같은 표 `PATH_DOMAIN`) × 검색(operationId · 경로 · 요약). `/v1/*` 와 `/actuator/*` 만(테스트 조건 목록과 같은 범위).
+- 행: `METHOD /v1/rooms/{roomId}` · 요약 · **테스트 조건** `계약 3 · 규칙 2 · 수동 1` · **자동화** `4/6`(제외는 분모에서 빼고 `(제외 1)`) · **스크립트** n(이 op 를 부르는 단계가 있는 스크립트 수) · **마지막 호출** 판정 배지 + 시각(이 op 를 부른 가장 최근 단계, API 호출 화면 전송 포함) · 문서화된 에러 코드 수.
+- 필터 탭: 모두 · **부르는 스크립트 없음**(어느 스크립트도 안 부르는 op — 선행 문서 기능 트리 2.4 "커버리지 공백" 을 여기서 닫는다) · 미자동화 테스트 조건 있음 · 문서화된 에러 없음(스펙에 4xx 예시가 없는 op — 계약 테스트 조건이 성공 하나뿐인 것).
 - 머리에 스펙 버전(해시·출처 url/file/cache·읽은 시각)과 REST Docs 링크.
 
 ### 5.2 API 상세 `/apis/{operationId}`
@@ -91,9 +91,9 @@ P5 API 중심 보기
 
 1. **머리** — `METHOD path` · 요약 · 도메인 · 버튼 [호출해 보기](§5.3 프리필) · [Hermes 와 이야기](위젯 context `{"op": id}`) · REST Docs 앵커 링크.
 2. **스펙** (Swagger 가 보여주는 것) — 파라미터 표(이름·위치·필수·설명), 요청 예시(JSON), 성공 응답(status 별 예시 접기), 문서화된 에러 코드 표(코드·status·메시지). 전부 `spec.Op` 에 이미 있다.
-3. **이 API 의 TC** — 층별 세 묶음. 각 행: TC id(링크) · 제목 · 자동화 배지 · 검증하는 스크립트 · 마지막 결과. 체크박스 + [고른 TC 로 스크립트 초안 생성 (Hermes)] — TC 목록의 폼을 그대로 쓴다(같은 도메인 1~10건 제약 동일).
+3. **이 API 의 테스트 조건** — 층별 세 묶음. 각 행: 테스트 조건 id(링크) · 제목 · 자동화 배지 · 검증하는 스크립트 · 마지막 결과. 체크박스 + [고른 테스트 조건으로 스크립트 초안 생성 (Hermes)] — 테스트 조건 목록의 폼을 그대로 쓴다(같은 도메인 1~10건 제약 동일).
    - API 계약: `record.operation == id`.
-   - 비즈니스 규칙: `binding.operations` 에 id 포함. 거절 TC 는 매핑된 에러 코드도 같이.
+   - 비즈니스 규칙: `binding.operations` 에 id 포함. 거절 테스트 조건은 매핑된 에러 코드도 같이.
    - 수동 작성: `binding.operations` 에 id 포함.
 4. **부르는 스크립트** — 행: 스크립트 id · 단계 이름(그 op 를 부르는 단계만) · 스위트 · 마지막 결과. 판별은 단계 `request.method/path` 를 `spec.op_for` 로 매칭. `operations:` 에 선언은 했는데 부르는 단계가 없거나, 부르는데 선언이 없으면 회색 글씨로 "선언과 다름" — 정합성 경고에 얹지는 않는다(범위 유지).
 5. **최근 호출** — 이 op 를 부른 단계 최근 20건: 시각 · 실행 기록(링크) · 실행 종류 · 스크립트(또는 "API 호출") · 담당자 · status · 판정 · 소요 ms · 실패면 검증 항목 한 줄. [같은 요청으로 열기] → §5.3. Tossion 의 "지난번 어땠죠" 가 이 표다.
@@ -207,7 +207,7 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 | 스크립트 형식 | `suite: setup` · `inputs` · `outputs` · `{{input.x}}` | §5.4. 로더 검증: setup 외 스위트에 inputs 금지, outputs 는 save 변수만 |
 | 브라우저 | localStorage `qa_recent.<param>` · `qa_fav` · 보기 토글 | 서버 저장 없음 |
 
-카탈로그·TC 레코드·초안·대화 테이블은 그대로다.
+카탈로그·테스트 조건 레코드·초안·대화 테이블은 그대로다.
 
 ## 7. 계약 변경
 
@@ -220,13 +220,13 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 - MCP 도구 `qa_api_get(operation_id)` → `{op, tcs: {contract, policy, manual}, scripts, recent_calls, stats}`. 도구 14개. `hermes-config-init` 의 `tools.include` 목록에 추가(compose).
 
 ### 7.2 이 레포 변경 목록
-`qa/catalog.py`(op → TC 역색인 함수) · `qa/store.py`(op_id 열, 최근 호출·통계 쿼리) · `qa/runner.py`(op_id 기록) · `qa/cases.py`(setup·inputs·outputs 검증) · `qa/templating.py`(`input.` 네임스페이스) · `qa/ui.py`(호출 카드 부품, CSS 손질, apis·setup 화면, explorer 재구성, 실행 결과 요약, 배지, 가이드 절) · `qa/mcp_server.py`(도구 1개) · `app.py`(라우트) · `cases/setup.yaml`(시드) · `compose.ec2.yaml`(tools.include) · `docs/qa-platform.md` §12 · 이 문서 §10.
+`qa/catalog.py`(op → 테스트 조건 역색인 함수) · `qa/store.py`(op_id 열, 최근 호출·통계 쿼리) · `qa/runner.py`(op_id 기록) · `qa/cases.py`(setup·inputs·outputs 검증) · `qa/templating.py`(`input.` 네임스페이스) · `qa/ui.py`(호출 카드 부품, CSS 손질, apis·setup 화면, explorer 재구성, 실행 결과 요약, 배지, 가이드 절) · `qa/mcp_server.py`(도구 1개) · `app.py`(라우트) · `cases/setup.yaml`(시드) · `compose.ec2.yaml`(tools.include) · `docs/qa-platform.md` §12 · 이 문서 §10.
 
 ## 8. 단계
 
 | 단계 | 내용 | 의존 |
 | --- | --- | --- |
-| **P5a 호출 카드** | CSS 손질(§5.7 카드·토글·입력·버튼·메서드 배지), 호출 카드 부품(Normal/Swagger 양방향), API 호출 화면 재구성(목록 접기·즐겨찾기·최근 값·프리필), op → TC 역색인 + QA 배지 | 없음. 사용자가 콕 집은 "토스처럼" 의 본체 |
+| **P5a 호출 카드** | CSS 손질(§5.7 카드·토글·입력·버튼·메서드 배지), 호출 카드 부품(Normal/Swagger 양방향), API 호출 화면 재구성(목록 접기·즐겨찾기·최근 값·프리필), op → 테스트 조건 역색인 + QA 배지 | 없음. 사용자가 콕 집은 "토스처럼" 의 본체 |
 | **P5b API 화면** | `run_steps.op_id`, `/apis` 목록·상세, `qa_api_get`, 가이드 | P5a 의 역색인 |
 | **P5c 준비 작업** | 형식 확장·로더·`/setup`(호출 카드 재사용)·시드 3개(dev 확인) | P5a 카드 |
 | **P5d 실행 결과 화면** | 요약 카드 4개·도넛·도메인별 진행 막대·판정 필터 | 없음(P5a 의 CSS) |
@@ -260,7 +260,7 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 
 - **들어간 것**: `ui.explorer` 를 다시 썼다. 왼쪽 op 목록은 도메인별 `<details>`(선택된 도메인·검색 중엔 펼침) + ☆ 즐겨찾기(localStorage `qa_fav`, 맨 위 "즐겨찾기" 묶음). 오른쪽은 호출 카드 — 머리(요약·operationId·메서드 배지·경로, Normal | Swagger 세그먼트), QA 배지 한 줄, Normal 보기(path·query 입력칸 + 본문 최상위 키 칸, 중첩은 JSON 칸, 예시 타입 힌트), Swagger 보기(메서드 배지 + 채워진 경로, Parameters 표, Request Body JSON), 발(테스트 계정 라디오·담당자·꽉 찬 파란 [보내기]). `ui.EXPLORER_JS` 가 토글·양방향 동기화·최근 값·즐겨찾기·응답 id 수집을 한다.
 - **값의 정본은 하나**: path·query 는 Normal 의 `name=p_*/q_*` 칸이 진짜고 Swagger 표의 칸은 `data-mirror` 거울. 본문은 Swagger 의 `name=body` JSON 칸이 진짜고 Normal 의 `data-bk` 칸은 그 키만 읽고 쓴다. JSON 이 깨지면 Normal 을 잠그고 빨간 줄로 이유를 보여 준다. 서버 계약(`POST /explorer/send` 의 `op`·`p_*`·`q_*`·`body`·`actor`·`operator`)은 그대로다.
-- **QA 배지**: `Catalog.by_operation()`(op → TC id, 세 층 모두) + `App.op_qa()` → "TC 15 · 자동화 2/14 (제외 1) · 마지막 pass 09-21". 클릭하면 `/catalog?op=<id>` — TC 목록에 op 필터를 더했다(도메인 무시, 그 API 에 걸린 TC 만). P5b 의 `/apis/{op}` 가 생기면 링크를 그쪽으로 옮긴다.
+- **QA 배지**: `Catalog.by_operation()`(op → 테스트 조건 id, 세 층 모두) + `App.op_qa()` → "테스트 조건 15 · 자동화 2/14 (제외 1) · 마지막 pass 09-21". 클릭하면 `/catalog?op=<id>` — 테스트 조건 목록에 op 필터를 더했다(도메인 무시, 그 API 에 걸린 테스트 조건만). P5b 의 `/apis/{op}` 가 생기면 링크를 그쪽으로 옮긴다.
 - **프리필**: `/explorer?op=X&p.roomId=…&q.size=…&actor=qa-host&body=<json>&view=swagger`. 응답 카드의 [같은 요청으로 다시 열기] 가 실행 기록의 요청에서 path 파라미터를 되찾아(`ui._path_param_values`) 이 링크를 만든다.
 - **최근 값**: 파라미터 이름별 localStorage `qa_recent.<name>` 5개 → `<datalist>`, 비어 있으면 최근 값으로 채움. 응답 `data` 안(깊이 3까지)의 `*Id`·`id` 를 자동으로 기억하고 응답 카드 아래에 "다음 호출을 위해 기억한 값" 한 줄.
 - **CSS 손질**(플랫폼 전체): 카드 12px 모서리·18/20px 여백, 주 버튼 파랑(`--info`) + `.wide`, 입력칸 8px 모서리·포커스 링, `.field`(라벨 위·필수 빨간 점·힌트), `.seg` 세그먼트, `.m.get/post/put/patch/delete` 메서드 배지, `.xgrid` 2열→860px 아래 1열, nav 가로 스크롤(좁은 화면에서 글자가 세로로 깨지던 것).
@@ -270,13 +270,13 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 
 ### 11.2 P5b — API 별로 모아 보기 (2026-09-22)
 
-- **들어간 것**: nav "API" → `/apis` 목록(도메인 탭 × 검색 × 필터 모두 / 부르는 스크립트 없음 / 미자동화 TC 있음 / 문서화된 에러 없음). 행 = 메서드·경로·요약·operationId · TC 수(계약·규칙·수동) · 자동화 m/n(제외) · 부르는 스크립트 수 · 마지막 호출(판정·status·시각·실행 기록 링크) · 에러 코드 수. `/apis/{operationId}` 상세 = 머리(QA 배지, [호출해 보기]·[Hermes 와 이야기]·[REST Docs]) · 스펙(파라미터·요청 예시·성공 응답·에러 코드) · 이 API 의 TC(층별, 체크 → 초안 생성 폼 재사용) · 부르는 스크립트(단계 이름, "선언만"/"선언 없음" 표시) · 최근 호출 20건(시각·실행 기록·스크립트 또는 API 호출·판정·status·소요·[같은 요청으로 열기]). `GET /api/apis/{op}` JSON 이 같은 묶음.
+- **들어간 것**: nav "API" → `/apis` 목록(도메인 탭 × 검색 × 필터 모두 / 부르는 스크립트 없음 / 미자동화 테스트 조건 있음 / 문서화된 에러 없음). 행 = 메서드·경로·요약·operationId · 테스트 조건 수(계약·규칙·수동) · 자동화 m/n(제외) · 부르는 스크립트 수 · 마지막 호출(판정·status·시각·실행 기록 링크) · 에러 코드 수. `/apis/{operationId}` 상세 = 머리(QA 배지, [호출해 보기]·[Hermes 와 이야기]·[REST Docs]) · 스펙(파라미터·요청 예시·성공 응답·에러 코드) · 이 API 의 테스트 조건(층별, 체크 → 초안 생성 폼 재사용) · 부르는 스크립트(단계 이름, "선언만"/"선언 없음" 표시) · 최근 호출 20건(시각·실행 기록·스크립트 또는 API 호출·판정·status·소요·[같은 요청으로 열기]). `GET /api/apis/{op}` JSON 이 같은 묶음.
 - **데이터**: `run_steps.op_id`(ALTER + 인덱스). 러너가 단계마다 `App.op_of(method, path)`(= `spec.op_for`)로 채운다 — 치환 전 템플릿으로 한 번, 치환 뒤 경로로 한 번 더(더 정확). 옛 행(NULL)은 `store.calls_unresolved(300)` 을 조회 때 method/path 로 매칭해 섞는다 — 백필 없음. 실제로 배포 전 기록(09-21 실행)의 termsList 호출 4건이 폴백으로 잡혔다.
 - **집계**: `App.api_overview()`(목록 한 번에), `App.api_detail(op)`(상세·JSON·MCP·대화 첨부 공용), `App.scripts_by_op()`(단계 method/path 로 판별 + `operations:` 선언 따로). `Catalog.by_operation()` 은 P5a 것.
 - **Hermes**: MCP 도구 `qa_api_get(operationId)` 추가(14개, compose `tools.include` 갱신). 요청·응답 본문은 안 넘기고 UUID 는 마스킹. 채팅 위젯 첨부에 `{"op": id}` 종류 추가(`/chat/new?op=`, 첨부 텍스트가 `qa_api_get` 을 가리킨다).
 - **REST Docs 링크**: 절 앵커는 AsciiDoc 규칙대로 제목에서 만든다(`ui.restdocs_anchor`: 소문자·기호→`_`·앞 `_`). 같은 제목이 둘이면 `_2` 가 붙는데 그건 모른다 — 안 맞으면 문서 맨 위가 열린다. 문서 URL 은 `QA_SPEC_DOCS_URL`(기본: 스펙 URL 의 `/openapi/` 앞까지).
 - **호출 카드 QA 배지** 링크를 `/catalog?op=` 에서 `/apis/{op}` 로 옮겼다(op 필터는 남겨 둔다).
-- **검증**: 테스트 6건 추가(op_id 기록·최근 호출·NULL 폴백·목록 집계·상세 구조·화면·MCP·대화 첨부), 전체 69건. 브라우저: `/apis?domain=room` 목록·필터, `createRoom` 상세(TC 15 층별), `termsList` 상세(부르는 스크립트 1·최근 호출 4건 중 폴백 3건), 콘솔 오류 없음.
+- **검증**: 테스트 6건 추가(op_id 기록·최근 호출·NULL 폴백·목록 집계·상세 구조·화면·MCP·대화 첨부), 전체 69건. 브라우저: `/apis?domain=room` 목록·필터, `createRoom` 상세(테스트 조건 15 층별), `termsList` 상세(부르는 스크립트 1·최근 호출 4건 중 폴백 3건), 콘솔 오류 없음.
 - **남은 것**: 통계(통과율·평균·flaky)는 P5e. 목록의 "마지막 호출" 은 op_id 있는 행 우선, 없으면 폴백 300건 안에서만.
 
 ### 11.3 P5c — 준비 작업 (2026-09-22)
@@ -308,7 +308,7 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 
 - **백엔드**: [moimyeon-backend PR #135](https://github.com/100Thieves-team/moimyeon-backend/pull/135) (MOI-534, dev 머지) 가 `/v1/dev/…` 아래에 dev 전용 QA API 를 열었다 — `listQaData`(`GET /v1/dev/qa-data`: `[QA]` 룸 + QA 생성 회원 목록) · `deleteQaRoom`(`DELETE /v1/dev/rooms/{id}`, 딸린 20개 테이블까지 하드 삭제) · `deleteQaData`(일괄, `hostMemberId`·`includeMembers`) · `resetQaMember`(`POST /v1/dev/members/{id}/reset`) · `deleteQaMember` · `createQaMember`(테스트 회원 생성 + 토큰) · `rescheduleQaRoom`(시작 시각 변경) · `completeQaResumeSummary`(이력서 요약 강제). 지우기는 제목 `[QA]` 만(E2201), 프로파일 `local·local-dev·dev` 에서만 빈 등록, 인증 필요(dev-sessions 토큰).
 - **플랫폼에 들어간 것**: `qa/qadata.py` — qa-host 토큰으로 dev API 를 부르는 클라이언트(`snapshot`·`delete_room`·`delete_all`·`reset_member`·`delete_member`). "테스트 데이터 만들기" 화면 아래 **"QA 데이터 정리"** 절: `[QA]` 룸 표(id·제목·상태·방장(테스트 계정 이름으로, 남은 UUID 는 앞 8자리)·딸린 행 수·시각·[삭제]), [`[QA]` 룸 전부 삭제], 테스트 계정별 [초기화], QA 테스트 회원 표([삭제]). 버튼마다 확인창. 결과는 지운 행 수로 플래시. `POST /setup/cleanup {action, target, operator}` → `App.qa_data_action` → 감사 로그 `qa_data.delete_room | delete_all | reset | delete_member`(ok·status·total·rooms·error). **실행 기록에는 안 남긴다** — 검증이 아니라 정리라서.
-- **TC·API 화면에서 제외**: `/v1/dev/` op 는 계약 TC 를 만들지 않고(`catalog.build`) API 모아 보기에도 안 나온다(`api_overview`). API 호출 화면에는 도메인 `qa-dev` 로 남는다(손으로 부를 수 있게 — 시작 시각 변경·회원 생성·요약 강제는 여기서).
+- **테스트 조건·API 화면에서 제외**: `/v1/dev/` op 는 계약 테스트 조건을 만들지 않고(`catalog.build`) API 모아 보기에도 안 나온다(`api_overview`). API 호출 화면에는 도메인 `qa-dev` 로 남는다(손으로 부를 수 있게 — 시작 시각 변경·회원 생성·요약 강제는 여기서).
 - **쓸 수 없을 때**: API 문서에 `listQaData` 가 없거나(배포 전) 테스트 계정이 없으면 절에 이유만 보인다. 로컬은 후자.
 - **아직 안 한 것**: `rescheduleQaRoom`(확정 룸의 시작 시각을 과거로 → 진행 화면까지 공개 API 로 도달)과 `createQaMember`·`completeQaResumeSummary` 를 테스트 데이터 만들기 카드로 감싸기. setup 스크립트가 dev-sessions 대신 만든 회원 토큰을 쓰려면 `actor` 개념 확장이 필요하다 — 별도 설계. PR 에 적힌 미결(임의 회원 토큰이면 누구나 삭제 가능, 비QA 룸의 참여 행도 초기화 때 지워짐)은 백엔드 결정 사항.
 - **검증**: 테스트 5건(제외·스냅샷과 이름 대응·삭제/초기화/일괄 호출과 감사 로그·거절 처리·불가 사유·화면·실제 스펙에 op 존재), 전체 90건. 실제 dev 삭제는 배포 뒤 사람이 첫 번째 [QA] 룸으로 확인한다.
@@ -332,7 +332,7 @@ API 호출 화면(§5.3)과 준비 작업(§5.4)이 같은 부품을 쓴다. 서
 ### 11.9 API 문서 다시 읽기 (2026-09-23)
 
 - 사용자 지적: "새 API 가 배포돼도 1시간 캐시는 너무 길다. 사람이 수동으로 갱신하게 하라. 알림은 필요 없다."
-- **버튼** [API 문서 다시 읽기] — API 화면·TC 목록·API 호출 화면의 스펙 버전 줄에. `POST /spec/refresh {operator, next}` → `App.refresh_spec`: `spec.get(force=True)` 로 캐시를 무시하고 다시 받고, `catalog.get(force=True)` 로 TC 목록을 다시 계산하고, 스크립트 정합성 검사를 다시 한다. 결과를 한 줄 플래시로: 해시 전→후, 새 API·사라진 API 이름, TC 증감. 그대로면 "문서가 그대로다 — 백엔드 CI 가 끝났는지 확인". 감사 로그 `spec.refresh`.
-- **캐시 기본값** 1시간 → **10분**(`QA_SPEC_TTL`, 초). 30초마다 도는 TC 목록 재계산이 이 TTL 을 따르므로, 버튼을 안 눌러도 10분 안엔 반영된다. 화면에 "n분 전 읽음".
+- **버튼** [API 문서 다시 읽기] — API 화면·테스트 조건 목록·API 호출 화면의 스펙 버전 줄에. `POST /spec/refresh {operator, next}` → `App.refresh_spec`: `spec.get(force=True)` 로 캐시를 무시하고 다시 받고, `catalog.get(force=True)` 로 테스트 조건 목록을 다시 계산하고, 스크립트 정합성 검사를 다시 한다. 결과를 한 줄 플래시로: 해시 전→후, 새 API·사라진 API 이름, 테스트 조건 증감. 그대로면 "문서가 그대로다 — 백엔드 CI 가 끝났는지 확인". 감사 로그 `spec.refresh`.
+- **캐시 기본값** 1시간 → **10분**(`QA_SPEC_TTL`, 초). 30초마다 도는 테스트 조건 목록 재계산이 이 TTL 을 따르므로, 버튼을 안 눌러도 10분 안엔 반영된다. 화면에 "n분 전 읽음".
 - 읽기 동작이라 "자동 실행 없음" 원칙과 무관하지만, 사람이 누른 것이므로 감사 로그에 남긴다.
-- 검증: 테스트 2건(새 op 반영·TC 재계산·이벤트·변화 없음 판정, 폼 렌더), 전체 100건.
+- 검증: 테스트 2건(새 op 반영·테스트 조건 재계산·이벤트·변화 없음 판정, 폼 렌더), 전체 100건.

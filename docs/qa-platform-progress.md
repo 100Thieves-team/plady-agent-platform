@@ -9,9 +9,9 @@ Hermes 를 부르는 기능 다섯 개 중 넷이 요청 하나로 끝까지 기
 
 | 기능 | 화면 | 호출 | 기다리는 시간 |
 |---|---|---|---|
-| 고른 TC 로 스크립트 초안 생성 | TC 목록 | `drafts.generate` → `hermes.chat` | 수십 초~3분 |
-| PRD 절에서 수동 작성 TC 제안 | TC 목록 | `drafts.propose_manual_tc` → `hermes.chat` | 수십 초~3분 |
-| 바뀐 TC 에 맞게 Hermes 가 고치기 | 스크립트 상세 | `drafts.revise` → `hermes.chat` | 수십 초~3분 |
+| 고른 테스트 조건으로 스크립트 초안 생성 | 테스트 조건 목록 | `drafts.generate` → `hermes.chat` | 수십 초~3분 |
+| PRD 절에서 수동 작성 테스트 조건 제안 | 테스트 조건 목록 | `drafts.propose_manual_tc` → `hermes.chat` | 수십 초~3분 |
+| 바뀐 테스트 조건에 맞게 Hermes 가 고치기 | 스크립트 상세 | `drafts.revise` → `hermes.chat` | 수십 초~3분 |
 | Hermes 실패 분석 | 실행 결과 | `hermes.triage` → `hermes.chat` | 수십 초 |
 | Hermes 와 이야기 | 대화 | `hermes.stream_respond` | **이미 SSE** |
 
@@ -42,10 +42,10 @@ Hermes 작업 j-1a2b3c · 스크립트 초안 생성 · bebe · 00:47 경과
 | 단계 | 내용 | 진행 정보 |
 |---|---|---|
 | 대기 | 앞 작업이 끝나기를 기다림 (§4.3) | 앞에 몇 건 |
-| 근거 모으기 | TC·OpenAPI·PRD 절을 모아 프롬프트를 만든다 | 건수, 프롬프트 글자 수 |
+| 근거 모으기 | 테스트 조건·OpenAPI·PRD 절을 모아 프롬프트를 만든다 | 건수, 프롬프트 글자 수 |
 | Hermes 에게 보냄 | 요청 전송, 첫 응답 전 | 경과 시간 |
 | Hermes 가 쓰는 중 | 응답을 스트리밍으로 받는다 | 받은 글자 수, 마지막 수신 뒤 경과 시간. 실패 분석은 받은 글을 그대로 흘려 보여 준다 |
-| 검증 | 결정론 검증(스크립트 초안·수동 TC) | 통과·거절 건수 |
+| 검증 | 결정론 검증(스크립트 초안·수동 테스트 조건) | 통과·거절 건수 |
 | 끝 · 실패 · 그만둠 | 결과 저장, 링크 | 초안 id, 오류 메시지 |
 
 - **결정 (2026-09-23 사용자 "yaml")**: 스크립트 초안도 Hermes 가 쓰는 YAML 을 받는 대로 보여 준다. 카드에 "검증 전이라 틀린 곳이 있을 수 있다" 를 적는다.
@@ -111,7 +111,7 @@ Hermes 는 한 대다. 동시에 도는 작업은 **2건**까지로 하고 나�
 | 단계 | 내용 |
 |---|---|
 | S1 | dev hermes-agent 스트리밍 지원 확인, `hermes.chat_stream` 추가, `hermes_jobs` 표와 작업 실행기, SSE 경로, 진행 현황 화면 |
-| S2 | 네 기능을 작업으로 옮긴다. 초안 생성 · 수동 TC 제안 · 고치기는 진행 현황 화면으로, 실패 분석은 제자리 카드로 |
+| S2 | 네 기능을 작업으로 옮긴다. 초안 생성 · 수동 테스트 조건 제안 · 고치기는 진행 현황 화면으로, 실패 분석은 제자리 카드로 |
 | S3 | 초안 목록의 진행 중 줄, `/jobs` 목록, 그만두기 |
 
 사람 작업은 없다. 새 비밀값도 필요 없다.
@@ -135,7 +135,7 @@ Hermes 는 한 대다. 동시에 도는 작업은 **2건**까지로 하고 나�
 | 스트리밍 ask | `qa/hermes.py` `ask_stream()`, `Canceled`. `drafts.generate`·`revise`·`propose_manual_tc`·`hermes.triage` 가 `ask` 를 받는다(없으면 기존 동기 호출 — MCP 도구·JSON API 는 그대로) |
 | 표 | `hermes_jobs`(id, kind, operator, label, status, stage, info, result, error, text, back, 시각) |
 | 라우트 | `GET /jobs` · `GET /jobs/{id}` · `GET /api/jobs/{id}` · `GET /api/jobs/{id}/events`(SSE: `snapshot`·`state`·`text`·`end`, 15초 keepalive) · `POST /jobs/{id}/cancel` · `GET /static/jobs.js` |
-| 바뀐 버튼 | 초안 생성·수동 TC 제안·고치기는 `/jobs/{id}` 로 간다. 실패 분석은 `X-QA-Job` 헤더로 작업 id 를 받아 제자리 카드로 흐르고, 끝나면 화면을 새로 고친다. `/api/…` JSON 경로는 예전처럼 끝까지 기다린다 |
+| 바뀐 버튼 | 초안 생성·수동 테스트 조건 제안·고치기는 `/jobs/{id}` 로 간다. 실패 분석은 `X-QA-Job` 헤더로 작업 id 를 받아 제자리 카드로 흐르고, 끝나면 화면을 새로 고친다. `/api/…` JSON 경로는 예전처럼 끝까지 기다린다 |
 | 설정 | `QA_JOB_CONCURRENCY`(2) · `QA_JOB_TIMEOUT`(300초) · `QA_JOB_STALL`(60초, Hermes keepalive 10초) |
 | 감사 로그 | `hermes_job.start`(버튼을 누른 것) · `hermes_job.cancel` · 결과는 기존 `draft.generate`·`run.triage` 등(`run.triage` 는 detail 에 job id) |
 | 테스트 | `tests/test_jobs.py` 13건 — SSE 파싱·그만두기·멈춤, 단계·글·결과·표, 대기와 그만두기, 재시작 중단, 초안 생성 작업, 실제 HTTP 로 SSE `snapshot → text → end`, 실패 분석 제자리 작업 |
