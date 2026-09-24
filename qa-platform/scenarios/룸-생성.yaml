@@ -13,7 +13,7 @@ scenarios:
         title: 온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다
         given: 활성 룸이 없는 방장
         then: 생성 200, 상태 RECRUITING, 상세의 방장이 본인
-        checks: [C.room.create, op.createRoom:200]
+        checks: [C.room.create, 'op.createRoom:200']
       - key: pasted-posting
         kind: branch
         at: R3
@@ -34,7 +34,7 @@ scenarios:
       - key: creation-limit
         kind: extra
         title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
-        checks: [op.roomCreationLimit:200]
+        checks: ['op.roomCreationLimit:200']
 
   - id: S2
     actor: qa-host
@@ -53,7 +53,7 @@ scenarios:
         title: 일반 참여자가 없는 모집 중인 룸을 방장이 취소한다
         given: 방장만 있는 모집 중인 룸
         then: 취소 200
-        checks: [C.room.cancel, op.cancelRoom:200]
+        checks: [C.room.cancel, 'op.cancelRoom:200']
       - key: host-leave
         kind: branch
         at: R148

@@ -135,6 +135,21 @@ class App:
         chk["errors"] = list(self.scenario_errors) + chk["errors"]
         return ov, chk
 
+    def scenario_ctx(self, slug: str, sid: str) -> tuple[dict, dict]:
+        """폼이 쓰는 (기능, 시나리오) 화면 데이터. PRD 2장에 없는 시나리오는 폼으로 만들지 않는다."""
+        ov, _ = self.scenario_view()
+        f = next((x for x in ov if x["slug"] == slug), None)
+        s = next((x for x in (f or {}).get("scenarios", []) if x["id"] == sid), None)
+        if not f or not s:
+            raise BadRequest("그 기능·시나리오가 없다")
+        if not s["in_prd"]:
+            raise BadRequest(f"{sid} 가 PRD 2장에 없다 — 시나리오는 PRD 가 정한다")
+        return f, s
+
+    def tc_options(self) -> list[tuple[str, str]]:
+        cat = self.current_catalog()
+        return [(r["id"], r["title"]) for r in (cat.records.values() if cat else []) if not r.get("excluded")]
+
     def gate_names(self) -> dict:
         cat = self.catalog.current
         return {r["gate"]: r.get("gate_name") or "" for r in (cat.records.values() if cat else []) if r.get("gate")}
@@ -435,6 +450,12 @@ class App:
     def change_link(self, out: dict) -> dict:
         """저장 결과로 갈 곳. main 에 들어갔으면 그 스크립트·TC, 아니면(토큰 없음) 파일 받기가 있는 변경 기록."""
         if out.get("commit"):
+            if out.get("kind") in ("scenario", "scenario-delete"):
+                from qa.ui_scn import feature_url
+                parts = (out.get("case_id") or "").split("/")
+                if len(parts) == 3 and out["kind"] == "scenario":
+                    return {"href": feature_url(*parts), "label": out["case_id"]}
+                return {"href": feature_url(parts[0]) + (f"#{parts[1]}" if len(parts) > 1 else ""), "label": parts[0]}
             if out.get("case_id") and not out.get("deleted"):
                 return {"href": f"/cases/{out['case_id']}", "label": out["case_id"]}
             if out.get("tc_ids") and not out.get("deleted"):
@@ -648,12 +669,81 @@ class App:
 
     def _plan(self, d: dict, operator: str):
         kind = d.get("kind") or "case"
+        if kind in ("scenario", "scenario-delete"):
+            op = draftsmod.yaml.safe_load(d["yaml"])
+
+            def change(text):
+                try:
+                    return scenariosmod.apply_op(text, op)
+                except scenariosmod.ScenarioError as ex:
+                    raise RepoError(str(ex))
+            return f"scenarios/{scenariosmod.doc_slug(op['feature'])}.yaml", change, scenariosmod.op_summary(op), [scenariosmod.op_target(op)]
         if kind in ("tc", "tc-delete"):
             cat = self.current_catalog()
             return editormod.plan_tc(d, covered_by=self.coverage(cat)["by_tc"] if cat else {})
         return editormod.plan_case(d, cases=self.cases, operator=operator)
 
-    SAVE_ACTIONS = {"case": "case.save", "case-delete": "case.delete", "tc": "manual_tc.save", "tc-delete": "manual_tc.delete"}
+    SAVE_ACTIONS = {"case": "case.save", "case-delete": "case.delete", "case-unlink": "case.save", "tc": "manual_tc.save", "tc-delete": "manual_tc.delete",
+                    "scenario": "scenario.save", "scenario-delete": "scenario.delete"}
+
+    # ---- 시나리오 폼 (docs/qa-platform-scenarios.md §9, §14 5단계) ----------------------------------
+    def scenario_check(self, op: dict) -> tuple[str | None, list[str], list[str]]:
+        """변경을 지금 파일에 적용해 본다 → (새 파일 텍스트|None, 오류, 경고). §6.1 오류는 저장을 막는다.
+        지우는 변경은 그 변형을 가리키던 스크립트를 "시나리오 밖" 으로 돌리므로 그 스크립트 오류는 세지 않는다."""
+        slug = scenariosmod.doc_slug(op["feature"])
+        p = self.scenarios_dir / f"{slug}.yaml"
+        text = p.read_text(encoding="utf-8") if p.is_file() else None
+        try:
+            new = scenariosmod.apply_op(text, op)
+            ft = scenariosmod.parse_feature(draftsmod.yaml.safe_load(new), f"{slug}.yaml")
+        except scenariosmod.ScenarioError as ex:
+            return None, [str(ex).replace(f"{slug}.yaml: ", "")], []
+        feats = dict(self.features)
+        feats[slug] = ft
+        unlinked = set(self.scenario_unlinks(op))
+        cases = {k: c for k, c in self.cases.items() if k not in unlinked}
+        chk = scenariosmod.check(feats, wiki=self.wiki, catalog=self.current_catalog(), cases=cases)
+        fc = chk["by_feature"].get(slug) or {"errors": [], "warnings": []}
+        return new, fc["errors"], fc["warnings"]
+
+    def scenario_unlinks(self, op: dict) -> list[str]:
+        """지우는 변경이면 그 변형(들)을 구현하던 스크립트 id."""
+        slug = scenariosmod.doc_slug(op["feature"])
+        if op["action"] == "variant-delete":
+            gone = {f"{slug}/{op['scenario']}/{op['key']}"}
+        elif op["action"] == "scenario-delete":
+            gone = {vid for vid in scenariosmod.variant_index(self.features) if vid.startswith(f"{slug}/{op['scenario']}/")}
+        else:
+            return []
+        return sorted(c.id for c in self.cases.values() if c.variant in gone)
+
+    def save_scenario(self, op: dict, *, operator: str, source: str = "form", note: str | None = None, session_hash=None, ip=None) -> dict:
+        """시나리오 변경 하나를 검증하고 바로 저장한다. 오류가 있으면 저장하지 않고 {ok: False, errors}.
+        변형·시나리오를 지우면 그것을 구현하던 스크립트의 variant: 를 떼어 "시나리오 밖" 으로 남긴다(스크립트는 지우지 않는다)."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        new, errors, warnings = self.scenario_check(op)
+        if errors:
+            return {"ok": False, "errors": errors, "warnings": warnings}
+        unlinks = self.scenario_unlinks(op)
+        delete = op["action"].endswith("-delete")
+        v = scenariosmod.variant_raw(op["variant"]) if op["action"] == "variant" else {}
+        if source == "form":
+            v.pop("written_by", None)
+            if op["action"] == "variant":
+                op = {**op, "variant": {k: x for k, x in op["variant"].items() if k != "written_by"}}
+        out = self.save_change(kind="scenario-delete" if delete else "scenario", source=source,
+                               yaml_text=draftsmod.yaml.safe_dump(op, allow_unicode=True, sort_keys=False), operator=operator,
+                               note=(note or "").strip() or None, case_id=scenariosmod.op_target(op), tc_ids=v.get("checks") or [],
+                               validation={"status": "warn" if warnings else "ok", "errors": [], "warnings": warnings + ([f"시나리오 밖으로 돌린 스크립트: {', '.join(unlinks)}"] if unlinks else [])},
+                               session_hash=session_hash, ip=ip)
+        for cid in unlinks:
+            c = self.cases.get(cid)
+            if c and c.variant:
+                self.save_change(kind="case-unlink", source="scenario-delete", yaml_text=c.to_yaml(), operator=operator, case_id=cid,
+                                 domain=(c.domains[0] if c.domains else None), tc_ids=c.covers, note=f"{scenariosmod.op_target(op)} 를 지워 variant: 를 뗐다",
+                                 validation={"status": "ok", "warnings": []}, session_hash=session_hash, ip=ip)
+        return {"ok": True, "errors": [], "warnings": warnings, "unlinked": unlinks, **out}
 
     def save_change(self, *, kind: str, source: str, yaml_text: str, operator: str, domain: str | None = None, note: str | None = None,
                     case_id: str | None = None, tc_ids: list | None = None, validation: dict | None = None, prompt_hash: str | None = None,
@@ -719,7 +809,7 @@ class App:
         """쓰기 토큰이 없을 때: 이 변경을 반영한 파일 전체(플랫폼이 지금 읽는 판 기준). (레포 안 경로, 텍스트)."""
         rel, change, _, _ = self._plan(d, operator)
         sub, name = rel.split("/", 1)
-        base = (self.cases_dir if sub == "cases" else self.catalog.catalog_dir) / name
+        base = {"cases": self.cases_dir, "scenarios": self.scenarios_dir}.get(sub, self.catalog.catalog_dir) / name
         text = base.read_text(encoding="utf-8") if base.is_file() else None
         try:
             return rel, change(text)
@@ -1228,6 +1318,61 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/features" and method == "GET":
             ov, chk = app.scenario_view()
             return self._page("시나리오", ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
+        # 시나리오 폼 (§14 5단계): 저장·지우기는 §6.1 검사를 거쳐 main 에 바로 커밋한다
+        if path in ("/features/save", "/features/delete") and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+            operator = fv("operator").strip() or self._operator()
+            feature, sid, action = fv("feature").strip(), fv("scenario").strip(), fv("action")
+            op: dict = {"feature": feature, "scenario": sid, "action": action}
+            if path == "/features/delete":
+                if action == "variant-delete":
+                    op["key"] = fv("key")
+                elif action != "scenario-delete":
+                    raise BadRequest("모르는 지우기")
+            elif action == "variant":
+                op["original_key"] = fv("original_key").strip() or None
+                op["variant"] = {k: fv(k) for k in ("key", "kind", "at", "title", "given", "then", "checks", "mode")}
+            elif action == "scenario":
+                op["actor"] = fv("actor").strip() or None
+                op["gates"] = {k[5:]: [x.strip() for x in str(v[0]).split(",") if x.strip()] for k, v in f.items() if k.startswith("gate.")}
+            else:
+                raise BadRequest("모르는 저장")
+            out = app.save_scenario(op, operator=operator, note=fv("reason") or None, session_hash=self._session_hash(), ip=self._ip())
+            if self._wants_json():
+                return self._json(200 if out["ok"] else 400, out)
+            if not out["ok"]:
+                if path == "/features/delete":
+                    raise BadRequest("지우지 못했다: " + "; ".join(out["errors"][:3]))
+                fx, sx = app.scenario_ctx(scenariosmod.doc_slug(feature), sid)
+                if action == "variant":
+                    raw = scenariosmod.variant_raw(op["variant"])
+                    body = ui.variant_form(fx, sx, raw, mode="edit" if op["original_key"] else "new", operator=operator, tc_options=app.tc_options(),
+                                           errors=out["errors"], warnings=out["warnings"])
+                else:
+                    body = ui.scenario_form(fx, sx, operator=operator, actors=sorted(app.all_actors()), gate_options=sorted(app.gate_names().items()),
+                                            errors=out["errors"], warnings=out["warnings"], values={"actor": op["actor"], "gates": op["gates"]})
+                return self._page("시나리오 폼", body, "features")
+            link = app.change_link(out)
+            return self._redirect(link["href"], set_operator=operator)
+        m = re.match(r"^/features/([^/]+)/(S\d+)/(new|edit)$", path) or re.match(r"^/features/([^/]+)/(S\d+)/([^/]+)/(edit)$", path)
+        if m and method == "GET":
+            from urllib.parse import unquote
+            import unicodedata
+            fx, sx = app.scenario_ctx(unicodedata.normalize("NFC", unquote(m.group(1))), m.group(2))
+            if m.lastindex == 4:
+                key = unquote(m.group(3))
+                v = next((x for x in sx["variants"] if x["variant"].key == key), None)
+                if not v:
+                    return self._error(404, "그 변형이 없다")
+                body = ui.variant_form(fx, sx, dict(v["variant"].raw), mode="edit", operator=self._operator(), tc_options=app.tc_options())
+            elif m.group(3) == "new":
+                raw = {k: g(k) for k in ("key", "kind", "at", "title", "given", "then", "mode") if g(k)}
+                raw["checks"] = [x.strip() for x in g("checks").split(",") if x.strip()]
+                body = ui.variant_form(fx, sx, raw, mode="new", operator=self._operator(), tc_options=app.tc_options())
+            else:
+                body = ui.scenario_form(fx, sx, operator=self._operator(), actors=sorted(app.all_actors()), gate_options=sorted(app.gate_names().items()))
+            return self._page("시나리오 폼", body, "features")
         m = re.match(r"^/features/([^/]+)(?:/(S\d+)/([^/]+))?$", path)
         if m and method == "GET":
             from urllib.parse import unquote
@@ -1238,7 +1383,7 @@ class Handler(BaseHTTPRequestHandler):
             if not f:
                 return self._error(404, "그 기능이 없다")
             if not m.group(2):
-                return self._page(f["feature"], ui.feature_page(f, check=chk, gate_names=app.gate_names(),
+                return self._page(f["feature"], ui.feature_page(f, check=chk, gate_names=app.gate_names(), operator=self._operator(),
                                                                prd_url=app.wiki.prd_url(f["feature"]) if app.wiki.available else None), "features")
             s = next((x for x in f["scenarios"] if x["id"] == m.group(2)), None)
             key = unquote(m.group(3))
@@ -1248,7 +1393,7 @@ class Handler(BaseHTTPRequestHandler):
             cat = app.current_catalog()
             hist = sorted((dict(r, case_id=c.id) for c in v["scripts"] for r in app.store.case_history(c.id, 10)), key=lambda r: r["created_at"], reverse=True)[:15]
             step = next((st for st in s["steps"] if st.get("req") == v["variant"].at), None)
-            return self._page(v["variant"].title, ui.variant_page(f, s, v, check=chk, tc_records=(cat.records if cat else {}), history=hist, step=step), "features")
+            return self._page(v["variant"].title, ui.variant_page(f, s, v, check=chk, tc_records=(cat.records if cat else {}), history=hist, step=step, operator=self._operator()), "features")
 
         # ---------- 런 ----------
         if path == "/runs" and method == "GET":

@@ -124,7 +124,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "draft.save": "스크립트 초안 편집 (예전)", "draft.check": "스크립트 초안 시험 실행 (예전)", "draft.approve": "남은 초안 저장", "draft.reject": "남은 초안 버림",
              "case.save": "스크립트 저장", "case.delete": "스크립트 삭제", "case.try": "저장 전 실행", "manual_tc.save": "수동 작성 TC 저장", "manual_tc.delete": "수동 작성 TC 삭제",
              "hermes.generate": "Hermes 가 쓰기", "hermes.rejected_by_validation": "Hermes 결과 검증 탈락", "explorer.to_form": "API 호출을 스크립트 폼으로",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "spec.refresh": "API 문서 다시 읽기", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 봄", "approved": "저장됨", "rejected": "버림", "failed": "저장 실패"}
 
 
@@ -704,7 +704,7 @@ def catalog_detail(rec: dict, covering: list, last: dict[str, dict], excerpts: l
 
 
 # ---- 변경 기록 (예전 스크립트 초안) --------------------------------------------------------------------------------------
-KIND_BADGE = {"tc": ("수동 TC 제안", "warn"), "case-delete": ("스크립트 삭제 요청", "fail"), "tc-delete": ("TC 삭제 요청", "fail")}
+KIND_BADGE = {"scenario": ("시나리오", "policy"), "scenario-delete": ("시나리오 삭제", "fail"), "case-unlink": ("변형 떼기", "manual"), "tc": ("수동 TC 제안", "warn"), "case-delete": ("스크립트 삭제 요청", "fail"), "tc-delete": ("TC 삭제 요청", "fail")}
 
 
 def drafts_list(drafts: list[dict], counts: dict, status: str, active_jobs: list | None = None) -> str:
@@ -719,7 +719,7 @@ def drafts_list(drafts: list[dict], counts: dict, status: str, active_jobs: list
     return (f'<h1>변경 기록{h("drafts.status")} <span class="small mut">폼·Hermes 가 저장한 스크립트·수동 작성 TC 변경 — 누가 언제 무엇을 main 에 넣었나</span></h1>{active_jobs_line(active_jobs or [])}<div class="card"><div class="tabs">{tabs}</div>'
             f'<p class="small mut" style="margin-bottom:0">저장하면 검증을 거쳐 이 레포의 main 에 바로 커밋되고(<span class="mono">[skip ci]</span>, 재배포 없음) 플랫폼에 바로 반영된다. 초안·승인 단계는 없다. '
             f'"저장 안 됨" 은 예전 방식으로 남은 초안과 API 호출 화면에서 폼으로 담다 만 것이다. <a href="/jobs">Hermes 작업 목록</a></p></div>'
-            f'<div class="card"><table><tr><th>ID</th><th>상태{h("drafts.status")}</th><th>스크립트 id</th><th>TC{h("cases.covers")}</th><th>검증</th><th>어떻게 · 누가</th><th>시각</th></tr>{rows}</table></div>')
+            f'<div class="card"><table><tr><th>ID</th><th>상태{h("drafts.status")}</th><th>대상</th><th>TC{h("cases.covers")}</th><th>검증</th><th>어떻게 · 누가</th><th>시각</th></tr>{rows}</table></div>')
 
 
 def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list[str], operator: str, original_yaml: str | None = None,
@@ -746,6 +746,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
     kind = d.get("kind") or "case"
     is_tc = kind == "tc"
     is_delete = kind.endswith("-delete")
+    is_scn = kind in ("scenario", "scenario-delete", "case-unlink")          # 시나리오 변경은 늘 바로 저장한다 — 실패하면 시나리오 폼에서 다시 저장
     commit_hint = ("예전 방식으로 남은 초안이다. 저장하면 main 에 바로 커밋되고 실행 스위트에 바로 들어간다" if repo_write else "쓰기 토큰(QA_REPO_TOKEN)이 없어 저장 뒤 파일을 받아 직접 커밋한다")
     check_form = "" if (is_tc or is_delete) else (
         f'<form class="inline" method="post" action="/drafts/{e(d["id"])}/check"><input type="hidden" name="operator" value="{e(operator)}"><button {dis} {"disabled" if v.get("errors") else ""}>한 번 실행해 보기 (dev)</button>{h("draft.check")}</form>')
@@ -754,7 +755,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
         + f'<form method="post" action="/drafts/{e(d["id"])}/save"><input type="hidden" name="operator" value="{e(operator)}">'
         f'<div class="small mut">YAML 편집{h("draft.edit")}</div><textarea name="yaml" style="min-height:320px;font-family:ui-monospace,Menlo,monospace;font-size:12px">{e(d["yaml"])}</textarea>'
         f'<div class="actions"><button {dis}>저장하고 다시 검증</button></div></form>')
-    forms = "" if decided else (
+    forms = "" if (decided or is_scn) else (
         f'{edit_form}<p class="small mut" style="margin-bottom:0">{e(commit_hint)}</p>'
         f'<div class="actions">'
         f'{check_form}'
@@ -780,7 +781,7 @@ def draft_detail(d: dict, tc_records: dict, run: dict | None, *, operators: list
     if d["status"] == "failed":
         kind_html += f'<div class="card" style="margin-top:10px;background:#fef2f2"><b>저장 실패</b> {e(d.get("note") or "")}<p class="small mut" style="margin:4px 0 0">[스크립트 다시 읽기] 로 main 을 받은 뒤 다시 저장한다.</p></div>'
     return (f'<h1>변경 <span class="mono">{e(d["id"])}</span> {badge(DRAFT_KO.get(d["status"], d["status"]), d["status"])}{kind_html}</h1>'
-            f'<div class="card"><div class="kv"><div>스크립트 id</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
+            f'<div class="card"><div class="kv"><div>대상</div><div class="mono">{e(d.get("case_id") or "–")}</div><div>출처</div><div>{e(d["source"])} · {e(d["operator"])} · {kst(d["created_at"])}'
             f'{(" · 프롬프트 해시 <span class=\"mono\">" + e(d.get("prompt_hash")) + "</span>") if d.get("prompt_hash") else ""}</div>'
             f'<div>검증하는 TC</div><div><ul style="margin:0;padding-left:18px">{tcs}</ul></div>'
             f'<div>검증</div><div>{badge({"ok": "OK", "warn": "경고", "error": "오류"}.get(v.get("status"), v.get("status") or "–"), {"ok": "pass", "warn": "warn", "error": "fail"}.get(v.get("status"), ""))}'
@@ -1606,4 +1607,5 @@ HERMES_JS = r"""
 from .ui_edit import (EDITOR_JS, EDITOR_JS_VERSION, JOBS_JS, JOBS_JS_VERSION, active_jobs_line,  # noqa: E402,F401
                       editor_page, job_detail, jobs_list, manual_tc_form)
 # 시나리오 화면 (qa/ui_scn.py) — 기능·시나리오·변형 트리, 기능 화면, 변형 화면
-from .ui_scn import feature_page, scenario_tree, state_badge, tc_variants_card, variant_page, variant_url, variants_of_tc  # noqa: E402,F401
+from .ui_scn import (feature_page, scenario_form, scenario_tree, state_badge, tc_variants_card, variant_form, variant_page,  # noqa: E402,F401
+                     variant_url, variants_of_tc)

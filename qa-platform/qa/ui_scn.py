@@ -101,7 +101,18 @@ def _steps_html(s: dict, gate_names: dict) -> str:
     return f'<ol style="padding-left:6px;margin:6px 0">{lis}</ol>' if lis else '<p class="mut small">PRD 2장에 단계가 없다</p>'
 
 
-def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None) -> str:
+def _reject_prefill(f: dict, s: dict, r: dict) -> str:
+    """[변형으로 추가] — 테스트 없는 거절 규칙 하나로 변형 폼을 채워 연다. key 가 겹치면 게이트 이름을 앞에 붙인다(§5)."""
+    keys = {v["variant"].key for v in s["variants"]}
+    same = [x for x in s["untested_rejects"] if x["key"] == r["key"] and x["gate"] != r["gate"]]      # host-only 처럼 게이트 여럿에 같은 key
+    key = r["key"] if (r["key"] not in keys and not same) else f'{r["gate"].rsplit(".", 1)[-1]}.{r["key"]}'
+    title = r["title"].split(" — ", 1)[-1] if " — " in r["title"] else r["title"]
+    q = {"kind": "reject", "at": r["at"], "key": key, "title": title + (f" ({r['error_code']})" if r.get("error_code") else ""),
+         "checks": r["id"], "mode": r["mode"]}
+    return feature_url(f["slug"], s["id"], "new") + "?" + "&".join(f"{k}={quote(str(v), safe='')}" for k, v in q.items())
+
+
+def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None, operator: str = "", scripts_of: dict | None = None) -> str:
     fc = check.get("by_feature", {}).get(f["slug"]) or {"errors": [], "warnings": []}
     msgs = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in fc["errors"]) + "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in fc["warnings"])
     body = ""
@@ -109,16 +120,21 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None)
         vrows = "".join(_variant_row(v, indent=False) for v in s["variants"]) or '<tr><td colspan="4" class="mut">변형 없음 — 시나리오 파일에 변형을 더한다</td></tr>'
         rej = "".join(
             f'<tr><td>{tc_link(r["id"])}</td><td class="mono small">{e(r["at"])}</td><td class="small">{e(r["title"])}</td>'
-            f'<td class="mono small">{e(r["error_code"] or "")}</td><td class="small">{"자동" if r["mode"] == "auto" else "<span class=mut>사람이 확인으로 시작 (ErrorCode 없음)</span>"}</td></tr>'
+            f'<td class="mono small">{e(r["error_code"] or "")}</td><td class="small">{"자동" if r["mode"] == "auto" else "<span class=mut>사람이 확인으로 시작 (ErrorCode 없음)</span>"}</td>'
+            f'<td><a class="btn" href="{e(_reject_prefill(f, s, r))}">변형으로 추가</a></td></tr>'
             for r in s["untested_rejects"])
         rej_html = (f'<h4>테스트 없는 거절 규칙 {len(s["untested_rejects"])}개{h("feature.rejects")}</h4>'
-                    f'<table><tr><th>검사 (TC)</th><th>단계</th><th>내용</th><th>ErrorCode</th><th>시작 방식</th></tr>{rej}</table>') if rej else (
+                    f'<table><tr><th>검사 (TC)</th><th>단계</th><th>내용</th><th>ErrorCode</th><th>시작 방식</th><th></th></tr>{rej}</table>') if rej else (
                     '<p class="small mut">테스트 없는 거절 규칙 없음</p>' if s["scenario"] and s["scenario"].gates else '<p class="small mut">단계에 걸린 게이트(gates)를 아직 적지 않았다 — 적으면 테스트 없는 거절 규칙이 계산된다</p>')
         actor = (s["scenario"].actor if s["scenario"] else None) or "–"
+        btns = (f' <a class="btn" href="{feature_url(f["slug"], s["id"], "new")}">+ 변형</a>' if s["in_prd"] else "") + \
+               (f' <a class="btn" href="{feature_url(f["slug"], s["id"], "edit")}">시나리오 고치기</a>{h("scenario.form")}' if s["in_prd"] else "")
+        del_box = delete_box(what=f'시나리오 {s["id"]}', action="scenario-delete", feature=f["feature"], scenario=s["id"], key=None,
+                             scripts=[c for v in s["variants"] for c in v["scripts"]], operator=operator) if s["scenario"] else ""
         body += (f'<div class="card" id="{e(s["id"])}"><h3 style="margin-top:0"><span class="mono">{e(s["id"])}</span> {e(s["title"])}'
-                 f'{"" if s["in_prd"] else " <span class=\"b fail\">PRD 2장에 없다</span>"} <span class="small mut">기본 테스트 계정 {e(actor)}</span></h3>'
+                 f'{"" if s["in_prd"] else " <span class=\"b fail\">PRD 2장에 없다</span>"} <span class="small mut">기본 테스트 계정 {e(actor)}</span>{btns}</h3>'
                  f'<h4>PRD 단계{h("feature.steps")}</h4>{_steps_html(s, gate_names)}'
-                 f'<h4>변형{h("variant.state")}</h4><table style="table-layout:fixed">{_VCOLS}<tr><th>변형</th><th>상태</th><th>스크립트</th><th>최근 결과</th></tr>{vrows}</table>{rej_html}</div>')
+                 f'<h4>변형{h("variant.state")}</h4><table style="table-layout:fixed">{_VCOLS}<tr><th>변형</th><th>상태</th><th>스크립트</th><th>최근 결과</th></tr>{vrows}</table>{rej_html}{del_box}</div>')
     c = f["counts"]
     return (f'<h1>{e(f["feature"])}{h("feature.page")} <span class="small mut">'
             f'{("<a href=\"" + e(prd_url) + "\">PRD</a> · ") if prd_url else ""}'
@@ -130,7 +146,7 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None)
             f'{("<div class=\"card\"><b>검증</b>" + h("feature.check") + "<ul style=\"margin:6px 0 0\">" + msgs + "</ul></div>") if msgs else ""}{body}')
 
 
-def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, history: list[dict], step: dict | None) -> str:
+def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, history: list[dict], step: dict | None, operator: str = "") -> str:
     va = v["variant"]
     checks = "".join(
         f'<li>{tc_link(t)} <span class="small">{e((tc_records.get(t) or {}).get("title") or "TC 목록에 없다")}</span>'
@@ -148,7 +164,10 @@ def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, hi
     q = "&".join([f"variant={quote(v['id'], safe='')}"] + [f"tc={quote(t, safe='')}" for t in va.checks])
     fc = check.get("by_feature", {}).get(f["slug"]) or {"errors": [], "warnings": []}
     mine = [x for x in fc["errors"] + fc["warnings"] if x.startswith(f'{s["id"]}/{va.key}')]
-    return (f'<h1>{kind_badge(va.kind)} {e(va.title)} {state_badge(v["state"])}{h("variant.state")}</h1>'
+    del_box = delete_box(what=f"변형 {va.key}", action="variant-delete", feature=f["feature"], scenario=s["id"], key=va.key, scripts=v["scripts"], operator=operator)
+    hermes = ' <span class="b warn">Hermes 작성</span>' if va.raw.get("written_by") == "hermes" else ""
+    return (f'<h1>{kind_badge(va.kind)} {e(va.title)} {state_badge(v["state"])}{hermes}{h("variant.state")} '
+            f'<a class="btn" href="{feature_url(f["slug"], s["id"], va.key)}/edit">폼으로 고치기</a>{h("scenario.form")}</h1>'
             f'<p class="small mut"><a href="{feature_url(f["slug"])}">{e(f["feature"])}</a> › <a href="{feature_url(f["slug"])}#{e(s["id"])}">{e(s["id"])} {e(s["title"])}</a> › <span class="mono">{e(v["id"])}</span></p>'
             f'{("<div class=\"card\"><ul style=\"margin:0\">" + "".join("<li style=\"color:var(--warn)\">" + e(x) + "</li>" for x in mine) + "</ul></div>") if mine else ""}'
             f'<div class="card"><div class="kv">{at}<div>전제</div><div>{e(va.given) or "<span class=mut>–</span>"}</div>'
@@ -156,7 +175,7 @@ def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, hi
             f'<h2>확인할 TC (checks){h("variant.checks")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{checks}</ul></div>'
             f'<h2>구현한 스크립트</h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>스위트</th></tr>{scripts}</table>'
             f'<div class="actions"><a class="btn" href="/cases/new?{q}">스크립트 만들기 (폼)</a>{h("variant.new_script")}</div></div>'
-            f'<h2>실행 이력</h2><div class="card"><table><tr><th>실행</th><th>스크립트</th><th>결과</th><th>시각</th><th>오류</th></tr>{hist}</table></div>')
+            f'<h2>실행 이력</h2><div class="card"><table><tr><th>실행</th><th>스크립트</th><th>결과</th><th>시각</th><th>오류</th></tr>{hist}</table></div>{del_box}')
 
 
 def variants_of_tc(ov: list[dict], tid: str) -> list[dict]:
@@ -168,3 +187,88 @@ def tc_variants_card(vs: list[dict]) -> str:
     rows = "".join(f'<tr><td><a href="{variant_url(v["id"])}" class="mono small">{e(v["id"])}</a></td><td>{kind_badge(v["variant"].kind)} {e(v["variant"].title)}</td>'
                    f'<td>{state_badge(v["state"])}</td></tr>' for v in vs) or '<tr><td colspan="3" class="mut">이 TC 를 확인하는 변형 없음</td></tr>'
     return f'<h2>이 TC 를 확인하는 변형{h("variant.checks")}</h2><div class="card"><table><tr><th>변형</th><th>제목</th><th>상태</th></tr>{rows}</table></div>'
+
+
+# ---------------------------------------------------------------------------------------------
+# 시나리오 폼 (§14 5단계) — 변형 만들기·고치기·지우기, 시나리오의 기본 테스트 계정·gates 고치기
+# ---------------------------------------------------------------------------------------------
+def _msgs(errors, warnings) -> str:
+    li = "".join(f'<li style="color:var(--bad)">{e(x)}</li>' for x in errors or []) + "".join(f'<li style="color:var(--warn)">{e(x)}</li>' for x in warnings or [])
+    return f'<div class="card"><b>저장하지 않았다</b><ul style="margin:6px 0 0">{li}</ul></div>' if li else ""
+
+
+def _op_select(name: str, opts: list, cur: str, blank: str | None = None) -> str:
+    o = (f'<option value="">{e(blank)}</option>' if blank is not None else "") + "".join(
+        f'<option value="{e(v)}"{" selected" if v == cur else ""}>{e(label)}</option>' for v, label in opts)
+    return f'<select name="{e(name)}">{o}</select>'
+
+
+def _operator_hidden(operator: str) -> str:
+    return f'<input type="hidden" name="operator" value="{e(operator)}">'
+
+
+def variant_form(f: dict, s: dict, raw: dict, *, mode: str, operator: str, tc_options: list[tuple[str, str]],
+                 errors: list | None = None, warnings: list | None = None) -> str:
+    """mode new | edit. raw 는 파일 모양의 변형 맵 (checks 는 목록)."""
+    edit = mode == "edit"
+    steps = [(st["req"], ("분기: " if st["branch"] else f'{st["no"]}. ') + st["text"][:60]) for st in s["steps"] if st.get("req")]
+    kinds = [(k, f"{v} ({k})") for k, v in KIND_KO.items()]
+    checks = ", ".join(raw.get("checks") or [])
+    dis = "" if operator else 'disabled title="담당자를 먼저 고르세요"'
+    back = variant_url(f'{f["slug"]}/{s["id"]}/{raw.get("key")}') if edit else feature_url(f["slug"]) + f'#{s["id"]}'
+    return (f'<h1>{"변형 고치기" if edit else "변형 만들기"}{h("scenario.form")} <span class="small mut">{e(f["feature"])} › {e(s["id"])} {e(s["title"])}</span></h1>'
+            f'{_msgs(errors, warnings)}'
+            f'<form method="post" action="/features/save" class="card">{_operator_hidden(operator)}'
+            f'<input type="hidden" name="feature" value="{e(f["feature"])}"><input type="hidden" name="scenario" value="{e(s["id"])}">'
+            f'<input type="hidden" name="action" value="variant"><input type="hidden" name="original_key" value="{e(raw.get("key") if edit else "")}">'
+            f'<div class="field"><label class="req">key</label><input name="key" class="mono" value="{e(raw.get("key") or "")}" {"readonly" if edit else ""} placeholder="headcount-range">'
+            f'<p class="hint">{"고칠 때는 key 를 바꿀 수 없다 — 스크립트 variant: 가 이 이름을 가리킨다" if edit else "소문자·숫자·점·하이픈. 거절 변형은 검사 key 를 그대로 쓴다"}</p></div>'
+            f'<div class="field"><label class="req">종류</label>{_op_select("kind", kinds, raw.get("kind") or "happy")}</div>'
+            f'<div class="field"><label>갈라지는 단계 (at)</label>{_op_select("at", steps, raw.get("at") or "", "없음 (정상 흐름·추가)")}<p class="hint">분기와 거절은 필요하다. PRD 2장 단계의 요구 id 다</p></div>'
+            f'<div class="field"><label class="req">제목</label><input name="title" value="{e(raw.get("title") or "")}" placeholder="최대 모집 인원이 최소 진행 인원보다 작으면 E1402 로 거절된다"></div>'
+            f'<div class="field"><label>전제 (given)</label><input name="given" value="{e(raw.get("given") or "")}"></div>'
+            f'<div class="field"><label>기대 결과 (then)</label><input name="then" value="{e(raw.get("then") or "")}"></div>'
+            f'<div class="field"><label>확인할 TC (checks){h("variant.checks")}</label><input name="checks" class="mono" list="dl-scn-tcs" value="{e(checks)}" placeholder="G.room.create#headcount-range">'
+            f'<p class="hint">쉼표로 여러 개. 거절 변형은 검사 하나가 기본이다</p></div>'
+            f'<div class="field"><label>확인 방식</label>{_op_select("mode", [("auto", "스크립트로 확인 (auto)"), ("manual", "사람이 확인 (manual)")], raw.get("mode") or "auto")}</div>'
+            f'<datalist id="dl-scn-tcs">{"".join(f"<option value=\"{e(t)}\">{e(label)}</option>" for t, label in tc_options)}</datalist>'
+            f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="{back}">돌아가기</a></div>'
+            f'<p class="small mut">저장하면 §6.1 검사를 거쳐 main 의 <span class="mono">scenarios/{e(f["slug"])}.yaml</span> 에 바로 커밋된다.</p></form>')
+
+
+def scenario_form(f: dict, s: dict, *, operator: str, actors: list[str], gate_options: list[tuple[str, str]],
+                  errors: list | None = None, warnings: list | None = None, values: dict | None = None) -> str:
+    sc = s["scenario"]
+    gates = (values or {}).get("gates") if values else (sc.gates if sc else {})
+    actor = (values or {}).get("actor") if values else (sc.actor if sc else "")
+    rows = "".join(
+        f'<tr><td class="small">{e(("분기: " if st["branch"] else str(st["no"]) + ". ") + st["text"][:70])} <span class="mono mut">{e(st["req"])}</span></td>'
+        f'<td><input name="gate.{e(st["req"])}" class="mono" list="dl-scn-gates" value="{e(", ".join((gates or {}).get(st["req"]) or []))}" style="width:100%"></td></tr>'
+        for st in s["steps"] if st.get("req"))
+    dis = "" if operator else 'disabled title="담당자를 먼저 고르세요"'
+    return (f'<h1>시나리오 고치기{h("scenario.form")} <span class="small mut">{e(f["feature"])} › {e(s["id"])} {e(s["title"])}</span></h1>'
+            f'{_msgs(errors, warnings)}'
+            f'<form method="post" action="/features/save" class="card">{_operator_hidden(operator)}'
+            f'<input type="hidden" name="feature" value="{e(f["feature"])}"><input type="hidden" name="scenario" value="{e(s["id"])}"><input type="hidden" name="action" value="scenario">'
+            f'<div class="field"><label>기본 테스트 계정</label>{_op_select("actor", [(a, a) for a in sorted(set(actors) | ({actor} if actor else set()))], actor or "", "없음")}</div>'
+            f'<h3>단계에 걸린 게이트 (gates){h("feature.steps")}</h3><p class="small mut">단계마다 그 행동을 허락하는 규칙표 게이트를 적는다. 쉼표로 여러 개. 여기 적은 게이트의 거절 검사가 테스트 없는 거절 규칙이 된다.</p>'
+            f'<table><tr><th>PRD 단계</th><th style="width:45%">게이트</th></tr>{rows}</table>'
+            f'<datalist id="dl-scn-gates">{"".join(f"<option value=\"{e(g)}\">{e(n)}</option>" for g, n in gate_options)}</datalist>'
+            f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="{feature_url(f["slug"])}#{e(s["id"])}">돌아가기</a></div></form>')
+
+
+def delete_box(*, what: str, action: str, feature: str, scenario: str, key: str | None, scripts: list, operator: str) -> str:
+    """지우기 확인 (§9) — 가리키던 스크립트를 보이고, 그 스크립트는 지우지 않고 "시나리오 밖" 으로 돌린다."""
+    names = ", ".join(c.id for c in scripts)
+    confirm = f"{what} 를 지운다." + (f" 스크립트 {names} 는 지우지 않고 시나리오 밖으로 돌린다." if scripts else "")
+    return (f'<details class="card"><summary>{e(what)} 지우기{h("scenario.delete")}</summary>'
+            f'<form method="post" action="/features/delete" class="actions" onsubmit="return confirm({e(json_str(confirm))})">{_operator_hidden(operator)}'
+            f'<input type="hidden" name="feature" value="{e(feature)}"><input type="hidden" name="scenario" value="{e(scenario)}"><input type="hidden" name="action" value="{e(action)}">'
+            f'<input type="hidden" name="key" value="{e(key or "")}"><input name="reason" placeholder="사유 (선택, 커밋 메시지에 남는다)" style="flex:1">'
+            f'<button class="danger" {"" if operator else "disabled"}>지우기</button></form>'
+            f'<p class="small mut" style="margin:0">{("이것을 구현한 스크립트 " + e(names) + " 는 지우지 않는다. variant: 를 떼어 시나리오 밖으로 돌린다.") if scripts else "이것을 구현한 스크립트는 없다."}</p></details>')
+
+
+def json_str(s: str) -> str:
+    import json
+    return json.dumps(s, ensure_ascii=False)

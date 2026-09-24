@@ -320,6 +320,12 @@ def plan_case(d: dict, *, cases: dict, operator: str):
     Hermes 가 쓴 것(source hermes*)은 written_by: hermes 를 달고, 사람이 폼으로 저장하면 뗀다 (docs/qa-platform-scenarios.md §7)."""
     from .repo import RepoError, append_item, ids_in, replace_item
     kind = d.get("kind") or "case"
+    if kind == "case-unlink":          # 변형·시나리오를 지워 "시나리오 밖" 으로 돌린다 — reviewed 는 건드리지 않는다
+        c = cases.get(d.get("case_id"))
+        if not c:
+            raise RepoError(f"스크립트 {d.get('case_id')} 가 지금 목록에 없다")
+        raw = {k: v for k, v in c.raw.items() if k != "variant"}
+        return f"cases/{c.file}", (lambda text: replace_item(text or "", c.id, raw)), f"{c.id} 의 variant 떼기", c.id
     if kind == "case-delete":
         c = cases.get(d.get("case_id"))
         if not c:

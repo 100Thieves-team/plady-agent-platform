@@ -29,6 +29,8 @@ _REQ = re.compile(r"^R\d+$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 _GATE = re.compile(r"^G\.[a-z_]+\.[a-z_]+$")
 VARIANT_ID = _VARIANT      # 룸-생성/S1/headcount-range
+RESERVED_KEYS = ("new", "edit", "delete")       # /features/<기능>/<Sn>/new 같은 주소와 겹친다
+VARIANT_KEYS = ("key", "kind", "at", "title", "given", "then", "checks", "mode", "written_by")
 
 
 class ScenarioError(ValueError):
@@ -135,6 +137,8 @@ def parse_feature(d, file: str) -> Feature:
             key = str(v.get("key") or "")
             if not _KEY.match(key):
                 raise ScenarioError(f"{vw}: key 는 소문자·숫자·점·하이픈: {key!r}")
+            if key in RESERVED_KEYS:
+                raise ScenarioError(f"{vw}: key {key} 는 화면 주소에 쓰여 변형 이름으로 못 쓴다")
             if key in keys:
                 raise ScenarioError(f"{where}: 변형 key {key} 가 겹친다")
             keys.add(key)
@@ -348,3 +352,135 @@ def overview(feats: dict[str, Feature], *, wiki, catalog, cases: dict, last: dic
 
 def variant_index(feats: dict[str, Feature]) -> dict[str, tuple[Feature, Scenario, Variant]]:
     return {variant_id(slug, s.id, v.key): (ft, s, v) for slug, ft in feats.items() for s in ft.scenarios for v in s.variants}
+
+
+# ---------------------------------------------------------------------------------------------
+# 저장 — 폼·Hermes 가 만든 변경 하나를 main 의 최신 파일에 적용한다 (docs/qa-platform-scenarios.md §9)
+# 파일 전체를 덮어쓰지 않고 변경(op)을 다시 적용하므로, 그사이 다른 사람이 다른 변형을 고쳐도 사라지지 않는다.
+# ---------------------------------------------------------------------------------------------
+class _Dumper(yaml.SafeDumper):
+    def increase_indent(self, flow=False, indentless=False):       # 목록도 두 칸 들여 쓴다 (손으로 쓴 파일과 같은 모양)
+        return super().increase_indent(flow, False)
+
+
+def _repr_list(dumper, data):
+    flow = all(isinstance(x, (str, int, float, bool)) and len(str(x)) < 60 for x in data)     # [C.room.create, op.createRoom:200]
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=flow)
+
+
+_Dumper.add_representer(list, _repr_list)
+
+
+def dump_feature(d: dict, header: str = "") -> str:
+    body = yaml.dump(d, Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=1000, default_flow_style=False)
+    body = re.sub(r"(?m)^(  - id: S\d+)", r"\n\1", body).replace("scenarios:\n\n", "scenarios:\n")    # 시나리오 사이 빈 줄
+    return (header if header.endswith("\n") or not header else header + "\n") + body
+
+
+def _header(text: str | None) -> str:
+    out = []
+    for ln in (text or "").splitlines():
+        if not ln.startswith("#"):
+            break
+        out.append(ln)
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def variant_raw(v: dict) -> dict:
+    """폼·Hermes 가 준 변형 → 파일에 적을 맵 (키 순서 고정, 빈 칸과 기본값 mode auto 는 뺀다)."""
+    out = {}
+    for k in VARIANT_KEYS:
+        x = v.get(k)
+        if k == "checks":
+            x = [str(t).strip() for t in (x.split(",") if isinstance(x, str) else (x or [])) if str(t).strip()]
+        elif isinstance(x, str):
+            x = x.strip()
+        if k == "mode" and x == "auto":
+            continue
+        if x not in (None, "", []):
+            out[k] = x
+    return out
+
+
+def _sid_no(sid: str) -> int:
+    return int(sid[1:]) if _SCN_ID.match(sid) else 10 ** 6
+
+
+def apply_op(text: str | None, op: dict) -> str:
+    """op: {feature, scenario, action, ...}. action
+    - variant: 변형 넣기·고치기 (variant 맵, original_key 가 있으면 그 자리에서 바꾼다)
+    - variant-delete: key 로 지우기
+    - scenario: actor·gates 고치기 (시나리오가 없으면 만든다)
+    - scenario-delete: 시나리오 통째로 지우기
+    결과 파일은 parse_feature 로 다시 확인한다. 틀리면 ScenarioError."""
+    d = yaml.safe_load(text) if text else None
+    if not isinstance(d, dict):
+        d = {"feature": op["feature"], "scenarios": []}
+    header = _header(text) or f"# 「{op['feature']}」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).\n"
+    scns = d.setdefault("scenarios", []) or []
+    d["scenarios"] = scns
+    sid = op["scenario"]
+    s = next((x for x in scns if isinstance(x, dict) and str(x.get("id")) == sid), None)
+    act = op["action"]
+    if s is None:
+        if act in ("variant-delete", "scenario-delete"):
+            raise ScenarioError(f"{sid} 가 파일에 없다")
+        s = {"id": sid}
+        scns.append(s)
+        scns.sort(key=lambda x: _sid_no(str(x.get("id"))))
+    if act == "scenario-delete":
+        scns.remove(s)
+    elif act == "scenario":
+        new = {"id": sid}
+        if op.get("actor"):
+            new["actor"] = op["actor"]
+        gates = {str(k): list(v) for k, v in (op.get("gates") or {}).items() if v}
+        if gates:
+            new["gates"] = gates
+        for k, v in s.items():                                # variants·basis_hash 등은 그대로
+            if k not in ("id", "actor", "gates"):
+                new[k] = v
+        scns[scns.index(s)] = new
+    elif act == "variant":
+        vs = s.setdefault("variants", []) or []
+        s["variants"] = vs
+        raw = variant_raw(op["variant"])
+        orig = op.get("original_key")
+        i = next((n for n, x in enumerate(vs) if isinstance(x, dict) and x.get("key") == (orig or raw.get("key"))), None)
+        if orig and i is None:
+            raise ScenarioError(f"{sid}/{orig} 가 파일에 없다 — 그사이 지워졌다")
+        if not orig and i is not None:
+            raise ScenarioError(f"{sid} 에 변형 key {raw.get('key')} 가 이미 있다")
+        if i is None:
+            vs.append(raw)
+        else:
+            vs[i] = raw
+        if list(s) != sorted(s, key=lambda k: ["id", "actor", "gates", "variants", "basis_hash"].index(k) if k in ("id", "actor", "gates", "variants", "basis_hash") else 9):
+            order = [k for k in ("id", "actor", "gates", "variants", "basis_hash") if k in s] + [k for k in s if k not in ("id", "actor", "gates", "variants", "basis_hash")]
+            scns[scns.index(s)] = {k: s[k] for k in order}
+    elif act == "variant-delete":
+        vs = s.get("variants") or []
+        keep = [x for x in vs if not (isinstance(x, dict) and x.get("key") == op["key"])]
+        if len(keep) == len(vs):
+            raise ScenarioError(f"{sid}/{op['key']} 가 파일에 없다")
+        s["variants"] = keep
+    else:
+        raise ScenarioError(f"모르는 변경 {act!r}")
+    out = dump_feature(d, header)
+    parse_feature(yaml.safe_load(out), f"{doc_slug(op['feature'])}.yaml")
+    return out
+
+
+def op_target(op: dict) -> str:
+    base = f"{doc_slug(op['feature'])}/{op['scenario']}"
+    if op["action"] == "variant":
+        return f"{base}/{variant_raw(op['variant']).get('key')}"
+    if op["action"] == "variant-delete":
+        return f"{base}/{op['key']}"
+    return base
+
+
+def op_summary(op: dict) -> str:
+    t = op_target(op)
+    return {"variant": f"{t} {'수정' if op.get('original_key') else '추가'}", "variant-delete": f"{t} 삭제",
+            "scenario": f"{t} 수정", "scenario-delete": f"{t} 삭제"}[op["action"]]

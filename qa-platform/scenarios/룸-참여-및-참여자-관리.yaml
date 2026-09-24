@@ -21,7 +21,7 @@ scenarios:
         title: 방장이 처리하기 전에 신청을 철회하면 처리 대상에서 빠진다
         given: 대기 중인 신청
         then: 철회 200
-        checks: [C.application.withdraw, op.withdrawRoomApplication:200]
+        checks: [C.application.withdraw, 'op.withdrawRoomApplication:200']
       - key: reapply-after-withdraw
         kind: branch
         at: R180
