@@ -33,3 +33,29 @@ exclusions:
     reason: 목록 노출 규칙은 상태별 룸이 동시에 있어야 검증된다. 픽스처가 갖춰지면 푼다
   - prefix: G.room.read_detail
     reason: 민감 정보 비노출 검사는 응답 스키마 검사(exists 부정)가 필요하다. expect 5종 밖 — P3
+
+  # 「룸 진행 준비」·「룸 진행」 전체 (위키 raw/product/_index.md "MVP 범위")
+  - prefix: G.question.
+    reason: MVP 범위 밖 — 2026-09-23 팀 허들에서 모의면접 진행 준비·진행 화면을 이번 MVP 에서 뺐다(PRD 는 유지). 범위에 다시 들어오면 푼다
+  - prefix: C.question.
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.resume.read_summary_prep
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.room.start
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: C.room.start
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.room.read_rail
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: C.room.change_block
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.participation.read_own_feedback
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.participation.write_final_feedback
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: C.participation.write_final_feedback
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: G.participation.write_self_feedback
+    reason: 위와 같다 (MVP 범위 밖)
+  - prefix: C.participation.write_self_feedback
+    reason: 위와 같다 (MVP 범위 밖)
