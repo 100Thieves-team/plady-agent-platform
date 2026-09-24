@@ -66,3 +66,7 @@ exclusions:
     reason: 위와 같다 (MVP 이후 흐름)
   - prefix: G.room.close
     reason: 위와 같다 — 클로징 전원 제출·8시간 자동 종료로 닫는 규칙이다
+  - prefix: G.room.autocancel_not_started
+    reason: MVP 에 없다 — 방장이 완료를 누르지 않은 확정 룸은 예정 시각 8시간 뒤 자동 완료된다(「룸 진행 마무리 및 출석」 §4.6 R72)
+  - prefix: C.room.autocancel_not_started
+    reason: 위와 같다 (MVP 에 없음)
