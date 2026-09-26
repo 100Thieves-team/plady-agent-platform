@@ -36,7 +36,7 @@ jobs:
       - name: Run review swarm
         # 커밋 SHA 고정: pull-requests:write 권한으로 self-hosted 러너에서 도는 액션이라
         # @main 같은 mutable 참조는 그 브랜치에 들어간 코드가 다음 PR 에서 그대로 돈다.
-        uses: 100Thieves-team/review-swarm@76bbe3edbe5616c7a71ce418f46b40fdd2f57fd6
+        uses: 100Thieves-team/review-swarm@9143597244805231bcf45d2bd4e77a326c34efd6
         with:
           upload-artifacts: 'true'
         env:

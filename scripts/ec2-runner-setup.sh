@@ -75,7 +75,7 @@ prepare() {
   fi
   free -m | sed -n '1,3p'
 
-  log "Packages: git, node ${RUNNER_NODE_MAJOR:-22}, libicu (runner dependency)"
+  log "Packages: git, node 22, libicu (runner dependency)"
   dnf install -y -q git nodejs22 nodejs22-npm libicu >/dev/null
   # AL2023 ships versioned binaries; make the bare names resolve for jobs.
   for b in node npm npx; do
