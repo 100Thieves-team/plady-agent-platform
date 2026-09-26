@@ -1,0 +1,98 @@
+# 「유저 후기 및 신뢰 관리」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 유저 후기 및 신뢰 관리
+scenarios:
+  - id: S1
+    gates:
+      R1: [G.review.write]
+      R94: [G.review.write]
+      R95: [G.review.write]
+      R96: [G.review.write]
+      R97: [G.review.edit]
+      R98: [G.review.edit, G.review.write]
+    variants:
+      - key: happy
+        kind: happy
+        title: 룸이 완료되면 참여자는 함께 출석한 참여자에게 유저 후기를 작성한다.
+        given: 룸이 완료되고 작성자와 대상자가 함께 출석한 참여자이며 자기 자신이 아니고 같은 대상자에게 이미 후기를 작성하지 않았다.
+        then: 작성한 후기는 제출 3시간 뒤를 기준으로 반영되고 처리 주기에 따라 실제 노출은 몇 분 늦어질 수 있다.
+        checks: [C.review.submit]
+        written_by: hermes
+      - key: nickname-public
+        kind: branch
+        at: R94
+        title: 작성자가 닉네임 공개를 선택하고 후기를 제출한다.
+        given: 작성자가 닉네임 공개를 선택한다.
+        then: 후기가 제출된다.
+        checks: [C.review.submit]
+        written_by: hermes
+      - key: skip-participant
+        kind: branch
+        at: R95
+        title: 참여자가 후기 작성을 참여자별로 건너뛴다.
+        given: 참여자가 후기 작성을 참여자별로 건너뛴다.
+        written_by: hermes
+      - key: return-from-my-interview
+        kind: branch
+        at: R96
+        title: 건너뛴 참여자가 나중에 내 면접 페이지의 미작성 후기 버튼으로 돌아와 후기를 작성한다.
+        given: 건너뛴 참여자가 내 면접 페이지의 미작성 후기 버튼으로 돌아온다.
+        then: 후기가 제출된다.
+        checks: [C.review.submit]
+        written_by: hermes
+      - key: edit-submitted-review
+        kind: branch
+        at: R97
+        title: 작성자가 제출한 후기를 수정한다.
+        given: 본인이 쓴 후기이고 이미 삭제되었거나 숨김 처리된 후기가 아니며 제출한 지 3시간이 지나 반영되기 전이다.
+        then: 유저 후기가 수정된다.
+        checks: [C.review.edit]
+        written_by: hermes
+      - key: delete-and-resubmit
+        kind: branch
+        at: R98
+        title: 작성자가 제출한 후기를 삭제하고 같은 대상자에게 다시 제출한다.
+        given: 본인이 쓴 후기이고 이미 삭제되었거나 숨김 처리된 후기가 아니며 제출한 지 3시간이 지나 반영되기 전이다.
+        then: 유저 후기가 삭제되고 같은 대상자에게 다시 제출된다.
+        checks: [C.review.delete, C.review.submit]
+        written_by: hermes
+    basis:
+      R1: 14b08176
+      R94: 94b272cb
+      R95: f66ba3b8
+      R96: 5e41b3cc
+      R97: 98edf608
+      R98: 3b820eb5
+      R2: 1fa1d575
+      R3: 88f7888a
+      C.review.delete: 618ab4d7
+      C.review.edit: ad0c3c2b
+      C.review.submit: 09b02f68
+      G.review.edit#author-only: 0f63df6b
+      G.review.edit#review-effective: 2b0c60f5
+      G.review.edit#within-edit-window: 70baba1f
+      G.review.write#author-attended: 73ebc76a
+      G.review.write#not-already-written: d2cce185
+      G.review.write#not-self: ea5d7ee7
+      G.review.write#room-completed: 0c7ed98b
+      G.review.write#target-attended: 95eb5db0
+
+  - id: S2
+    gates:
+      R101: [G.review.report]
+    variants:
+      - key: happy
+        kind: happy
+        title: 대상자가 부적절한 후기를 신고한다.
+        given: 대상자가 자신이 받은 유저 후기와 신뢰 정보를 확인하고 받은 후기마다 평가 태그와 텍스트 피드백을 본다.
+        then: 신고된 후기는 관리자 검토 대상으로 표시된다.
+        checks: [C.review.report]
+        written_by: hermes
+    basis:
+      R99: ef3a364d
+      R100: 6196cea8
+      R101: 7bf165ce
+      R102: 712c09ef
+      C.review.report: 5e567cb3
+      G.review.report#review-effective: 4b251199
+      G.review.report#review-reflected: d11de162
+      G.review.report#review-target-only: 53ffda33
