@@ -1,0 +1,43 @@
+# 「룸 탐색」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 룸 탐색
+scenarios:
+  - id: S1
+    gates:
+      R87: [G.member.my_interviews]
+      R5: [G.application.enter]
+    variants:
+      - key: happy
+        kind: happy
+        title: 사용자가 조건으로 룸을 찾고 적합한 룸이면 참가 신청을 시작한다
+        written_by: hermes
+      - key: r87
+        kind: branch
+        at: R87
+        title: 사용자가 내 면접 페이지에서 신청한 면접, 참여 중인 면접, 완료된 면접을 나눠 보고 완료된 면접의 후기 작성 버튼을 누른다
+        written_by: hermes
+      - key: r88
+        kind: branch
+        at: R88
+        title: 사용자가 결과를 일정 빠른 순, 최근 생성순, 모집 마감 임박순 중 하나로 정렬해 비교한다
+        written_by: hermes
+      - key: r89
+        kind: branch
+        at: R89
+        title: 검색 결과가 없으면 사용자가 같은 회사·같은 직무에서 가장 가까운 시간대의 룸을 확인한다
+        written_by: hermes
+    basis:
+      R1: 49e36140
+      R87: 365ae943
+      R2: 2c42e41f
+      R3: b2c2bec7
+      R88: 223adccd
+      R89: 38fdd718
+      R4: f7f43b43
+      R5: 954b7068
+      G.application.enter#login-required: 02b329c3
+      G.application.enter#no-pending-application: 8de12ead
+      G.application.enter#not-already-joined: 1f0e4146
+      G.application.enter#room-recruiting: de0062a4
+      G.application.enter#schedule-not-passed: 1b97942f
+      G.member.my_interviews#login-required: ca17006e
+      G.member.my_interviews#own-entries-only: 968ad00a
