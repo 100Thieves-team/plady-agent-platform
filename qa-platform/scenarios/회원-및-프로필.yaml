@@ -1,0 +1,98 @@
+# 「회원 및 프로필」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 회원 및 프로필
+scenarios:
+  - id: S1
+    gates:
+      R2: [G.member.mutate]
+      R3: [G.member.login]
+      R4: [G.member.signup]
+    variants:
+      - key: happy
+        kind: happy
+        title: 비로그인 사용자가 Google 계정으로 최초 로그인해 계정 생성 후 기존 참여 또는 생성 흐름으로 복귀한다.
+        given: 로그인 전에 참여할 룸이 있는지 확인하려는 신규 사용자
+        then: 최초 로그인 시 계정이 생성되고 닉네임이 자동 부여되며 로그인 완료 후 기존 참여 또는 생성 흐름으로 바로 복귀한다.
+        checks: [C.member.signup, C.member.login]
+        written_by: hermes
+    basis:
+      R1: 82e80c6c
+      R2: '63959874'
+      R3: ef20fc21
+      R4: 752cc8b4
+      R5: b7dfcc37
+      C.member.login: 672eaf51
+      C.member.signup: c62a6dad
+      G.member.login#not-withdrawn: 3f929b6d
+      G.member.login#oauth-authenticated: c1c687c0
+      G.member.login#oauth-id-matches-member: 9c0838ee
+      G.member.mutate#account-active: c720dad5
+      G.member.mutate#login-required: 5518d7de
+      G.member.signup#oauth-authenticated: 1bac2174
+      G.member.signup#oauth-id-not-registered: 0db2473a
+      G.member.signup#terms-agreed: baa5bf6f
+
+  - id: S2
+    gates:
+      R6: [G.member.edit_profile]
+      R129: [G.member.edit_profile, G.member.set_nickname]
+      R130: [G.member.edit_profile]
+      R131: [G.resume.create]
+      R132: [G.resume.rename]
+      R133: [G.resume.set_default]
+      R134: [G.resume.delete]
+      R136: [G.member.withdraw]
+    variants:
+      - key: happy
+        kind: happy
+        title: 사용자가 마이페이지에서 프로필과 이력서를 수정·보관·기본 지정·삭제한다.
+        given: 직무나 자기소개를 변경하려는 기존 사용자
+        then: 프로필을 조회·수정하고 이력서를 업로드해 보관하며 업로드 시점에 AI 요약이 함께 저장된다.
+        checks: [C.member.update_profile, C.resume.create, C.resume.rename, C.resume.set_default, C.resume.delete]
+        written_by: hermes
+      - key: logout
+        kind: branch
+        at: R135
+        title: 사용자가 현재 기기에서 로그아웃한다.
+        given: 사용자는 마이페이지에서 프로필을 조회·수정한다.
+        then: 현재 기기에서 로그아웃한다.
+        written_by: hermes
+      - key: withdraw
+        kind: branch
+        at: R136
+        title: 사용자가 회원 탈퇴를 요청하고 탈퇴 전에 안내를 확인한다.
+        given: 사용자는 회원 탈퇴를 요청할 수 있다.
+        then: 탈퇴 전에 안내를 확인한다.
+        checks: [C.member.withdraw]
+        written_by: hermes
+    basis:
+      R6: fecd2b7e
+      R129: c955de6f
+      R130: 520469d5
+      R131: 0b0307f9
+      R132: d0711dc9
+      R133: 672c4123
+      R134: 8489c2b0
+      R135: 072cd5ca
+      R136: f07ab610
+      C.member.update_profile: c195458c
+      C.member.withdraw: 791650b8
+      C.resume.create: 6c357246
+      C.resume.delete: bf2750bc
+      C.resume.rename: d712272e
+      C.resume.set_default: '97470591'
+      G.member.edit_profile#own-profile-only: b3e5a1ec
+      G.member.set_nickname#length-limit: 74267cf6
+      G.member.set_nickname#nickname-not-taken: f8de23d6
+      G.member.set_nickname#no-forbidden-chars: 2eb22aae
+      G.member.set_nickname#not-policy-violating: a1a24691
+      G.member.withdraw#not-already-withdrawn: 8413fb88
+      G.member.withdraw#own-account-only: c040bb0f
+      G.resume.create#account-active: 57f45b0d
+      G.resume.create#resume-slot-left: '75043423'
+      G.resume.delete#resume-not-deleted: 562c97cf
+      G.resume.delete#resume-owner-only: 103b0b08
+      G.resume.rename#resume-not-deleted: 562c97cf
+      G.resume.rename#resume-owner-only: 04b21239
+      G.resume.set_default#resume-not-deleted: f74857d4
+      G.resume.set_default#resume-owner-only: 72c62c59
+      G.resume.set_default#summary-done: 8a9388f8
