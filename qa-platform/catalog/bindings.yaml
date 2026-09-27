@@ -8,10 +8,11 @@ commands:
   C.room.create: createRoom
   C.room.create_batch: createRoom            # 일괄 생성은 같은 op 를 일정 수만큼 부른다
   C.room.confirm: confirmRoom
+  C.room.complete: [completeRoomProgress, recordRoomAttendances]   # MVP 진행 완료 — 백엔드는 완료와 출석 기록을 나눴다 (MOI-541 DR-003)
   C.room.start: startRoomProgress
   C.room.change_block: getProgressRail       # 레일 블록 이동은 조회 op 로만 드러난다 (쓰기 op 미문서화)
   # 참여
-  C.participation.cancel: [cancelRoom, roomLeave]   # 방장의 룸 취소 · 참여자의 나가기 — SSOT 는 하나의 command
+  C.participation.cancel: roomLeave   # 참여자의 나가기. 방장의 룸 취소 API 는 MOI-541(#138)에서 없어졌다 — 방장이 나가면 위임하거나 취소한다
   C.participation.write_final_feedback: leaveFinalRoundFeedback
   C.participation.write_self_feedback: saveSelfRoundFeedback
   C.participation.submit_closing: submitClosingResponse
@@ -50,6 +51,9 @@ checks:
   "G.room.create#participation-slot-left": E1425          # 참여 슬롯 소진 — dev 에서 확인(2026-09-21), 스펙 예시에는 아직 없음
   "G.room.confirm#room-recruiting": E1410
   "G.room.confirm#min-headcount-met": E1421
+  "G.room.complete#host-only": E1406
+  "G.room.complete#room-confirmed": E1707
+  "G.room.complete#attendance-roster-matches": E1706
   "G.room.start#room-confirmed": E1701
   "G.room.start#confirmed-member-only": E1702
   "G.room.start#5": E1706

@@ -115,6 +115,10 @@ cases:
         covers: [C.room.cancel, op.cancelRoom:200]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 200, result: SUCCESS }
+      - name: 정리(QA 룸 삭제)
+        always: true
+        request: { method: DELETE, path: "/v1/dev/rooms/{{roomId}}" }
+        expect: { status: 200 }
 
   - id: room.cancel-not-recruiting
     title: 이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다
@@ -133,13 +137,17 @@ cases:
         covers: ["G.room.cancel#room-recruiting", op.cancelRoom:E1410]
         request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
         expect: { status: 409, error_code: E1410 }
+      - name: 정리(QA 룸 삭제)
+        always: true
+        request: { method: DELETE, path: "/v1/dev/rooms/{{roomId}}" }
+        expect: { status: 200 }
 
   - id: room.apply-and-withdraw
-    title: 참가자가 신청하면 PENDING 이고 철회 후 방장이 취소할 수 있다
+    title: 참가자가 신청하면 PENDING 이고 철회할 수 있다
     suite: sanity
     variant: 룸-참여-및-참여자-관리/S1/withdraw
     domains: [room, application]
-    operations: [submitRoomApplication, myRoomApplication, withdrawRoomApplication, cancelRoom]
+    operations: [submitRoomApplication, myRoomApplication, withdrawRoomApplication]
     source: ["PRD/룸 참여 및 참여자 관리 §4.2"]
     actor: qa-host
     uses: { setup: setup.room-open, with: { title: "[QA] 참가 신청 sanity", daysFromNow: 8 } }
@@ -162,10 +170,9 @@ cases:
         actor: qa-guest
         request: { method: DELETE, path: "/v1/rooms/{{roomId}}/applications/me" }
         expect: { status: 200, result: SUCCESS }
-      - name: 방장이 정리(취소)
+      - name: 정리(QA 룸 삭제)
         always: true
-        covers: [op.cancelRoom:200]
-        request: { method: POST, path: "/v1/rooms/{{roomId}}/cancellation" }
+        request: { method: DELETE, path: "/v1/dev/rooms/{{roomId}}" }
         expect: { status: 200 }
 
   - id: room.creation-limit
