@@ -94,9 +94,9 @@ class QaMembersTest(unittest.TestCase):
 
     def test_setup_page_shows_member_card(self):
         self.app.create_qa_member("qa-3", operator="bebe", session_hash=None, ip=None)
-        h = ui.setup_page(self.app.setup_cases(), actors=sorted(self.app.all_actors()), operators=["bebe"], operator="bebe", result=None, errors=[],
+        h = ui.data_page(self.app.setup_cases(), actors=sorted(self.app.all_actors()), operators=["bebe"], operator="bebe", result=None, errors=[],
                           cleanup=self.app.qadata.snapshot(), qa_members=self.app.store.list_qa_members())
-        for frag in ("QA 테스트 회원 만들기", 'name="label"', "회원 만들기", "qa-3", "새닉", "qa-3, qa-host"):
+        for frag in ("QA 회원 만들기", 'name="label"', "지금 1명", "새닉", "qa-3, qa-host"):
             self.assertIn(frag, h)
 
 

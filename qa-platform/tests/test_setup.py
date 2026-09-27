@@ -123,18 +123,19 @@ class SetupRunTest(unittest.TestCase):
             self.app.setup_run("nope", {}, operator="bebe", session_hash=None, ip=None)
 
     def test_page_and_run_new_hide_setup(self):
-        h = ui.setup_page(self.app.setup_cases(), actors=["qa-host"], operators=["bebe"], operator="bebe", result=None, errors=[])
-        for frag in ('name="input.title"', 'value="4"', "Normal", "Swagger", "/v1/rooms", "roomId", "실행 — dev 에 실제로 만든다"):
+        h = ui.data_page(self.app.setup_cases(), actors=["qa-host"], operators=["bebe"], operator="bebe", result=None, errors=[])
+        for frag in ('name="input.title"', 'value="4"', "요청 원문 보기 (Swagger)", "/v1/rooms", "roomId", 'data-open="setup.demo"', "만들기 <span"):
             self.assertIn(frag, h)
         h2 = ui.run_new(trigger="manual", target={}, suggested=[], all_cases=list(self.app.cases.values()), basis="", operators=["bebe"], operator="bebe", hidden={}, warnings=[])
         self.assertNotIn("setup.demo", h2)                                                               # 수동 실행 범위에 준비 작업은 안 뜬다
         rid = self.app.setup_run("setup.demo", {}, operator="bebe", session_hash=None, ip=None)
         run = self.app.store.get_run(rid)
         rcs = self.app.store.list_run_cases(rid)
-        h3 = ui.setup_page(self.app.setup_cases(), actors=["qa-host"], operators=["bebe"], operator="bebe",
+        h3 = ui.data_page(self.app.setup_cases(), actors=["qa-host"], operators=["bebe"], operator="bebe",
                            result={"run": run, "case": rcs[0], "steps": self.app.store.list_steps(rcs[0]["id"]), "outputs": self.app.setup_outputs(run)}, errors=[])
         self.assertIn("room-9", h3)
         self.assertIn('window.SETUP_OUT={"roomId": "room-9"}', h3)
+        self.assertIn('window.DATA_OPEN="result"', h3)                                                # 결과는 오른쪽 패널에 바로 열린다
 
 
 class SeedUsesTest(unittest.TestCase):

@@ -109,11 +109,11 @@ class QaDataTest(unittest.TestCase):
 
     def test_cleanup_section_renders(self):
         a = self.app()
-        h = ui.setup_page(a.setup_cases(), actors=["qa-host", "qa-guest"], operators=["bebe"], operator="bebe", result=None, errors=[], cleanup=a.qadata.snapshot())
-        for frag in ("QA 데이터 정리", "[QA] 룸 2개", 'value="delete_room"', 'value="r-1"', "[QA] 룸 전부 삭제", "qa-host 초기화", "qa-guest 초기화", "QA 테스트 회원 1명", 'value="delete_member"'):
+        h = ui.data_page(a.setup_cases(), actors=["qa-host", "qa-guest"], operators=["bebe"], operator="bebe", result=None, errors=[], cleanup=a.qadata.snapshot())
+        for frag in ("지금 dev 에 남은 QA 데이터", "룸 2 · 회원 1", 'value="delete_room"', 'value="r-1"', "[QA] 룸 전부 지우기", "[QA] 룸 2개를 전부 지울까요?", "qa-host 초기화", "qa-guest 초기화", 'value="delete_member"'):
             self.assertIn(frag, h)
-        h2 = ui.setup_page(a.setup_cases(), actors=[], operators=["bebe"], operator="bebe", result=None, errors=[], cleanup={"available": False, "why": "없음", "rooms": [], "members": [], "actors": []})
-        self.assertIn("지금은 쓸 수 없다", h2)
+        h2 = ui.data_page(a.setup_cases(), actors=[], operators=["bebe"], operator="bebe", result=None, errors=[], cleanup={"available": False, "why": "없음", "rooms": [], "members": [], "actors": []})
+        self.assertIn("지금은 쓸 수 없어요", h2)
 
     @unittest.skipUnless(LIVE_SPEC.is_file(), "실제 스펙 사본 없음")
     def test_live_spec_has_the_ops_we_call(self):

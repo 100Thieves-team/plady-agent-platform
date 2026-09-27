@@ -75,6 +75,7 @@ a.btn{text-decoration:none}
 .drawer .dh{padding:20px 24px 12px;display:flex;gap:10px;align-items:flex-start}.drawer .dh h3{margin:0;font-size:18px;flex:1}.drawer .dh p{margin:4px 0 0;color:var(--ink2);font-size:13px}
 .drawer .db{flex:1;overflow:auto;padding:4px 24px 16px}.drawer .df{padding:14px 24px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
 .x{width:30px;height:30px;padding:0;background:transparent;color:var(--mut);font-size:18px}
+body:has(.drawer.on) #hx-btn{display:none}
 /* 도움말 '?' 와 모달 (qa/help.py) */
 .help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;margin:0 0 0 4px;border:1px solid #b6c2d0;border-radius:50%;background:#fff;color:#5b6b7c;font:600 11px/1 ui-monospace,Menlo,monospace;cursor:pointer;vertical-align:middle}
 .help:hover{background:var(--infobg);color:var(--info);border-color:var(--info)}th .help,h1 .help,h2 .help,h3 .help{font-weight:600}
@@ -201,8 +202,8 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     inline = f'<div id="hx-inline"></div>' if inline_chat else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{e(title)} · QA</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">'
-            f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts)}'
-            f'<main>{fl}{body}{inline}</main><div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
+            f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts)}<div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
+            f'<main>{fl}{body}{inline}</main>'
             f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script><script src="/static/jobs.js?v={JOBS_JS_VERSION}" defer></script></body></html>')
 
 
@@ -1224,131 +1225,171 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
 
 
 # ---- 준비 작업 — 버튼 하나로 테스트 데이터 만들기 (docs/qa-platform-api.md §5.4) -----------------------------
-SETUP_JS = r"""
+DATA_JS = r"""
 (function(){
-  function ls(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}
-  function lsset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-  var OP=(window.QA&&window.QA.operator)||''; var SFX=OP?(':'+OP):'';
-  document.querySelectorAll('.call').forEach(function(F){
-    var nv=F.querySelector('.view.nv'), sv=F.querySelector('.view.sv'), seg=F.querySelector('.seg');
-    function setView(v){ nv.hidden=(v!=='normal'); sv.hidden=(v!=='swagger'); seg.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.dataset.v===v)}); lsset('qa_view',v); }
-    seg.addEventListener('click',function(ev){var b=ev.target.closest('button[data-v]'); if(b) setView(b.dataset.v)});
-    setView(ls('qa_view','normal'));
-    F.addEventListener('submit',function(){ var b=F.querySelector('button.primary'); if(b){b.disabled=true;b.textContent='실행 중…'} });
+  var sh=document.getElementById('shade'), dr=document.getElementById('drawer');
+  function close(){ sh.classList.remove('on'); dr.classList.remove('on'); document.querySelectorAll('.li.sel').forEach(function(x){x.classList.remove('sel')}); }
+  function open(id){ var tp=document.getElementById('tpl-'+id); if(!tp) return; dr.innerHTML=tp.innerHTML; sh.classList.add('on'); dr.classList.add('on');
+    document.querySelectorAll('[data-open]').forEach(function(x){x.classList.toggle('sel', x.dataset.open===id)});
+    var f=dr.querySelector('input:not([type=hidden])'); if(f) f.focus(); }
+  document.addEventListener('click',function(ev){
+    var o=ev.target.closest('[data-open]'); if(o){ ev.preventDefault(); open(o.dataset.open); return; }
+    if(ev.target===sh || ev.target.closest('[data-close]')) close();
+    var c=ev.target.closest('button[data-copy]'); if(c){ navigator.clipboard&&navigator.clipboard.writeText(c.dataset.copy); c.textContent='복사됨'; setTimeout(function(){c.textContent='복사'},1200); }
+    var d=ev.target.closest('[data-dialog]'); if(d){ var dl=document.getElementById(d.dataset.dialog); if(dl) dl.showModal(); }
   });
+  document.addEventListener('keydown',function(ev){
+    if(ev.key==='Escape') close();
+    if(ev.key==='Enter'&&(ev.metaKey||ev.ctrlKey)&&dr.classList.contains('on')){ var f=dr.querySelector('form'); if(f) f.requestSubmit(); }
+  });
+  document.addEventListener('submit',function(ev){ var b=ev.target.querySelector('button.primary'); if(b){ b.disabled=true; b.textContent='dev 에 만드는 중…'; } });
+  if(window.DATA_OPEN) open(window.DATA_OPEN);
   // 결과값을 API 호출 화면 입력칸의 "최근에 넣은 값" 으로 기억 (브라우저에만)
-  var R=window.SETUP_OUT||{}; var saved=[];
-  Object.keys(R).forEach(function(k){ var v=R[k]; if(v==null||v==='') return; var key='qa_recent'+SFX+'.'+k; var vals=ls(key,[]).filter(function(x){return x!==String(v)}); vals.unshift(String(v)); lsset(key,vals.slice(0,5)); saved.push(k); });
-  var sb=document.getElementById('saved'); if(sb&&saved.length) sb.textContent='API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다 (이 브라우저에만): '+saved.join(', ');
-  document.querySelectorAll('button[data-copy]').forEach(function(b){ b.addEventListener('click',function(){ navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copy); b.textContent='복사됨'; setTimeout(function(){b.textContent='복사'},1200); }); });
+  var OP=(window.QA&&window.QA.operator)||'', SFX=OP?(':'+OP):'', R=window.SETUP_OUT||{};
+  Object.keys(R).forEach(function(k){ try{ var key='qa_recent'+SFX+'.'+k, vals=JSON.parse(localStorage.getItem(key)||'[]').filter(function(x){return x!==String(R[k])});
+    vals.unshift(String(R[k])); localStorage.setItem(key, JSON.stringify(vals.slice(0,5))); }catch(e){} });
 })();
 """
+DATA_CSS = """<style>
+.data-cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+dialog{border:0;border-radius:16px;padding:22px 24px 18px;width:460px;box-shadow:0 16px 48px rgba(0,0,0,.18)}dialog::backdrop{background:rgba(25,31,40,.28)}
+dialog h3{margin:0 0 4px;font-size:18px}dialog .sd{color:var(--ink2);margin:0 0 14px}dialog .mf{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.kvl{border:1px solid var(--line);border-radius:10px;padding:2px 14px;max-height:260px;overflow:auto}.kvl div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:13px}.kvl div+div{border-top:1px solid var(--line)}.kvl span{color:var(--mut)}
+.res{background:var(--okbg);border-radius:10px;padding:12px 14px;margin-bottom:14px}.res.bad{background:var(--badbg)}.res b{display:block;margin-bottom:6px}
+.res .o{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0}.res .o button{height:26px;padding:0 9px;font-size:12px;background:#fff}
+</style>"""
+ROOM_ICON, PERSON_ICON, DOC_ICON = "🏠", "👤", "📄"
 
 
-def cleanup_section(cu: dict | None, *, operators: list[str], operator: str) -> str:
-    """QA 데이터 정리 — dev 전용 API(PR #135)로 [QA] 룸과 QA 회원을 지우고 테스트 계정을 초기화한다. 실행 기록이 아니라 감사 로그에만 남는다."""
+def _data_group(c) -> str:
+    return "account" if ("resume" in c.id or "member" in c.id) else "room"
+
+
+def _first_sentence(s: str, n: int = 90) -> str:
+    import re as _re
+    s = (s or "").strip()
+    one = _re.split(r"(?<=[.다요])\s", s)[0]
+    return one if len(one) <= n else one[: n - 1] + "…"
+
+
+def _card_form(c, operator: str, actors: list[str]) -> str:
+    """오른쪽 패널에 들어갈 폼. 값은 Normal 입력칸으로, 요청 원문은 접어 둔다."""
+    fields = ""
+    for name, spec in c.inputs.items():
+        d = spec.get("default")
+        fields += (f'<div class="field"><label>{e(spec["label"])}{"<i class=\"req\"></i>" if spec["required"] else ""}</label>'
+                   f'<input name="input.{e(name)}" value="{e("" if d is None else d)}" {"required" if spec["required"] and d in (None, "") else ""} autocomplete="off">'
+                   f'{("<p class=\"hint\">" + e(spec["hint"]) + "</p>") if spec.get("hint") else ""}</div>')
+    raw = ""
+    for i, st in enumerate(c.steps, 1):
+        req = st["request"]
+        body = f'<pre style="margin:4px 0 0">{e(_fmt_json(req["body"]))}</pre>' if req.get("body") is not None else ""
+        who = st.get("actor", c.actor)
+        raw += (f'<div style="margin:6px 0"><span class="mut small">{i}.</span> {method_badge(req["method"])} <span class="mono">{e(req["path"])}</span> '
+                f'<span class="small mut">{e(st["name"])}{(" · " + e(who)) if who else " · 비로그인"}</span>{body}</div>')
+    who = sorted({a for a in [c.actor, *[s.get("actor") for s in c.steps]] if a})
+    actor_ok = (not c.needs_actor()) or all(a in actors for a in who)
+    return (f'<div class="dh"><div style="flex:1"><h3>{e(c.title)}</h3><p>{e(c.description)}</p></div><button type="button" class="x" data-close>×</button></div>'
+            f'<form method="post" action="/setup/run" style="display:contents"><input type="hidden" name="case_id" value="{e(c.id)}"><input type="hidden" name="operator" value="{e(operator)}">'
+            f'<div class="db">{fields or "<p class=\"mut\">넣을 값이 없어요. 바로 만들 수 있어요.</p>"}'
+            f'<div class="kvl" style="margin-top:4px"><div><span>담당자</span><b>{e(operator)}</b></div><div><span>단계</span><b>{len(c.steps)}개</b></div>'
+            f'<div><span>결과값</span><b class="mono">{e(", ".join(c.outputs) or "–")}</b></div>{("<div><span>테스트 계정</span><b>" + e(", ".join(who)) + "</b></div>") if who else ""}</div>'
+            f'{"" if actor_ok else "<p class=\"hint bad\">테스트 계정이 설정돼 있지 않아요 (QA_ACTORS). 실행하면 건너뜀으로 남아요.</p>"}'
+            f'<details><summary class="small mut">요청 원문 보기 (Swagger){h("setup.swagger")}</summary>{raw}<p class="hint">원본은 <span class="mono">cases/setup.yaml</span>. 여기서는 고칠 수 없어요.</p></details></div>'
+            f'<div class="df"><button type="button" data-close>닫기</button><button class="primary lg" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>만들기 <span class="small" style="opacity:.7">⌘↵</span></button></div></form>')
+
+
+def _member_form(operator: str, available: bool, actors: list[str]) -> str:
+    dis = "" if (operator and available) else "disabled"
+    return (f'<div class="dh"><div style="flex:1"><h3>QA 회원 만들기</h3><p>고정 테스트 계정 두 개(qa-host · qa-guest)로 모자랄 때 써요. 정원 채우기, 세 번째 참여자, 방장 위임 같은 경우예요. '
+            f'Google 로그인 없이 실제 가입 경로로 만들고, 붙인 이름이 테스트 계정 이름이 되어 스크립트 <span class="mono">actor:</span> 와 API 호출 화면에 바로 떠요.</p></div><button type="button" class="x" data-close>×</button></div>'
+            f'<form method="post" action="/setup/member" style="display:contents"><input type="hidden" name="operator" value="{e(operator)}"><div class="db">'
+            f'<div class="field"><label>테스트 계정 이름<i class="req"></i></label><input name="label" placeholder="예: qa-3" pattern="[a-z0-9][a-z0-9\\-]{{0,30}}" required autocomplete="off">'
+            f'<p class="hint">영문 소문자·숫자·하이픈. 지금 있는 이름: <span class="mono">{e(", ".join(actors) or "없음")}</span></p></div>'
+            f'{"" if available else "<p class=\"hint bad\">dev QA 데이터 API 를 쓸 수 없어 지금은 만들 수 없어요.</p>"}</div>'
+            f'<div class="df"><button type="button" data-close>닫기</button><button class="primary lg" {dis}>만들기 <span class="small" style="opacity:.7">⌘↵</span></button></div></form>')
+
+
+def _result_panel(result: dict, cleanup_ok: bool, operator: str) -> str:
+    run, rc, steps, outs = result["run"], result["case"], result["steps"], result["outputs"]
+    v = run.get("verdict") or run["status"]
+    ok = v == "pass"
+    orows = "".join(f'<div class="o"><span class="mono">{e(k)}</span><span><span class="mono">{e(val) if val not in (None, "") else "(없음)"}</span> '
+                    f'{("<button type=\"button\" data-copy=\"" + e(val) + "\">복사</button>") if val not in (None, "") else ""}</span></div>' for k, val in outs.items())
+    bad = [s for s in steps if s["verdict"] != "pass"]
+    srows = "".join(f'<tr><td>{e(s["name"])}</td><td>{badge(s["verdict"])} <span class="mono small">{e((s.get("response") or {}).get("status") or "")}</span></td>'
+                    f'<td class="small" style="color:var(--bad)">{e(s.get("error") or "")}</td></tr>' for s in steps)
+    room = outs.get("roomId")
+    undo = (f'<form method="post" action="/setup/cleanup" style="margin:0" onsubmit="return confirm(\'방금 만든 룸과 딸린 데이터를 지워요. 되돌릴 수 없어요.\')">'
+            f'<input type="hidden" name="action" value="delete_room"><input type="hidden" name="target" value="{e(room)}"><input type="hidden" name="operator" value="{e(operator)}">'
+            f'<button class="danger lg">방금 만든 룸 지우기</button></form>') if (room and cleanup_ok) else ""
+    return (f'<div class="dh"><div style="flex:1"><h3>{e(rc["case_title"] if rc else "")}</h3><p>{kst(run["created_at"])} · 실행 기록 <a class="mono" href="/runs/{e(run["id"])}">{e(run["id"])}</a></p></div><button type="button" class="x" data-close>×</button></div>'
+            f'<div class="db"><div class="res {"" if ok else "bad"}"><b>{"만들었어요" if ok else "다 만들지 못했어요"}</b>{orows or "<span class=\"small mut\">결과값이 없어요</span>"}</div>'
+            f'<p class="hint">결과값은 API 호출 화면 입력칸에 "최근에 넣은 값" 으로 떠요 (이 브라우저에만).</p>'
+            f'<details {"open" if bad else ""}><summary class="small mut">단계 {len(steps)}개</summary><table><tr><th>단계</th><th>결과</th><th>오류</th></tr>{srows}</table></details></div>'
+            f'<div class="df">{undo}<span style="flex:1"></span><a class="btn lg" href="/explorer">API 호출로</a><button type="button" class="lg" data-close>닫기</button></div>'
+            f'<script>window.SETUP_OUT={json.dumps({k: v for k, v in outs.items() if v not in (None, "")}, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>')
+
+
+def data_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None,
+              qa_members: list[dict] | None = None) -> str:
+    """QA 데이터 (docs/qa-platform-v2.md §5): 왼쪽 만들기 목록 → 오른쪽 입력 패널, 오른쪽 열에 dev 에 남은 QA 데이터와 지우기."""
+    available = bool(cleanup and cleanup.get("available"))
+    tpls, groups = "", {"room": "", "account": ""}
+    for c in cases:
+        ic = DOC_ICON if "resume" in c.id else ROOM_ICON
+        groups[_data_group(c)] += (f'<a class="li" href="#" data-open="{e(c.id)}"><div class="dot info">{ic}</div><div class="tx"><div class="t">{e(c.title)}</div>'
+                                   f'<div class="d">{e(_first_sentence(c.description))}</div></div><span class="mut">›</span></a>')
+        tpls += f'<template id="tpl-{e(c.id)}">{_card_form(c, operator, actors)}</template>'
+    groups["account"] = (f'<a class="li" href="#" data-open="qa-member"><div class="dot info">{PERSON_ICON}</div><div class="tx"><div class="t">QA 회원 만들기</div>'
+                         f'<div class="d">테스트 계정이 더 필요할 때 [QA] 회원을 새로 만들어요. 지금 {len(qa_members or [])}명</div></div><span class="mut">›</span></a>') + groups["account"]
+    tpls += f'<template id="tpl-qa-member">{_member_form(operator, available, actors)}</template>'
+    if result:
+        tpls += f'<template id="tpl-result">{_result_panel(result, available, operator)}</template>'
+    if not cases:
+        groups["room"] = '<div class="empty"><b>만들기 카드가 없어요</b><span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적어요 (가이드 참고).</div>'
+    left = "".join(f'<div class="card flush"><div class="ch"><h2>{title} 만들기{h("setup.cards") if k == "room" else ""}</h2></div>{groups[k]}</div>'
+                   for k, title in (("room", "룸"), ("account", "계정 · 이력서")))
+    errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
+    return (f'{DATA_CSS}<h1>QA 데이터</h1><p class="lead">테스트용 데이터를 dev 에 만들고 지워요. 만든 데이터는 이름이 <span class="mono">[QA]</span> 로 시작해요. 만들기는 실행 기록에, 지우기는 감사 로그에 남아요.</p>{errs}'
+            f'<div class="cols data-cols"><div>{left}</div><div>{leftover_section(cleanup, operator=operator)}</div></div>{tpls}'
+            + (f'<script>window.DATA_OPEN="result"</script>' if result else "") + f'<script>{DATA_JS}</script>')
+
+
+def leftover_section(cu: dict | None, *, operator: str) -> str:
+    """dev 에 남은 QA 데이터 — dev 전용 API(PR #135)로 [QA] 룸·QA 회원을 지우고 테스트 계정을 초기화한다. 감사 로그에만 남는다."""
+    head = f'<div class="ch"><h2>지금 dev 에 남은 QA 데이터{h("setup.cleanup")}</h2>'
     if cu is None:
-        return ""
-    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
+        return f'<div class="card flush">{head}</div><div class="empty">불러오지 않았어요</div></div>'
+    if not cu.get("available"):
+        return f'<div class="card flush">{head}</div><div class="empty"><b>지금은 쓸 수 없어요</b>{e(cu.get("why") or "")}</div></div>'
+    if cu.get("error"):
+        er = cu["error"]
+        return f'<div class="card flush">{head}</div><div class="empty"><b>목록을 못 읽었어요</b>{e(er.get("code"))}: {e(er.get("message"))}</div></div>'
+
     def form(action, target, label, *, cls="", confirm=""):
         dis = "" if operator else "disabled title=\"담당자를 먼저 고르세요\""
         return (f'<form method="post" action="/setup/cleanup" class="inline" onsubmit="return confirm({json.dumps(confirm or (label + "?"), ensure_ascii=False)})">'
                 f'<input type="hidden" name="action" value="{e(action)}"><input type="hidden" name="target" value="{e(target)}"><input type="hidden" name="operator" value="{e(operator)}">'
                 f'<button class="{cls}" {dis}>{e(label)}</button></form>')
-    head = (f'<h2 id="cleanup">QA 데이터 정리{h("setup.cleanup")} <span class="small mut">dev 에 남은 [QA] 데이터를 지운다 — 백엔드 dev 전용 API 라 진짜로 행이 없어진다</span></h2>')
-    if not cu.get("available"):
-        return head + f'<div class="card"><p class="mut" style="margin:0">지금은 쓸 수 없다: {e(cu.get("why") or "")}</p></div>'
-    if cu.get("error"):
-        er = cu["error"]
-        return head + f'<div class="card"><p class="mut" style="margin:0;color:var(--bad)">목록을 못 읽었다 — {e(er.get("code"))}: {e(er.get("message"))}</p></div>'
-    rooms = cu.get("rooms") or []
-    rrows = "".join(
-        f'<tr><td class="mono small">{e(str(r.get("roomId") or "")[:8])}…</td><td>{e(r.get("title"))}</td><td>{badge(r.get("status"))}</td><td>{e(r.get("host_label"))}</td>'
-        f'<td class="small">신청 {(r.get("counts") or {}).get("applications", 0)} · 참여 {(r.get("counts") or {}).get("participants", 0)}</td><td class="small mut">{e((r.get("createdAt") or "")[:16].replace("T", " "))}</td>'
-        f'<td>{form("delete_room", str(r.get("roomId") or ""), "삭제", cls="danger", confirm=f"[{r.get("title") or ""}] 룸과 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
-        for r in rooms) or '<tr><td colspan="7" class="mut">[QA] 룸이 없다</td></tr>'
-    members = cu.get("members") or []
-    mrows = "".join(
-        f'<tr><td class="mono small">{e(str(m.get("memberId") or "")[:8])}…{(" <b>" + e(m["label"]) + "</b>") if m.get("label") else ""}</td><td>{e(m.get("nickname"))}</td><td class="small mut">{e(m.get("email"))}</td>'
-        f'<td>{form("delete_member", str(m.get("memberId") or ""), "삭제", cls="danger", confirm="QA 테스트 회원과 그 회원의 데이터를 전부 지운다. 되돌릴 수 없다.")}</td></tr>'
-        for m in members)
-    resets = " ".join(form("reset", a, f"{a} 초기화", confirm=f"테스트 계정 {a} 를 룸이 하나도 없는 처음 상태로 되돌린다 — 방장인 [QA] 룸과 신청·참여 행을 지운다. 회원·프로필·이력서는 남는다.") for a in cu.get("actors") or [])
-    return (head + f'<div class="card"><p class="small mut" style="margin-top:0">지우는 건 백엔드가 제목 <span class="mono">[QA]</span> 로 시작하는 것만 허용한다(아니면 E2201). 모든 버튼은 감사 로그에 남는다. '
-            f'담당자: <select onchange="document.cookie=\'qa_operator=\'+this.value+\';path=/;max-age=31536000\';location.reload()"><option value="">— 담당자 —</option>{ops}</select></p>'
-            f'<h4>[QA] 룸 {len(rooms)}개</h4><table><tr><th>id</th><th>제목</th><th>상태</th><th>방장</th><th>딸린 행</th><th>만든 시각</th><th></th></tr>{rrows}</table>'
-            f'<div class="actions">{form("delete_all", "", "[QA] 룸 전부 삭제", cls="danger", confirm=f"[QA] 룸 {len(rooms)}개와 딸린 데이터를 전부 지운다. 되돌릴 수 없다.")}{h("setup.delete_all")}'
-            f'<span class="small mut">테스트 계정 초기화{h("setup.reset")}:</span> {resets}</div>'
-            + (f'<h4>QA 테스트 회원 {len(members)}명{h("setup.members")}</h4><table><tr><th>id</th><th>닉네임</th><th>이메일</th><th></th></tr>{mrows}</table>' if members else "")
-            + '</div>')
-
-
-def members_section(qa_members: list[dict], *, actors: list[str], operators: list[str], operator: str, available: bool) -> str:
-    """QA 테스트 회원 만들기 — dev 전용 API 로 회원을 만들고, 그 이름을 테스트 계정처럼 쓴다(계정 2개 한계를 넘기려고)."""
-    dis = "" if (operator and available) else ("disabled title=\"담당자를 먼저 고르세요\"" if available else "disabled title=\"dev QA API 를 쓸 수 없다\"")
-    rows = "".join(f'<tr><td class="mono">{e(m["label"])}</td><td>{e(m.get("nickname") or "")}</td><td class="small mut">{e(m.get("email") or "")}</td>'
-                   f'<td class="small mut">{kst(m["created_at"])} · {e(m["operator"])}</td></tr>' for m in qa_members) or '<tr><td colspan="4" class="mut">아직 만든 회원이 없다</td></tr>'
-    return (f'<h2 id="members">QA 테스트 회원 만들기{h("setup.member")} <span class="small mut">고정 테스트 계정 2개(qa-host · qa-guest)로 모자랄 때 — 정원 채우기, 세 번째 참여자, 위임 시나리오</span></h2>'
-            f'<div class="card"><form method="post" action="/setup/member" class="actions" style="margin-top:0">'
-            f'<label>이름 <input name="label" placeholder="예: qa-3" pattern="[a-z0-9][a-z0-9\\-]{{0,30}}" required style="width:160px"></label>'
-            f'<input type="hidden" name="operator" value="{e(operator)}"><button class="primary" {dis}>회원 만들기</button>'
-            f'<span class="small mut">Google 로그인 없이 실제 가입 경로로 만든다. 이름이 테스트 계정 이름이 되어 스크립트 <span class="mono">actor:</span> 와 API 호출 화면 드롭다운에 바로 뜬다. 토큰은 저장하지 않는다 — 필요할 때 dev-sessions 로 받는다.</span></form>'
-            f'<table><tr><th>테스트 계정 이름</th><th>닉네임</th><th>이메일</th><th>만든 때</th></tr>{rows}</table>'
-            f'<p class="hint">지우는 건 아래 "QA 데이터 정리"의 QA 테스트 회원 표에서. 지금 쓸 수 있는 테스트 계정 전체: <span class="mono">{e(", ".join(actors) or "없음")}</span></p></div>')
-
-
-def setup_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None,
-               qa_members: list[dict] | None = None) -> str:
-    head = ('<h1>테스트 데이터 만들기' + h("setup.cards") + ' <span class="small mut">여러 API 를 순서대로 호출해 dev 에 테스트 데이터를 만드는 일을 버튼 하나로 대신한다. '
-            'Normal 은 값만 넣는 입력 폼, Swagger 는 실제로 나가는 요청 원문. 만든 데이터는 지우지 않는다(제목 [QA], 사람이 지운다). 실행은 실행 기록에 남고 Slack 은 안 보낸다</span></h1>')
-    res = ""
-    if result:
-        run, rc, steps, outs = result["run"], result["case"], result["steps"], result["outputs"]
-        v = run.get("verdict") or run["status"]
-        orows = "".join(f'<tr><td class="mono">{e(k)}</td><td class="mono">{e(val) if val not in (None, "") else "<span class=\"mut\">(없음)</span>"}</td>'
-                        f'<td>{("<button type=\"button\" data-copy=\"" + e(val) + "\">복사</button>") if val not in (None, "") else ""}</td></tr>' for k, val in outs.items())
-        bad = [s for s in steps if s["verdict"] not in ("pass",)]
-        srows = "".join(f'<tr><td>{e(s["name"])}</td><td>{badge(s["verdict"])} <span class="mono small">{e((s.get("response") or {}).get("status") or "")}</span></td>'
-                        f'<td class="small" style="color:var(--bad)">{e(s.get("error") or "")}</td></tr>' for s in steps)
-        res = (f'<div class="card"><h3 style="margin-top:0">결과 {badge(v)} <span class="small mut">{e(rc["case_title"] if rc else "")} · 실행 기록 <a href="/runs/{e(run["id"])}" class="mono">{e(run["id"])}</a> · {kst(run["created_at"])}</span></h3>'
-               + (f'<table><tr><th>결과값{h("setup.outputs")}</th><th></th><th></th></tr>{orows}</table><p id="saved" class="hint"></p>' if outs else '<p class="hint">결과값이 없다</p>')
-               + (f'<details {"open" if bad else ""}><summary class="small mut">단계 {len(steps)}개</summary><table><tr><th>단계</th><th>판정</th><th>오류</th></tr>{srows}</table></details>')
-               + f'<div class="actions"><a class="btn primary" href="/explorer">API 호출 화면으로</a> <a class="btn" href="/runs/{e(run["id"])}">실행 상세</a></div></div>'
-               + f'<script>window.SETUP_OUT={json.dumps({k: v for k, v in outs.items() if v not in (None, "")}, ensure_ascii=False, default=str).replace("</", "<\\/")}</script>')
-    errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
-    ops = "".join(f'<option value="{e(o)}" {"selected" if o == operator else ""}>{e(o)}</option>' for o in operators)
-    cards = ""
-    for c in cases:
-        fields = ""
-        for name, spec in c.inputs.items():
-            d = spec.get("default")
-            fields += (f'<div class="field"><label>{e(spec["label"])}{"<i class=\"req\"></i>" if spec["required"] else ""}'
-                       f'{(" <span class=\"hint\">" + e(spec["hint"]) + "</span>") if spec.get("hint") else ""}</label>'
-                       f'<input name="input.{e(name)}" value="{e("" if d is None else d)}" {"required" if spec["required"] and d in (None, "") else ""} autocomplete="off"></div>')
-        if not fields:
-            fields = '<p class="hint">넣을 값이 없다 — 그대로 실행하면 된다</p>'
-        outs = ", ".join(c.outputs) or "없음"
-        sw = ""
-        for i, st in enumerate(c.steps, 1):
-            req = st["request"]
-            body = f'<pre style="margin:4px 0 0">{e(_fmt_json(req["body"]))}</pre>' if req.get("body") is not None else ""
-            who = st.get("actor", c.actor)
-            sw += (f'<div class="sline"><span class="mut small">{i}.</span> {method_badge(req["method"])} <span class="mono">{e(req["path"])}</span> '
-                   f'<span class="small mut">{("전제 " + e(st["given"]) + " · ") if st.get("given") else ""}{e(st["name"])}{(" · " + e(who)) if who else " · 비로그인"}</span>'
-                   f'{(" <span class=\"small mut\">→ " + e(", ".join(st["save"].keys())) + "</span>") if st.get("save") else ""}{body}</div>')
-        actor_ok = (not c.needs_actor()) or all((a in actors) for a in {c.actor, *[s.get("actor") for s in c.steps]} if a)
-        cards += (f'<form method="post" action="/setup/run" class="card call"><input type="hidden" name="case_id" value="{e(c.id)}">'
-                  f'<div class="callhead"><div><b>{e(c.title)}</b> <span class="mono mut small">{e(c.id)}</span><br><span class="small mut">{e(c.description)}</span></div>'
-                  f'<div class="seg"><button type="button" data-v="normal" title="값만 넣는 입력 폼">Normal</button><button type="button" data-v="swagger" title="실제로 나가는 요청 원문 (메서드·경로·본문)">Swagger</button>{h("setup.swagger")}</div></div>'
-                  f'<div class="view nv">{fields}<p class="hint">결과값: <span class="mono">{e(outs)}</span> · 단계 {len(c.steps)}개'
-                  f'{(" · 테스트 계정 " + e(", ".join(sorted({a for a in [c.actor, *[s.get("actor") for s in c.steps]] if a})))) if c.needs_actor() else ""}</p></div>'
-                  f'<div class="view sv" hidden>{sw}<p class="hint">💡 실제로 나가는 요청을 순서대로 보여 준다. <span class="mono">{{{{input.x}}}}</span> 는 Normal 의 입력값으로, 나머지 치환은 실행 때 채워진다. 여기서는 고칠 수 없다 — 스크립트 파일(<span class="mono">cases/setup.yaml</span>)이 원본</p></div>'
-                  f'<div class="callfoot"><div class="field"><label>담당자<i class="req"></i></label><select name="operator" required><option value="">— 담당자 —</option>{ops}</select></div>'
-                  f'{"" if actor_ok else "<p class=\"hint bad\">테스트 계정이 설정돼 있지 않다 (QA_ACTORS) — 실행하면 skipped 로 남는다</p>"}'
-                  f'<button class="primary wide" {"" if operator else "disabled title=\"담당자를 고르면 열린다\""}>실행 — dev 에 실제로 만든다</button></div></form>')
-    if not cards:
-        cards = '<div class="card"><p class="mut" style="margin:0">테스트 데이터 만들기 스크립트(suite setup)가 없다. <span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적는다 (가이드 참고).</p></div>'
-    members = members_section(qa_members or [], actors=actors, operators=operators, operator=operator, available=bool(cleanup and cleanup.get("available"))) if cleanup is not None else ""
-    return f'{head}{errs}{res}<div class="grid setup-grid">{cards}</div>{members}{cleanup_section(cleanup, operators=operators, operator=operator)}<script>{SETUP_JS}</script>'
+    rooms, members = cu.get("rooms") or [], cu.get("members") or []
+    rows = "".join(
+        f'<tr><td class="small mut">룸</td><td><div style="font-weight:600">{e(r.get("title"))}</div><div class="small mut">{e(r.get("host_label"))} 방장 · 신청 {(r.get("counts") or {}).get("applications", 0)} · 참여 {(r.get("counts") or {}).get("participants", 0)}</div></td>'
+        f'<td>{badge(r.get("status"))}</td><td class="small mut">{e((r.get("createdAt") or "")[5:16].replace("T", " "))}</td>'
+        f'<td class="right">{form("delete_room", str(r.get("roomId") or ""), "지우기", confirm=f"[{r.get("title") or ""}] 룸과 딸린 데이터를 지워요. 되돌릴 수 없어요.")}</td></tr>' for r in rooms)
+    rows += "".join(
+        f'<tr><td class="small mut">회원</td><td><div style="font-weight:600">{e(m.get("nickname"))}{(" <span class=\"mono\">" + e(m["label"]) + "</span>") if m.get("label") else ""}</div><div class="small mut">{e(m.get("email"))}</div></td>'
+        f'<td></td><td></td><td class="right">{form("delete_member", str(m.get("memberId") or ""), "지우기", confirm="QA 회원과 그 회원의 데이터를 지워요. 되돌릴 수 없어요.")}</td></tr>' for m in members)
+    listing = "".join(f'<div><span>룸</span><b>{e(r.get("title"))}</b></div>' for r in rooms)
+    dialog = (f'<dialog id="dlg-clean"><h3>[QA] 룸 {len(rooms)}개를 전부 지울까요?</h3><p class="sd">제목이 [QA] 로 시작하는 룸과 딸린 신청·참여만 지워요. 되돌릴 수 없어요.</p>'
+              f'<div class="kvl">{listing or "<div><span>지울 룸이 없어요</span></div>"}</div><form method="post" action="/setup/cleanup" class="mf">'
+              f'<input type="hidden" name="action" value="delete_all"><input type="hidden" name="target" value=""><input type="hidden" name="operator" value="{e(operator)}">'
+              f'<button type="button" onclick="this.closest(\'dialog\').close()">닫기</button><button class="danger lg" {"" if operator else "disabled"}>지우기</button></form></dialog>')
+    resets = " ".join(form("reset", a, f"{a} 초기화", confirm=f"테스트 계정 {a} 를 룸이 없는 처음 상태로 되돌려요. 방장인 [QA] 룸과 신청·참여를 지우고 회원·프로필·이력서는 남겨요.") for a in cu.get("actors") or [])
+    return (f'<div class="card flush">{head}<span class="small mut">룸 {len(rooms)} · 회원 {len(members)}</span>'
+            f'<button class="danger" data-dialog="dlg-clean" {"" if (operator and rooms) else "disabled"}>[QA] 룸 전부 지우기</button>{h("setup.delete_all")}</div>'
+            f'<table><tr><th>종류</th><th>이름</th><th>상태</th><th>만든 때</th><th></th></tr>{rows or "<tr><td colspan=5><div class=empty><b>남은 QA 데이터가 없어요</b>깨끗해요.</div></td></tr>"}</table>'
+            f'<div class="cb" style="border-top:1px solid var(--line)"><span class="small mut">테스트 계정 초기화{h("setup.reset")}</span> {resets}</div></div>{dialog}')
 
 
 # ---- 담당자 고르기 (처음 들어올 때) -----------------------------------------------------------------

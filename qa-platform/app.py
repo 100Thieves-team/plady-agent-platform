@@ -1928,23 +1928,21 @@ class Handler(BaseHTTPRequestHandler):
                               "apis", context={"op": d["op"]["id"]})
 
         # ---------- 준비 작업 (docs/qa-platform-api.md §5.4) ----------
-        if path == "/setup" and method == "GET":
+        if path == "/setup" and method == "GET":        # 옛 주소 — QA 데이터 화면으로 (docs/qa-platform-v2.md §5)
+            qs = urlsplit(self.path).query
+            return self._redirect("/data" + (("?" + qs) if qs else ""))
+        if path == "/data" and method == "GET":
             run = app.store.get_run(g("run")) if g("run") else None
             result = None
             if run and run["trigger"] == "setup":
                 rcs = app.store.list_run_cases(run["id"])
                 result = {"run": run, "case": rcs[0] if rcs else None, "steps": app.store.list_steps(rcs[0]["id"]) if rcs else [],
                           "outputs": app.setup_outputs(run)}
-            notice = None
-            if g("done"):
-                notice = ("ok", g("done"))
-            elif g("err"):
-                notice = ("err", g("err"))
-            return self._page("테스트 데이터 만들기", ui.setup_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators,
-                                                       qa_members=app.store.list_qa_members(),
-                                                       operator=self._operator(), result=result, errors=[x for x in app.case_errors if "setup" in x],
-                                                       cleanup=app.qadata.snapshot()), "setup",
-                              flash=notice, context={"run": run["id"]} if run else None)
+            notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
+            return self._page("QA 데이터", ui.data_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators,
+                                                       qa_members=app.store.list_qa_members(), operator=self._operator(), result=result,
+                                                       errors=[x for x in app.case_errors if "setup" in x], cleanup=app.qa_snapshot(fresh=True)),
+                              "data", flash=notice, context={"run": run["id"]} if run else None)
         if path == "/setup/member" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -1957,9 +1955,9 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import quote
             if res["ok"]:
                 m = res["member"]
-                return self._redirect(f"/setup?done={quote(f'QA 테스트 회원을 만들었다 — 테스트 계정 이름 {fv('label').strip()} (닉네임 {m.get('nickname')}, {m.get('email')}). 이제 스크립트 actor: 와 API 호출 화면에서 고를 수 있다')}#members", set_operator=operator)
+                return self._redirect(f"/data?done={quote(f'QA 회원을 만들었어요. 테스트 계정 이름 {fv('label').strip()} (닉네임 {m.get('nickname')}). 스크립트 actor: 와 API 호출 화면에서 고를 수 있어요')}", set_operator=operator)
             e = res["error"] or {}
-            return self._redirect(f"/setup?err={quote(f'{e.get('code')}: {e.get('message')}')}#members", set_operator=operator)
+            return self._redirect(f"/data?err={quote(f'{e.get('code')}: {e.get('message')}')}", set_operator=operator)
         if path == "/setup/cleanup" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -1972,10 +1970,10 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import quote
             if res["ok"]:
                 d = res["deleted"]
-                msg = f"지웠다 — 총 {d.get('total', 0)}행 (룸 {d.get('rooms', 0)} · 신청 {d.get('applications', 0)} · 참여 {d.get('participants', 0)} · 회원 {d.get('members', 0)})"
-                return self._redirect(f"/setup?done={quote(msg)}#cleanup", set_operator=operator)
+                msg = f"지웠어요. 룸 {d.get('rooms', 0)} · 신청 {d.get('applications', 0)} · 참여 {d.get('participants', 0)} · 회원 {d.get('members', 0)} (모두 {d.get('total', 0)}행)"
+                return self._redirect(f"/data?done={quote(msg)}", set_operator=operator)
             e = res["error"] or {}
-            return self._redirect(f"/setup?err={quote(f'{e.get('code')}: {e.get('message')}')}#cleanup", set_operator=operator)
+            return self._redirect(f"/data?err={quote(f'{e.get('code')}: {e.get('message')}')}", set_operator=operator)
         if path == "/setup/run" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
@@ -1986,7 +1984,7 @@ class Handler(BaseHTTPRequestHandler):
             rid = app.setup_run(str(fv("case_id")), values, operator=operator, session_hash=self._session_hash(), ip=self._ip())
             if self._wants_json():
                 return self._json(200, {"run": app.store.get_run(rid), "outputs": app.setup_outputs(app.store.get_run(rid))})
-            return self._redirect(f"/setup?run={rid}", set_operator=operator)
+            return self._redirect(f"/data?run={rid}", set_operator=operator)
 
         # ---------- 탐색기 (docs/qa-platform-tc.md §8) ----------
         if path == "/explorer" and method == "GET":
