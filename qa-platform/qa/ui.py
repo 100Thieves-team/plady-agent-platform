@@ -744,6 +744,19 @@ def activity(events: list[dict], operators: list[str], actions: list[str], f_op:
 LAYER_KO = {"policy": "비즈니스 규칙", "contract": "API 계약", "manual": "수동 작성"}
 
 
+TC_PICK_JS = """<script>(function(){
+  var boxes=function(){return document.querySelectorAll('input[name=tc_ids]')}, all=document.getElementById('tc-all'), out=document.getElementById('tc-picked');
+  function sync(){ var bs=boxes(), n=0; bs.forEach(function(b){ if(b.checked) n++; });
+    all.checked=bs.length>0&&n===bs.length; all.indeterminate=n>0&&n<bs.length;
+    out.textContent='고른 테스트 조건 '+n+'개'+(n>10?' · Hermes 는 한 번에 10개까지예요':''); out.style.color=n>10?'var(--bad)':''; }
+  all.addEventListener('change',function(){ boxes().forEach(function(b){ b.checked=all.checked; }); sync(); });
+  document.getElementById('tc-pick').addEventListener('click',function(ev){ var k=(ev.target.closest('[data-pick]')||{}).dataset; if(!k) return;
+    boxes().forEach(function(b){ b.checked=k.pick==='all'||(k.pick==='uncovered'&&b.dataset.state==='uncovered'); }); sync(); });
+  document.addEventListener('change',function(ev){ if(ev.target.name==='tc_ids') sync(); });
+  sync();
+})();</script>"""
+
+
 def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str, layer: str, only: str,
                  changes: dict, wiki_available: bool, operators: list[str] | None = None, operator: str = "", hermes: bool = False,
                  op: str = "", op_ids: list[str] | None = None) -> str:
@@ -780,7 +793,7 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
         b = r.get("binding") or {}
         bind = ", ".join(b.get("operations") or b.get("commands") or []) + ((" · " + b["error_code"]) if b.get("error_code") else "")
         ch = changes.get(r["id"])
-        chk = f'<input type="checkbox" name="tc_ids" value="{e(r["id"])}"> ' if state != "excluded" else ""
+        chk = f'<input type="checkbox" name="tc_ids" value="{e(r["id"])}" data-state="{state}"> ' if state != "excluded" else ""
         rows += (f'<tr class="{"ex" if state == "excluded" else ""}"><td>{chk}{tc_link(r["id"])}</td><td>{badge(r["layer"])} {e(r["title"])}'
                  f'{(" <span class=\"b warn\" title=\"스펙 불일치 경고\">!</span>") if r["id"] in warn_ids else ""}'
                  f'{(" <span class=\"b drift\">" + e(ch["kind"]) + " " + kst(ch["at"]) + "</span>") if ch else ""}</td>'
@@ -804,7 +817,9 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 테스트 조건으로 Hermes 가 스크립트 쓰기</button>{h("tc.draft")}'
             f'<button formaction="/cases/new" formmethod="get">고른 테스트 조건으로 직접 쓰기 (폼)</button>{h("cases.new")}'
             f'<span class="small mut">같은 도메인 1~10건. 플랫폼이 테스트 조건·OpenAPI·PRD 절을 근거로 넣고, 검증을 통과한 것만 바로 저장되고 "Hermes 작성" 표시가 붙는다</span></div>'
-            f'<table><tr><th>테스트 조건</th><th>내용 ({n})</th><th>API 매핑{h("tc.mapping")}</th><th>자동화 · 스크립트 · 마지막 결과{h("tc.state")}</th></tr>{rows}</table></div></form>'
+            f'<div class="actions" id="tc-pick"><button type="button" data-pick="all">전부 선택</button><button type="button" data-pick="uncovered">미자동화만 선택</button>'
+            f'<button type="button" data-pick="none">선택 해제</button><span class="small mut" id="tc-picked">고른 테스트 조건 0개</span></div>'
+            f'<table><tr><th><label style="font-weight:600"><input type="checkbox" id="tc-all" title="이 목록의 테스트 조건을 전부 고른다 (자동화 제외는 빼고)"> 테스트 조건</label></th><th>내용 ({n})</th><th>API 매핑{h("tc.mapping")}</th><th>자동화 · 스크립트 · 마지막 결과{h("tc.state")}</th></tr>{rows}</table></div></form>{TC_PICK_JS}'
             f'<form method="post" action="/catalog/propose-tc" class="card" onsubmit="this.querySelector(\'button\').disabled=true">'
             f'<h3 style="margin-top:0">PRD 절에서 수동 작성 테스트 조건 제안 (Hermes){h("tc.propose")}</h3>'
             f'<p class="small mut">SSOT 로 형식화되지 않아 자동으로 안 뽑힌 확인 항목을 PRD 절 본문에서 Hermes 가 골라낸다. 결과는 형식 검사를 거쳐 <span class="mono">catalog/manual-tc.yaml</span> 에 바로 저장되고 "Hermes 작성" 표시가 붙는다. 직접 적으려면 <a href="/catalog/manual/new">수동 작성 테스트 조건 추가 (폼)</a>{h("tc.manual_form")}.</p>'
