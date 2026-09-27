@@ -100,6 +100,13 @@ class GitHub:
         out.sort(key=lambda x: x["merged_at"], reverse=True)
         return out[:limit]
 
+    def pr(self, number: int) -> dict | None:
+        pr = self._get(f"/repos/{self.cfg.backend_repo}/pulls/{number}", ttl=300)
+        if not isinstance(pr, dict) or not pr.get("number"):
+            return None
+        return {"number": pr["number"], "title": pr.get("title"), "url": pr.get("html_url"), "author": (pr.get("user") or {}).get("login"),
+                "merged_at": pr.get("merged_at"), "sha": pr.get("merge_commit_sha"), "body": pr.get("body") or ""}
+
     def pr_files(self, number: int) -> list[str]:
         return [f["filename"] for f in self.pr_file_details(number)]
 
@@ -115,6 +122,18 @@ class GitHub:
             if len(data) < 100:
                 break
         return files
+
+    def file_text(self, path: str, ref: str) -> str | None:
+        """백엔드 레포 파일 하나(그 커밋 기준). 결정 기록(.worklog/*/decisions.md)을 Sanity 근거로 읽는다."""
+        import base64
+        from urllib.parse import quote as _q
+        data = self._get(f"/repos/{self.cfg.backend_repo}/contents/{_q(path, safe='/')}", ttl=None, params=f"?ref={ref}")
+        if not isinstance(data, dict) or data.get("encoding") != "base64":
+            return None
+        try:
+            return base64.b64decode(data.get("content") or "").decode("utf-8", "replace")
+        except ValueError:
+            return None
 
     def release_checklist(self) -> list[str]:
         """백엔드 docs/knowledge/release-checklist.md 의 `- [ ]` 항목. 실패 시 빈 목록."""

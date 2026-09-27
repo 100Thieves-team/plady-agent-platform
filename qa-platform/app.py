@@ -18,12 +18,14 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
+_urlq = quote          # _route 안에서 quote 를 지역으로 다시 import 하는 곳이 있어 이름을 따로 둔다
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from qa import help as helpmod  # noqa: E402
 from qa.qadata import QaData  # noqa: E402
 from qa import ui  # noqa: E402
+from qa import ui_sanity  # noqa: E402
 from qa.cases import CaseError, bake_inputs, audit as audit_cases, load_dir, select  # noqa: E402
 from qa.catalog import domain_of_path, CatalogService  # noqa: E402
 from qa.config import Config  # noqa: E402
@@ -722,6 +724,405 @@ class App:
             return {"summary": f"실패 분석을 {rc['case_id']} 에 기록했다", "links": [{"href": f"/runs/{rid}", "label": f"실행 {rid}"}]}
         return self.start_job("triage", operator=operator, label=f"{rid} · {rc['case_id']}", fn=fn, back={"href": f"/runs/{rid}", "label": f"실행 {rid}"},
                               session_hash=session_hash, ip=ip, sync=sync)
+
+    # ---- Sanity (docs/qa-platform-v2.md §4) -------------------------------------------------
+    SANITY_MAX_SCRIPTS = 12          # 한 번에 Hermes 가 새로 쓰는 스크립트 수 상한 — 나머지는 다음 Sanity 나 케이스 화면에서
+
+    def sanity_pr(self, number: int) -> dict:
+        pr = self.github.pr(number)
+        if not pr:
+            raise BadRequest(f"PR #{number} 를 GitHub 에서 읽지 못했다" + (f" — {self.github.last_error}" if self.github.last_error else ""))
+        return {**pr, **sanitymod.summarize(self.github.pr_file_details(number))}
+
+    def sanity_start(self, number: int, *, operator: str, session_hash=None, ip=None, sync: bool = False) -> str:
+        """[Sanity 시작] — 사람이 누른 이 한 번이 다섯 단계 전체의 시작이다 (§4.1). 머지로 저절로 시작하는 길은 없다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        if not self.cfg.hermes_key:
+            raise BadRequest("HERMES_API_KEY 가 없어 Sanity 를 돌릴 수 없다")
+        last = self.store.latest_sanity().get(number)
+        if last and last["status"] in ("queued", "running"):
+            raise BadRequest("이 PR 의 Sanity 가 이미 돌고 있다")
+        pr = self.sanity_pr(number)
+        sid = self.store.add_sanity(pr_number=number, pr_title=pr["title"], sha=pr.get("sha"), operator=operator)
+        self.store.add_event(operator=operator, action="sanity.start", target=sid, session_hash=session_hash, ip=ip, detail={"pr": number, "sha": pr.get("sha")})
+        self._sanity_job(sid, 1, operator=operator, session_hash=session_hash, ip=ip, sync=sync)
+        return sid
+
+    def _sanity_job(self, sid: str, from_step: int, *, operator: str, session_hash=None, ip=None, sync: bool = False):
+        s = self.store.get_sanity(sid)
+        self.store.update_sanity(sid, status="queued", error=None)
+        job = self.start_job("sanity", operator=operator, label=f"PR #{s['pr_number']} · {from_step}단계부터",
+                             fn=lambda job: self.sanity_run(sid, job, from_step, operator=operator, session_hash=session_hash, ip=ip),
+                             back={"href": f"/sanity/{s['pr_number']}", "label": f"PR #{s['pr_number']}"}, session_hash=session_hash, ip=ip, sync=sync)
+        self.store.update_sanity(sid, job_id=job.id)
+        return job
+
+    def sanity_run(self, sid: str, job, from_step: int, *, operator: str, session_hash=None, ip=None) -> dict:
+        """다섯 단계를 차례로 (§4.2). 2단계에서 사람이 정할 것이 나오면 멈춘다. 단계마다 기록(log)과 감사 로그를 남긴다."""
+        import time
+        from qa import hermes as hermesmod
+        s = self.store.get_sanity(sid)
+        log = list(s["log"])
+
+        def note(step: int, text: str, **kw):
+            log.append({"at": now_iso(), "step": step, "text": text, **kw})
+            self.store.update_sanity(sid, log=log, step=step)
+            job.set_stage(f"{step}. {sanitymod.STEPS[step - 1]}", note=text)
+
+        def ask(system: str, prompt: str, prefix: str) -> str:      # 호출마다 제한 시간을 새로 — 여러 번 부르는 긴 작업이라
+            if job.cancel.is_set():
+                raise hermesmod.Canceled("그만둠")
+            return self.jobs.asker(self.cfg, system, prompt, session_prefix=prefix, on_event=job._on_event, cancel=job.cancel,
+                                   deadline=time.monotonic() + self.cfg.job_timeout, stall=self.cfg.job_stall)
+        self.store.update_sanity(sid, status="running")
+        n = s["pr_number"]
+        link = [{"href": f"/sanity/{n}", "label": f"PR #{n} Sanity"}]
+        try:
+            pr = self.github.pr(n) or {"number": n, "title": s["pr_title"], "sha": s["sha"], "body": "", "url": None}
+            files = self.github.pr_file_details(n)
+            scope, findings = s["scope"] or {}, list(s["findings"])
+            if from_step <= 1:
+                job.set_stage("1. 관련 스펙 찾기")
+                scope = self._sanity_scope(pr, files, ask)
+                self.store.update_sanity(sid, scope=scope)
+                items = scope["items"]
+                note(1, f"기능 {len({x['feature'] for x in items})}개 · 시나리오 {len(items)}개 · 요구 {sum(len(x['reqs']) for x in items)}개"
+                     if items else "이 PR 이 닿는 사용자 기능이 없어요")
+                if not items:
+                    self.store.update_sanity(sid, status="empty", finished_at=now_iso())
+                    return {"summary": "관련 스펙이 없어 확인할 것이 없어요", "links": link}
+            if from_step <= 2:
+                job.set_stage("2. 스펙 점검")
+                findings = self._sanity_findings(pr, files, scope, ask)
+                self.store.update_sanity(sid, findings=findings)
+                blocking = [f for f in findings if f["kind"] in sanitymod.BLOCKING and not f.get("resolved_at")]
+                note(2, f"확인 필요 {len(blocking)}건" if blocking else "사람이 정할 것이 없어요")
+                if blocking:
+                    self.store.update_sanity(sid, status="needs_spec")
+                    slack(self.cfg.slack_webhook_url, f"[QA] PR #{n} Sanity — 스펙 확인이 {len(blocking)}건 필요해요 · {self.cfg.public_url}/sanity/{n}")
+                    return {"summary": f"스펙 확인이 {len(blocking)}건 필요해요. 정한 뒤 이어서 할 수 있어요", "links": link}
+            blocked = {r for f in findings if f["kind"] in sanitymod.BLOCKING and f.get("resolution") == "continued" for r in f.get("reqs") or []}
+            if from_step <= 3:
+                job.set_stage("3. 케이스 준비")
+                note(3, self._sanity_prepare(scope, operator=operator, ask=ask, session_hash=session_hash, ip=ip))
+            if from_step <= 4:
+                job.set_stage("4. 스크립트 만들기")
+                note(4, self._sanity_scripts(scope, blocked, operator=operator, ask=ask, session_hash=session_hash, ip=ip))
+            job.set_stage("5. 실행·검사")
+            rid, text = self._sanity_execute(s, pr, scope, findings, operator=operator, job=job, ask=ask, session_hash=session_hash, ip=ip)
+            run = self.store.get_run(rid) if rid else None
+            status = "empty" if not run else ("passed" if run.get("verdict") == "pass" else "failed")
+            self.store.update_sanity(sid, run_id=rid, status=status, finished_at=now_iso())
+            note(5, text, run_id=rid)
+            self.store.add_event(operator=operator, action="sanity.finish", target=sid, session_hash=session_hash, ip=ip, detail={"pr": n, "status": status, "run": rid})
+            return {"summary": text, "links": link + ([{"href": f"/runs/{rid}", "label": f"실행 {rid}"}] if rid else [])}
+        except hermesmod.Canceled:
+            self.store.update_sanity(sid, status="canceled", finished_at=now_iso())
+            raise
+        except Exception as ex:
+            self.store.update_sanity(sid, status="error", error=str(ex)[:1000], finished_at=now_iso())
+            raise
+
+    def _scope_catalog(self) -> dict[str, dict[str, dict]]:
+        """{기능: {Sn: {"title", "steps": [{req, text, branch}]}}} — 시나리오 파일이 있는 기능만(MVP 범위)."""
+        out = {}
+        for slug, ft in self.features.items():
+            out[ft.feature] = {s["id"]: {"title": s["title"], "steps": [st for st in s["steps"] if st.get("req")]}
+                               for s in (self.wiki.prd_scenarios(ft.feature) if self.wiki.available else [])}
+        return out
+
+    def _sanity_scope(self, pr: dict, files: list[dict], ask) -> dict:
+        """1단계. 결정론 후보(바뀐 끝점 → API → 규칙표 명령의 출처 요구)를 만들고 Hermes 가 PR 을 읽어 고른다."""
+        spec, cat, ssot = self.spec.get(), self.current_catalog(), self.ssot() or {}
+        endpoints = sanitymod.endpoint_changes(files)
+        for ep in endpoints:
+            ep["op"] = sanitymod.path_to_op(spec, ep["method"], ep["path"])
+        ops = {ep["op"] for ep in endpoints if ep["op"]}
+        catalog = self._scope_catalog()
+        req_at = {(f, st["req"]): sid for f, scs in catalog.items() for sid, sc in scs.items() for st in sc["steps"]}
+        hints = []
+        if cat is not None and ops:
+            for c in ssot.get("commands") or []:
+                b = (cat.records.get(c["id"]) or {}).get("binding") or {}
+                if ops & set(b.get("operations") or []):
+                    for src in c.get("source") or []:
+                        m = re.match(r"^PRD/(.+?)\s+(R\d+)\s*$", str(src))
+                        if m and (m.group(1), m.group(2)) in req_at:
+                            hints.append((m.group(1), req_at[(m.group(1), m.group(2))], m.group(2), c["id"]))
+        lines = [f"# PR #{pr['number']} {pr.get('title') or ''}", "## 본문", (pr.get("body") or "(없음)")[:3000],
+                 "## 바뀐 파일", "\n".join(f"- {f['filename']} ({f.get('status')}, +{f.get('additions')} -{f.get('deletions')})" for f in files[:150]),
+                 "## 컨트롤러에서 바뀐 끝점", "\n".join(f"- {ep['change']} {ep['method']} {ep['path']} ({ep['op'] or 'API 문서에 없음'}, {ep['file']})" for ep in endpoints) or "(없음)",
+                 "## 플랫폼이 찾은 후보 (바뀐 API 에 묶인 규칙표 명령의 출처)", "\n".join(f"- {f} {s} {r} ← {c}" for f, s, r, c in hints) or "(없음)",
+                 "## 고를 수 있는 기능 · 시나리오 · 요구 (PRD 2장)"]
+        for f, scs in catalog.items():
+            for sid, sc in scs.items():
+                lines.append(f"### {f} {sid} {sc['title']}")
+                lines += [f"- {st['req']}{' 분기' if st.get('branch') else ''}: {st['text']}" for st in sc["steps"]]
+        lines.append("# 출력\n```json 블록 하나로 scope.")
+        items = []
+        try:
+            items = sanitymod.parse_scope(ask(sanitymod.FIND_SYSTEM, "\n".join(lines), "qa-sanity-find"),
+                                          {f: {sid: {st["req"] for st in sc["steps"]} for sid, sc in scs.items()} for f, scs in catalog.items()})
+        except ValueError:
+            items = []
+        if not items and hints:          # Hermes 가 못 골랐으면 결정론 후보로
+            merged: dict = {}
+            for f, sid, r, c in hints:
+                cell = merged.setdefault((f, sid), {"feature": f, "scenario": sid, "reqs": [], "why": f"바뀐 API 에 묶인 명령 {c}"})
+                if r not in cell["reqs"]:
+                    cell["reqs"].append(r)
+            items = list(merged.values())
+        for x in items:
+            x["slug"] = scenariosmod.doc_slug(x["feature"])
+            texts = {st["req"]: st["text"] for st in catalog[x["feature"]][x["scenario"]]["steps"]}
+            x["title"] = catalog[x["feature"]][x["scenario"]]["title"]
+            x["req_texts"] = {r: texts.get(r, "") for r in x["reqs"]}
+        return {"items": items, "endpoints": endpoints, "hints": [list(h) for h in hints]}
+
+    def _script_calls(self) -> dict[tuple, list[str]]:
+        """(METHOD, 정규화 경로) → 그 요청을 보내는 스크립트 id."""
+        out: dict[tuple, list[str]] = {}
+        for c in self.cases.values():
+            for st in c.steps:
+                req = st.get("request") or {}
+                path = re.sub(r"\{\{[^}]+\}\}", "{}", str(req.get("path") or "")).split("?")[0].rstrip("/")
+                out.setdefault((str(req.get("method") or "").upper(), path), [])
+                if c.id not in out[(str(req.get("method") or "").upper(), path)]:
+                    out[(str(req.get("method") or "").upper(), path)].append(c.id)
+        return out
+
+    def _sanity_findings(self, pr: dict, files: list[dict], scope: dict, ask) -> list[dict]:
+        """2단계. 플랫폼 결정론 점검 + Hermes 점검 (§4.2)."""
+        from qa import scenario_ai
+        spec = self.spec.get()
+        norm = lambda p: re.sub(r"\{[^}]+\}", "{}", str(p).rstrip("/"))  # noqa: E731
+        known = {(o.method, norm(o.path)) for o in (spec.ops.values() if spec else [])}
+        scope_vids = {v for v in self._sanity_case_ids(scope)}
+        scope_scripts = {c.id for c in self.cases.values() if c.variant in scope_vids}
+        removed = {(ep["method"], norm(ep["path"])) for ep in scope.get("endpoints") or [] if ep["change"] == "removed"}
+        found: list[dict] = []
+        if spec is not None:
+            for (m, pth), ids in sorted(self._script_calls().items()):
+                if (m, pth) in known or not m or not pth:
+                    continue
+                if (m, pth) in removed or set(ids) & scope_scripts:
+                    found.append({"kind": "missing_api", "title": f"{m} {pth} 가 dev API 문서에 없어요", "spec": "스크립트 " + ", ".join(ids) + " 가 이 API 를 불러요",
+                                  "code": "이 PR 에서 지워진 끝점이에요" if (m, pth) in removed else "dev API 문서(openapi3.yaml)에 없어요",
+                                  "question": "이 API 를 쓰는 케이스를 어떻게 할까요?", "suggestion": "스펙이 정해지면 Hermes 가 스크립트를 고치거나 시나리오에서 떼요. 실행에서는 실패로 나와요.",
+                                  "scripts": ids, "source": "platform"})
+            for ep in scope.get("endpoints") or []:
+                if ep["change"] == "added" and not ep.get("op"):
+                    found.append({"kind": "undocumented_api", "title": f"{ep['method']} {ep['path']} 가 코드에는 있지만 dev API 문서에 없어요",
+                                  "spec": "dev API 문서(openapi3.yaml)", "code": f"{ep['file']} 에 새로 생긴 끝점",
+                                  "question": "백엔드에 REST Docs 추가를 요청할까요?", "suggestion": "요청한다. 문서에 없으면 스크립트를 만들 수 없어요.", "source": "platform"})
+        ssot = self.ssot() or {}
+        feats = sorted({x["feature"] for x in scope["items"]})
+        rules = []
+        for f in feats:
+            gates, cmds = scenario_ai.feature_rules(ssot, f, set())
+            if not cmds:
+                found.append({"kind": "no_rules", "title": f"「{f}」에는 규칙표 명령이 없어요", "spec": f"「{f}」 PRD", "code": "규칙표(SSOT)",
+                              "question": "", "suggestion": "케이스는 사람이 확인으로 둬요", "source": "platform"})
+            rules += [f"- 명령 {c['id']} {c.get('name') or ''} (게이트 {c.get('gate') or '-'})" for c in cmds]
+            rules += [f"- 게이트 {g['id']} {g.get('name') or ''}: " + "; ".join(f"{k.get('key')} {k.get('message') or k.get('ref') or ''}" for k in g.get("checks") or []) for g in gates]
+        decisions = []
+        for path in sanitymod.decision_files(files)[:3]:
+            txt = self.github.file_text(path, pr.get("sha") or "")
+            if txt:
+                decisions.append(f"### {path}\n{txt[:6000]}")
+        scen, catalog = [], self._scope_catalog()
+        for x in scope["items"]:
+            for sc in [catalog.get(x["feature"], {}).get(x["scenario"])]:
+                if sc:
+                    scen.append(f"### {x['feature']} {x['scenario']} {sc['title']} (이 PR 이 닿는 요구: {', '.join(x['reqs']) or '-'})")
+                    scen += [f"- {st['req']}{' 분기' if st.get('branch') else ''}: {st['text']}" for st in sc["steps"]]
+        prompt = "\n".join([f"# PR #{pr['number']} {pr.get('title') or ''}", (pr.get("body") or "")[:3000],
+                            "# 백엔드 결정 기록", "\n\n".join(decisions) or "(없음)",
+                            "# PRD 시나리오 (이 PR 이 닿는 것)", "\n".join(scen),
+                            "# 규칙표 (이 기능들의 명령·게이트)", "\n".join(rules)[:12000] or "(없음)",
+                            "# 플랫폼이 이미 찾은 것", "\n".join(f"- {f['title']}" for f in found) or "(없음)",
+                            "# PR 변경 (diff 발췌)", sanitymod.diff_excerpt(files),
+                            "# 출력\n```json 블록 하나로 findings. 항목마다 걸린 PRD 요구 id 가 있으면 \"reqs\": [\"R63\"] 도 적는다."])
+        try:
+            found += sanitymod.parse_findings(ask(sanitymod.CHECK_SYSTEM, prompt, "qa-sanity-check"))
+        except ValueError as ex:
+            found.append({"kind": "impact", "title": "Hermes 스펙 점검 결과를 읽지 못했어요", "spec": "", "code": str(ex), "question": "", "suggestion": "다시 점검하면 돼요", "source": "platform"})
+        for i, f in enumerate(found, 1):
+            f["id"] = f"f{i}"
+        return found
+
+    def _sanity_case_ids(self, scope: dict) -> list[str]:
+        """이번 범위의 케이스: 관련 요구에 걸린 케이스 + 그 시나리오의 정상 흐름 (§4.2 3단계)."""
+        out = []
+        for x in scope.get("items") or []:
+            ft = self.features.get(x["slug"])
+            sc = ft.scenario(x["scenario"]) if ft else None
+            for v in (sc.variants if sc else []):
+                if v.kind == "happy" or (v.at and v.at in x["reqs"]):
+                    out.append(f"{x['slug']}/{x['scenario']}/{v.key}")
+        return out
+
+    def _sanity_prepare(self, scope: dict, *, operator: str, ask, session_hash=None, ip=None) -> str:
+        """3단계. 시나리오 파일·케이스가 비었으면 채우고, 지난 저장 뒤 PRD·규칙표가 바뀐 시나리오는 다시 맞춘다."""
+        done = []
+        for slug in dict.fromkeys(x["slug"] for x in scope["items"]):
+            ft = self.features.get(slug)
+            need_fill = ft is None or any(ft.scenario(x["scenario"]) is None or not ft.scenario(x["scenario"]).variants for x in scope["items"] if x["slug"] == slug)
+            if need_fill:
+                try:
+                    out = self.fill_scenarios(slug, operator=operator, session_hash=session_hash, ip=ip, ask=ask)
+                    done.append(f"{slug} 케이스 {out['added']}개 채움")
+                except BadRequest as ex:
+                    done.append(f"{slug} 채우기 실패: {ex}")
+        ov, _ = self.scenario_view()
+        for x in scope["items"]:
+            f = next((y for y in ov if y["slug"] == x["slug"]), None)
+            s = next((y for y in (f or {}).get("scenarios", []) if y["id"] == x["scenario"]), None)
+            dr = (s or {}).get("drift") or {}
+            if dr.get("changed") or dr.get("removed") or dr.get("added"):
+                try:
+                    out = self.realign_scenario(x["slug"], x["scenario"], operator=operator, session_hash=session_hash, ip=ip, ask=ask)
+                    done.append(f"{x['slug']} {x['scenario']} 케이스 {len(out['keys'])}개 다시 맞춤")
+                except BadRequest as ex:
+                    if "걸린 케이스가 없다" in str(ex):
+                        self.save_scenario({"feature": f["feature"], "scenario": x["scenario"], "action": "basis"}, operator=operator, source="sanity",
+                                           session_hash=session_hash, ip=ip)
+                        done.append(f"{x['slug']} {x['scenario']} 바뀐 문장 확인만")
+                    else:
+                        done.append(f"{x['slug']} {x['scenario']} 다시 맞추기 실패: {ex}")
+        return " · ".join(done) or "케이스가 이미 준비돼 있어요"
+
+    def _sanity_scripts(self, scope: dict, blocked: set, *, operator: str, ask, session_hash=None, ip=None) -> str:
+        """4단계. 이번 범위에서 자동으로 확인할 수 있는데 스크립트가 없는 케이스마다 Hermes 가 쓴다. 검증을 통과하면 바로 저장."""
+        idx = scenariosmod.variant_index(self.features)
+        have = {c.variant for c in self.cases.values() if c.variant}
+        todo, skipped = [], 0
+        for vid in self._sanity_case_ids(scope):
+            _, _, va = idx.get(vid) or (None, None, None)
+            if va is None or vid in have or va.mode == "manual" or not va.checks:
+                continue
+            if va.at and va.at in blocked:
+                skipped += 1
+                continue
+            todo.append((vid, va))
+        made, failed = [], []
+        for vid, va in todo[: self.SANITY_MAX_SCRIPTS]:
+            try:
+                res = self.generate_cases(tc_ids=list(va.checks), operator=operator, session_hash=session_hash, ip=ip, ask=ask, variant=vid)
+                made += [s["case_id"] for s in res["saved"]]
+                failed += [vid for _ in res["rejected"][:1]]
+            except BadRequest as ex:
+                failed.append(vid)
+                self.store.add_event(operator=operator, action="hermes.generate", target=vid, session_hash=session_hash, ip=ip, detail={"source": "sanity", "error": str(ex)[:300]})
+        rest = max(0, len(todo) - self.SANITY_MAX_SCRIPTS)
+        parts = [f"스크립트 {len(made)}개 새로 저장"] + ([f"{len(failed)}개는 검증에서 버림"] if failed else []) \
+            + ([f"{rest}개는 다음에"] if rest else []) + ([f"스펙 확인이 남은 요구의 케이스 {skipped}개는 건너뜀"] if skipped else [])
+        return " · ".join(parts) if todo else "새로 만들 스크립트가 없어요"
+
+    def _sanity_execute(self, s: dict, pr: dict, scope: dict, findings: list[dict], *, operator: str, job, ask, session_hash=None, ip=None) -> tuple[str | None, str]:
+        """5단계. 범위의 케이스를 구현한 스크립트와 없어진 API 를 부르는 스크립트를 dev 에 실행하고, 실패는 Hermes 가 분석한다."""
+        import time
+        vids = set(self._sanity_case_ids(scope))
+        ids = [c.id for c in self.cases.values() if c.variant in vids]
+        ids += [x for f in findings if f["kind"] == "missing_api" for x in f.get("scripts") or [] if x in self.cases and self.cases[x].suite != "setup" and x not in ids]
+        if not ids:
+            return None, "돌릴 스크립트가 없어요. 케이스가 모두 사람이 확인이거나 아직 스크립트가 없어요"
+        alive = self.runner._thread.is_alive()
+        rid = self.create_run(trigger="deploy-sanity", operator=operator, case_ids=ids, sha=pr.get("sha"), ref=None, pr_number=pr["number"],
+                              deploy_run_id=None, reason=f"Sanity {s['id']}", basis="Sanity — 이 PR 이 닿는 케이스",
+                              extra={"pr_title": pr.get("title"), "pr_url": pr.get("url"), "sanity": s["id"]},
+                              session_hash=session_hash, ip=ip, enqueue=alive, notify=True)
+        if not alive:
+            self.runner.execute_now(rid)
+        while (self.store.get_run(rid) or {}).get("status") not in ("finished", None):
+            if job.cancel.is_set():
+                self.runner.cancel(rid)
+            time.sleep(2)
+        run = self.store.get_run(rid)
+        bad = [rc for rc in self.store.list_run_cases(rid) if rc["verdict"] in ("fail", "error")]
+        for rc in bad[:5]:
+            try:
+                steps = self.store.list_steps(rc["id"])
+                self.store.update_run_case(rc["id"], triage=hermes_triage(self.cfg, run, rc, steps, ask=ask, rules=self.triage_rules(steps)), triaged_at=now_iso())
+            except Exception as ex:          # 분석 실패는 결과를 바꾸지 않는다
+                self.store.add_event(operator=operator, action="run.triage", target=rid, session_hash=session_hash, ip=ip, detail={"case": rc["case_id"], "error": str(ex)[:300]})
+        text = f"스크립트 {run['total']}개 중 {run['passed']}개 통과" + (f", 실패 {len(bad)}개 (Hermes 분석 {min(len(bad), 5)}개)" if bad else "")
+        return rid, text
+
+    def sanity_cases(self, scope: dict) -> list[dict]:
+        """Sanity 화면의 '이번 범위의 케이스' 표."""
+        from qa.ui_scn import state_badge, variant_url
+        want = set(self._sanity_case_ids(scope))
+        if not want:
+            return []
+        ov, _ = self.scenario_view()
+        out = []
+        for f in ov:
+            for s in f["scenarios"]:
+                for v in s["variants"]:
+                    if v["id"] in want:
+                        va = v["variant"]
+                        out.append({"feature": f["feature"], "scenario": s["id"], "kind_ko": scenariosmod.KIND_KO.get(va.kind, va.kind), "title": va.title, "key": va.key,
+                                    "href": variant_url(v["id"]), "state": v["state"], "mode": va.mode, "checks": va.checks, "state_html": state_badge(v["state"])})
+        return out
+
+    def sanity_resolve(self, sid: str, fid: str, *, choice: str, note: str, operator: str, session_hash=None, ip=None) -> dict:
+        """스펙 확인 항목 하나를 사람이 정한다 — 추천대로 · 다르게(사유). 위키는 고치지 않는다(§10-3)."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        s = self.store.get_sanity(sid) or {}
+        fs = list(s.get("findings") or [])
+        f = next((x for x in fs if x.get("id") == fid), None)
+        if not f:
+            raise BadRequest("그 항목이 없다")
+        if choice not in ("recommended", "other"):
+            raise BadRequest("추천대로 · 다르게 중 하나")
+        if choice == "other" and not note.strip():
+            raise BadRequest("다르게 정할 때는 어떻게 정했는지 적어야 한다")
+        f.update(resolution=choice, resolved_by=operator, resolved_at=now_iso(), note=note.strip()[:500] or None)
+        self.store.update_sanity(sid, findings=fs)
+        self.store.add_event(operator=operator, action="sanity.finding.resolve", target=sid, session_hash=session_hash, ip=ip,
+                             detail={"finding": fid, "title": f["title"][:200], "choice": choice, "note": note.strip()[:300]})
+        return f
+
+    def sanity_continue(self, sid: str, *, reason: str, operator: str, session_hash=None, ip=None, sync: bool = False):
+        """[이대로 계속] — 남은 확인 항목은 '정하지 않고 계속' 으로 적고 3단계부터. 그 요구의 케이스는 스크립트를 만들지 않는다."""
+        s = self.store.get_sanity(sid)
+        if not s or s["status"] not in ("needs_spec", "error", "interrupted", "canceled", "failed"):
+            raise BadRequest("멈춘 Sanity 만 이어서 할 수 있다")
+        fs = list(s["findings"])
+        left = [f for f in fs if f["kind"] in sanitymod.BLOCKING and not f.get("resolved_at")]
+        if left and not reason.strip():
+            raise BadRequest("정하지 않은 항목이 있으면 사유를 적어야 한다")
+        for f in left:
+            f.update(resolution="continued", resolved_by=operator, resolved_at=now_iso(), note=reason.strip()[:500])
+        self.store.update_sanity(sid, findings=fs)
+        self.store.add_event(operator=operator, action="sanity.continue", target=sid, session_hash=session_hash, ip=ip, detail={"left": len(left), "reason": reason.strip()[:300]})
+        start = 3 if s["step"] >= 2 else 1
+        return self._sanity_job(sid, start, operator=operator, session_hash=session_hash, ip=ip, sync=sync)
+
+    def sanity_recheck(self, sid: str, *, operator: str, session_hash=None, ip=None, sync: bool = False):
+        """[위키 고친 뒤 다시 점검] — 2단계부터. 스펙을 다시 읽는다."""
+        s = self.store.get_sanity(sid)
+        if not s or s["status"] in ("queued", "running"):
+            raise BadRequest("돌고 있는 Sanity 는 다시 점검할 수 없다")
+        self.store.add_event(operator=operator, action="sanity.recheck", target=sid, session_hash=session_hash, ip=ip, detail={"pr": s["pr_number"]})
+        return self._sanity_job(sid, 2 if s["scope"] else 1, operator=operator, session_hash=session_hash, ip=ip, sync=sync)
+
+    def sanity_slack(self, sid: str, *, operator: str, session_hash=None, ip=None) -> int:
+        """[Slack 으로 묻기] — 남은 질문을 WIKI_SLACK_WEBHOOK_URL 로. 사람이 누를 때만."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        s = self.store.get_sanity(sid) or {}
+        left = [f for f in s.get("findings") or [] if f["kind"] in sanitymod.BLOCKING and not f.get("resolved_at")]
+        if not left:
+            raise BadRequest("물을 것이 없다")
+        slack(self.cfg.slack_webhook_url, f"[QA] PR #{s['pr_number']} {s.get('pr_title') or ''} — 스펙 확인 {len(left)}건 ({operator})\n"
+              + "\n".join(f"• {f['title']}\n  질문: {f.get('question') or '-'}\n  추천: {f.get('suggestion') or '-'}" for f in left)
+              + f"\n{self.cfg.public_url}/sanity/{s['pr_number']}")
+        self.store.add_event(operator=operator, action="sanity.slack", target=sid, session_hash=session_hash, ip=ip, detail={"count": len(left)})
+        return len(left)
 
     # ---- 폼으로 스크립트·수동 TC 편집 (docs/qa-platform-editor.md) -----------------------------
     def resync_repo(self) -> str | None:
@@ -1944,6 +2345,63 @@ class Handler(BaseHTTPRequestHandler):
                               "apis", context={"op": d["op"]["id"]})
 
         # ---------- 준비 작업 (docs/qa-platform-api.md §5.4) ----------
+        # ---------- Sanity (docs/qa-platform-v2.md §4) ----------
+        m = re.match(r"^/sanity(?:/(\d+))?$", path)
+        if m and method == "GET":
+            prs = app.sanity_prs(20)
+            num = int(m.group(1)) if m.group(1) else next((p["number"] for p in prs if p["api"]), None)
+            sel = next((p for p in prs if p["number"] == num), None)
+            if num and sel is None:
+                try:
+                    sel = {**app.sanity_pr(num), "sanity": app.store.latest_sanity().get(num)}
+                except BadRequest as ex:
+                    return self._page("Sanity 테스트", f'<h1>Sanity 테스트</h1><div class="flash err">{ui.e(str(ex))}</div>', "sanity")
+            history = app.store.list_sanity(num) if num else []
+            s = history[0] if history else None
+            run = app.store.get_run(s["run_id"]) if s and s.get("run_id") else None
+            body = ui_sanity.sanity_page(prs, sel, s, operator=self._operator(), target=app.cfg.target_base_url, hermes=bool(app.cfg.hermes_key),
+                                         cases=app.sanity_cases(s["scope"]) if s and s.get("scope") else [], run=run, history=history,
+                                         gh_error=app.github.last_error, flt=g("f") or "all")
+            notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
+            return self._page("Sanity 테스트", body, "sanity", flash=notice, context={"run": run["id"]} if run else None)
+        if path == "/sanity/start" and method == "POST":
+            f = self._form()
+            operator = str((f.get("operator") or [""])[0]).strip()
+            num = int(str((f.get("pr") or ["0"])[0]) or 0)
+            try:
+                app.sanity_start(num, operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            except BadRequest as ex:
+                return self._redirect(f"/sanity/{num}?err={_urlq(str(ex))}", set_operator=operator)
+            return self._redirect(f"/sanity/{num}", set_operator=operator)
+        m = re.match(r"^/sanity/(s-[0-9a-f]+)/(continue|recheck|resolve|slack|cancel)$", path)
+        if m and method == "POST":
+            sid, act = m.group(1), m.group(2)
+            s = app.store.get_sanity(sid)
+            if not s:
+                return self._error(404, "그 Sanity 기록이 없다")
+            f = self._form()
+            fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+            operator = fv("operator").strip()
+            kw = {"operator": operator, "session_hash": self._session_hash(), "ip": self._ip()}
+            msg = None
+            try:
+                if not operator or operator not in app.cfg.operators:
+                    raise BadRequest("담당자를 목록에서 골라야 한다")
+                if act == "continue":
+                    app.sanity_continue(sid, reason=fv("reason"), **kw)
+                elif act == "recheck":
+                    app.sanity_recheck(sid, **kw)
+                elif act == "resolve":
+                    app.sanity_resolve(sid, fv("fid"), choice=fv("choice"), note=fv("note"), **kw)
+                elif act == "slack":
+                    msg = f"질문 {app.sanity_slack(sid, **kw)}건을 Slack 으로 보냈어요"
+                elif act == "cancel":
+                    if s.get("job_id") and app.jobs.cancel(s["job_id"]):
+                        app.store.add_event(action="sanity.cancel", target=sid, detail={"pr": s["pr_number"]}, **kw)
+                        msg = "그만두라고 했어요. 지금 하던 호출이 끝나면 멈춰요"
+            except BadRequest as ex:
+                return self._redirect(f"/sanity/{s['pr_number']}?err={_urlq(str(ex))}", set_operator=operator)
+            return self._redirect(f"/sanity/{s['pr_number']}" + (f"?done={_urlq(msg)}" if msg else ""), set_operator=operator)
         if path == "/smoke" and method == "GET":         # docs/qa-platform-v2.md §6
             sprint = app.cfg.current_sprint()
             last_smoke = app.store.list_runs(1, trigger="sprint-smoke")
