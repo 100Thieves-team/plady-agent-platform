@@ -1310,6 +1310,22 @@ class App:
         """스모크에서 돌 수 있는 스크립트 — 테스트 데이터 만들기 카드와 API 호출 전용(manual)은 뺀다."""
         return [c for c in self.cases.values() if c.suite not in ("setup", "manual")]
 
+    SMOKE_DOMAIN_GROUP = {"auth": "기본 (로그인 · 상태)", "member": "기본 (로그인 · 상태)", "platform": "기본 (로그인 · 상태)", "catalog": "카탈로그 (약관 · 직무 · 지역)"}
+
+    def smoke_groups(self) -> list[dict]:
+        """스모크 범위 표 (docs/qa-platform-v2.md §6): 스크립트를 기능별로 묶는다. 시나리오에 연결된 것은 그 기능, 아니면 도메인으로."""
+        names = {slug: f.feature for slug, f in self.features.items()}
+        last = self.store.last_verdicts()
+        groups: dict[str, list] = {}
+        for c in self.smoke_scripts():
+            if c.variant:
+                g = names.get(c.variant.split("/", 1)[0], c.variant.split("/", 1)[0])
+            else:
+                d = c.id.split(".", 1)[0] if c.id.split(".", 1)[0] in self.SMOKE_DOMAIN_GROUP else (c.domains or ["기타"])[0]
+                g = self.SMOKE_DOMAIN_GROUP.get(d) or (("룸 탐색" if "explore" in c.id else "룸 생성") if d == "room" else d)
+            groups.setdefault(g, []).append({"id": c.id, "title": c.title, "steps": len(c.steps), "suite": c.suite, "last": last.get(c.id)})
+        return sorted(({"name": k, "scripts": v} for k, v in groups.items()), key=lambda x: (-len(x["scripts"]), x["name"]))
+
     def nav_counts(self) -> dict:
         return {"sanity": self._sanity_todo, "smoke": len(self.smoke_scripts())}
 
@@ -1928,6 +1944,12 @@ class Handler(BaseHTTPRequestHandler):
                               "apis", context={"op": d["op"]["id"]})
 
         # ---------- 준비 작업 (docs/qa-platform-api.md §5.4) ----------
+        if path == "/smoke" and method == "GET":         # docs/qa-platform-v2.md §6
+            sprint = app.cfg.current_sprint()
+            last_smoke = app.store.list_runs(1, trigger="sprint-smoke")
+            return self._page("스모크 테스트", ui.smoke_page(app.smoke_groups(), operator=self._operator(), sprint=sprint,
+                                                         last_smoke=last_smoke[0] if last_smoke else None, target=app.cfg.target_base_url,
+                                                         mode=g("mode") or "all"), "smoke")
         if path == "/setup" and method == "GET":        # 옛 주소 — QA 데이터 화면으로 (docs/qa-platform-v2.md §5)
             qs = urlsplit(self.path).query
             return self._redirect("/data" + (("?" + qs) if qs else ""))

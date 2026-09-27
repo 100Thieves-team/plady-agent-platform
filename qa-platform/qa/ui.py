@@ -254,6 +254,79 @@ def quote_path(s: str) -> str:
     return quote(s, safe="")
 
 
+# ---- 스모크 (docs/qa-platform-v2.md §6) ------------------------------------------------------
+SMOKE_JS = r"""
+(function(){
+  var F=document.getElementById('smoke-form'); if(!F) return;
+  function boxes(sel){ return document.querySelectorAll(sel); }
+  function sync(){
+    var n=0, st=0;
+    boxes('input[name=case_ids]').forEach(function(c){ if(c.checked){ n++; st+=+c.dataset.steps; } });
+    boxes('[data-g]').forEach(function(g){
+      var bs=boxes('input[data-grp="'+g.dataset.g+'"]'), on=0; bs.forEach(function(b){ if(b.checked) on++; });
+      g.checked=on===bs.length; g.indeterminate=on>0&&on<bs.length; });
+    document.getElementById('sm-n').textContent=n+'개';
+    document.getElementById('sm-d').textContent='스크립트 · 단계 '+st+'개 · 약 '+Math.max(10,Math.round(st*1.4))+'초';
+    document.getElementById('sm-go').disabled=!n||!F.querySelector('[name=operator]').value; document.getElementById('dlg-n').textContent=n;
+  }
+  document.addEventListener('change',function(ev){
+    var g=ev.target.closest('[data-g]'); if(g){ boxes('input[data-grp="'+g.dataset.g+'"]').forEach(function(b){ b.checked=g.checked; }); }
+    sync(); });
+  boxes('tr[data-toggle]').forEach(function(tr){ tr.addEventListener('click',function(ev){ if(ev.target.closest('input,a,button,label')) return;
+    var d=document.getElementById(tr.dataset.toggle); d.hidden=!d.hidden; tr.querySelector('.car').textContent=d.hidden?'›':'⌄'; }); });
+  document.getElementById('sm-go').addEventListener('click',function(){ document.getElementById('dlg-smoke').showModal(); });
+  sync();
+})();
+"""
+
+
+def smoke_page(groups: list[dict], *, operator: str, sprint: dict, last_smoke: dict | None, target: str, mode: str = "all") -> str:
+    """왼쪽 범위 표(기능별로 묶고 펼쳐 볼 수 있다), 오른쪽 실행 패널. [스모크 실행] → 가운데 확인 창 → 실행 기록 화면."""
+    failed_only = mode == "failed"
+    rows, total = "", 0
+    for gi, g in enumerate(groups):
+        scripts = [s for s in g["scripts"] if not failed_only or (s["last"] and s["last"]["verdict"] in ("fail", "error"))]
+        if not scripts:
+            continue
+        total += len(scripts)
+        bad = sum(1 for s in scripts if s["last"] and s["last"]["verdict"] in ("fail", "error"))
+        ok = sum(1 for s in scripts if s["last"] and s["last"]["verdict"] == "pass")
+        lastcell = (f'<span class="b fail">실패 {bad}</span> ' if bad else "") + (f'<span class="b pass">통과 {ok}</span>' if ok else "") or '<span class="mut">–</span>'
+        rows += (f'<tr class="link" data-toggle="g{gi}"><td style="width:36px"><input type="checkbox" data-g="{gi}" checked></td>'
+                 f'<td><div style="font-weight:600"><span class="car mut" style="display:inline-block;width:14px">›</span>{e(g["name"])}</div>'
+                 f'<div class="small mut" style="padding-left:14px">{e(" · ".join(s["title"] for s in scripts[:3]))}{" …" if len(scripts) > 3 else ""}</div></td>'
+                 f'<td class="num">{len(scripts)}</td><td class="num">{sum(s["steps"] for s in scripts)}</td><td>{lastcell}</td></tr>'
+                 f'<tbody id="g{gi}" hidden>' + "".join(
+                     f'<tr><td></td><td style="padding-left:36px"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="case_ids" value="{e(s["id"])}" data-grp="{gi}" data-steps="{s["steps"]}" checked form="smoke-form">'
+                     f'<span>{e(s["title"])} <span class="mono">{e(s["id"])}</span></span></label></td><td></td><td class="num">{s["steps"]}</td>'
+                     f'<td>{(badge(s["last"]["verdict"]) + " <span class=\"small mut\">" + kst(s["last"]["created_at"]) + "</span>") if s["last"] else "<span class=\"mut\">–</span>"}</td></tr>'
+                     for s in scripts) + '</tbody>')
+    if not rows:
+        rows = f'<tr><td colspan="5"><div class="empty"><b>{"지난번에 실패한 스크립트가 없어요" if failed_only else "스모크로 돌릴 스크립트가 없어요"}</b></div></td></tr>'
+    seg = "".join(f'<a class="{"on" if mode == k else ""}" href="/smoke{"" if k == "all" else "?mode=" + k}">{n}</a>' for k, n in (("all", "전체"), ("failed", "지난번 실패만")))
+    end = (sprint["ends_at"] - timedelta(days=1)).astimezone(KST)
+    last_html = (f'<a href="/runs/{e(last_smoke["id"])}">{run_badge(last_smoke)} {kst(last_smoke["created_at"])} · {e(last_smoke["operator"])} · {last_smoke["passed"]}/{last_smoke["total"]} 통과</a>'
+                 if last_smoke else '<span class="mut">아직 없어요</span>')
+    dis = "" if operator else "disabled"
+    return (f'<h1>스모크 테스트</h1><p class="lead">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요. 줄을 누르면 스크립트가 펼쳐져요.</p>'
+            f'<div class="cols" style="grid-template-columns:minmax(0,1fr) 320px"><div class="card flush"><div class="ch"><span class="tabs" style="flex:1">{seg}</span>'
+            f'<span class="small mut">스크립트가 있는 케이스만 돌아요. 나머지는 Sanity 가 PR 마다 채워 가요.</span></div>'
+            f'<table><tr><th></th><th>기능</th><th class="num">스크립트</th><th class="num">단계</th><th>지난 결과</th></tr>{rows}</table></div>'
+            f'<div class="card flush" style="position:sticky;top:22px"><div class="ch"><h2>실행</h2></div><div class="cb">'
+            f'<div style="font-size:28px;font-weight:800;line-height:1.2" id="sm-n">{total}개</div><div class="small mut" id="sm-d" style="margin-bottom:14px"></div>'
+            f'<div class="kvl" style="border:1px solid var(--line);border-radius:10px;padding:2px 14px;margin-bottom:14px;font-size:13px">'
+            f'<div style="display:flex;justify-content:space-between;padding:8px 0"><span class="mut">실행 종류</span><b>스프린트 스모크 (Cycle {sprint["number"]})</b></div>'
+            f'<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)"><span class="mut">기간</span><b>{end.month}월 {end.day}일까지</b></div>'
+            f'<div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)"><span class="mut">끝나면</span><b>Slack 알림</b></div></div>'
+            f'<button type="button" class="primary lg" id="sm-go" style="width:100%" {dis}>스모크 실행</button>'
+            f'<div class="small mut" style="margin-top:14px">지난 스모크 · {last_html}</div></div></div></div>'
+            f'<form id="smoke-form" method="post" action="/runs"><input type="hidden" name="trigger" value="sprint-smoke"><input type="hidden" name="operator" value="{e(operator)}"></form>'
+            f'<dialog id="dlg-smoke" style="border:0;border-radius:16px;padding:22px 24px 18px;width:460px"><h3 style="margin:0 0 4px;font-size:18px">스크립트 <span id="dlg-n"></span>개를 dev 에 실행할까요?</h3>'
+            f'<p style="color:var(--ink2);margin:0 0 14px">실행 종류는 스프린트 스모크(Cycle {sprint["number"]})로 남아요. 담당자 {e(operator)} · 대상 <span class="mono">{e(target)}</span></p>'
+            f'<div style="display:flex;justify-content:flex-end;gap:8px"><button type="button" onclick="this.closest(\'dialog\').close()">닫기</button>'
+            f'<button class="primary lg" form="smoke-form">실행하기</button></div></dialog><script>{SMOKE_JS}</script>')
+
+
 # ---- 대시보드 ------------------------------------------------------------------------------
 def tc_link(tid: str, label: str | None = None) -> str:
     from urllib.parse import quote
@@ -417,6 +490,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
 
     body_cases = ""
     shown = [rc for rc in cases if not f_verdict or (rc["verdict"] in ("fail", "error") if f_verdict == "fail" else rc["verdict"] == f_verdict)]
+    shown.sort(key=lambda rc: rc["verdict"] not in ("fail", "error"))       # 실패를 맨 위로 (docs/qa-platform-v2.md §6)
     if not shown:
         body_cases = '<div class="card"><p class="mut" style="margin:0">해당 판정의 스크립트가 없다</p></div>'
     cards: dict = {}
@@ -458,7 +532,7 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
     body_cases = "" if shown else body_cases
     if groups and any(g["rcs"] for g in groups[0]):
         from .ui_scn import kind_badge, variant_url
-        for g in groups[0]:
+        for g in sorted(groups[0], key=lambda g: not any(rc["verdict"] in ("fail", "error") for rc in g["rcs"])):
             gc = "".join(cards[rc["id"]] for rc in g["rcs"] if rc["id"] in cards)
             if gc:
                 body_cases += (f'<h3 style="margin:18px 0 6px">{kind_badge(g["kind"]) if g["kind"] else ""} <a href="{variant_url(g["id"])}">{e(g["title"])}</a> '
@@ -485,7 +559,16 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                        f'<select name="operator" required><option value="">— 담당자 —</option>{ops}</select></p><p><textarea name="reason" placeholder="판단 사유"></textarea></p>'
                        f'<button class="primary" {"disabled" if live else ""}>판단 기록</button></form></div>')
 
-    return (f'{refresh}<h1>테스트 실행 <span class="mono">{e(run["id"])}</span> {run_badge(run)} <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></h1>'
+    bad = run["failed"] + run["errored"]
+    if live:
+        done = sum(1 for c in cases if c["verdict"] not in ("queued", "running"))
+        headline = f'테스트를 돌리고 있어요 ({done} / {len(cases)})'
+    elif run["status"] == "canceled" or run.get("verdict") == "canceled":
+        headline = f'{run["total"]}개 중 {run["passed"]}개 통과하고 그만뒀어요'
+    else:
+        headline = f'{run["total"]}개 중 {run["passed"]}개 통과했어요' + (f', 실패 {bad}개' if bad else "")
+    return (f'{refresh}<h1>{e(headline)} {run_badge(run)}</h1><p class="lead">{e(TRIGGER_KO.get(run["trigger"], run["trigger"]))}{(" · PR #" + str(run["pr_number"])) if run.get("pr_number") else ""}'
+            f' · {e(run["operator"])} · {kst(run["created_at"])} · <span class="mono">{e(run["id"])}</span> <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></p>'
             f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a>{h("run.json")}</div></div>'
             f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{body_cases}')
 
