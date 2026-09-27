@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plady QA 2판 시안</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+:root{
+  --bg:#F2F4F6;--card:#FFFFFF;--text:#191F28;--text2:#4E5968;--text3:#8B95A1;--line:#E5E8EB;--hover:#F9FAFB;
+  --blue:#3182F6;--blue-d:#1B64DA;--blue-w:#E8F3FF;
+  --red:#F04452;--red-w:#FFEEEF;--green:#1FB26B;--green-w:#E5F8EE;--orange:#F18F01;--orange-w:#FFF3E0;--grey-w:#F2F4F6;
+  --r:20px;--r-s:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-size:15px;line-height:1.55;letter-spacing:-.01em;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;letter-spacing:0}
+
+/* 윗줄 */
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1080px;margin:0 auto;height:60px;display:flex;align-items:center;gap:28px;padding:0 24px}
+.logo{font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px}
+.logo i{width:24px;height:24px;border-radius:8px;background:var(--blue);display:inline-block;position:relative}
+.logo i:after{content:"";position:absolute;inset:7px 6px 7px 6px;border:2.5px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.nav{display:flex;gap:4px;flex:1;align-items:center}
+.nav a{padding:8px 12px;border-radius:10px;color:var(--text2);font-weight:600;font-size:15px}
+.nav a:hover{background:var(--hover)}
+.nav a.on{color:var(--text);background:var(--grey-w)}
+.more{position:relative}
+.more-menu{display:none;position:absolute;top:44px;left:0;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.12);padding:8px;min-width:200px}
+.more.open .more-menu{display:block}
+.more-menu a{display:block;padding:10px 12px;border-radius:10px;color:var(--text);font-weight:500}
+.more-menu a:hover{background:var(--hover)}
+.more-menu small{display:block;color:var(--text3);font-weight:400;font-size:12px}
+.me{display:flex;align-items:center;gap:10px}
+.chip-me{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:999px;background:var(--grey-w);font-weight:600;font-size:14px}
+.chip-me b{width:26px;height:26px;border-radius:50%;background:#FFD86B;display:grid;place-items:center;font-size:12px}
+.btn-hermes{padding:8px 14px;border-radius:999px;background:var(--text);color:#fff;font-weight:700;font-size:14px}
+
+/* 본문 */
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 140px}
+h1{font-size:28px;line-height:1.35;margin:4px 0 6px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:20px;margin:0 0 14px;font-weight:700;letter-spacing:-.02em}
+.sub{color:var(--text2);font-size:16px;margin:0 0 28px}
+.section{margin-top:36px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.sec-head h2{margin:0}
+.sec-head a{color:var(--text3);font-size:14px;font-weight:600}
+.card{background:var(--card);border-radius:var(--r);padding:24px}
+.card+.card{margin-top:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.demo{display:inline-block;font-size:11px;font-weight:700;color:var(--text3);background:var(--grey-w);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle;letter-spacing:0}
+
+/* 목록 */
+.list{background:var(--card);border-radius:var(--r);padding:8px}
+.row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px}
+.row.link{cursor:pointer}
+.row.link:hover{background:var(--hover)}
+.row .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;font-size:18px}
+.row .tx{flex:1;min-width:0}
+.row .t{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .d{color:var(--text3);font-size:13px;margin-top:2px}
+.row.faded{opacity:.55}
+.ic.blue{background:var(--blue-w);color:var(--blue)}.ic.red{background:var(--red-w);color:var(--red)}
+.ic.green{background:var(--green-w);color:var(--green)}.ic.orange{background:var(--orange-w);color:var(--orange)}.ic.grey{background:var(--grey-w);color:var(--text3)}
+
+/* 버튼 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:12px;font-weight:700;font-size:15px;white-space:nowrap;transition:background .15s}
+.btn.primary{background:var(--blue);color:#fff}.btn.primary:hover{background:var(--blue-d)}
+.btn.soft{background:var(--blue-w);color:var(--blue)}.btn.soft:hover{background:#D6E9FF}
+.btn.grey{background:var(--grey-w);color:var(--text2)}.btn.grey:hover{background:#E5E8EB}
+.btn.danger{background:var(--red-w);color:var(--red)}
+.btn.big{height:56px;border-radius:16px;font-size:17px;padding:0 24px}
+.btn.full{width:100%}
+
+/* 상태 */
+.badge{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
+.badge:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-pass{background:var(--green-w);color:var(--green)}.b-fail{background:var(--red-w);color:var(--red)}
+.b-need{background:var(--orange-w);color:var(--orange)}.b-run{background:var(--blue-w);color:var(--blue)}.b-none{background:var(--grey-w);color:var(--text3)}
+.tag{display:inline-block;font-size:12px;font-weight:600;color:var(--text2);background:var(--grey-w);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0}
+
+/* 홈 */
+.hello{font-size:15px;color:var(--text3);font-weight:600;margin-bottom:4px}
+.job{background:var(--card);border-radius:var(--r);padding:24px;display:flex;flex-direction:column;gap:10px;min-height:196px;cursor:pointer;transition:transform .15s}
+.job:hover{transform:translateY(-2px)}
+.job .em{font-size:30px}
+.job .n{font-weight:800;font-size:19px}
+.job .d{color:var(--text2);font-size:14px;flex:1}
+.job .go{color:var(--blue);font-weight:700;font-size:14px}
+.prog{height:8px;border-radius:99px;background:var(--grey-w);overflow:hidden;display:flex}
+.prog i{display:block;height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--text3);font-size:13px;margin:4px 0 14px}
+.legend span:before{content:"";display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:6px;background:var(--c)}
+.frow{display:grid;grid-template-columns:200px 1fr 150px;gap:18px;align-items:center;padding:12px 8px;border-radius:12px}
+.frow:hover{background:var(--hover)}
+.frow .nm{font-weight:600}
+.frow .ct{color:var(--text3);font-size:13px;text-align:right}
+.empty{text-align:center;padding:40px 16px;color:var(--text3)}
+.empty .em{font-size:36px;margin-bottom:8px}
+.empty b{display:block;color:var(--text2);font-size:16px;margin-bottom:4px}
+
+/* 세그먼트 */
+.seg{display:inline-flex;background:#E9ECEF;border-radius:12px;padding:3px;gap:2px;margin-bottom:16px}
+.seg button{height:34px;padding:0 14px;border-radius:9px;font-weight:600;color:var(--text2);font-size:14px}
+.seg button.on{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+/* Sanity 결과 */
+.back{display:inline-flex;align-items:center;gap:4px;color:var(--text3);font-weight:600;font-size:14px;margin-bottom:14px}
+.meta{color:var(--text3);font-size:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.banner{border-radius:var(--r);padding:20px 22px;display:flex;gap:14px;align-items:flex-start;margin:22px 0 0}
+.banner.need{background:var(--orange-w)}
+.banner .em{font-size:22px;line-height:1.2}
+.banner b{display:block;font-size:17px;margin-bottom:2px}
+.banner p{margin:0;color:var(--text2)}
+.cols{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start;margin-top:16px}
+.steps{background:var(--card);border-radius:var(--r);padding:22px 20px;position:sticky;top:80px}
+.st{display:flex;gap:12px;position:relative;padding-bottom:22px}
+.st:last-child{padding-bottom:0}
+.st:not(:last-child):after{content:"";position:absolute;left:13px;top:30px;bottom:4px;width:2px;background:var(--line)}
+.st.done:not(:last-child):after{background:var(--blue)}
+.st .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;background:var(--grey-w);color:var(--text3)}
+.st.done .dot{background:var(--blue);color:#fff}
+.st.need .dot{background:var(--orange);color:#fff}
+.st .n{font-weight:700}
+.st .d{color:var(--text3);font-size:13px}
+.st.need .d{color:var(--orange);font-weight:600}
+.find{background:var(--card);border-radius:var(--r);padding:22px}
+.find+.find{margin-top:12px}
+.find .k{font-size:13px;font-weight:700;color:var(--orange);margin-bottom:6px}
+.find .k.info{color:var(--text3)}
+.find h3{font-size:17px;margin:0 0 12px;line-height:1.45}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.vs div{background:var(--bg);border-radius:14px;padding:14px;font-size:14px;color:var(--text2)}
+.vs div b{display:block;font-size:12px;color:var(--text3);margin-bottom:4px;font-weight:700}
+.q{background:var(--blue-w);border-radius:14px;padding:14px 16px;font-size:15px}
+.q b{color:var(--blue)}
+.q .rec{color:var(--text2);font-size:14px;margin-top:6px}
+.acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.acts.done{color:var(--green);font-weight:700}
+.scope-f{padding:14px 16px;border-radius:14px}
+.scope-f+.scope-f{border-top:1px solid var(--line);border-radius:0}
+.scope-f .fn{font-weight:700;display:flex;justify-content:space-between}
+.reqs{margin:8px 0 0;padding:0;list-style:none}
+.reqs li{font-size:14px;color:var(--text2);padding:3px 0;display:flex;gap:8px}
+.reqs li .mono{color:var(--text3);flex:none;padding-top:2px}
+.bar-bottom{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line)}
+.bar-in{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:12px}
+.bar-in .sum{flex:1;color:var(--text2);font-size:14px}
+.bar-in .sum b{color:var(--text);font-size:16px;display:block}
+
+/* 스모크 */
+.pick{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;cursor:pointer}
+.pick:hover{background:var(--hover)}
+.ck{width:24px;height:24px;border-radius:8px;border:2px solid #D1D6DB;display:grid;place-items:center;flex:none;transition:all .12s}
+.pick.on .ck{background:var(--blue);border-color:var(--blue)}
+.pick.on .ck:after{content:"";width:10px;height:6px;border:2.5px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.pick .tx{flex:1}
+.pick .t{font-weight:600}
+.pick .d{color:var(--text3);font-size:13px}
+.pick .n{color:var(--text2);font-weight:700;font-size:14px}
+.res-head{display:flex;gap:28px;align-items:center}
+.ring{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;flex:none}
+.ring span{width:76px;height:76px;border-radius:50%;background:#fff;display:grid;place-items:center;font-weight:800;font-size:22px}
+.running{height:10px;border-radius:99px;background:var(--grey-w);overflow:hidden;margin:18px 0 8px}
+.running i{display:block;height:100%;background:var(--blue);border-radius:99px;transition:width .25s}
+
+/* QA 데이터 */
+.left-sum{display:flex;align-items:center;gap:24px}
+.left-sum .nums{display:flex;gap:28px;flex:1}
+.left-sum .nums div{font-size:13px;color:var(--text3)}
+.left-sum .nums b{display:block;font-size:24px;color:var(--text);font-weight:800}
+.dcard{background:var(--card);border-radius:var(--r);padding:20px;cursor:pointer;display:flex;gap:14px;align-items:flex-start;transition:background .12s}
+.dcard:hover{background:#FCFCFD;box-shadow:inset 0 0 0 1px var(--line)}
+.dcard .t{font-weight:700;font-size:16px}
+.dcard .d{color:var(--text3);font-size:13px;margin-top:2px}
+.warn{display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:var(--orange);background:var(--orange-w);border-radius:6px;padding:3px 8px}
+
+/* 바텀 시트 */
+.dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:40;opacity:0;pointer-events:none;transition:opacity .2s}
+.dim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,105%);width:min(560px,100%);background:#fff;border-radius:24px 24px 0 0;z-index:41;
+  padding:12px 24px 24px;transition:transform .28s cubic-bezier(.2,.8,.2,1);max-height:88vh;overflow:auto}
+.sheet.on{transform:translate(-50%,0)}
+.sheet .grab{width:40px;height:5px;border-radius:9px;background:#D1D6DB;margin:0 auto 18px}
+.sheet h3{font-size:21px;margin:0 0 6px;font-weight:800}
+.sheet .sd{color:var(--text2);margin:0 0 20px}
+.fld{margin-bottom:16px}
+.fld label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.fld input,.fld select{width:100%;height:52px;border-radius:14px;border:0;background:var(--bg);padding:0 16px;font:inherit;font-size:16px;color:var(--text);outline:none}
+.fld input:focus{box-shadow:inset 0 0 0 2px var(--blue);background:#fff}
+.fld .h{font-size:12px;color:var(--text3);margin-top:4px}
+.kv{background:var(--bg);border-radius:14px;padding:4px 16px;margin-bottom:18px}
+.kv div{display:flex;justify-content:space-between;padding:10px 0;font-size:14px}
+.kv div+div{border-top:1px solid var(--line)}
+.kv span{color:var(--text3)}
+details.raw{margin:4px 0 18px}
+details.raw summary{color:var(--text3);font-size:13px;font-weight:600;cursor:pointer}
+details.raw pre{background:#191F28;color:#E5E8EB;border-radius:12px;padding:14px;font-size:12px;overflow:auto}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,30px);background:rgba(25,31,40,.94);color:#fff;border-radius:14px;padding:13px 18px;font-weight:600;
+  z-index:50;opacity:0;transition:all .25s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* 휴대폰 */
+@media (max-width:760px){
+  .top-in{padding:0 16px;gap:12px}.nav{display:none}.chip-me span{display:none}
+  .wrap{padding:22px 16px 150px}
+  h1{font-size:23px}
+  .grid3,.grid2,.cols,.vs{grid-template-columns:1fr}
+  .steps{position:static}
+  .frow{grid-template-columns:1fr;gap:6px}.frow .ct{text-align:left}
+  .tabbar{display:flex}
+  .bar-bottom{bottom:62px}
+  .bar-in{padding:12px 16px}
+  .left-sum{flex-direction:column;align-items:stretch}
+}
+.tabbar{display:none;position:fixed;left:0;right:0;bottom:0;height:62px;background:#fff;border-top:1px solid var(--line);z-index:16}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--text3);gap:2px}
+.tabbar a i{font-style:normal;font-size:19px}
+.tabbar a.on{color:var(--text)}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="logo" href="#/"><i></i>Plady QA</a>
+  <nav class="nav" id="nav">
+    <a href="#/" data-r="home">홈</a><a href="#/sanity" data-r="sanity">Sanity</a><a href="#/smoke" data-r="smoke">스모크</a><a href="#/data" data-r="data">QA 데이터</a>
+    <div class="more" id="more"><a href="javascript:void 0" onclick="document.getElementById('more').classList.toggle('open')">더보기 ▾</a>
+      <div class="more-menu">
+        <a>시나리오<small>기능 · 시나리오 · 케이스</small></a><a>스크립트<small>YAML 스크립트 목록과 편집</small></a><a>테스트 조건<small>규칙표 · API 문서에서 나온 것</small></a>
+        <a>API 호출<small>요청 하나를 dev 에 보내 보기</small></a><a>실행 기록</a><a>감사 로그</a><a>가이드</a>
+      </div></div>
+  </nav>
+  <div class="me"><span class="chip-me"><b>be</b><span>bebe</span></span><button class="btn-hermes">Hermes</button></div>
+</div></header>
+<main class="wrap" id="app"></main>
+<nav class="tabbar" id="tabbar"><a href="#/" data-r="home"><i>⌂</i>홈</a><a href="#/sanity" data-r="sanity"><i>✓</i>Sanity</a><a href="#/smoke" data-r="smoke"><i>▶</i>스모크</a><a href="#/data" data-r="data"><i>▦</i>QA 데이터</a></nav>
+<div class="dim" id="dim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const D = {"features": [{"feature": "룸 방명록", "slug": "룸-방명록", "counts": {"auto": 1, "manual": 1, "excluded": 0, "untested": 2, "variants": 4, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "참여자가 방명록으로 준비 내용을 나눈다", "variants": [{"key": "happy", "kind": "happy", "title": "방장과 참여자가 방명록에 준비 내용을 남기고 종료·취소 24시간 후 읽기 전용으로 전환된다", "state": "auto", "mode": "auto", "at": null, "checks": ["C.guestbook.post", "C.guestbook.freeze"], "scripts": ["guestbook.post-happy"]}, {"key": "guestbook-not-readonly", "kind": "reject", "title": "읽기 전용이 된 방명록에 글을 쓰면 E2101 로 거절된다", "state": "untested", "mode": "auto", "at": "R3", "checks": ["G.guestbook.post_write#guestbook-not-readonly"], "scripts": []}, {"key": "joined-member-only", "kind": "reject", "title": "룸을 나간 사람이 방명록에 글을 쓰면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R3", "checks": ["G.guestbook.post_write#joined-member-only"], "scripts": []}, {"key": "account-active", "kind": "reject", "title": "이용이 제한된 계정이 방명록에 글을 쓰면 거절된다", "state": "manual", "mode": "manual", "at": "R3", "checks": ["G.guestbook.post_write#account-active"], "scripts": []}]}]}, {"feature": "룸 생성", "slug": "룸-생성", "counts": {"auto": 4, "manual": 6, "excluded": 0, "untested": 15, "variants": 25, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "방장이 룸을 만든다", "variants": [{"key": "happy", "kind": "happy", "title": "온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다", "state": "auto", "mode": "auto", "at": null, "checks": ["C.room.create", "op.createRoom:200"], "scripts": ["room.create"]}, {"key": "pasted-posting", "kind": "branch", "title": "목록에 없는 공고는 링크를 붙여 그 자리에서 만든다", "state": "manual", "mode": "manual", "at": "R3", "checks": [], "scripts": []}, {"key": "batch", "kind": "branch", "title": "진행 일정을 여러 개 고르면 같은 설정의 룸이 일정 수만큼 만들어진다", "state": "untested", "mode": "auto", "at": "R143", "checks": ["C.room.create_batch"], "scripts": []}, {"key": "headcount-range", "kind": "reject", "title": "최대 모집 인원이 최소 진행 인원보다 작으면 E1402 로 거절된다", "state": "untested", "mode": "auto", "at": "R6", "checks": ["G.room.create#headcount-range"], "scripts": []}, {"key": "creation-limit", "kind": "extra", "title": "중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다", "state": "auto", "mode": "auto", "at": null, "checks": ["op.roomCreationLimit:200"], "scripts": ["room.creation-limit"]}, {"key": "account-active", "kind": "reject", "title": "이용이 제한된 계정이 룸을 만들면 E1002 로 거절된다", "state": "untested", "mode": "auto", "at": "R6", "checks": ["G.room.create#account-active"], "scripts": []}, {"key": "duplicate-slot-left", "kind": "reject", "title": "같은 회사·공고·직무의 활성 룸이 이미 3개인데 또 만들면 E1427 로 거절된다", "state": "untested", "mode": "auto", "at": "R6", "checks": ["G.room.create#duplicate-slot-left"], "scripts": []}, {"key": "login-required", "kind": "reject", "title": "로그인하지 않고 룸을 만들면 E1102 로 거절된다", "state": "untested", "mode": "auto", "at": "R6", "checks": ["G.room.create#login-required"], "scripts": []}, {"key": "participation-slot-left", "kind": "reject", "title": "참여 중인 룸이 이미 3개인데 룸을 만들면 E1425 로 거절된다", "state": "untested", "mode": "auto", "at": "R6", "checks": ["G.room.create#participation-slot-left"], "scripts": []}, {"key": "interview-stage-required", "kind": "reject", "title": "면접 차수를 고르지 않고 룸을 만들면 거절된다", "state": "manual", "mode": "manual", "at": "R6", "checks": ["G.room.create#interview-stage-required"], "scripts": []}, {"key": "offline-region-required", "kind": "reject", "title": "오프라인 룸에 지역을 넣지 않으면 거절된다", "state": "manual", "mode": "manual", "at": "R6", "checks": ["G.room.create#offline-region-required"], "scripts": []}, {"key": "qna-type-only", "kind": "reject", "title": "질의응답형이 아닌 면접 유형을 고르면 거절된다", "state": "manual", "mode": "manual", "at": "R6", "checks": ["G.room.create#qna-type-only"], "scripts": []}, {"key": "each-schedule-passes-create", "kind": "reject", "title": "여러 일정 중 하나라도 생성 조건에 맞지 않으면 거절된다", "state": "manual", "mode": "manual", "at": "R143", "checks": ["G.room.create_batch#each-schedule-passes-create"], "scripts": []}, {"key": "schedule-count-within-limit", "kind": "reject", "title": "고를 수 있는 일정 개수를 넘기면 거절된다", "state": "manual", "mode": "manual", "at": "R143", "checks": ["G.room.create_batch#schedule-count-within-limit"], "scripts": []}]}, {"id": "S2", "title": "방장이 모집 중인 룸을 고치거나 취소한다", "variants": [{"key": "happy", "kind": "happy", "title": "방장이 모집 중인 룸의 정보를 고친다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.room.update"], "scripts": []}, {"key": "cancel", "kind": "branch", "title": "일반 참여자가 없는 모집 중인 룸을 방장이 취소한다", "state": "auto", "mode": "auto", "at": "R147", "checks": ["C.room.cancel"], "scripts": ["room.cancel"]}, {"key": "host-leave", "kind": "branch", "title": "일반 참여자가 있으면 방장이 나가고 가장 먼저 참여한 참여자가 방장이 된다", "state": "untested", "mode": "auto", "at": "R148", "checks": [], "scripts": []}, {"key": "room-recruiting", "kind": "reject", "title": "이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다", "state": "auto", "mode": "auto", "at": "R147", "checks": ["G.room.cancel#room-recruiting"], "scripts": ["room.cancel-not-recruiting"]}, {"key": "update.host-only", "kind": "reject", "title": "방장이 아닌 사람이 룸 정보를 고치면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R146", "checks": ["G.room.update#host-only"], "scripts": []}, {"key": "max-headcount-not-below-joined", "kind": "reject", "title": "최대 모집 인원을 지금 참여 인원보다 적게 고치면 E1417 로 거절된다", "state": "untested", "mode": "auto", "at": "R146", "checks": ["G.room.update#max-headcount-not-below-joined"], "scripts": []}, {"key": "update.room-recruiting", "kind": "reject", "title": "모집 중이 아닌 룸을 고치면 E1418 로 거절된다", "state": "untested", "mode": "auto", "at": "R146", "checks": ["G.room.update#room-recruiting"], "scripts": []}, {"key": "cancel.host-only", "kind": "reject", "title": "방장이 아닌 사람이 룸을 취소하면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R147", "checks": ["G.room.cancel#host-only"], "scripts": []}, {"key": "no-other-joined-members", "kind": "reject", "title": "일반 참여자가 있는 룸을 취소하면 E1420 으로 거절된다", "state": "untested", "mode": "auto", "at": "R147", "checks": ["G.room.cancel#no-other-joined-members"], "scripts": []}, {"key": "own-participation", "kind": "reject", "title": "다른 사람의 참여를 대신 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R148", "checks": ["G.participation.cancel#own-participation"], "scripts": []}, {"key": "participation-joined", "kind": "reject", "title": "이미 끝난 참여를 다시 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R148", "checks": ["G.participation.cancel#participation-joined"], "scripts": []}]}]}, {"feature": "룸 진행 마무리 및 출석", "slug": "룸-진행-마무리-및-출석", "counts": {"auto": 0, "manual": 1, "excluded": 1, "untested": 6, "variants": 8, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "출석을 기록하고 클로징으로 룸을 끝낸다 (MVP 이후)", "variants": []}, {"id": "S2", "title": "진행 완료를 누르며 출석을 입력한다 (MVP)", "variants": [{"key": "happy", "kind": "happy", "title": "방장이 진행 완료를 누르고 출석을 입력하면 룸이 완료되고 출석이 기록된다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.room.complete", "op.completeRoomProgress:200", "op.recordRoomAttendances:200"], "scripts": []}, {"key": "autocomplete", "kind": "branch", "title": "방장이 진행 완료를 누르지 않으면 예정 시각 8시간 뒤 자동 완료되고 확정 참여자 모두 후기를 쓸 수 있다", "state": "excluded", "mode": "manual", "at": "R70", "checks": ["C.room.autocomplete"], "scripts": []}, {"key": "notify", "kind": "extra", "title": "완료되면 전체 참여자에게 완료 알림과 후기 요청 알림이 함께 간다", "state": "manual", "mode": "manual", "at": null, "checks": [], "scripts": []}, {"key": "my-attendance", "kind": "extra", "title": "완료된 룸의 참여자는 자신의 출석 결과를 확인한다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.getMyAttendance:200"], "scripts": []}, {"key": "attendance-twice", "kind": "extra", "title": "출석을 두 번 기록하면 E1708 로 거절된다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.recordRoomAttendances:E1708"], "scripts": []}, {"key": "attendance-roster-matches", "kind": "reject", "title": "출석 명단이 확정 참여자와 다르면 E1706 으로 거절된다", "state": "untested", "mode": "auto", "at": "R63", "checks": ["G.room.complete#attendance-roster-matches"], "scripts": []}, {"key": "host-only", "kind": "reject", "title": "방장이 아닌 참여자가 진행 완료를 누르면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R63", "checks": ["G.room.complete#host-only"], "scripts": []}, {"key": "room-confirmed", "kind": "reject", "title": "진행 확정되지 않은 룸을 완료하면 E1707 로 거절된다", "state": "untested", "mode": "auto", "at": "R63", "checks": ["G.room.complete#room-confirmed"], "scripts": []}]}]}, {"feature": "룸 진행 확정", "slug": "룸-진행-확정", "counts": {"auto": 0, "manual": 2, "excluded": 0, "untested": 8, "variants": 10, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "방장이 참여자를 모아 진행을 확정한다", "variants": [{"key": "happy", "kind": "happy", "title": "최소 진행 인원이 모인 모집 중 룸을 방장이 확정하면 진행 확정 상태가 된다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.room.confirm", "op.confirmRoom:200"], "scripts": []}, {"key": "schedule-change-by-cs", "kind": "branch", "title": "진행 확정 뒤 일정을 바꿔야 하면 서비스가 아니라 CS 문의로 처리한다", "state": "manual", "mode": "manual", "at": "R47", "checks": [], "scripts": []}, {"key": "leave-after-confirm", "kind": "branch", "title": "진행 확정 뒤에도 참여자가 직접 참여를 취소할 수 있고 취소 이력이 남는다", "state": "untested", "mode": "auto", "at": "R48", "checks": ["C.participation.cancel", "op.roomLeave:200"], "scripts": []}, {"key": "host-only", "kind": "reject", "title": "방장이 아닌 참여자가 진행을 확정하면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R4", "checks": ["G.room.confirm#host-only"], "scripts": []}, {"key": "min-headcount-met", "kind": "reject", "title": "최소 진행 인원이 모이지 않은 룸을 확정하면 E1421 로 거절된다", "state": "untested", "mode": "auto", "at": "R4", "checks": ["G.room.confirm#min-headcount-met"], "scripts": []}, {"key": "confirm.room-recruiting", "kind": "reject", "title": "이미 확정된 룸을 다시 확정하면 E1410 으로 거절된다", "state": "untested", "mode": "auto", "at": "R4", "checks": ["G.room.confirm#room-recruiting"], "scripts": []}, {"key": "schedule-not-passed", "kind": "reject", "title": "진행 일정이 지난 룸을 확정하면 E1422 로 거절된다", "state": "untested", "mode": "auto", "at": "R4", "checks": ["G.room.confirm#schedule-not-passed"], "scripts": []}, {"key": "change-schedule.room-recruiting", "kind": "reject", "title": "진행 확정 뒤 서비스에서 일정을 바꾸려 하면 거절된다", "state": "manual", "mode": "manual", "at": "R47", "checks": ["G.room.change_schedule#room-recruiting"], "scripts": []}, {"key": "own-participation", "kind": "reject", "title": "다른 사람의 참여를 대신 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R48", "checks": ["G.participation.cancel#own-participation"], "scripts": []}, {"key": "participation-joined", "kind": "reject", "title": "이미 끝난 참여를 다시 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R48", "checks": ["G.participation.cancel#participation-joined"], "scripts": []}]}]}, {"feature": "룸 참여 및 참여자 관리", "slug": "룸-참여-및-참여자-관리", "counts": {"auto": 1, "manual": 4, "excluded": 0, "untested": 22, "variants": 27, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "참가를 신청하고 방장이 참여자를 구성한다", "variants": [{"key": "happy", "kind": "happy", "title": "참가를 신청하면 대기 중이 되고 방장이 수락하면 참여자가 된다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.application.submit", "C.application.accept"], "scripts": []}, {"key": "withdraw", "kind": "branch", "title": "방장이 처리하기 전에 신청을 철회하면 처리 대상에서 빠진다", "state": "auto", "mode": "auto", "at": "R179", "checks": ["C.application.withdraw", "op.withdrawRoomApplication:200"], "scripts": ["room.apply-and-withdraw"]}, {"key": "reapply-after-withdraw", "kind": "branch", "title": "신청을 철회한 사람이 같은 룸에 다시 신청한다", "state": "untested", "mode": "auto", "at": "R180", "checks": [], "scripts": []}, {"key": "reapply-after-cancel", "kind": "branch", "title": "참여를 직접 취소한 사람이 같은 룸에 다시 신청한다", "state": "untested", "mode": "auto", "at": "R181", "checks": [], "scripts": []}, {"key": "account-active", "kind": "reject", "title": "이용이 제한된 계정이 참가 신청을 하면 E1002 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#account-active"], "scripts": []}, {"key": "login-required", "kind": "reject", "title": "로그인하지 않고 참가 신청을 하면 E1102 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#login-required"], "scripts": []}, {"key": "not-already-engaged", "kind": "reject", "title": "이미 참여 중이거나 대기 중인 신청이 있는데 또 신청하면 E1413 으로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#not-already-engaged"], "scripts": []}, {"key": "not-host", "kind": "reject", "title": "방장이 자기 룸에 신청하면 E1414 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#not-host"], "scripts": []}, {"key": "not-rejected-or-removed", "kind": "reject", "title": "반려되거나 내보내진 룸에 다시 신청하면 E1415 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#not-rejected-or-removed"], "scripts": []}, {"key": "participation-slot-left", "kind": "reject", "title": "참여 중인 룸이 이미 3개인데 신청하면 E1425 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#participation-slot-left"], "scripts": []}, {"key": "pending-limit-left", "kind": "reject", "title": "처리 대기 중인 신청이 한도만큼 있는데 또 신청하면 E1416 으로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#pending-limit-left"], "scripts": []}, {"key": "submit.room-recruiting", "kind": "reject", "title": "모집 중이 아닌 룸에 신청하면 E1410 으로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#room-recruiting"], "scripts": []}, {"key": "schedule-not-passed", "kind": "reject", "title": "진행 일정이 지난 룸에 신청하면 E1412 로 거절된다", "state": "untested", "mode": "auto", "at": "R5", "checks": ["G.application.submit#schedule-not-passed"], "scripts": []}, {"key": "accept.application-pending", "kind": "reject", "title": "이미 처리된 신청을 수락하면 E1409 로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.accept#application-pending"], "scripts": []}, {"key": "capacity-left", "kind": "reject", "title": "최대 모집 인원이 찬 룸에서 신청을 수락하면 E1411 로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.accept#capacity-left"], "scripts": []}, {"key": "accept.host-only", "kind": "reject", "title": "방장이 아닌 사람이 신청을 수락하면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.accept#host-only"], "scripts": []}, {"key": "accept.room-recruiting", "kind": "reject", "title": "모집 중이 아닌 룸에서 신청을 수락하면 E1410 으로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.accept#room-recruiting"], "scripts": []}, {"key": "reject.application-pending", "kind": "reject", "title": "이미 처리된 신청을 반려하면 E1409 로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.reject#application-pending"], "scripts": []}, {"key": "reject.host-only", "kind": "reject", "title": "방장이 아닌 사람이 신청을 반려하면 E1406 으로 거절된다", "state": "untested", "mode": "auto", "at": "R7", "checks": ["G.application.reject#host-only"], "scripts": []}, {"key": "withdraw.application-pending", "kind": "reject", "title": "방장이 이미 처리한 신청을 철회하면 E1409 로 거절된다", "state": "untested", "mode": "auto", "at": "R179", "checks": ["G.application.withdraw#application-pending"], "scripts": []}, {"key": "own-application", "kind": "reject", "title": "다른 사람의 신청을 철회하면 E1408 로 거절된다", "state": "untested", "mode": "auto", "at": "R179", "checks": ["G.application.withdraw#own-application"], "scripts": []}, {"key": "own-participation", "kind": "reject", "title": "다른 사람의 참여를 대신 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R10", "checks": ["G.participation.cancel#own-participation"], "scripts": []}, {"key": "participation-joined", "kind": "reject", "title": "이미 끝난 참여를 다시 취소하면 E1419 로 거절된다", "state": "untested", "mode": "auto", "at": "R10", "checks": ["G.participation.cancel#participation-joined"], "scripts": []}, {"key": "kick.host-only", "kind": "reject", "title": "방장이 아닌 사람이 참여자를 내보내면 거절된다", "state": "manual", "mode": "manual", "at": "R10", "checks": ["G.participation.kick#host-only"], "scripts": []}, {"key": "kick.room-recruiting", "kind": "reject", "title": "진행 확정 뒤에 참여자를 내보내면 거절된다", "state": "manual", "mode": "manual", "at": "R10", "checks": ["G.participation.kick#room-recruiting"], "scripts": []}, {"key": "target-joined", "kind": "reject", "title": "이미 참여가 끝난 사람을 내보내면 거절된다", "state": "manual", "mode": "manual", "at": "R10", "checks": ["G.participation.kick#target-joined"], "scripts": []}, {"key": "target-not-host", "kind": "reject", "title": "방장이 자기 자신을 내보내면 거절된다", "state": "manual", "mode": "manual", "at": "R10", "checks": ["G.participation.kick#target-not-host"], "scripts": []}]}]}, {"feature": "룸 탐색", "slug": "룸-탐색", "counts": {"auto": 0, "manual": 6, "excluded": 0, "untested": 5, "variants": 11, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "사용자가 조건으로 룸을 찾는다", "variants": [{"key": "happy", "kind": "happy", "title": "조건으로 룸 목록을 찾고 상세에서 모집 상태와 일정을 확인한다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.rooms:200", "op.roomDetail:200"], "scripts": []}, {"key": "my-interviews", "kind": "branch", "title": "내 면접 페이지에서 신청한 면접·참여 중인 면접·완료된 면접을 나눠 본다", "state": "untested", "mode": "auto", "at": "R87", "checks": ["op.getInterviewOverview:200"], "scripts": []}, {"key": "sort", "kind": "branch", "title": "일정 빠른 순·최근 생성순·모집 마감 임박순으로 정렬하면 그 순서로 나온다", "state": "untested", "mode": "auto", "at": "R88", "checks": ["op.rooms:200"], "scripts": []}, {"key": "no-result-nearest", "kind": "branch", "title": "검색 결과가 없으면 같은 회사·직무에서 가장 가까운 시간대의 룸을 보여 준다", "state": "manual", "mode": "manual", "at": "R89", "checks": [], "scripts": []}, {"key": "my-interviews-login", "kind": "extra", "title": "로그인하지 않고 내 면접을 열면 E1102 로 거절된다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.getInterviewOverview:E1102"], "scripts": []}, {"key": "bad-filter", "kind": "extra", "title": "목록 조건 값이 형식에 맞지 않으면 400 으로 거절된다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.rooms:E400"], "scripts": []}, {"key": "login-required", "kind": "reject", "title": "로그인하지 않고 참가 신청을 시작하면 거절된다", "state": "manual", "mode": "manual", "at": "R5", "checks": ["G.application.enter#login-required"], "scripts": []}, {"key": "no-pending-application", "kind": "reject", "title": "결과를 기다리는 신청이 있는 룸에서 다시 신청을 시작하면 거절된다", "state": "manual", "mode": "manual", "at": "R5", "checks": ["G.application.enter#no-pending-application"], "scripts": []}, {"key": "not-already-joined", "kind": "reject", "title": "이미 참여 중인 룸에서 참가 신청을 시작하면 거절된다", "state": "manual", "mode": "manual", "at": "R5", "checks": ["G.application.enter#not-already-joined"], "scripts": []}, {"key": "room-recruiting", "kind": "reject", "title": "진행 확정·취소된 룸에서 참가 신청을 시작하면 거절된다", "state": "manual", "mode": "manual", "at": "R5", "checks": ["G.application.enter#room-recruiting"], "scripts": []}, {"key": "schedule-not-passed", "kind": "reject", "title": "진행 일정이 지난 룸에서 참가 신청을 시작하면 거절된다", "state": "manual", "mode": "manual", "at": "R5", "checks": ["G.application.enter#schedule-not-passed"], "scripts": []}]}]}, {"feature": "운영자 관리", "slug": "운영자-관리", "counts": {"auto": 0, "manual": 1, "excluded": 0, "untested": 0, "variants": 1, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "운영자가 기준 데이터와 신고를 처리한다", "variants": [{"key": "happy", "kind": "happy", "title": "운영자가 신고를 확인하고 조치와 사유를 기록한다", "state": "manual", "mode": "manual", "at": null, "checks": [], "scripts": []}]}]}, {"feature": "유저 후기 및 신뢰 관리", "slug": "유저-후기-및-신뢰-관리", "counts": {"auto": 0, "manual": 4, "excluded": 0, "untested": 16, "variants": 20, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "룸이 끝난 뒤 후기를 남기고 신뢰 정보가 쌓인다", "variants": [{"key": "happy", "kind": "happy", "title": "완료된 룸에서 함께 출석한 참여자에게 후기를 쓰면 제출된다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.review.submit", "op.submitReview:201"], "scripts": []}, {"key": "public-nickname", "kind": "branch", "title": "닉네임 공개를 고르고 후기를 제출하면 받은 사람에게 닉네임이 보인다", "state": "untested", "mode": "auto", "at": "R94", "checks": ["C.review.submit"], "scripts": []}, {"key": "skip", "kind": "branch", "title": "참여자별로 후기 작성을 건너뛴다", "state": "untested", "mode": "auto", "at": "R95", "checks": ["op.skipReview:200"], "scripts": []}, {"key": "write-later", "kind": "branch", "title": "건너뛴 참여자에게 나중에 내 면접의 미작성 후기 버튼으로 돌아와 후기를 쓴다", "state": "untested", "mode": "auto", "at": "R96", "checks": ["op.getReviewTargets:200"], "scripts": []}, {"key": "edit-within-3h", "kind": "branch", "title": "제출한 지 3시간 안에 후기를 고친다", "state": "untested", "mode": "auto", "at": "R97", "checks": ["C.review.edit", "op.updateReview:200"], "scripts": []}, {"key": "delete-resubmit", "kind": "branch", "title": "제출한 후기를 지우고 같은 대상자에게 다시 제출한다", "state": "untested", "mode": "auto", "at": "R98", "checks": ["C.review.delete", "op.deleteReview:200"], "scripts": []}, {"key": "author-attended", "kind": "reject", "title": "출석하지 않은 사람이 후기를 쓰면 E2002 로 거절된다", "state": "untested", "mode": "auto", "at": "R1", "checks": ["G.review.write#author-attended"], "scripts": []}, {"key": "not-already-written", "kind": "reject", "title": "같은 사람에게 후기를 두 번 쓰면 E2005 로 거절된다", "state": "untested", "mode": "auto", "at": "R1", "checks": ["G.review.write#not-already-written"], "scripts": []}, {"key": "not-self", "kind": "reject", "title": "자기 자신에게 후기를 쓰면 E2004 로 거절된다", "state": "untested", "mode": "auto", "at": "R1", "checks": ["G.review.write#not-self"], "scripts": []}, {"key": "room-completed", "kind": "reject", "title": "완료되지 않은 룸에서 후기를 쓰면 E2001 로 거절된다", "state": "untested", "mode": "auto", "at": "R1", "checks": ["G.review.write#room-completed"], "scripts": []}, {"key": "target-attended", "kind": "reject", "title": "출석하지 않은 사람에게 후기를 쓰면 E2003 으로 거절된다", "state": "untested", "mode": "auto", "at": "R1", "checks": ["G.review.write#target-attended"], "scripts": []}, {"key": "author-only", "kind": "reject", "title": "다른 사람이 쓴 후기를 고치거나 지우면 E2007 로 거절된다", "state": "untested", "mode": "auto", "at": "R97", "checks": ["G.review.edit#author-only"], "scripts": []}, {"key": "review-effective", "kind": "reject", "title": "지워졌거나 숨겨진 후기를 고치면 E2006 으로 거절된다", "state": "untested", "mode": "auto", "at": "R97", "checks": ["G.review.edit#review-effective"], "scripts": []}, {"key": "within-edit-window", "kind": "reject", "title": "제출한 지 3시간이 지난 후기를 고치면 E2008 로 거절된다", "state": "untested", "mode": "auto", "at": "R97", "checks": ["G.review.edit#within-edit-window"], "scripts": []}]}, {"id": "S2", "title": "받은 후기를 보고 신고한다", "variants": [{"key": "happy", "kind": "happy", "title": "받은 후기를 제출 3시간 뒤부터 평가 태그·피드백과 작성자 표시와 함께 본다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.getReceivedReviews:200"], "scripts": []}, {"key": "report", "kind": "extra", "title": "부적절한 후기를 신고하면 관리자 검토 대상으로 표시된다", "state": "manual", "mode": "manual", "at": null, "checks": ["C.review.report"], "scripts": []}, {"key": "received-login", "kind": "extra", "title": "로그인하지 않고 받은 후기를 열면 E1102 로 거절된다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.getReceivedReviews:E1102"], "scripts": []}, {"key": "review-effective", "kind": "reject", "title": "지워졌거나 숨겨진 후기를 신고하면 거절된다", "state": "manual", "mode": "manual", "at": "R101", "checks": ["G.review.report#review-effective"], "scripts": []}, {"key": "review-reflected", "kind": "reject", "title": "아직 반영되지 않은(제출 3시간 전) 후기를 신고하면 거절된다", "state": "manual", "mode": "manual", "at": "R101", "checks": ["G.review.report#review-reflected"], "scripts": []}, {"key": "review-target-only", "kind": "reject", "title": "후기를 받은 사람이 아닌데 신고하면 거절된다", "state": "manual", "mode": "manual", "at": "R101", "checks": ["G.review.report#review-target-only"], "scripts": []}]}]}, {"feature": "회원 및 프로필", "slug": "회원-및-프로필", "counts": {"auto": 0, "manual": 5, "excluded": 1, "untested": 13, "variants": 19, "rejects": 0, "pass": 0, "fail": 0, "drift": 0}, "scenarios": [{"id": "S1", "title": "비로그인 사용자가 가입하고 하던 흐름으로 돌아간다", "variants": [{"key": "happy", "kind": "happy", "title": "처음 Google 로 로그인하면 계정이 생기고 닉네임이 자동으로 붙은 뒤 하던 흐름으로 돌아온다", "state": "manual", "mode": "manual", "at": null, "checks": ["C.member.signup"], "scripts": []}]}, {"id": "S2", "title": "마이페이지에서 프로필과 이력서를 관리한다", "variants": [{"key": "happy", "kind": "happy", "title": "마이페이지에서 프로필과 닉네임을 고치고 이력서를 올려 기본으로 지정한 뒤 지운다", "state": "untested", "mode": "auto", "at": null, "checks": ["C.member.update_profile", "C.resume.create", "C.resume.set_default", "C.resume.delete"], "scripts": []}, {"key": "logout", "kind": "branch", "title": "현재 기기에서 로그아웃한다", "state": "untested", "mode": "auto", "at": "R135", "checks": ["op.authLogout:200"], "scripts": []}, {"key": "withdraw", "kind": "branch", "title": "탈퇴 안내를 확인하고 회원 탈퇴를 요청한다", "state": "excluded", "mode": "manual", "at": "R136", "checks": ["C.member.withdraw"], "scripts": []}, {"key": "nickname-check", "kind": "extra", "title": "닉네임을 바꾸기 전에 쓸 수 있는지 확인한다", "state": "untested", "mode": "auto", "at": null, "checks": ["op.nicknameAvailability:200"], "scripts": []}, {"key": "own-profile-only", "kind": "reject", "title": "다른 사람의 프로필을 고치면 거절된다", "state": "manual", "mode": "manual", "at": "R6", "checks": ["G.member.edit_profile#own-profile-only"], "scripts": []}, {"key": "length-limit", "kind": "reject", "title": "닉네임이 길이 제한을 넘으면 E1005 로 거절된다", "state": "untested", "mode": "auto", "at": "R129", "checks": ["G.member.set_nickname#length-limit"], "scripts": []}, {"key": "nickname-not-taken", "kind": "reject", "title": "다른 회원이 쓰는 닉네임으로 바꾸면 E1007 로 거절된다", "state": "untested", "mode": "auto", "at": "R129", "checks": ["G.member.set_nickname#nickname-not-taken"], "scripts": []}, {"key": "no-forbidden-chars", "kind": "reject", "title": "닉네임에 쓸 수 없는 문자를 넣으면 E1005 로 거절된다", "state": "untested", "mode": "auto", "at": "R129", "checks": ["G.member.set_nickname#no-forbidden-chars"], "scripts": []}, {"key": "not-policy-violating", "kind": "reject", "title": "운영 정책에 어긋나는 닉네임을 쓰면 E1005 로 거절된다", "state": "untested", "mode": "auto", "at": "R129", "checks": ["G.member.set_nickname#not-policy-violating"], "scripts": []}, {"key": "resume-slot-left", "kind": "reject", "title": "이력서가 이미 10개인데 또 올리면 E1011 로 거절된다", "state": "untested", "mode": "auto", "at": "R131", "checks": ["G.resume.create#resume-slot-left"], "scripts": []}, {"key": "account-active", "kind": "reject", "title": "이용이 제한된 계정이 이력서를 올리면 거절된다", "state": "manual", "mode": "manual", "at": "R131", "checks": ["G.resume.create#account-active"], "scripts": []}, {"key": "rename.resume-not-deleted", "kind": "reject", "title": "지운 이력서의 이름을 고치면 E1010 으로 거절된다", "state": "manual", "mode": "manual", "at": "R132", "checks": ["G.resume.rename#resume-not-deleted"], "scripts": []}, {"key": "rename.resume-owner-only", "kind": "reject", "title": "다른 사람의 이력서 이름을 고치면 E1010 으로 거절된다", "state": "manual", "mode": "manual", "at": "R132", "checks": ["G.resume.rename#resume-owner-only"], "scripts": []}, {"key": "set-default.resume-not-deleted", "kind": "reject", "title": "지운 이력서를 기본으로 지정하면 E1010 으로 거절된다", "state": "untested", "mode": "auto", "at": "R133", "checks": ["G.resume.set_default#resume-not-deleted"], "scripts": []}, {"key": "set-default.resume-owner-only", "kind": "reject", "title": "다른 사람의 이력서를 기본으로 지정하면 E1010 으로 거절된다", "state": "untested", "mode": "auto", "at": "R133", "checks": ["G.resume.set_default#resume-owner-only"], "scripts": []}, {"key": "summary-done", "kind": "reject", "title": "AI 요약이 끝나지 않은 이력서를 기본으로 지정하면 E1012 로 거절된다", "state": "untested", "mode": "auto", "at": "R133", "checks": ["G.resume.set_default#summary-done"], "scripts": []}, {"key": "delete.resume-not-deleted", "kind": "reject", "title": "이미 지운 이력서를 또 지우면 E1010 으로 거절된다", "state": "untested", "mode": "auto", "at": "R134", "checks": ["G.resume.delete#resume-not-deleted"], "scripts": []}, {"key": "delete.resume-owner-only", "kind": "reject", "title": "다른 사람의 이력서를 지우면 E1010 으로 거절된다", "state": "untested", "mode": "auto", "at": "R134", "checks": ["G.resume.delete#resume-owner-only"], "scripts": []}]}]}], "cases": [{"id": "auth.me-without-token", "suite": "smoke", "title": "토큰 없이 내 상태를 조회하면 401 E1102 다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "auth.dev-session-unknown-member", "suite": "smoke", "title": "없는 회원으로 dev 세션을 요청하면 404 E1006 이다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "auth.dev-session-bad-body", "suite": "smoke", "title": "형식이 틀린 dev 세션 요청은 400 E400 이다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "member.me", "suite": "smoke", "title": "테스트 계정으로 로그인하면 내 상태가 ACTIVE 이고 memberId 가 일치한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "guestbook.post-happy", "suite": "sanity", "title": "방장과 참여자가 방명록에 준비 내용을 남긴다", "variant": "룸-방명록/S1/happy", "desc": "", "inputs": [], "outputs": [], "steps": 7}, {"id": "platform.health", "suite": "smoke", "title": "백엔드 헬스 체크가 UP 이다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "catalog.terms", "suite": "smoke", "title": "현재 유효 약관 목록을 비로그인으로 조회한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "catalog.job-roles", "suite": "smoke", "title": "직무 카탈로그를 조회한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "catalog.regions", "suite": "smoke", "title": "지역 카탈로그를 조회한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "room.form-options", "suite": "smoke", "title": "룸 생성 폼 선택지를 조회한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "room.explore", "suite": "smoke", "title": "비로그인으로 모집 중인 룸을 탐색한다", "variant": null, "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "room.create", "suite": "sanity", "title": "방장이 온라인 룸을 만들면 모집 중으로 열리고 상세의 방장이 본인이다", "variant": "룸-생성/S1/happy", "desc": "", "inputs": [], "outputs": [], "steps": 3}, {"id": "room.cancel", "suite": "sanity", "title": "일반 참여자가 없는 모집 중인 룸을 방장이 취소한다", "variant": "룸-생성/S2/cancel", "desc": "", "inputs": [], "outputs": [], "steps": 3}, {"id": "room.cancel-not-recruiting", "suite": "sanity", "title": "이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다", "variant": "룸-생성/S2/room-recruiting", "desc": "", "inputs": [], "outputs": [], "steps": 4}, {"id": "room.apply-and-withdraw", "suite": "sanity", "title": "참가자가 신청하면 PENDING 이고 철회할 수 있다", "variant": "룸-참여-및-참여자-관리/S1/withdraw", "desc": "", "inputs": [], "outputs": [], "steps": 5}, {"id": "room.creation-limit", "suite": "sanity", "title": "중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다", "variant": "룸-생성/S1/creation-limit", "desc": "", "inputs": [], "outputs": [], "steps": 1}, {"id": "setup.room-open", "suite": "setup", "title": "모집 중인 룸 하나 만들기", "variant": null, "desc": "qa-host 가 룸을 하나 만든다(RECRUITING). 신청·탐색·상세 화면을 손으로 볼 때 쓴다. 만든 룸은 지우지 않는다.", "inputs": [{"name": "title", "label": "룸 제목", "default": "[QA] 준비 작업 룸", "required": true, "hint": "[QA] 로 시작해야 나중에 찾아 지울 수 있다", "options": null}, {"name": "minParticipants", "label": "최소 진행 인원", "default": 2, "required": false, "hint": "", "options": null}, {"name": "maxParticipants", "label": "최대 모집 인원", "default": 4, "required": false, "hint": "", "options": null}, {"name": "daysFromNow", "label": "며칠 뒤 일정인가", "default": 7, "required": false, "hint": "오늘 기준 N 일 뒤. 시각은 실행마다 09:00~20:50 사이에서 고른다 — 남은 룸과 겹치면 백엔드가 그 룸을 돌려주기 때문", "options": null}], "outputs": ["roomId"], "steps": 1}, {"id": "setup.room-with-application", "suite": "setup", "title": "신청이 하나 들어온 룸 만들기", "variant": null, "desc": "qa-host 가 룸을 만들고(setup.room-open) qa-guest 가 신청한다(PENDING). 방장의 신청 목록·수락·반려 화면을 볼 때 쓴다.", "inputs": [{"name": "title", "label": "룸 제목", "default": "[QA] 신청 들어온 룸", "required": true, "hint": "", "options": null}, {"name": "note", "label": "신청 한마디", "default": "[QA] 준비 작업 신청", "required": false, "hint": "", "options": null}], "outputs": ["roomId", "applicationId"], "steps": 2}, {"id": "setup.room-confirmed", "suite": "setup", "title": "참여자를 수락하고 진행 확정까지 간 룸 만들기", "variant": null, "desc": "신청 들어온 룸(setup.room-with-application) → 방장 수락 → 진행 확정. 확정된 룸의 상세·완료 화면을 볼 때 쓴다. 확정된 룸은 취소(E1410)가 안 되므로 이 카드를 uses 로 쓰는 스크립트는 DELETE /v1/dev/rooms/{roomId} 로 정리한다. 최소 진행 인원을 방장 포함 2명으로 잡았다 — dev 가 E1421(최소 인원 미달)을 주면 SSOT 의 인원 계산(방장 포함 여부)을 확인한다.", "inputs": [{"name": "title", "label": "룸 제목", "default": "[QA] 확정된 룸", "required": true, "hint": "", "options": null}], "outputs": ["roomId", "applicationId"], "steps": 4}, {"id": "setup.room-reschedule", "suite": "setup", "title": "룸 시작 시각 바꾸기 (진행 시작 가능하게)", "variant": null, "desc": "이미 있는 [QA] 룸의 진행 시작 시각을 옮긴다. 확정된 룸을 어제로 옮기면 공개 API 로 진행 시작 → 클로징 → 종료 → 후기까지 실제 경로로 갈 수 있다. 상태는 안 바뀐다. dev 전용 API(rescheduleQaRoom).", "inputs": [{"name": "roomId", "label": "룸 id", "default": null, "required": true, "hint": "[QA] 룸만 된다 (아니면 E2201)", "options": null}, {"name": "daysFromNow", "label": "며칠 뒤로 옮기나", "default": -1, "required": false, "hint": "음수면 과거 (-1 = 어제). 진행 시작은 시작 시각이 지나야 열린다", "options": null}, {"name": "time", "label": "시각", "default": "09:00:00", "required": false, "hint": "", "options": null}], "outputs": ["roomId", "startAt", "roomStatus"], "steps": 1}, {"id": "setup.room-ready-to-start", "suite": "setup", "title": "진행 시작 직전 상태의 룸 만들기 (확정 + 시작 시각 지남)", "variant": null, "desc": "확정된 룸(setup.room-confirmed) → dev 전용 API 로 시작 시각을 어제로. 이 카드를 uses 로 쓰는 스크립트도 DELETE /v1/dev/rooms/{roomId} 로 정리한다. 그 다음은 공개 API 로 진행 시작·출석·클로징·후기 화면을 볼 수 있다. 최소 인원이 방장 포함 2명으로 세는지에 따라 확정이 E1421 로 막힐 수 있다 — 그러면 setup.room-confirmed 와 같은 원인이다.", "inputs": [{"name": "title", "label": "룸 제목", "default": "[QA] 진행 직전 룸", "required": true, "hint": "", "options": null}], "outputs": ["roomId", "applicationId", "startAt"], "steps": 5}, {"id": "setup.resume-list", "suite": "setup", "title": "테스트 계정의 이력서 목록 보기 (id 찾기)", "variant": null, "desc": "고른 테스트 계정으로 보관 이력서 목록을 읽어 첫 이력서의 id·이름·AI 요약 상태를 결과값으로 돌려준다. 요약 강제나 신청 카드에 넣을 resumeId 를 찾을 때 쓴다. 아무것도 만들지 않는다.", "inputs": [{"name": "actor", "label": "테스트 계정", "default": "qa-host", "required": false, "hint": "qa-host · qa-guest · 만든 QA 회원 이름", "options": null}], "outputs": ["resumeCount", "firstResumeId", "firstResumeName", "firstSummaryStatus"], "steps": 1}, {"id": "setup.resume-summary", "suite": "setup", "title": "이력서 AI 요약 강제 완료 (Bedrock 없이 DONE)", "variant": null, "desc": "이름이 [QA] 로 시작하는 이력서의 AI 요약을 주어진 문장으로 바로 완료(DONE)시킨다. 요약이 안 끝나 룸 신청이 막힐 때 쓴다. 회원에게 기본 이력서가 없으면 이것이 기본이 된다. dev 전용 API(completeQaResumeSummary).", "inputs": [{"name": "resumeId", "label": "이력서 id", "default": null, "required": true, "hint": "이름이 [QA] 로 시작하는 이력서만 (아니면 E2201). 위 '이력서 목록 보기' 카드로 찾는다", "options": null}, {"name": "summary", "label": "요약문", "default": "[QA] 테스트용 이력서 요약입니다. 백엔드 3년차, Kotlin·Spring 기반 API 개발 경험이 있습니다.", "required": false, "hint": "1~1000자", "options": null}], "outputs": ["resumeId", "summaryStatus", "isDefault"], "steps": 1}], "prs": [{"additions": 1893, "author": "dbwp031", "changedFiles": 104, "deletions": 3366, "mergedAt": "2026-09-25T09:29:58Z", "number": 138, "title": "feat(room): MVP 상태 흐름과 완료 출석 분리 (MOI-541)", "api": true, "domains": ["closing", "participation", "progress", "question", "room", "roomcomment"]}, {"additions": 175, "author": "dbwp031", "changedFiles": 4, "deletions": 15, "mergedAt": "2026-09-25T08:54:13Z", "number": 137, "title": "feat(notification): 룸 생명주기 이벤트 소비 호환 추가 (MOI-541)", "api": false, "domains": []}, {"additions": 48, "author": "bebeis", "changedFiles": 5, "deletions": 3, "mergedAt": "2026-09-23T07:04:33Z", "number": 136, "title": "fix(infra): awsfirelens 로그 옵션에서 Docker 드라이버 옵션 제거 (MOI-538)", "api": false, "domains": []}, {"additions": 4409, "author": "bebeis", "changedFiles": 50, "deletions": 0, "mergedAt": "2026-09-23T03:19:58Z", "number": 135, "title": "feat(qa): dev 전용 QA 테스트 데이터 API 추가 (MOI-534)", "api": true, "domains": []}, {"additions": 19, "author": "bebeis", "changedFiles": 4, "deletions": 1, "mergedAt": "2026-09-22T13:14:33Z", "number": 134, "title": "feat(security): dev CORS 허용 목록에 QA 프론트 오리진 추가 (MOI-533)", "api": false, "domains": []}, {"additions": 565, "author": "bebeis", "changedFiles": 102, "deletions": 33, "mergedAt": "2026-09-21T11:49:36Z", "number": 132, "title": "feat(core): trace용 DEBUG 로그 추가 (MOI-525)", "api": false, "domains": ["catalog", "closing", "company", "jobposting", "member", "notification"]}, {"additions": 571, "author": "bebeis", "changedFiles": 27, "deletions": 104, "mergedAt": "2026-09-21T11:10:48Z", "number": 131, "title": "feat(logging): 로그 출력 계약을 메시지·MDC·예외 보존 방식으로 전환 (MOI-525)", "api": true, "domains": ["resume"]}, {"additions": 17, "author": "bebeis", "changedFiles": 2, "deletions": 0, "mergedAt": "2026-09-21T08:44:24Z", "number": 130, "title": "docs(agents): LLM Wiki MCP 규칙 추가 (MOI-526)", "api": false, "domains": []}, {"additions": 300, "author": "bebeis", "changedFiles": 7, "deletions": 12, "mergedAt": "2026-09-20T09:07:36Z", "number": 129, "title": "chore(infra): Flyway migration 충돌 방지 CI 강화 (MOI-454)", "api": false, "domains": []}, {"additions": 153, "author": "bebeis", "changedFiles": 13, "deletions": 34, "mergedAt": "2026-09-20T08:31:09Z", "number": 128, "title": "fix(harness): PR 이후 작업 트리 기록 제거 (MOI-522)", "api": false, "domains": []}, {"additions": 4268, "author": "bebeis", "changedFiles": 82, "deletions": 75, "mergedAt": "2026-09-20T07:50:11Z", "number": 127, "title": "feat(logging): 안전한 요청 로그와 S3 저장 경로 추가 (MOI-411)", "api": false, "domains": []}, {"additions": 629, "author": "dbwp031", "changedFiles": 12, "deletions": 118, "mergedAt": "2026-09-14T09:54:46Z", "number": 126, "title": "fix(infra): Terraform 실행에 ECS 배포 설정 고정 (MOI-519)", "api": false, "domains": []}], "catalog_total": 439};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = n => n.toLocaleString("ko-KR");
+function ago(iso){const h=Math.round((Date.parse("2026-09-27T12:00:00+09:00")-Date.parse(iso))/36e5);return h<24?`${h}시간 전`:`${Math.round(h/24)}일 전`}
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("on");clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove("on"),2200)}
+function openSheet(html){$("#sheet").innerHTML='<div class="grab"></div>'+html;$("#sheet").classList.add("on");$("#dim").classList.add("on")}
+function closeSheet(){$("#sheet").classList.remove("on");$("#dim").classList.remove("on")}
+
+// ---- 데이터 가공 -------------------------------------------------------------------------
+const FEAT = Object.fromEntries(D.features.map(f => [f.feature, f]));
+const byState = f => { const c = {auto:0, manual:0, untested:0, excluded:0}; f.scenarios.forEach(s => s.variants.forEach(v => c[v.state] = (c[v.state]||0)+1)); return c; };
+const totalCases = D.features.reduce((a,f)=>a+f.scenarios.reduce((b,s)=>b+s.variants.length,0),0);
+const scripts = D.cases.filter(c => c.suite !== "setup");
+const setups = D.cases.filter(c => c.suite === "setup");
+const GROUP_OF = c => {
+  if (c.variant) { const slug = c.variant.split("/")[0]; const f = D.features.find(x => x.slug === slug); return f ? f.feature : slug; }
+  if (/^(auth|member|platform)\./.test(c.id)) return "기본 (로그인 · 상태)";
+  if (/^catalog\./.test(c.id)) return "카탈로그 (약관 · 직무 · 지역)";
+  if (c.id === "room.form-options") return "룸 생성";
+  if (c.id === "room.explore") return "룸 탐색";
+  return "기타";
+};
+const API_PRS = D.prs.filter(p => p.api);
+const S138 = {
+  scope: [
+    {f: "룸 생성", s: "S2", reqs: [["R147","분기: 수정하지 않고 모집 중인 룸을 취소한다."],["R148","분기: 일반 참여자가 있으면 룸을 취소하지 않고 방장이 룸에서 나간다. 방장은 가장 먼저 참여한 참여자에게 자동으로 위임된다."]]},
+    {f: "룸 진행 마무리 및 출석", s: "S2", reqs: [["R61","MVP 에는 진행 중 상태가 없다. 진행이 확정된 룸(CONFIRMED)은 그대로 있다가 완료된다."],["R63","확정 참여자별 출석·불참을 선택해 제출하면 룸이 완료된다."],["R70","분기: 방장이 진행 완료를 누르지 않으면 진행 예정 시각 8시간 뒤 자동으로 완료된다."]]},
+    {f: "룸 진행 확정", s: "S1", reqs: [["R4","방장이 진행을 확정하면 참여자에게 확정 사실을 알린다."],["R48","분기: 진행 확정 이후에도 참여자는 직접 참여를 취소할 수 있고, 확정 후 취소 이력이 기록된다."]]},
+    {f: "룸 참여 및 참여자 관리", s: "S1", reqs: [["R10","진행 확정 전에는 참여자가 직접 참여를 취소하거나 방장이 참여자를 내보낼 수 있다."]]},
+  ],
+  findings: [
+    {kind:"스펙과 코드가 달라요", title:"룸 취소 API 가 없어졌어요. PRD 에는 방장이 모집 중인 룸을 취소하는 흐름이 그대로 있어요",
+     spec:"「룸 생성」 S2 R147 · 수정하지 않고 모집 중인 룸을 취소한다.", code:"PR #138 DR-002 · 명시적 룸 취소 HTTP API 를 지운다. 방장이 나가면 위임하고, 후임이 없을 때만 취소한다.",
+     q:"PRD R147 을 백엔드처럼 \"방장이 나가면 위임, 후임이 없으면 취소\" 로 바꿀까요?", rec:"추천: 바꾼다. PRD 가 코드와 다르면 백엔드 dev 기준으로 맞춘다는 원칙(9/24)에 따른다."},
+    {kind:"스펙과 코드가 달라요", title:"진행 완료와 출석 기록이 나뉘었어요",
+     spec:"「룸 진행 마무리 및 출석」 S2 R63 · 출석·불참을 선택해 제출하면 룸이 완료된다.", code:"PR #138 DR-003 · 완료 전이에는 출석을 요구하지 않는다. 출석은 완료 후 방장이 한 번 기록한다.",
+     q:"R63 을 \"진행 완료 → 출석 기록\" 두 단계로 나눌까요?", rec:"추천: 나눈다. 규칙표 C.room.complete 의 출석 명단 검사도 출석 기록 쪽으로 옮긴다."},
+    {kind:"스펙이 모호해요", title:"확정 뒤 방장이 바뀌면 모집 중으로 돌아가 다시 확정해요. 이 규칙이 스펙에 없어요",
+     spec:"「룸 진행 확정」 · 확정 뒤 방장 위임에 대한 규칙 없음.", code:"PR #138 DR-002 · 확정 상태에서 위임되면 모집 중으로 돌아가 재확정한다. 이전 확정 이력이 있으면 일정이 지나도 재확정할 수 있다.",
+     q:"재확정 규칙을 「룸 진행 확정」과 규칙표에 넣을까요?", rec:"추천: 넣는다. 넣으면 Hermes 가 재확정 케이스를 채운다."},
+    {kind:"API 문서에 없어요", title:"룸 수정 API 가 코드에는 있지만 dev API 문서에 없어요",
+     spec:"「룸 생성」 S2 R146 · 룸의 제목·설명·면접 정보·진행 방식·모집 인원·진행 일정을 수정한다.", code:"RoomController · PUT /v1/rooms/{roomId}. openapi3.yaml 에 없음.",
+     q:"백엔드에 REST Docs 추가를 요청할까요?", rec:"추천: 요청한다. 그 전까지 룸 수정 케이스는 스크립트를 만들 수 없다."},
+  ],
+  impact: [
+    {id:"room.cancel", t:"일반 참여자가 없는 모집 중인 룸을 방장이 취소한다", d:"없는 API 를 부른다. 첫 번째 질문이 정해지면 Hermes 가 고치거나 지운다."},
+    {id:"room.cancel-not-recruiting", t:"이미 취소한 룸을 다시 취소하면 E1410 으로 거절된다", d:"같은 이유."},
+    {id:"setup.room-ready-to-start", t:"진행 시작 직전 상태의 룸 만들기", d:"MVP 에 진행 중 상태가 없어 쓸 곳이 없다. \"완료할 수 있는 룸\" 카드로 바꾼다."},
+  ],
+};
+// 범위: 이 PR 과 관련된 요구에 걸린 케이스 + 그 시나리오의 정상 흐름
+S138.cases = S138.scope.flatMap(x => (FEAT[x.f]?.scenarios.find(s => s.id === x.s)?.variants || []).filter(v => v.kind === "happy" || x.reqs.some(r => r[0] === v.at)).map(v => ({...v, f: x.f, s: x.s})));
+const resolved = new Set();
+
+// ---- 화면 ---------------------------------------------------------------------------------
+const R = {};
+R.home = () => {
+  const unver = API_PRS.filter(p => p.number !== 138);
+  const todo = [
+    {ic:"orange", em:"!", t:"PR #138 스펙 확인이 4건 필요해요", d:"룸 취소 API 삭제 · 완료와 출석 분리 · 재확정 · 룸 수정 문서 누락", b:"질문 보기", h:"#/sanity/138"},
+    ...unver.slice(0,2).map(p => ({ic:"blue", em:"#", t:`PR #${p.number} · 아직 검증하지 않았어요`, d:esc(p.title), b:"Sanity 시작", h:"#/sanity"})),
+    {ic:"grey", em:"▶", t:"이번 스프린트(Cycle 10) 스모크를 아직 안 했어요", d:`스크립트 ${scripts.length}개 · 9월 27일까지`, b:"스모크 실행", h:"#/smoke"},
+    {ic:"red", em:"▦", t:"dev 에 QA 룸 3개가 남아 있어요", d:"실패한 실행이 만든 룸일 수 있어요", b:"정리하기", h:"#/data", demo:1},
+  ];
+  const leg = [["스크립트로 확인","var(--blue)"],["사람이 확인","var(--orange)"],["테스트 없음","#D1D6DB"],["자동화 제외","#EEF0F2"]];
+  return `
+  <div class="hello">9월 27일 토요일</div>
+  <h1>bebe 님, 확인할 일이 ${todo.length}개 있어요</h1>
+  <p class="sub">PR 이 머지되면 Sanity 로 확인하고, 스프린트마다 스모크를 돌려 주세요.</p>
+  <div class="list">${todo.map(x => `
+    <a class="row link" href="${x.h}"><div class="ic ${x.ic}">${x.em}</div>
+      <div class="tx"><div class="t">${x.t}${x.demo?'<span class="demo">시안 예시</span>':''}</div><div class="d">${x.d}</div></div>
+      <span class="btn ${x.ic==="orange"||x.ic==="blue"?"soft":"grey"}">${x.b}</span></a>`).join("")}</div>
+
+  <div class="section"><div class="grid3">
+    <a class="job" href="#/sanity"><div class="em">🔍</div><div class="n">Sanity 테스트</div><div class="d">머지된 PR 하나를 골라요. Hermes 가 관련 스펙을 찾아 테스트를 만들고 dev 에서 확인해요.</div><div class="go">PR ${API_PRS.length}개 →</div></a>
+    <a class="job" href="#/smoke"><div class="em">💨</div><div class="n">스모크 테스트</div><div class="d">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요.</div><div class="go">스크립트 ${scripts.length}개 →</div></a>
+    <a class="job" href="#/data"><div class="em">🧪</div><div class="n">QA 데이터</div><div class="d">테스트용 룸·신청·계정을 버튼 하나로 만들고, 다 쓰면 지워요.</div><div class="go">만들기 ${setups.length + 1}가지 →</div></a>
+  </div></div>
+
+  <div class="section"><div class="sec-head"><h2>기능별 테스트 준비</h2><a>시나리오 전체 보기 →</a></div>
+    <div class="card">
+      <div class="legend">${leg.map(([n,c]) => `<span style="--c:${c}">${n}</span>`).join("")}</div>
+      ${D.features.map(f => { const c = byState(f), n = c.auto+c.manual+c.untested+c.excluded;
+        return `<div class="frow"><div class="nm">${esc(f.feature)}</div>
+          <div class="prog"><i style="width:${c.auto/n*100}%;background:var(--blue)"></i><i style="width:${c.manual/n*100}%;background:var(--orange)"></i><i style="width:${c.untested/n*100}%;background:#D1D6DB"></i><i style="width:${c.excluded/n*100}%;background:#EEF0F2"></i></div>
+          <div class="ct">케이스 ${n}개 · 스크립트 ${c.auto}개</div></div>`}).join("")}
+      <p style="color:var(--text3);font-size:13px;margin:14px 8px 0">케이스 ${totalCases}개는 PRD 2장과 규칙표로 채운 초안이에요. 스크립트는 Sanity 가 PR 마다 채워 가요.</p>
+    </div></div>
+
+  <div class="section"><div class="sec-head"><h2>최근 실행</h2><a>실행 기록 →</a></div>
+    <div class="card empty"><div class="em">🗂️</div><b>아직 2판에서 실행한 기록이 없어요</b>Sanity 나 스모크를 돌리면 여기에 쌓여요.</div></div>`;
+};
+
+R.sanity = () => {
+  const st = p => p.number === 138 ? `<span class="badge b-need">확인 필요</span>` : p.api ? `<span class="badge b-none">검증 안 함</span>` : "";
+  const row = p => `
+    <div class="row ${p.api ? "link" : "faded"}" ${p.api ? `onclick="location.hash='${p.number===138?"#/sanity/138":"#/sanity"}'"` : ""}>
+      <div class="ic ${p.number===138?"orange":p.api?"blue":"grey"}">#</div>
+      <div class="tx"><div class="t">#${p.number} ${esc(p.title)}</div>
+        <div class="d">${esc(p.author)} · ${ago(p.mergedAt)} 머지 · 파일 ${fmt(p.changedFiles)}개 <span style="color:var(--green)">+${fmt(p.additions)}</span> <span style="color:var(--red)">−${fmt(p.deletions)}</span>
+        ${p.api ? "" : " · API 변경 없음"}</div></div>
+      ${st(p)}
+      ${p.api ? (p.number===138 ? `<span class="btn soft">결과 보기</span>` : `<button class="btn primary" onclick="event.stopPropagation();startSanity(${p.number})">Sanity 시작</button>`) : ""}
+    </div>`;
+  return `
+  <h1>Sanity 테스트</h1>
+  <p class="sub">머지된 PR 하나를 골라 스펙대로 동작하는지 확인해요. 시작은 사람이 눌러요.</p>
+  <div class="seg"><button class="on">전체 ${D.prs.length}</button><button>검증 안 함 ${API_PRS.length-1}</button><button>확인 필요 1</button><button>끝남 0</button></div>
+  <div class="list">${API_PRS.map(row).join("")}</div>
+  <div class="section"><div class="sec-head"><h2 style="font-size:16px;color:var(--text3)">API 변경이 없는 PR</h2></div>
+  <div class="list">${D.prs.filter(p=>!p.api).map(row).join("")}</div></div>`;
+};
+
+window.startSanity = n => {
+  const p = D.prs.find(x => x.number === n);
+  openSheet(`<h3>PR #${n} Sanity 를 시작할까요?</h3><p class="sd">${esc(p.title)}</p>
+    <div class="kv"><div><span>담당자</span><b>bebe</b></div><div><span>대상</span><b class="mono">api.dev.moimyeon.plady.io</b></div>
+    <div><span>하는 일</span><b>스펙 찾기 → 점검 → 준비 → 스크립트 → 실행</b></div></div>
+    <p style="color:var(--text3);font-size:13px;margin:-6px 0 18px">스펙이 모호하거나 코드와 다르면 그 자리에서 멈추고 알려 드려요. 시작한 사람과 시각은 감사 로그에 남아요.</p>
+    <button class="btn primary big full" onclick="closeSheet();toast('시안이에요. 실제로는 여기서 Hermes 가 시작해요')">시작하기</button>`);
+};
+
+R.sanity138 = () => {
+  const p = D.prs.find(x => x.number === 138);
+  const cs = S138.cases, auto = cs.filter(v => v.state==="auto").length, man = cs.filter(v => v.state==="manual").length;
+  const make = cs.filter(v => v.state==="untested" && v.mode!=="manual").length;
+  const left = S138.findings.length - resolved.size;
+  const steps = [
+    ["관련 스펙 찾기", `기능 ${S138.scope.length}개 · 요구 ${S138.scope.reduce((a,x)=>a+x.reqs.length,0)}개`, "done"],
+    ["스펙 점검", left ? `확인 필요 ${left}건` : "모두 정했어요", left ? "need" : "done"],
+    ["테스트 조건·케이스 준비", `케이스 ${cs.length}개`, ""],
+    ["스크립트 만들기", `새로 ${make}개 예정`, ""],
+    ["실행·검사", "dev", ""],
+  ];
+  return `
+  <a class="back" href="#/sanity">‹ Sanity 테스트</a>
+  <div class="meta"><span class="mono" style="font-size:13px">PR #138</span><span>·</span><span>${esc(p.author)}</span><span>·</span><span>${ago(p.mergedAt)} 머지</span><span>·</span><span>MOI-541</span></div>
+  <h1>${esc(p.title)}</h1>
+  <div class="meta"><span class="badge ${left?"b-need":"b-run"}">${left?"확인 필요":"이어서 할 수 있어요"}</span><span>bebe 가 오늘 11:20 에 시작</span><span class="demo">시안 예시</span></div>
+
+  <div class="banner need"><div class="em">✋</div><div>
+    <b>${left ? `스펙을 정해야 할 곳이 ${left}군데 있어요` : "모두 정했어요. 이어서 진행할 수 있어요"}</b>
+    <p>${left ? "정하시면 이어서 케이스를 준비하고 스크립트를 만들어 dev 에서 확인할게요. 위키를 고친 뒤 다시 점검해도 돼요." : "아래 [이대로 계속]을 누르면 3단계부터 이어서 해요."}</p></div></div>
+
+  <div class="cols">
+    <aside class="steps">${steps.map(([n,d,c],i) => `<div class="st ${c}"><div class="dot">${c==="done"?"✓":c==="need"?"!":i+1}</div><div><div class="n">${n}</div><div class="d">${d}</div></div></div>`).join("")}</aside>
+    <div>
+      ${S138.findings.map((f,i) => `
+      <div class="find"><div class="k">${f.kind}</div><h3>${esc(f.title)}</h3>
+        <div class="vs"><div><b>스펙</b>${esc(f.spec)}</div><div><b>코드</b>${esc(f.code)}</div></div>
+        <div class="q"><b>질문</b> ${esc(f.q)}<div class="rec">${esc(f.rec)}</div></div>
+        ${resolved.has(i) ? `<div class="acts done">✓ 추천대로 정했어요 · bebe · 방금</div>` :
+        `<div class="acts"><button class="btn primary" onclick="resolveF(${i})">추천대로 정하기</button><button class="btn grey">다르게 정하기</button><button class="btn grey">Slack 으로 묻기</button></div>`}
+      </div>`).join("")}
+
+      <div class="section"><h2>관련 스펙</h2><div class="list">${S138.scope.map(x => `
+        <div class="scope-f"><div class="fn"><span>${esc(x.f)} <span class="mono" style="color:var(--text3)">${x.s}</span></span><span style="color:var(--text3);font-size:13px;font-weight:600">이번 범위 케이스 ${S138.cases.filter(v=>v.f===x.f).length}개</span></div>
+          <ul class="reqs">${x.reqs.map(([r,t]) => `<li><span class="mono">${r}</span><span>${esc(t)}</span></li>`).join("")}</ul></div>`).join("")}</div></div>
+
+      <div class="section"><h2>영향 받는 스크립트와 데이터</h2><div class="list">${S138.impact.map(x => `
+        <div class="row"><div class="ic red">↯</div><div class="tx"><div class="t">${esc(x.t)}</div><div class="d"><span class="mono">${x.id}</span> · ${esc(x.d)}</div></div></div>`).join("")}</div></div>
+
+      <div class="section"><h2>이대로 계속하면</h2><div class="card">
+        <div class="grid3" style="gap:20px">
+          <div><div style="color:var(--text3);font-size:13px">이미 스크립트가 있는 케이스</div><div style="font-size:26px;font-weight:800">${auto}개</div></div>
+          <div><div style="color:var(--text3);font-size:13px">Hermes 가 스크립트를 만들 케이스</div><div style="font-size:26px;font-weight:800;color:var(--blue)">${make}개</div></div>
+          <div><div style="color:var(--text3);font-size:13px">사람이 확인할 케이스</div><div style="font-size:26px;font-weight:800;color:var(--orange)">${man + cs.filter(v=>v.state==="untested"&&v.mode==="manual").length}개</div></div>
+        </div></div></div>
+    </div>
+  </div>
+  <div class="bar-bottom"><div class="bar-in">
+    <div class="sum"><b>${left ? `확인 필요 ${left}건이 남았어요` : "모두 정했어요"}</b>계속하면 정하지 않은 항목의 케이스는 사람이 확인으로 둬요.</div>
+    <button class="btn grey big">위키 고친 뒤 다시 점검</button>
+    <button class="btn primary big" onclick="toast('시안이에요. 실제로는 3단계부터 이어서 해요')">이대로 계속</button>
+  </div></div>`;
+};
+window.resolveF = i => { resolved.add(i); render(); toast("정했어요. 감사 로그에 남겼어요"); };
+
+let smokeMode = "all", smokePick = null, smokeRun = null;
+R.smoke = () => {
+  const groups = {}; scripts.forEach(c => (groups[GROUP_OF(c)] ||= []).push(c));
+  const names = Object.keys(groups).sort((a,b) => groups[b].length - groups[a].length);
+  if (!smokePick) smokePick = new Set(names);
+  const sel = smokeMode === "all" ? names : smokeMode === "failed" ? ["룸 생성"] : [...smokePick];
+  const chosen = smokeMode === "failed" ? scripts.filter(c => c.id.startsWith("room.cancel")) : sel.flatMap(n => groups[n] || []);
+  const steps = chosen.reduce((a,c)=>a+c.steps,0);
+  if (smokeRun) return smokeResult(chosen);
+  return `
+  <h1>스모크 테스트</h1>
+  <p class="sub">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요.</p>
+  <div class="seg">${[["all","전체"],["pick","기능별"],["failed","지난번 실패만"]].map(([k,n]) => `<button class="${smokeMode===k?"on":""}" onclick="smokeMode='${k}';render()">${n}</button>`).join("")}</div>
+  <div class="list">${smokeMode === "failed" ? chosen.map(c => `
+      <div class="pick on"><div class="ck"></div><div class="tx"><div class="t">${esc(c.title)}</div><div class="d mono">${c.id}</div></div><span class="demo">시안 예시</span></div>`).join("") :
+    names.map(n => `
+      <div class="pick ${sel.includes(n)?"on":""}" ${smokeMode==="pick"?`onclick="togglePick('${n}')"`:""}><div class="ck"></div>
+        <div class="tx"><div class="t">${esc(n)}</div><div class="d">${groups[n].slice(0,3).map(c=>esc(c.title)).join(" · ")}${groups[n].length>3?" …":""}</div></div>
+        <div class="n">${groups[n].length}개</div></div>`).join("")}</div>
+  <p style="color:var(--text3);font-size:13px;margin:14px 4px">케이스 ${totalCases}개 중 스크립트가 있는 것만 돌아요. 나머지는 Sanity 가 PR 마다 채워 가요.</p>
+  <div class="bar-bottom"><div class="bar-in">
+    <div class="sum"><b>스크립트 ${chosen.length}개</b>단계 ${steps}개 · 약 ${Math.max(10, Math.round(steps*1.4))}초</div>
+    <button class="btn primary big" ${chosen.length?"":"disabled"} onclick="confirmSmoke(${chosen.length})">스모크 실행</button></div></div>`;
+};
+window.togglePick = n => { smokePick.has(n) ? smokePick.delete(n) : smokePick.add(n); render(); };
+window.confirmSmoke = n => openSheet(`<h3>스크립트 ${n}개를 dev 에 실행할까요?</h3><p class="sd">실행 종류는 스프린트 스모크(Cycle 10)로 남아요.</p>
+  <div class="kv"><div><span>담당자</span><b>bebe</b></div><div><span>대상</span><b class="mono">api.dev.moimyeon.plady.io</b></div><div><span>Slack 알림</span><b>끝나면 보내요</b></div></div>
+  <button class="btn primary big full" onclick="closeSheet();runSmoke()">실행하기</button>`);
+window.runSmoke = () => { smokeRun = {p:0}; render(); const t = setInterval(() => { smokeRun.p += 7; if (smokeRun.p >= 100) { smokeRun.p = 100; smokeRun.done = true; clearInterval(t); } render(); }, 120); };
+function smokeResult(chosen){
+  const fail = chosen.filter(c => c.id.startsWith("room.cancel"));
+  if (!smokeRun.done) { const cur = chosen[Math.min(chosen.length-1, Math.floor(smokeRun.p/100*chosen.length))];
+    return `<h1>스모크 테스트를 돌리고 있어요</h1><p class="sub">창을 닫아도 계속 돌아요. 끝나면 Slack 으로 알려 드려요.</p>
+      <div class="card"><div style="font-weight:700">${esc(cur.title)}</div><div class="mono" style="color:var(--text3)">${cur.id}</div>
+      <div class="running"><i style="width:${smokeRun.p}%"></i></div><div style="color:var(--text3);font-size:13px">${Math.floor(smokeRun.p/100*chosen.length)} / ${chosen.length}</div></div>`; }
+  const pass = chosen.length - fail.length, pct = Math.round(pass/chosen.length*100);
+  return `<a class="back" href="#/smoke" onclick="smokeRun=null">‹ 스모크 테스트</a>
+    <div class="card res-head"><div class="ring" style="background:conic-gradient(var(--green) ${pct}%, var(--red) 0)"><span>${pct}%</span></div>
+      <div><h1 style="margin:0">${chosen.length}개 중 ${pass}개 통과했어요</h1><p class="sub" style="margin:4px 0 0">실패 ${fail.length}개는 모두 룸 취소 API 가 없어진 탓이에요. <span class="demo">시안 예시</span></p></div></div>
+    <div class="section"><h2>실패</h2><div class="list">${fail.map(c => `
+      <div class="row link"><div class="ic red">✕</div><div class="tx"><div class="t">${esc(c.title)}</div><div class="d">1단계 · POST /v1/rooms/{roomId}/cancellation → 404 · Hermes 분석: 스크립트 낡음 (PR #138 이 API 를 지웠다)</div></div><span class="badge b-fail">실패</span></div>`).join("") || '<div class="empty"><b>실패 없음</b></div>'}</div></div>
+    <div class="section"><h2>통과</h2><div class="list">${chosen.filter(c=>!fail.includes(c)).map(c => `
+      <div class="row"><div class="ic green">✓</div><div class="tx"><div class="t">${esc(c.title)}</div><div class="d">${esc(GROUP_OF(c))} · <span class="mono">${c.id}</span></div></div><span class="badge b-pass">통과</span></div>`).join("")}</div></div>`;
+}
+
+const DGROUP = [
+  ["룸", ["setup.room-open","setup.room-with-application","setup.room-confirmed","setup.room-reschedule","setup.room-ready-to-start"]],
+  ["계정 · 이력서", ["qa-member","setup.resume-list","setup.resume-summary"]],
+];
+const EXTRA = {"qa-member": {id:"qa-member", title:"QA 회원 만들기", desc:"이름이 [QA] 로 시작하는 새 회원을 만들어 테스트 계정으로 써요. 이력서와 요약까지 함께 준비돼요.", inputs:[{name:"nickname", default:"[QA] 새 회원"}], outputs:["memberId"]}};
+const INPUT_LABEL = {title:"룸 제목", minParticipants:"최소 진행 인원", maxParticipants:"최대 모집 인원", daysFromNow:"며칠 뒤", note:"방장에게 전할 말", roomId:"룸 id", time:"시각", actor:"테스트 계정", resumeId:"이력서 id", summary:"요약 문장", nickname:"닉네임"};
+const ONE = s => { const t = String(s||"").split(/(?<=[.다요])\s/)[0]; return t.length > 90 ? t.slice(0,88)+"…" : t; };
+R.data = () => {
+  const card = id => { const c = EXTRA[id] || setups.find(x => x.id === id); if (!c) return "";
+    const old = id === "setup.room-ready-to-start";
+    return `<div class="dcard" onclick="openData('${id}')"><div class="ic ${old?"orange":"blue"}" style="width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none">${id.includes("resume")?"📄":id==="qa-member"?"👤":"🏠"}</div>
+      <div><div class="t">${esc(c.title)}</div><div class="d">${esc(ONE(c.desc))}</div>${old?'<span class="warn">MVP 에는 진행 중이 없어요 · PR #138</span>':""}</div></div>`; };
+  return `
+  <h1>QA 데이터</h1>
+  <p class="sub">테스트용 데이터를 dev 에 만들고 지워요. 만든 데이터는 이름이 [QA] 로 시작해요.</p>
+  <div class="card left-sum"><div style="flex:1"><div style="font-weight:700;margin-bottom:12px">지금 dev 에 남은 QA 데이터 <span class="demo">시안 예시</span></div>
+    <div class="nums"><div><b>3</b>룸</div><div><b>2</b>회원</div><div><b>4</b>이력서</div></div></div>
+    <button class="btn danger big" onclick="confirmClean()">전부 지우기</button></div>
+  ${DGROUP.map(([g, ids]) => `<div class="section"><h2>${g} 만들기</h2><div class="grid2">${ids.map(card).join("")}</div></div>`).join("")}`;
+};
+window.openData = id => {
+  const c = EXTRA[id] || setups.find(x => x.id === id);
+  const ins = (c.inputs || []).map(i => `<div class="fld"><label>${esc(i.label || INPUT_LABEL[i.name] || i.name)}</label>
+    <input value="${esc(i.default ?? "")}" placeholder="${i.required?"꼭 넣어 주세요":"비워 두면 기본값"}">${i.hint?`<div class="h">${esc(i.hint)}</div>`:""}</div>`).join("");
+  openSheet(`<h3>${esc(c.title)}</h3><p class="sd">${esc(c.desc || "")}</p>${ins || '<p style="color:var(--text3)">넣을 값이 없어요. 바로 만들 수 있어요.</p>'}
+    <details class="raw"><summary>요청 원문 보기</summary><pre>POST /v1/dev/…  (단계 ${c.steps || 1}개, 담당자 bebe)</pre></details>
+    <button class="btn primary big full" onclick="made('${id}')">만들기</button>`);
+};
+window.made = id => { const c = EXTRA[id] || setups.find(x => x.id === id);
+  openSheet(`<div style="text-align:center;padding:8px 0 4px"><div style="font-size:44px">✅</div><h3>만들었어요</h3><p class="sd">${esc(c.title)}</p></div>
+    <div class="kv">${(c.outputs && c.outputs.length ? c.outputs : ["roomId"]).slice(0,4).map(o => `<div><span>${esc(o)}</span><b class="mono">0199…${Math.random().toString(16).slice(2,8)}</b></div>`).join("")}</div>
+    <div class="grid2"><button class="btn grey big" onclick="closeSheet();toast('복사했어요')">값 복사</button><button class="btn danger big" onclick="closeSheet();toast('지웠어요')">바로 지우기</button></div>`); };
+window.confirmClean = () => openSheet(`<h3>QA 데이터를 전부 지울까요?</h3><p class="sd">이름이 [QA] 로 시작하는 데이터만 지워요. 지우면 되돌릴 수 없어요.</p>
+  <div class="kv"><div><span>룸</span><b>[QA] 룸 방명록 sanity 외 2개</b></div><div><span>회원</span><b>[QA] 회원 2명</b></div><div><span>이력서</span><b>4개</b></div></div>
+  <button class="btn danger big full" onclick="closeSheet();toast('지웠어요. 감사 로그에 남겼어요')">지우기</button>`);
+
+// ---- 라우터 --------------------------------------------------------------------------------
+function render(){
+  const h = location.hash || "#/";
+  const key = h.startsWith("#/sanity/138") ? "sanity138" : h.startsWith("#/sanity") ? "sanity" : h.startsWith("#/smoke") ? "smoke" : h.startsWith("#/data") ? "data" : "home";
+  const nav = key === "sanity138" ? "sanity" : key;
+  document.querySelectorAll("[data-r]").forEach(a => a.classList.toggle("on", a.dataset.r === nav));
+  $("#app").innerHTML = R[key]();
+}
+addEventListener("hashchange", () => { closeSheet(); if (!location.hash.startsWith("#/smoke")) smokeRun = null; scrollTo(0,0); render(); });
+document.addEventListener("click", e => { if (!e.target.closest("#more")) $("#more").classList.remove("open"); });
+render();
+</script>
+</body>
+</html>
