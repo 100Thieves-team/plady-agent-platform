@@ -79,6 +79,13 @@ SANITY_SQL = """CREATE TABLE IF NOT EXISTS sanity (
 );
 CREATE INDEX IF NOT EXISTS ix_sanity_pr ON sanity(pr_number, created_at);
 """
+# 대상 서버 (docs/qa-platform-v2.md §13) — dev 는 설정값이 기본이고 여기에는 더한 것만. settings 는 담당자별 고른 대상 같은 작은 값.
+TARGETS_SQL = """CREATE TABLE IF NOT EXISTS targets (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, base_url TEXT NOT NULL, actors TEXT NOT NULL DEFAULT '{}', operator TEXT NOT NULL,
+  created_at TEXT NOT NULL, deleted_at TEXT, probe TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+"""
 QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
   member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
 );"""
@@ -115,6 +122,7 @@ class Store:
             self._db.executescript(QA_MEMBERS_SQL)
             self._db.executescript(JOBS_SQL)
             self._db.executescript(SANITY_SQL)
+            self._db.executescript(TARGETS_SQL)
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -494,3 +502,34 @@ class Store:
     def interrupt_sanity(self) -> int:
         """재시작 때 돌던 Sanity 를 멈춤으로 닫는다(다시 돌리지 않는다 — 사람이 다시 누른다)."""
         return self._x("UPDATE sanity SET status='interrupted', updated_at=? WHERE status IN ('queued','running')", (now_iso(),))
+
+    # ---- 대상 서버 · 설정 (docs/qa-platform-v2.md §13) --------------------------
+    def add_target(self, *, name: str, base_url: str, actors: dict, operator: str, probe: dict) -> str:
+        tid = "t-" + secrets.token_hex(4)
+        self._x("INSERT INTO targets (id, name, base_url, actors, operator, created_at, probe) VALUES (?,?,?,?,?,?,?)",
+                (tid, name, base_url, json.dumps(actors, ensure_ascii=False), operator, now_iso(), json.dumps(probe, ensure_ascii=False)))
+        return tid
+
+    @staticmethod
+    def _target(r: dict | None) -> dict | None:
+        if r:
+            r["actors"] = json.loads(r["actors"] or "{}")
+            r["probe"] = json.loads(r["probe"] or "{}")
+        return r
+
+    def list_targets(self) -> list[dict]:
+        return [self._target(r) for r in self._q("SELECT * FROM targets WHERE deleted_at IS NULL ORDER BY created_at")]
+
+    def get_target(self, tid: str) -> dict | None:
+        return self._target(self._one("SELECT * FROM targets WHERE id=? AND deleted_at IS NULL", (tid,)))
+
+    def delete_target(self, tid: str) -> None:
+        self._x("UPDATE targets SET deleted_at=? WHERE id=?", (now_iso(), tid))
+
+    def get_setting(self, key: str) -> str | None:
+        r = self._one("SELECT value FROM settings WHERE key=?", (key,))
+        return r["value"] if r else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._x("INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                (key, value, now_iso()))

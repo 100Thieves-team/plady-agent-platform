@@ -25,9 +25,10 @@ class ActorPool:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self._tokens: dict[str, str] = {}
+        self._tokens: dict[tuple, str] = {}     # (대상 주소, 계정 이름) → 토큰 — 대상마다 회원이 다르다 (docs/qa-platform-v2.md §13)
         self._lock = threading.Lock()
         self.extra = None      # () -> {name: memberId} — 플랫폼이 만든 QA 테스트 회원(store.qa_members). App 이 꽂는다
+        self.by_base = None    # (base_url) -> {name: memberId} — 등록한 대상 서버의 테스트 계정. App 이 꽂는다
 
     def mapping(self) -> dict:
         """이름 → 회원 UUID. SSM 의 고정 테스트 계정 + 플랫폼이 만든 QA 회원."""
@@ -39,28 +40,38 @@ class ActorPool:
                 pass
         return out
 
-    def member_id(self, name: str) -> str | None:
+    def member_id(self, name: str, base_url: str | None = None) -> str | None:
+        """그 대상에 따로 적은 회원 id 가 있으면 그것, 없으면 dev 와 같은 id."""
+        if base_url and self.by_base:
+            try:
+                mid = (self.by_base(base_url) or {}).get(name)
+            except Exception:
+                mid = None
+            if mid:
+                return mid
         return self.mapping().get(name)
 
     def token(self, name: str, base_url: str | None = None) -> str:
-        mid = self.member_id(name)
+        base = base_url or self.cfg.target_base_url
+        mid = self.member_id(name, base)
         if not mid:
             raise TemplateError(f"actor.{name}", "actor")
         with self._lock:
-            if name in self._tokens:
-                return self._tokens[name]
-        r = httpx.request("POST", f"{base_url or self.cfg.target_base_url}/v1/auth/dev-sessions", body={"memberId": mid},
+            if (base, name) in self._tokens:
+                return self._tokens[(base, name)]
+        r = httpx.request("POST", f"{base}/v1/auth/dev-sessions", body={"memberId": mid},
                           timeout=self.cfg.request_timeout)
         tok = get_path(r.json, "data.accessToken") if r.json else None
         if r.status != 200 or not tok:
             raise RuntimeError(f"테스트 계정 '{name}' 토큰 발급 실패: status={r.status} {r.error or (r.text or '')[:200]}")
         with self._lock:
-            self._tokens[name] = tok
+            self._tokens[(base, name)] = tok
         return tok
 
     def invalidate(self, name: str):
         with self._lock:
-            self._tokens.pop(name, None)
+            for k in [k for k in self._tokens if k[1] == name]:
+                self._tokens.pop(k, None)
 
 
 def evaluate(expect: dict, status: int, body) -> list[dict]:

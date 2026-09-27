@@ -37,14 +37,14 @@ class QaData:
         return None
 
     # ---- 호출 ------------------------------------------------------------------
-    def _call(self, method: str, path: str, query: dict | None = None, body=None) -> tuple[bool, dict, int]:
+    def _call(self, method: str, path: str, query: dict | None = None, body=None, base: str | None = None) -> tuple[bool, dict, int]:
         """(ok, data 또는 error, status). 네트워크 오류는 ok=False, error={"code": "NETWORK", "message": …}."""
         cfg = self.app.cfg
         try:
-            token = self.app.runner.actors.token(self.actor, cfg.target_base_url)
+            token = self.app.runner.actors.token(self.actor, base or cfg.target_base_url)
         except Exception as e:  # 토큰 발급 실패도 화면에 그대로
             return False, {"code": "AUTH", "message": f"테스트 계정 토큰 발급 실패: {e}"}, 0
-        url = cfg.target_base_url + path
+        url = (base or cfg.target_base_url) + path
         if query:
             from urllib.parse import urlencode
             url += "?" + urlencode({k: v for k, v in query.items() if v not in (None, "")})
@@ -68,35 +68,36 @@ class QaData:
             hint = " — 인증이 거부됐다. 테스트 계정 토큰(dev-sessions)이 dev 에서 유효한지 확인"
         return False, {"code": code, "message": (message or "(몸체 없음)") + hint}, r.status
 
-    def list(self) -> tuple[bool, dict, int]:
-        return self._call("GET", "/v1/dev/qa-data")
+    # base: 대상 서버 주소 (docs/qa-platform-v2.md §13). 없으면 dev
+    def list(self, base: str | None = None) -> tuple[bool, dict, int]:
+        return self._call("GET", "/v1/dev/qa-data", base=base)
 
-    def delete_room(self, room_id: str) -> tuple[bool, dict, int]:
-        return self._call("DELETE", f"/v1/dev/rooms/{room_id}")
+    def delete_room(self, room_id: str, base: str | None = None) -> tuple[bool, dict, int]:
+        return self._call("DELETE", f"/v1/dev/rooms/{room_id}", base=base)
 
-    def delete_all(self, host_member_id: str | None = None, include_members: bool = False) -> tuple[bool, dict, int]:
-        return self._call("DELETE", "/v1/dev/qa-data", query={"hostMemberId": host_member_id, "includeMembers": "true" if include_members else None})
+    def delete_all(self, host_member_id: str | None = None, include_members: bool = False, base: str | None = None) -> tuple[bool, dict, int]:
+        return self._call("DELETE", "/v1/dev/qa-data", query={"hostMemberId": host_member_id, "includeMembers": "true" if include_members else None}, base=base)
 
-    def reset_member(self, member_id: str) -> tuple[bool, dict, int]:
-        return self._call("POST", f"/v1/dev/members/{member_id}/reset")
+    def reset_member(self, member_id: str, base: str | None = None) -> tuple[bool, dict, int]:
+        return self._call("POST", f"/v1/dev/members/{member_id}/reset", base=base)
 
-    def delete_member(self, member_id: str) -> tuple[bool, dict, int]:
-        return self._call("DELETE", f"/v1/dev/members/{member_id}")
+    def delete_member(self, member_id: str, base: str | None = None) -> tuple[bool, dict, int]:
+        return self._call("DELETE", f"/v1/dev/members/{member_id}", base=base)
 
-    def create_member(self) -> tuple[bool, dict, int]:
+    def create_member(self, base: str | None = None) -> tuple[bool, dict, int]:
         """QA 테스트 회원 생성. 응답의 accessToken 은 쓰지 않는다 — 나중에 dev-sessions 로 memberId 만 있으면 토큰을 받는다."""
-        ok, data, status = self._call("POST", "/v1/dev/members")
+        ok, data, status = self._call("POST", "/v1/dev/members", base=base)
         if ok:
             data = {k: v for k, v in data.items() if k != "accessToken"}
         return ok, data, status
 
     # ---- 화면용 스냅샷 -----------------------------------------------------------
-    def snapshot(self) -> dict:
+    def snapshot(self, base: str | None = None) -> dict:
         """정리 화면 한 장에 필요한 것: 가능 여부·목록·테스트 계정 이름 대응. 회원 UUID 는 이름으로 바꾸고 나머지는 앞 8자리만."""
         why = self.why_unavailable()
         if why:
             return {"available": False, "why": why, "rooms": [], "members": [], "actors": list(self.app.cfg.actors)}
-        ok, data, status = self.list()
+        ok, data, status = self.list(base)
         if not ok:
             return {"available": True, "why": None, "error": data, "rooms": [], "members": [], "actors": list(self.app.cfg.actors)}
         by_uuid = {v: k for k, v in self.app.all_actors().items()}

@@ -34,6 +34,9 @@ class Config:
         self.cases_dir = Path(g("QA_CASES_DIR", str(Path(__file__).resolve().parent.parent / "cases")))
         self.scenarios_dir = Path(g("QA_SCENARIOS_DIR", str(Path(__file__).resolve().parent.parent / "scenarios")))   # docs/qa-platform-scenarios.md §4
         self.public_url = g("QA_PUBLIC_URL", "https://qa.agent.plady.io").rstrip("/")
+        # 대상 서버에 localhost·내부 주소를 허용할까 (docs/qa-platform-v2.md §13) — 노트북에서 띄운 플랫폼이면 허용
+        _pub = self.public_url.split("://", 1)[-1].split("/")[0].split(":")[0]
+        self.allow_local_targets = g("QA_ALLOW_LOCAL_TARGETS", "").lower() in ("1", "true", "yes") or _pub in ("localhost", "127.0.0.1")
 
         # 검증 대상
         self.target_env = g("QA_TARGET_ENV", "dev")

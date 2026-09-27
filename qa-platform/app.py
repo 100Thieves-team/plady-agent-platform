@@ -41,6 +41,7 @@ from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
 from qa.mcp_server import McpServer  # noqa: E402
 from qa import report as reportmod  # noqa: E402
 from qa import sanity as sanitymod  # noqa: E402
+from qa import targets as targetsmod  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.reminder import Reminder  # noqa: E402
 from qa.runner import Runner  # noqa: E402
@@ -91,7 +92,8 @@ class App:
         self.qadata = QaData(self)     # dev 전용 QA 데이터 API(삭제·초기화·회원 생성) 클라이언트
         self.runner.actors.extra = self.store.qa_member_map   # 플랫폼이 만든 QA 회원도 테스트 계정 이름으로
         self.store.interrupt_sanity()     # 재시작 전에 돌던 Sanity 는 멈춤으로 (docs/qa-platform-v2.md §9.1)
-        self._qa_snap: tuple[float, dict] | None = None      # 홈에 쓰는 남은 QA 데이터 (QA 데이터 화면을 열 때 갱신)
+        self._qa_snap: dict[str, tuple[float, dict]] = {}     # 대상 주소 → 남은 QA 데이터 (QA 데이터 화면을 열 때 갱신)
+        self.runner.actors.by_base = self.target_actors      # 대상 서버마다 따로 적은 테스트 계정
         self._sanity_todo: int | None = None                  # 왼쪽 메뉴의 Sanity 숫자 (PR 목록을 읽을 때 갱신)
 
     def start(self):
@@ -372,12 +374,12 @@ class App:
             raise BadRequest("스크립트를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
         cat = self.catalog.current
-        meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen],
+        meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen], "target": self.target_for(operator)["name"],
                 "catalog": (cat.versions if cat else None),   # 이 런의 TC 소스 버전 (§6.3). 과거 런은 다시 해석하지 않는다
                 "covers": sorted({t for c in chosen for t in c.covers})}
         meta.update({k: v for k, v in extra.items() if v not in (None, "")})
         rid = self.store.create_run(trigger=trigger, operator=operator, suite=suite, env=self.cfg.target_env,
-                                    base_url=self.cfg.target_base_url, ref=ref or self.cfg.backend_branch, sha=sha,
+                                    base_url=self.target_for(operator)["base_url"], ref=ref or self.cfg.backend_branch, sha=sha,
                                     pr_number=pr_number, meta=meta, cases=chosen)
         self.store.add_event(operator=operator, action="run.create", target=rid, session_hash=session_hash, ip=ip,
                              detail={"trigger": trigger, "sha": sha, "pr": pr_number, "cases": len(chosen), "basis": basis, "reason": reason})
@@ -1526,7 +1528,7 @@ class App:
             raise BadRequest("이름은 소문자·숫자·하이픈 (예: qa-3)")
         if label in self.all_actors():
             raise BadRequest(f"이미 있는 테스트 계정 이름: {label}")
-        ok, data, status = self.qadata.create_member()
+        ok, data, status = self.qadata.create_member(base=self.target_for(operator)["base_url"])
         if ok:
             self.store.add_qa_member(member_id=data["memberId"], label=label, nickname=data.get("nickname"), email=data.get("email"), operator=operator)
         self.store.add_event(operator=operator, action="qa_data.create_member", target=label, session_hash=session_hash, ip=ip,
@@ -1536,20 +1538,21 @@ class App:
     def qa_data_action(self, action: str, target: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
         """정리 화면의 버튼 — delete_room(룸 id) · delete_all(호스트 테스트 계정 이름 또는 빈 값) · reset(테스트 계정 이름) · delete_member(회원 id).
         결과 {ok, deleted(dict)|error(dict)}. 감사 로그 events `qa_data.<action>`."""
+        base = self.target_for(operator)["base_url"]
         if action == "delete_room":
-            ok, data, status = self.qadata.delete_room(target)
+            ok, data, status = self.qadata.delete_room(target, base=base)
         elif action == "delete_all":
-            host = self.all_actors().get(target) if target else None
+            host = self.runner.actors.member_id(target, base) if target else None
             if target and not host:
                 raise BadRequest("없는 테스트 계정")
-            ok, data, status = self.qadata.delete_all(host)
+            ok, data, status = self.qadata.delete_all(host, base=base)
         elif action == "reset":
-            mid = self.all_actors().get(target)
+            mid = self.runner.actors.member_id(target, base)
             if not mid:
                 raise BadRequest("없는 테스트 계정")
-            ok, data, status = self.qadata.reset_member(mid)
+            ok, data, status = self.qadata.reset_member(mid, base=base)
         elif action == "delete_member":
-            ok, data, status = self.qadata.delete_member(target)
+            ok, data, status = self.qadata.delete_member(target, base=base)
             if ok:
                 self.store.delete_qa_member(target)      # 플랫폼이 만든 회원이면 테스트 계정 목록에서도 뺀다
         else:
@@ -1740,16 +1743,83 @@ class App:
         self._sanity_todo = sum(1 for p in out if p["api"] and (not p["sanity"] or p["sanity"]["status"] in ("needs_spec", "failed", "error", "interrupted")))
         return out
 
-    def qa_snapshot(self, fresh: bool = False) -> dict | None:
-        """남은 QA 데이터. fresh 면 dev 에 묻고, 아니면 마지막으로 물은 값(10분 안)만 돌려준다 — 홈이 dev 를 기다리지 않게."""
+    def qa_snapshot(self, operator: str, fresh: bool = False) -> dict | None:
+        """담당자가 고른 대상에 남은 QA 데이터. fresh 면 대상에 묻고, 아니면 마지막으로 물은 값(10분 안)만 — 홈이 대상 서버를 기다리지 않게."""
         import time
+        base = self.target_for(operator)["base_url"]
         if fresh:
-            self._qa_snap = (time.monotonic(), self.qadata.snapshot())
-        if self._qa_snap and time.monotonic() - self._qa_snap[0] < 600:
-            return self._qa_snap[1]
+            self._qa_snap[base] = (time.monotonic(), self.qadata.snapshot(base))
+        hit = self._qa_snap.get(base)
+        if hit and time.monotonic() - hit[0] < 600:
+            return hit[1]
         return None
 
-    def home_todo(self, prs: list[dict]) -> list[dict]:
+    # ---- 대상 서버 (docs/qa-platform-v2.md §13, 사용자 결정 2026-09-27) ----------------------
+    def dev_target(self) -> dict:
+        return {"id": targetsmod.DEV_ID, "name": "dev", "base_url": self.cfg.target_base_url, "actors": {}, "default": True}
+
+    def targets(self) -> list[dict]:
+        return [self.dev_target()] + self.store.list_targets()
+
+    def target_for(self, operator: str | None) -> dict:
+        """담당자가 고른 대상. 고른 적 없거나 지워졌으면 dev."""
+        tid = self.store.get_setting(f"target:{operator}") if operator else None
+        if tid and tid != targetsmod.DEV_ID:
+            t = self.store.get_target(tid)
+            if t:
+                return t
+        return self.dev_target()
+
+    def target_actors(self, base_url: str) -> dict:
+        """러너가 부른다 — 그 주소로 등록한 대상에 따로 적은 테스트 계정."""
+        if base_url == self.cfg.target_base_url:
+            return {}
+        t = next((x for x in self.store.list_targets() if x["base_url"] == base_url), None)
+        return {k: v for k, v in (t or {}).get("actors", {}).items() if v}
+
+    def select_target(self, tid: str, *, operator: str, session_hash=None, ip=None) -> dict:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        t = self.dev_target() if tid == targetsmod.DEV_ID else self.store.get_target(tid)
+        if not t:
+            raise BadRequest("없는 대상")
+        self.store.set_setting(f"target:{operator}", t["id"])
+        self.store.add_event(operator=operator, action="target.select", target=t["id"], session_hash=session_hash, ip=ip, detail={"name": t["name"], "url": t["base_url"]})
+        return t
+
+    def add_target(self, *, name: str, base_url: str, actors: dict, operator: str, session_hash=None, ip=None) -> dict:
+        """[+ 대상 추가] — 주소를 검사하고 한 번 불러 본 뒤 저장한다. 불러 보기 결과는 보여 주기만 한다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        name = name.strip()
+        if not name or len(name) > 40:
+            raise BadRequest("이름을 40자 안으로 적어 주세요")
+        try:
+            url = targetsmod.check(base_url, allow_local=self.cfg.allow_local_targets)
+        except targetsmod.TargetError as ex:
+            raise BadRequest(str(ex))
+        if any(x["base_url"] == url or x["name"] == name for x in self.targets()):
+            raise BadRequest("같은 이름이나 주소의 대상이 이미 있어요")
+        actors = {k: v.strip() for k, v in actors.items() if v and v.strip()}
+        bad = [k for k, v in actors.items() if not re.match(r"^[0-9a-fA-F-]{8,64}$", v)]
+        if bad:
+            raise BadRequest(f"회원 id 형식이 아니에요: {', '.join(bad)}")
+        pr = targetsmod.probe(url)
+        tid = self.store.add_target(name=name, base_url=url, actors=actors, operator=operator, probe=pr)
+        self.store.add_event(operator=operator, action="target.add", target=tid, session_hash=session_hash, ip=ip,
+                             detail={"name": name, "url": url, "actors": sorted(actors), "probe": {k: v["status"] for k, v in pr.items()}})
+        return self.store.get_target(tid)
+
+    def remove_target(self, tid: str, *, operator: str, session_hash=None, ip=None) -> None:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        t = self.store.get_target(tid)
+        if not t:
+            raise BadRequest("없는 대상 (dev 는 지울 수 없어요)")
+        self.store.delete_target(tid)
+        self.store.add_event(operator=operator, action="target.delete", target=tid, session_hash=session_hash, ip=ip, detail={"name": t["name"], "url": t["base_url"]})
+
+    def home_todo(self, prs: list[dict], operator: str = "") -> list[dict]:
         """지금 할 일 (§7.2). 한 줄에 버튼 하나. tone: warn · info · plain · bad"""
         todo = []
         for p in prs:
@@ -1771,7 +1841,7 @@ class App:
             end = sprint["ends_at"].astimezone(ui.KST)
             todo.append({"tone": "plain", "icon": "▶", "title": f"이번 스프린트(Cycle {sprint['number']}) 스모크를 아직 안 했어요",
                          "desc": f"스크립트 {len(self.smoke_scripts())}개 · {end.month}월 {end.day}일 전까지", "href": "/smoke", "button": "스모크 실행"})
-        snap = self.qa_snapshot()
+        snap = self.qa_snapshot(operator)
         if snap and (snap.get("rooms") or snap.get("members")):
             nr, nm = len(snap.get("rooms") or []), len(snap.get("members") or [])
             todo.append({"tone": "plain", "icon": "▦", "title": f"dev 에 QA 데이터가 남아 있어요 (룸 {nr} · 회원 {nm})",
@@ -1848,8 +1918,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.SEE_OTHER, "", headers=h)
 
     def _page(self, title, body, active="", flash=None, status=200, context=None, autostart=None, inline_chat=None):
-        self._send(status, ui.page(title, body, active=active, operator=self._operator(), flash=flash, context=context, hermes=bool(self.app.cfg.hermes_key),
-                                   operators=self.app.cfg.operators, autostart=autostart, inline_chat=inline_chat, counts=self.app.nav_counts()))
+        op = self._operator()
+        if flash is None:           # 다른 화면에서 돌아온 알림 (?done= · ?err=) — 대상 바꾸기처럼 원래 화면으로 돌려보내는 동작
+            q = parse_qs(urlsplit(self.path).query)
+            flash = ("ok", q["done"][0]) if q.get("done") else (("err", q["err"][0]) if q.get("err") else None)
+        self._send(status, ui.page(title, body, active=active, operator=op, flash=flash, context=context, hermes=bool(self.app.cfg.hermes_key),
+                                   operators=self.app.cfg.operators, autostart=autostart, inline_chat=inline_chat, counts=self.app.nav_counts(),
+                                   target=self.app.target_for(op), targets=self.app.targets()))
 
     # -- SSE (Hermes 위젯) --
     def _sse_start(self):
@@ -1986,8 +2061,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/" and method == "GET":
             prs = app.sanity_prs()
             ov, _ = app.scenario_view()
-            body = ui.home(operator=self._operator(), todo=app.home_todo(prs), ov=ov, counts=app.nav_counts(),
-                           recent=app.store.list_runs(5, exclude=HIDDEN_TRIGGERS), target=app.cfg.target_base_url, gh_error=app.github.last_error)
+            body = ui.home(operator=self._operator(), todo=app.home_todo(prs, self._operator()), ov=ov, counts=app.nav_counts(),
+                           recent=app.store.list_runs(5, exclude=HIDDEN_TRIGGERS), target=app.target_for(self._operator())["base_url"], gh_error=app.github.last_error)
             return self._page("홈", body, "home")
 
         # ---------- 시나리오 (docs/qa-platform-scenarios.md §12) ----------
@@ -2102,7 +2177,7 @@ class Handler(BaseHTTPRequestHandler):
                 suggested = [app.cases[i] for i in dict.fromkeys(picked) if i in app.cases]
                 basis = f"시나리오 화면에서 고른 케이스의 스크립트 {len(suggested)}개"
             pr = info.get("pr_number", pr)
-            target = {"환경": f'<span class="mono">{ui.e(app.cfg.target_base_url)}</span>'}
+            target = {"환경": f'<span class="mono">{ui.e(app.target_for(self._operator())["base_url"])}</span>'}
             if sha:
                 target["SHA"] = f'<span class="mono">{ui.e(sha)}</span>'
             if pr:
@@ -2362,7 +2437,7 @@ class Handler(BaseHTTPRequestHandler):
             history = app.store.list_sanity(num) if num else []
             s = history[0] if history else None
             run = app.store.get_run(s["run_id"]) if s and s.get("run_id") else None
-            body = ui_sanity.sanity_page(prs, sel, s, operator=self._operator(), target=app.cfg.target_base_url, hermes=bool(app.cfg.hermes_key),
+            body = ui_sanity.sanity_page(prs, sel, s, operator=self._operator(), target=app.target_for(self._operator())["base_url"], hermes=bool(app.cfg.hermes_key),
                                          cases=app.sanity_cases(s["scope"]) if s and s.get("scope") else [], run=run, history=history,
                                          gh_error=app.github.last_error, flt=g("f") or "all")
             notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
@@ -2405,11 +2480,40 @@ class Handler(BaseHTTPRequestHandler):
             except BadRequest as ex:
                 return self._redirect(f"/sanity/{s['pr_number']}?err={_urlq(str(ex))}", set_operator=operator)
             return self._redirect(f"/sanity/{s['pr_number']}" + (f"?done={_urlq(msg)}" if msg else ""), set_operator=operator)
+        # ---------- 대상 서버 (docs/qa-platform-v2.md §13) ----------
+        if path == "/targets" and method == "GET":
+            notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
+            return self._page("대상 서버", ui.targets_page(app.targets(), current=app.target_for(self._operator()), operator=self._operator(),
+                                                         allow_local=app.cfg.allow_local_targets, actor_names=sorted(app.cfg.actors) or ["qa-host", "qa-guest"]),
+                              "targets", flash=notice)
+        m = re.match(r"^/targets/(select|add|delete)$", path)
+        if m and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+            operator = fv("operator").strip() or self._operator()
+            kw = {"operator": operator, "session_hash": self._session_hash(), "ip": self._ip()}
+            back = fv("next") if fv("next").startswith("/") else "/targets"
+            try:
+                if m.group(1) == "select":
+                    t = app.select_target(fv("id"), **kw)
+                    msg = f"대상을 {t['name']} 로 바꿨어요. 실행·API 호출·QA 데이터가 모두 {t['base_url']} 로 가요"
+                elif m.group(1) == "add":
+                    t = app.add_target(name=fv("name"), base_url=fv("url"), actors={k[6:]: str(v[0]) for k, v in f.items() if k.startswith("actor.")}, **kw)
+                    pr = t["probe"]
+                    msg = (f"{t['name']} 를 등록했어요. 헬스 {pr['health']['status'] or '응답 없음'} · dev-sessions {pr['dev_sessions']['status'] or '응답 없음'}"
+                           + ("" if pr["health"]["ok"] and pr["dev_sessions"]["ok"] else " — 서버가 떠 있는지, dev 프로파일인지 확인해 주세요"))
+                else:
+                    app.remove_target(fv("id"), **kw)
+                    msg = "대상을 지웠어요"
+            except BadRequest as ex:
+                return self._redirect(f"/targets?err={_urlq(str(ex))}", set_operator=operator)
+            sep = "&" if "?" in back else "?"
+            return self._redirect(f"{back}{sep}done={_urlq(msg)}", set_operator=operator)
         if path == "/smoke" and method == "GET":         # docs/qa-platform-v2.md §6
             sprint = app.cfg.current_sprint()
             last_smoke = app.store.list_runs(1, trigger="sprint-smoke")
             return self._page("스모크 테스트", ui.smoke_page(app.smoke_groups(), operator=self._operator(), sprint=sprint,
-                                                         last_smoke=last_smoke[0] if last_smoke else None, target=app.cfg.target_base_url,
+                                                         last_smoke=last_smoke[0] if last_smoke else None, target=app.target_for(self._operator())["base_url"],
                                                          mode=g("mode") or "all"), "smoke")
         if path == "/setup" and method == "GET":        # 옛 주소 — QA 데이터 화면으로 (docs/qa-platform-v2.md §5)
             qs = urlsplit(self.path).query
@@ -2424,7 +2528,7 @@ class Handler(BaseHTTPRequestHandler):
             notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
             return self._page("QA 데이터", ui.data_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators,
                                                        qa_members=app.store.list_qa_members(), operator=self._operator(), result=result,
-                                                       errors=[x for x in app.case_errors if "setup" in x], cleanup=app.qa_snapshot(fresh=True)),
+                                                       errors=[x for x in app.case_errors if "setup" in x], cleanup=app.qa_snapshot(self._operator(), fresh=True)),
                               "data", flash=notice, context={"run": run["id"]} if run else None)
         if path == "/setup/member" and method == "POST":
             f = self._form()

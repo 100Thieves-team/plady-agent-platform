@@ -22,7 +22,11 @@ a{color:var(--info);text-decoration:none}a:hover{text-decoration:underline}
 .side a.nv:hover{background:var(--hover);text-decoration:none}.side a.nv.on{background:var(--infobg);color:var(--info)}
 .side a.nv .ic{width:18px;text-align:center;font-size:13px}.side a.nv .cnt{margin-left:auto;font-size:12px;font-weight:700;border-radius:99px;padding:1px 7px;background:var(--graybg);color:var(--mut)}
 .side a.nv .cnt.warn{background:var(--warnbg);color:var(--warn)}
-.side .lbl{font-size:12px;color:var(--mut);font-weight:600;padding:18px 10px 6px}.side .sub a.nv{font-weight:500;height:32px}
+.side .lbl{font-size:12px;color:var(--mut);font-weight:600;padding:18px 10px 6px}
+.side .tgt{margin:0 0 14px;padding:10px;border-radius:10px;background:var(--graybg)}.side .tgt.warn{background:var(--warnbg)}
+.side .tgt label{display:block;font-size:11px;font-weight:700;color:var(--mut);margin-bottom:4px}.side .tgt.warn label{color:var(--warn)}
+.side .tgt select{flex:1;min-width:0;height:30px;font-size:13px;font-weight:600}.side .tgt .btn{height:30px;padding:0 10px;background:#fff}
+.side .tgt .u{font-size:11px;color:var(--mut);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .sub a.nv{font-weight:500;height:32px}
 .side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px;display:flex;align-items:center;gap:6px;font-size:13px}
 .side .foot .me{flex:1;display:flex;align-items:center;gap:8px;font-weight:600}.side .foot .me b{width:26px;height:26px;border-radius:50%;background:#FFD86B;display:grid;place-items:center;font-size:11px}
 .side .foot small{display:block;font-weight:500;font-size:11px}.side .foot small a{color:var(--mut)}
@@ -171,8 +175,18 @@ DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 �
 MAIN_NAV = (("home", "/", "⌂", "홈"), ("sanity", "/sanity", "✓", "Sanity"), ("smoke", "/smoke", "▶", "스모크"), ("data", "/data", "▦", "QA 데이터"))
 ADMIN_NAV = (("features", "/features", "▤", "시나리오"), ("cases", "/cases", "{}", "스크립트"), ("catalog", "/catalog", "≡", "테스트 조건"),
              ("apis", "/apis", "⌗", "API"), ("explorer", "/explorer", "↗", "API 호출"), ("runs", "/runs", "◷", "실행 기록"),
-             ("drafts", "/drafts", "✎", "변경 기록"), ("chat", "/chat", "✉", "Hermes 대화"), ("activity", "/activity", "☰", "감사 로그"), ("guide", "/guide", "?", "가이드"))
+             ("drafts", "/drafts", "✎", "변경 기록"), ("chat", "/chat", "✉", "Hermes 대화"), ("targets", "/targets", "⇄", "대상 서버"),
+             ("activity", "/activity", "☰", "감사 로그"), ("guide", "/guide", "?", "가이드"))
 _ACTIVE_ALIAS = {"dash": "home", "setup": "data"}
+
+
+def target_band(target: dict | None) -> str:
+    """dev 가 아닌 대상을 골랐으면 모든 화면 위에 주황 띠."""
+    if not target or target.get("default"):
+        return ""
+    return (f'<div class="flash" style="background:var(--warnbg);color:var(--warn)">지금 대상은 <b>{e(target["name"])}</b> '
+            f'<span class="mono">{e(target["base_url"])}</span> 예요. 실행·API 호출·QA 데이터가 모두 이 서버로 가요. '
+            f'<a href="/targets">바꾸기</a></div>')
 
 
 def tour_script(active: str) -> str:
@@ -180,7 +194,18 @@ def tour_script(active: str) -> str:
     return script_tag(active)
 
 
-def side_nav(active: str, operator: str, counts: dict | None = None) -> str:
+def target_box(target: dict | None, targets: list | None, operator: str) -> str:
+    """왼쪽 메뉴 위 대상 서버 고르기 (docs/qa-platform-v2.md §13). 고르면 담당자별로 저장된다."""
+    if not target:
+        return ""
+    opts = "".join(f'<option value="{e(x["id"])}" {"selected" if x["id"] == target["id"] else ""}>{e(x["name"])}</option>' for x in (targets or [target]))
+    dev = target.get("default")
+    return (f'<form class="tgt {"" if dev else "warn"}" method="post" action="/targets/select"><input type="hidden" name="operator" value="{e(operator)}">'
+            f'<input type="hidden" name="next" value="" data-next><label>대상 서버</label><div style="display:flex;gap:6px"><select name="id" onchange="this.form.querySelector(\'[data-next]\').value=location.pathname+location.search;this.form.submit()" {"" if operator else "disabled"}>{opts}</select>'
+            f'<a class="btn" href="/targets" title="대상 서버 추가·관리">+</a></div><div class="u mono" title="{e(target["base_url"])}">{e(target["base_url"].split("://", 1)[-1])}</div></form>')
+
+
+def side_nav(active: str, operator: str, counts: dict | None = None, target: dict | None = None, targets: list | None = None) -> str:
     """왼쪽 고정 메뉴 (docs/qa-platform-v2.md §7.1). 주 메뉴 넷 + 관리 묶음 + 담당자."""
     active = _ACTIVE_ALIAS.get(active, active)
     counts = counts or {}
@@ -193,13 +218,13 @@ def side_nav(active: str, operator: str, counts: dict | None = None) -> str:
           if operator else '<div class="me"><a href="/whoami">담당자 고르기</a></div>')
     from .tour import tour_for
     replay = '<button type="button" class="btn" data-tour-start title="이 화면 쓰는 법을 한 곳씩 짚어 가며 보여 줘요" style="height:30px;padding:0 10px;font-size:12px">둘러보기</button>' if tour_for(active) else ""
-    return (f'<aside class="side"><a class="brand" href="/"><i></i>Plady QA</a>{"".join(item(*x) for x in MAIN_NAV)}'
+    return (f'<aside class="side"><a class="brand" href="/"><i></i>Plady QA</a>{target_box(target, targets, operator)}{"".join(item(*x) for x in MAIN_NAV)}'
             f'<div class="sub"><div class="lbl">관리</div>{"".join(item(*x) for x in ADMIN_NAV)}</div><div class="foot">{me}{replay}</div></aside>')
 
 
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None,
          context: dict | None = None, hermes: bool = False, operators: list | tuple = (), autostart: dict | None = None,
-         inline_chat: str | None = None, counts: dict | None = None) -> str:
+         inline_chat: str | None = None, counts: dict | None = None, target: dict | None = None, targets: list | None = None) -> str:
     """모든 화면의 껍데기. 노트북 기준(docs/qa-platform-v2.md §8.1) — 왼쪽 메뉴 + 본문.
     Hermes 위젯(채널톡처럼 오른쪽 아래)이 어느 화면에나 붙는다 — context 는 그 화면의 객체(run·case·tc),
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
@@ -209,8 +234,8 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
     inline = f'<div id="hx-inline"></div>' if inline_chat else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{e(title)} · QA</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">'
-            f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts)}<div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
-            f'<main>{fl}{body}{inline}</main>'
+            f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts, target, targets)}<div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
+            f'<main>{target_band(target)}{fl}{body}{inline}</main>'
             f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script><script src="/static/jobs.js?v={JOBS_JS_VERSION}" defer></script>{tour_script(active)}</body></html>')
 
 
@@ -259,6 +284,42 @@ def home(*, operator: str, todo: list[dict], ov: list[dict], counts: dict, recen
 def quote_path(s: str) -> str:
     from urllib.parse import quote
     return quote(s, safe="")
+
+
+# ---- 대상 서버 (docs/qa-platform-v2.md §13) -----------------------------------------------------
+def targets_page(targets: list[dict], *, current: dict, operator: str, allow_local: bool, actor_names: list[str]) -> str:
+    rows = ""
+    for x in targets:
+        pr = x.get("probe") or {}
+        chk = " · ".join(f'{n} {("<span style=color:var(--ok)>" if v.get("ok") else "<span style=color:var(--bad)>") + e(v.get("status") or "응답 없음")}</span>'
+                         for n, v in (("헬스", pr.get("health") or {}), ("dev-sessions", pr.get("dev_sessions") or {})) if v)
+        acts = ", ".join(f'{e(k)} <span class="mono">{e(v[:8])}…</span>' for k, v in (x.get("actors") or {}).items()) or '<span class="mut">dev 와 같은 id</span>'
+        is_cur = x["id"] == current["id"]
+        pick = ('<span class="b ok">지금 대상</span>' if is_cur else
+                f'<form method="post" action="/targets/select" class="inline"><input type="hidden" name="id" value="{e(x["id"])}"><input type="hidden" name="operator" value="{e(operator)}"><button {"" if operator else "disabled"}>이걸로 고르기</button></form>')
+        rm = ("" if x.get("default") else
+              f'<form method="post" action="/targets/delete" class="inline" onsubmit="return confirm(\'{e(x["name"])} 를 목록에서 지워요. 이걸 고른 담당자는 dev 로 돌아가요.\')">'
+              f'<input type="hidden" name="id" value="{e(x["id"])}"><input type="hidden" name="operator" value="{e(operator)}"><button class="danger" {"" if operator else "disabled"}>지우기</button></form>')
+        rows += (f'<tr><td><div style="font-weight:700">{e(x["name"])}{" <span class=\"b none\">기본</span>" if x.get("default") else ""}</div>'
+                 f'<div class="mono">{e(x["base_url"])}</div></td><td class="small">{acts}</td><td class="small">{chk or "<span class=mut>–</span>"}</td>'
+                 f'<td class="small mut">{e(x.get("operator") or "설정값")}{(" · " + kst(x["created_at"])) if x.get("created_at") else ""}</td><td class="right" style="white-space:nowrap">{pick} {rm}</td></tr>')
+    actor_fields = "".join(f'<div class="field"><label>{e(n)} 회원 id</label><input name="actor.{e(n)}" placeholder="비우면 dev 와 같은 id" autocomplete="off" class="mono"></div>' for n in actor_names)
+    local_note = ("이 플랫폼은 노트북에서 떠 있어 <span class=\"mono\">http://localhost:8080</span> 같은 주소도 쓸 수 있어요."
+                  if allow_local else "이 플랫폼은 서버(EC2)에서 요청을 보내서 노트북의 localhost 에 닿지 않아요. 로컬 서버는 "
+                  "<span class=\"mono\">cloudflared tunnel --url http://localhost:8080</span> 이나 ngrok 으로 https 주소를 받아 등록하거나, 플랫폼을 노트북에서 띄워 localhost 로 써 주세요.")
+    return (f'<h1>대상 서버</h1><p class="lead">테스트 요청을 보낼 백엔드 서버예요. 기본은 dev 이고, 로컬 서버 같은 다른 서버를 등록해 고를 수 있어요. '
+            f'고른 대상은 담당자별로 기억하고, 실행·API 호출·QA 데이터·Sanity 가 모두 그 서버로 가요. live 는 쓸 수 없어요.</p>'
+            f'<div class="cols" style="grid-template-columns:minmax(0,1fr) 400px"><div class="card flush"><div class="ch"><h2>목록</h2></div>'
+            f'<table><tr><th>대상</th><th>테스트 계정</th><th>등록 때 확인</th><th>등록</th><th></th></tr>{rows}</table></div>'
+            f'<form class="card flush" method="post" action="/targets/add"><div class="ch"><h2>+ 대상 추가</h2></div><div class="cb">'
+            f'<input type="hidden" name="operator" value="{e(operator)}">'
+            f'<div class="field"><label>이름<i class="req"></i></label><input name="name" required maxlength="40" placeholder="예: 준서 로컬" style="width:100%"></div>'
+            f'<div class="field"><label>서버 주소<i class="req"></i></label><input name="url" required placeholder="https://abc.trycloudflare.com" class="mono" style="width:100%"></div>'
+            f'<p class="hint" style="margin-top:-6px">{local_note}</p>'
+            f'<p class="small" style="font-weight:600;margin:14px 0 6px">테스트 계정</p><p class="hint" style="margin-top:0">그 서버 DB 에 있는 회원 id 를 적어요. 백엔드는 local·dev 프로파일에서 '
+            f'<span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 줘요. 모르면 비워 두고, 등록한 뒤 QA 데이터 화면의 [QA 회원 만들기]로 만들어도 돼요.</p>{actor_fields}'
+            f'<p class="hint">등록할 때 <span class="mono">/actuator/health</span> 와 <span class="mono">dev-sessions</span> 를 한 번 불러 보고 결과를 알려 줘요.</p>'
+            f'<button class="primary lg" style="width:100%" {"" if operator else "disabled"}>등록하기</button></div></form></div>')
 
 
 # ---- 스모크 (docs/qa-platform-v2.md §6) ------------------------------------------------------
