@@ -8,36 +8,73 @@ from datetime import datetime, timezone, timedelta
 KST = timezone(timedelta(hours=9))
 
 CSS = """
-:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2330;--mut:#6b7280;--line:#e5e7eb;--ok:#15803d;--okbg:#dcfce7;--bad:#b91c1c;--badbg:#fee2e2;
---warn:#b45309;--warnbg:#fef3c7;--info:#1d4ed8;--infobg:#dbeafe;--gray:#374151;--graybg:#e5e7eb}
-*{box-sizing:border-box}body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--ink);background:var(--bg)}
+:root{--bg:#F4F5F7;--card:#fff;--ink:#191F28;--ink2:#4E5968;--mut:#8B95A1;--line:#E8EBED;--hover:#F7F8FA;--ok:#1FA463;--okbg:#E6F6EE;--bad:#F04452;--badbg:#FEEEEF;
+--warn:#E8870E;--warnbg:#FFF4E5;--info:#3182F6;--infod:#1B64DA;--infobg:#EBF3FE;--gray:#4E5968;--graybg:#F2F4F6;--side:232px}
+*{box-sizing:border-box}html,body{margin:0}
+body{font:14px/1.5 "Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;letter-spacing:-.005em;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;min-width:1180px}
 a{color:var(--info);text-decoration:none}a:hover{text-decoration:underline}
-nav{background:#111827;color:#fff;padding:0 20px;display:flex;align-items:center;gap:18px;height:48px;overflow-x:auto;white-space:nowrap}nav a{flex:none}
-nav a{color:#d1d5db}nav a.on{color:#fff;font-weight:600}nav .brand{font-weight:700;color:#fff;margin-right:8px}nav .op{margin-left:auto;color:#9ca3af}
-main{max-width:1180px;margin:0 auto;padding:20px}
-h1{font-size:20px;margin:0 0 14px}h2{font-size:15px;margin:22px 0 8px;color:var(--gray)}h3{font-size:14px;margin:14px 0 6px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
-table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:600;font-size:12px}
-tr:last-child td{border-bottom:0}.mut{color:var(--mut)}.small{font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-.b{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:18px}
+/* 왼쪽 메뉴 (docs/qa-platform-v2.md §7.1) — 노트북 기준 */
+.side{position:fixed;inset:0 auto 0 0;width:var(--side);background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 12px;z-index:30;overflow:auto}
+.side .brand{font-weight:800;font-size:16px;display:flex;align-items:center;gap:9px;padding:4px 10px 18px;color:var(--ink)}.side .brand:hover{text-decoration:none}
+.side .brand i{width:24px;height:24px;border-radius:7px;background:var(--info);display:inline-block;position:relative}
+.side .brand i:after{content:"";position:absolute;left:6px;top:6px;width:11px;height:6px;border:2.5px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg)}
+.side a.nv{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;color:var(--ink2);font-weight:600}
+.side a.nv:hover{background:var(--hover);text-decoration:none}.side a.nv.on{background:var(--infobg);color:var(--info)}
+.side a.nv .ic{width:18px;text-align:center;font-size:13px}.side a.nv .cnt{margin-left:auto;font-size:12px;font-weight:700;border-radius:99px;padding:1px 7px;background:var(--graybg);color:var(--mut)}
+.side a.nv .cnt.warn{background:var(--warnbg);color:var(--warn)}
+.side .lbl{font-size:12px;color:var(--mut);font-weight:600;padding:18px 10px 6px}.side .sub a.nv{font-weight:500;height:32px}
+.side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px;display:flex;align-items:center;gap:6px;font-size:13px}
+.side .foot .me{flex:1;display:flex;align-items:center;gap:8px;font-weight:600}.side .foot .me b{width:26px;height:26px;border-radius:50%;background:#FFD86B;display:grid;place-items:center;font-size:11px}
+.side .foot small{display:block;font-weight:500;font-size:11px}.side .foot small a{color:var(--mut)}
+main{margin-left:var(--side);padding:22px 32px 48px;max-width:calc(var(--side) + 1500px)}
+h1{font-size:22px;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}h2{font-size:15px;margin:24px 0 10px;color:var(--ink);font-weight:700}h3{font-size:14px;margin:14px 0 6px}
+.lead{color:var(--ink2);margin:-10px 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+.card.flush{padding:0}.card .ch{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}.card .ch h2{flex:1;margin:0}.card .cb{padding:16px 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:600;font-size:12px;white-space:nowrap}
+tr:last-child td{border-bottom:0}tr.link{cursor:pointer}tr.link:hover td{background:var(--hover)}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mut{color:var(--mut)}.small{font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;letter-spacing:0}
+.b{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:700;white-space:nowrap;vertical-align:middle}
 .b.pass,.b.finished-pass{color:var(--ok);background:var(--okbg)}.b.fail,.b.error,.b.finished-fail,.b.finished-error{color:var(--bad);background:var(--badbg)}
-.b.skipped,.b.canceled,.b.queued,.b.finished-skipped,.b.finished-canceled{color:var(--gray);background:var(--graybg)}.b.running{color:var(--warn);background:var(--warnbg)}
-.b.smoke{color:var(--info);background:var(--infobg)}.b.sanity{color:#6d28d9;background:#ede9fe}.b.manual{color:var(--gray);background:var(--graybg)}.b.setup{color:#0f766e;background:#ccfbf1}
-.b.warn{color:var(--warn);background:var(--warnbg)}.b.ok{color:var(--ok);background:var(--okbg)}
-button,.btn{display:inline-block;border:1px solid #d1d5db;background:#fff;color:var(--ink);border-radius:7px;padding:6px 12px;font:inherit;cursor:pointer}
-button.primary,.btn.primary{background:var(--info);color:#fff;border-color:var(--info)}button.primary:hover{background:#1e40af}button.wide{display:block;width:100%;padding:11px 14px;font-weight:600;font-size:15px;border-radius:9px;margin-top:6px}button.danger{color:var(--bad);border-color:#fca5a5}
-button:disabled{opacity:.5;cursor:default}form.inline{display:inline}
-input,select,textarea{font:inherit;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff}textarea{width:100%;min-height:60px}input:focus,select:focus,textarea:focus{outline:2px solid #bfdbfe;border-color:var(--info)}
-pre{background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:8px;overflow:auto;font-size:12px;margin:6px 0}
+.b.skipped,.b.canceled,.b.queued,.b.finished-skipped,.b.finished-canceled{color:var(--gray);background:var(--graybg)}.b.running{color:var(--info);background:var(--infobg)}
+.b.smoke{color:var(--info);background:var(--infobg)}.b.sanity{color:#6d28d9;background:#F1ECFE}.b.manual{color:var(--gray);background:var(--graybg)}.b.setup{color:#0f766e;background:#DDF6F1}
+.b.warn{color:var(--warn);background:var(--warnbg)}.b.ok{color:var(--ok);background:var(--okbg)}.b.need{color:var(--warn);background:var(--warnbg)}.b.none{color:var(--mut);background:var(--graybg)}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;border:0;background:var(--graybg);color:var(--ink2);border-radius:8px;padding:0 13px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;vertical-align:middle}
+button:hover,.btn:hover{background:#E8EBED;text-decoration:none}
+button.primary,.btn.primary{background:var(--info);color:#fff}button.primary:hover,.btn.primary:hover{background:var(--infod)}.btn.soft,button.soft{background:var(--infobg);color:var(--info)}
+button.wide{display:flex;width:100%;height:40px;font-size:14px;border-radius:10px;margin-top:6px}button.danger,.btn.danger{background:var(--badbg);color:var(--bad)}
+button.lg,.btn.lg{height:40px;padding:0 18px;font-size:14px;border-radius:10px}
+button:disabled{opacity:.45;cursor:default}form.inline{display:inline}
+input,select,textarea{font:inherit;height:36px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}textarea{width:100%;min-height:60px;height:auto;padding:8px 11px}
+input[type=checkbox],input[type=radio]{height:auto;accent-color:var(--info)}input:focus,select:focus,textarea:focus{outline:0;border-color:var(--info);box-shadow:0 0 0 3px var(--infobg)}
+pre{background:#191F28;color:#E5E8EB;padding:10px 12px;border-radius:8px;overflow:auto;font-size:12px;margin:6px 0}
 details{margin:6px 0}summary{cursor:pointer}.kv{display:grid;grid-template-columns:120px 1fr;gap:4px 10px}.kv div:nth-child(odd){color:var(--mut)}
-.flash{padding:10px 14px;border-radius:8px;margin-bottom:14px}.flash.err{background:var(--badbg);color:var(--bad)}.flash.ok{background:var(--okbg);color:var(--ok)}
-.actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.chk{display:block;padding:3px 0}.right{text-align:right}
-.b.policy{color:#0f766e;background:#ccfbf1}.b.contract{color:#9a3412;background:#ffedd5}.b.manual{color:var(--gray);background:var(--graybg)}
+.flash{padding:11px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}.flash.err{background:var(--badbg);color:var(--bad)}.flash.ok{background:var(--okbg);color:var(--ok)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center}.chk{display:block;padding:3px 0}.right{text-align:right}
+.b.policy{color:#0f766e;background:#DDF6F1}.b.contract{color:#9a3412;background:#FFEEDD}.b.manual{color:var(--gray);background:var(--graybg)}
 .b.covered{color:var(--ok);background:var(--okbg)}.b.uncovered{color:var(--bad);background:var(--badbg)}.b.excluded{color:var(--mut);background:var(--graybg)}
 .b.drift{color:var(--warn);background:var(--warnbg)}.b.unchecked{color:var(--mut);background:var(--graybg)}
-tr.ex td{color:var(--mut)}.tabs a{display:inline-block;padding:4px 10px;border-radius:6px;margin:0 4px 6px 0;border:1px solid var(--line);background:#fff}.tabs a.on{background:#111827;color:#fff;border-color:#111827}
-a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;font-weight:500;text-decoration:none;vertical-align:middle}
+tr.ex td{color:var(--mut)}.tabs a{display:inline-flex;align-items:center;height:30px;padding:0 11px;border-radius:8px;margin:0 4px 6px 0;background:var(--graybg);color:var(--ink2);font-weight:600;font-size:13px}.tabs a:hover{text-decoration:none;background:#E8EBED}.tabs a.on{background:var(--ink);color:#fff}
+a.btn{text-decoration:none}
+/* 목록 한 줄 (지금 할 일 · PR · QA 데이터 카드) */
+.li{display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--line);color:var(--ink)}.li:last-child{border-bottom:0}a.li:hover,.li.link:hover{background:var(--hover);text-decoration:none;cursor:pointer}
+.li .tx{flex:1;min-width:0}.li .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.li .d{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li.sel{background:var(--infobg);box-shadow:inset 3px 0 0 var(--info)}.li.faded .t{color:var(--mut)}
+.dot{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;font-weight:800;font-size:13px;background:var(--graybg);color:var(--mut)}
+.dot.warn{background:var(--warnbg);color:var(--warn)}.dot.info{background:var(--infobg);color:var(--info)}.dot.bad{background:var(--badbg);color:var(--bad)}.dot.ok{background:var(--okbg);color:var(--ok)}
+.jobs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}.jobs a{display:flex;flex-direction:column;gap:4px;color:var(--ink);margin:0}.jobs a:hover{text-decoration:none;border-color:#C9D6E8}
+.jobs .n{font-weight:800;font-size:15px}.jobs .d{color:var(--ink2);font-size:13px;flex:1}.jobs .go{color:var(--info);font-weight:700;font-size:13px;margin-top:6px}
+.cols{display:grid;gap:16px;align-items:start}.cols>*{min-width:0}
+.sec-h{font-size:12px;font-weight:700;color:var(--mut);padding:9px 18px 6px;background:#FAFBFC;border-bottom:1px solid var(--line)}
+.empty{text-align:center;padding:28px 16px;color:var(--mut)}.empty b{display:block;color:var(--ink2);margin-bottom:2px}
+.demo{display:inline-block;font-size:11px;font-weight:700;color:var(--mut);background:var(--graybg);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+/* 오른쪽 패널 · 가운데 확인 창 */
+.shade{position:fixed;inset:0;background:rgba(25,31,40,.28);z-index:40;display:none}.shade.on{display:block}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:460px;background:#fff;z-index:41;display:none;flex-direction:column;box-shadow:-8px 0 32px rgba(0,0,0,.08)}.drawer.on{display:flex}
+.drawer .dh{padding:20px 24px 12px;display:flex;gap:10px;align-items:flex-start}.drawer .dh h3{margin:0;font-size:18px;flex:1}.drawer .dh p{margin:4px 0 0;color:var(--ink2);font-size:13px}
+.drawer .db{flex:1;overflow:auto;padding:4px 24px 16px}.drawer .df{padding:14px 24px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.x{width:30px;height:30px;padding:0;background:transparent;color:var(--mut);font-size:18px}
 /* 도움말 '?' 와 모달 (qa/help.py) */
 .help{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;margin:0 0 0 4px;border:1px solid #b6c2d0;border-radius:50%;background:#fff;color:#5b6b7c;font:600 11px/1 ui-monospace,Menlo,monospace;cursor:pointer;vertical-align:middle}
 .help:hover{background:var(--infobg);color:var(--info);border-color:var(--info)}th .help,h1 .help,h2 .help,h3 .help{font-weight:600}
@@ -45,12 +82,11 @@ a.btn{display:inline-block;padding:5px 10px;border:1px solid var(--line);border-
 .hm-box{background:var(--card);color:var(--ink);border-radius:14px;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .hm-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}.hm-head b{flex:1;font-size:15px}.hm-x{border:0;background:transparent;font-size:16px;cursor:pointer;color:var(--mut)}
 .hm-body{padding:14px 18px;font-size:14px;line-height:1.6}.hm-body p{margin:0 0 10px}.hm-body p:last-child{margin:0}.hm-foot{padding:10px 18px;border-top:1px solid var(--line);font-size:12px}
-nav .op a{color:#9ca3af;margin-left:6px}nav .op .help{border-color:#4b5563;background:transparent;color:#9ca3af}
 /* 폼 부품 (토스 카드식): 라벨 위 · 칸은 가로로 꽉 · 필수는 빨간 점 · 칸 아래 회색 힌트 */
 .field{margin:0 0 12px}.field>label{display:block;font-weight:500;margin-bottom:4px}.field>input,.field>select,.field>textarea{width:100%}.field textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .req::after{content:'•';color:var(--bad);margin-left:3px;font-weight:700}.hint{color:var(--mut);font-size:12px;margin:4px 0 0}.hint.bad{color:var(--bad)}.field>label .hint{display:inline;margin-left:6px;font-weight:400}
 .radio{display:inline-block;margin:4px 14px 0 0}.radio input{width:auto;margin-right:4px}
-.seg{display:inline-flex;background:#eef0f3;border-radius:9px;padding:3px}.seg button{border:0;background:transparent;color:var(--mut);padding:4px 12px;border-radius:7px;font-weight:600;font-size:13px}.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg{display:inline-flex;background:#eef0f3;border-radius:9px;padding:3px}.seg button{border:0;background:transparent;color:var(--mut);height:28px;padding:0 12px;border-radius:7px;font-weight:600;font-size:13px}.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .m{display:inline-block;min-width:52px;text-align:center;padding:2px 8px;border-radius:6px;font:700 11px/16px ui-monospace,Menlo,monospace;color:#fff;background:var(--gray);vertical-align:middle}
 .m.get{background:#2563eb}.m.post{background:#16a34a}.m.put,.m.patch{background:#d97706}.m.delete{background:#dc2626}
 /* API 호출: 왼쪽 목록 + 오른쪽 입력 폼 (Normal | Swagger). 좁으면 1열 */
@@ -105,9 +141,12 @@ def h(key: str) -> str:
     return f'<button type="button" class="help" data-help="{e(key)}" aria-label="도움말" title="이게 뭐지? 어떻게 쓰지?">?</button>'
 
 
+VERDICT_KO = {"pass": "통과", "fail": "실패", "error": "오류", "skipped": "건너뜀", "canceled": "그만둠", "queued": "대기", "running": "진행 중"}
+
+
 def badge(v: str | None, extra: str = "") -> str:
     v = v or "–"
-    return f'<span class="b {e(v)} {extra}">{e(v)}</span>'
+    return f'<span class="b {e(v)} {extra}" title="{e(v)}">{e(VERDICT_KO.get(v, v))}</span>'
 
 
 def run_badge(r: dict) -> str:
@@ -116,7 +155,7 @@ def run_badge(r: dict) -> str:
     return badge(r["status"])
 
 
-TRIGGER_KO = {"deploy-sanity": "배포 검증", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "수동 실행",
+TRIGGER_KO = {"deploy-sanity": "Sanity", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "수동 실행",
               "draft-check": "저장 전 실행", "explorer": "API 호출", "setup": "테스트 데이터 만들기"}
 ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 실행 취소", "run.triage": "Hermes 실패 분석", "release.decide": "릴리스 판단",
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
@@ -128,25 +167,90 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
 DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 봄", "approved": "저장됨", "rejected": "버림", "failed": "저장 실패"}
 
 
+MAIN_NAV = (("home", "/", "⌂", "홈"), ("sanity", "/sanity", "✓", "Sanity"), ("smoke", "/smoke", "▶", "스모크"), ("data", "/data", "▦", "QA 데이터"))
+ADMIN_NAV = (("features", "/features", "▤", "시나리오"), ("cases", "/cases", "{}", "스크립트"), ("catalog", "/catalog", "≡", "테스트 조건"),
+             ("apis", "/apis", "⌗", "API"), ("explorer", "/explorer", "↗", "API 호출"), ("runs", "/runs", "◷", "실행 기록"),
+             ("drafts", "/drafts", "✎", "변경 기록"), ("chat", "/chat", "✉", "Hermes 대화"), ("activity", "/activity", "☰", "감사 로그"), ("guide", "/guide", "?", "가이드"))
+_ACTIVE_ALIAS = {"dash": "home", "setup": "data"}
+
+
+def side_nav(active: str, operator: str, counts: dict | None = None) -> str:
+    """왼쪽 고정 메뉴 (docs/qa-platform-v2.md §7.1). 주 메뉴 넷 + 관리 묶음 + 담당자."""
+    active = _ACTIVE_ALIAS.get(active, active)
+    counts = counts or {}
+
+    def item(key, href, ic, label):
+        c = counts.get(key)
+        cnt = f'<span class="cnt {"warn" if key == "sanity" else ""}">{e(c)}</span>' if c else ""
+        return f'<a class="nv {"on" if active == key else ""}" href="{href}"><span class="ic">{ic}</span>{label}{cnt}</a>'
+    me = (f'<div class="me"><b>{e(operator[:2])}</b><div>{e(operator)}<small>담당자 · <a href="/whoami" onclick="this.href=\'/whoami?next=\'+encodeURIComponent(location.pathname+location.search)">바꾸기</a>{h("whoami")}</small></div></div>'
+          if operator else '<div class="me"><a href="/whoami">담당자 고르기</a></div>')
+    return (f'<aside class="side"><a class="brand" href="/"><i></i>Plady QA</a>{"".join(item(*x) for x in MAIN_NAV)}'
+            f'<div class="sub"><div class="lbl">관리</div>{"".join(item(*x) for x in ADMIN_NAV)}</div><div class="foot">{me}</div></aside>')
+
+
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None,
          context: dict | None = None, hermes: bool = False, operators: list | tuple = (), autostart: dict | None = None,
-         inline_chat: str | None = None) -> str:
-    """모든 화면의 껍데기. Hermes 위젯(채널톡처럼 오른쪽 아래)이 어느 화면에나 붙는다 — context 는 그 화면의 객체(run·case·tc),
+         inline_chat: str | None = None, counts: dict | None = None) -> str:
+    """모든 화면의 껍데기. 노트북 기준(docs/qa-platform-v2.md §8.1) — 왼쪽 메뉴 + 본문.
+    Hermes 위젯(채널톡처럼 오른쪽 아래)이 어느 화면에나 붙는다 — context 는 그 화면의 객체(run·case·tc),
     autostart 는 위젯을 새 대화로 바로 열기, inline_chat 은 /chat/{id} 처럼 본문 안에 크게 그리기."""
-    nav = "".join(
-        f'<a href="{href}" class="{"on" if active == key else ""}">{label}</a>'
-        for key, href, label in (("dash", "/", "대시보드"), ("runs", "/runs", "실행 기록"), ("features", "/features", "시나리오"), ("cases", "/cases", "테스트 스크립트"), ("catalog", "/catalog", "테스트 조건"), ("drafts", "/drafts", "변경 기록"), ("chat", "/chat", "Hermes"), ("apis", "/apis", "API"), ("explorer", "/explorer", "API 호출"), ("setup", "/setup", "테스트 데이터 만들기"), ("activity", "/activity", "감사 로그"), ("guide", "/guide", "가이드"))
-    )
     fl = f'<div class="flash {e(flash[0])}">{e(flash[1])}</div>' if flash else ""
     qa = {"operator": operator, "operators": list(operators), "context": {k: v for k, v in (context or {}).items() if v}, "hermes": bool(hermes),
           "autostart": autostart, "inline": inline_chat}
     inline = f'<div id="hx-inline"></div>' if inline_chat else ""
     return (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>{e(title)} · QA</title><style>{CSS}</style></head><body>'
-            f'<nav><span class="brand">Plady QA</span>{nav}<span class="op">{("담당자: <b style=\"color:#fff\">" + e(operator) + "</b>") if operator else "담당자 미선택"}'
-            f'<a href="/whoami" onclick="this.href=\'/whoami?next=\'+encodeURIComponent(location.pathname+location.search)">{"바꾸기" if operator else "고르기"}</a>{h("whoami")}</span></nav>'
-            f'<main>{fl}{body}{inline}</main>'
+            f'<title>{e(title)} · QA</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">'
+            f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts)}'
+            f'<main>{fl}{body}{inline}</main><div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
             f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script><script src="/static/jobs.js?v={JOBS_JS_VERSION}" defer></script></body></html>')
+
+
+# ---- 홈 (docs/qa-platform-v2.md §7.2) -------------------------------------------------------
+def todo_rows(todo: list[dict]) -> str:
+    btn = {"warn": "soft", "info": "soft"}
+    return "".join(f'<a class="li" href="{e(x["href"])}"><div class="dot {e(x["tone"])}">{e(x["icon"])}</div>'
+                   f'<div class="tx"><div class="t">{e(x["title"])}</div><div class="d">{e(x["desc"])}</div></div>'
+                   f'<span class="btn {btn.get(x["tone"], "")}">{e(x["button"])}</span></a>' for x in todo)
+
+
+def home(*, operator: str, todo: list[dict], ov: list[dict], counts: dict, recent: list[dict], target: str, gh_error: str | None = None) -> str:
+    """홈: 인사 · 세 가지 일 · 지금 할 일 · 기능별 테스트 준비 · 한눈에 · 최근 실행. 1440×800 첫 화면에 핵심이 들어오게."""
+    feats = [f for f in ov if f.get("file")]
+    rows = ""
+    for f in feats:
+        c = f["counts"]
+        n = c["variants"] or 1
+        seg = "".join(f'<i style="width:{c[k] / n * 100:.1f}%;background:{col}"></i>'
+                      for k, col in (("auto", "var(--info)"), ("manual", "var(--warn)"), ("untested", "#D1D6DB"), ("excluded", "#EEF0F2")))
+        rows += (f'<tr class="link" onclick="location.href=\'/features/{quote_path(f["slug"])}\'"><td style="font-weight:600">{e(f["feature"])}</td>'
+                 f'<td style="width:30%;vertical-align:middle"><div class="bar" style="height:6px">{seg}</div></td>'
+                 f'<td class="num">{c["variants"]}</td><td class="num">{c["auto"]}</td><td class="num">{c["manual"]}</td><td class="num">{c["untested"]}</td></tr>')
+    legend = " ".join(f'<span class="small mut" style="margin-left:10px"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:{col};margin-right:5px"></i>{n}</span>'
+                      for n, col in (("스크립트로 확인", "var(--info)"), ("사람이 확인", "var(--warn)"), ("테스트 없음", "#D1D6DB"), ("제외", "#EEF0F2")))
+    rec = "".join(f'<a class="li" href="/runs/{e(r["id"])}"><div class="tx"><div class="t">{e(TRIGGER_KO.get(r["trigger"], r["trigger"]))}'
+                  f'{(" · PR #" + str(r["pr_number"])) if r.get("pr_number") else ""}</div><div class="d">{e(r["operator"])} · {kst(r["created_at"])} · {r["passed"]}/{r["total"]} 통과</div></div>{run_badge(r)}</a>'
+                  for r in recent) or '<div class="empty"><b>아직 실행한 기록이 없어요</b>Sanity 나 스모크를 돌리면 여기에 쌓여요.</div>'
+    stat = lambda k, v: f'<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)"><span style="color:var(--ink2)">{k}</span><b>{v}</b></div>'  # noqa: E731
+    head = f"{e(operator)} 님, 확인할 일이 {len(todo)}개 있어요" if todo else f"{e(operator)} 님, 지금 확인할 일이 없어요"
+    todo_html = todo_rows(todo) or '<div class="empty"><b>할 일을 다 했어요</b>새 PR 이 머지되면 여기에 나와요.</div>'
+    return (f'<h1>{head}</h1><p class="lead">PR 이 머지되면 Sanity 로 확인하고, 스프린트마다 스모크를 돌려 주세요.</p>'
+            f'<div class="jobs"><a class="card" href="/sanity"><div class="n">🔍 Sanity 테스트</div><div class="d">머지된 PR 하나를 스펙대로 확인해요. Hermes 가 관련 스펙을 찾아 테스트를 만들고 dev 에서 돌려요.</div>'
+            f'<div class="go">검증할 PR {counts.get("sanity") or 0}개 →</div></a>'
+            f'<a class="card" href="/smoke"><div class="n">💨 스모크 테스트</div><div class="d">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요.</div><div class="go">스크립트 {counts.get("smoke") or 0}개 →</div></a>'
+            f'<a class="card" href="/data"><div class="n">🧪 QA 데이터</div><div class="d">테스트용 룸·신청·계정을 만들고, 다 쓰면 지워요.</div><div class="go">만들기 · 지우기 →</div></a></div>'
+            f'<div class="cols" style="grid-template-columns:1fr 340px"><div>'
+            f'<div class="card flush"><div class="ch"><h2>지금 할 일</h2>{("<span class=\"small\" style=\"color:var(--bad)\">PR 목록을 못 읽었어요: " + e(gh_error) + "</span>") if gh_error else ""}</div>{todo_html}</div>'
+            f'<div class="card flush"><div class="ch"><h2>기능별 테스트 준비</h2><span>{legend}</span></div>'
+            f'<table><tr><th>기능</th><th></th><th class="num">케이스</th><th class="num">스크립트</th><th class="num">사람이 확인</th><th class="num">테스트 없음</th></tr>{rows}</table></div></div>'
+            f'<div><div class="card flush"><div class="ch"><h2>한눈에</h2></div><div class="cb" style="padding-top:6px;padding-bottom:6px">'
+            f'{stat("케이스", sum(f["counts"]["variants"] for f in feats))}{stat("스크립트", counts.get("smoke") or 0)}{stat("대상", "<span class=mono>" + e(target) + "</span>")}</div></div>'
+            f'<div class="card flush"><div class="ch"><h2>최근 실행</h2><a class="small mut" href="/runs">실행 기록 →</a></div>{rec}</div></div></div>')
+
+
+def quote_path(s: str) -> str:
+    from urllib.parse import quote
+    return quote(s, safe="")
 
 
 # ---- 대시보드 ------------------------------------------------------------------------------
@@ -180,53 +284,6 @@ def coverage_card(catalog, coverage: dict | None, error: str | None) -> str:
             f'<table class="mx"><tr><th>도메인</th>{head}</tr>{rows}</table>'
             f'<p class="small mut" style="margin-bottom:0">SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · {kst(catalog.built_at)} 계산'
             f'{(" · <b style=\"color:var(--warn)\">경고 " + str(len(catalog.warnings)) + "</b>") if catalog.warnings else ""}</p></div>')
-
-
-def dashboard(*, deploys: list[dict], sprint: dict, sprint_runs: list[dict], recent: list[dict], cfg_summary: dict,
-              case_count: int, case_errors: list[str], gh_error: str | None, runner_current: str | None,
-              catalog=None, coverage: dict | None = None, catalog_error: str | None = None) -> str:
-    rows = ""
-    for d in deploys:
-        pr = d.get("pr") or {}
-        runs = d.get("runs") or []
-        if runs:
-            last = runs[0]
-            state = f'<a href="/runs/{e(last["id"])}">{run_badge(last)}</a> <span class="small mut">{len(runs)}회</span>'
-        else:
-            state = badge("미검증", "warn")
-        btn = (f'<a class="btn" href="/runs/new?trigger=deploy-sanity&sha={e(d["sha"])}&deploy_run_id={e(d["run_id"])}'
-               f'{"&pr=" + str(pr["number"]) if pr.get("number") else ""}">검증</a>{h("dash.verify")}')
-        rows += (f'<tr><td class="mono"><a href="{e(d["url"])}">{e((d["sha"] or "")[:8])}</a></td>'
-                 f'<td>{("<a href=\"" + e(pr["url"]) + "\">#" + str(pr["number"]) + "</a> ") if pr.get("number") else ""}{e(pr.get("title") or d.get("title"))}</td>'
-                 f'<td class="small mut">{kst(d["at"])}</td><td>{state}</td><td class="right">{btn}</td></tr>')
-    if not rows:
-        rows = f'<tr><td colspan="5" class="mut">{"조회 실패: " + e(gh_error) if gh_error else "성공한 dev 배포가 없다"}</td></tr>'
-    unverified = sum(1 for d in deploys if not d.get("runs"))
-
-    s_state = ("이번 스프린트 smoke: " + " ".join(f'<a href="/runs/{e(r["id"])}">{run_badge(r)}</a>' for r in sprint_runs[:3])) if sprint_runs \
-        else badge("이번 스프린트 smoke 미실행", "warn")
-    sprint_card = (f'<div class="card"><h3 style="margin-top:0">스프린트 Cycle {sprint["number"]}{h("dash.sprint")} '
-                   f'<span class="small mut">{sprint["starts_at"].astimezone(KST).strftime("%m-%d")} ~ {(sprint["ends_at"] - timedelta(days=1)).astimezone(KST).strftime("%m-%d")}</span></h3>'
-                   f'<p>{s_state}</p><div class="actions"><a class="btn primary" href="/runs/new?trigger=sprint-smoke">스프린트 smoke 실행</a>{h("dash.sprint")}'
-                   f'<a class="btn" href="/runs/new?trigger=release">릴리스 QA</a>{h("dash.release")}<a class="btn" href="/runs/new?trigger=manual">수동 실행</a>{h("dash.manual")}</div></div>')
-
-    cfg_lines = (f'대상 <span class="mono">{e(cfg_summary["target"])}</span> · 스크립트 {case_count}개 · 테스트 계정 {", ".join(cfg_summary["actors"]) or "<b style=\"color:var(--warn)\">없음</b>"}'
-                 f' · Hermes {"on" if cfg_summary["hermes"] else "off"} · Slack {"on" if cfg_summary["slack"] else "off"}'
-                 f' · 러너 {("실행 중 " + e(runner_current)) if runner_current else "대기"}')
-    errs = "".join(f'<li class="small" style="color:var(--bad)">{e(x)}</li>' for x in case_errors)
-    status_card = f'<div class="card"><h3 style="margin-top:0">상태</h3><p class="small">{cfg_lines}</p>{("<ul>" + errs + "</ul>") if errs else ""}</div>'
-
-    rec = "".join(
-        f'<tr><td><a href="/runs/{e(r["id"])}" class="mono">{e(r["id"])}</a></td><td>{e(TRIGGER_KO.get(r["trigger"], r["trigger"]))}</td>'
-        f'<td>{e(r["operator"])}</td><td class="mono small">{e((r.get("sha") or "")[:8])}{(" #" + str(r["pr_number"])) if r.get("pr_number") else ""}</td>'
-        f'<td>{run_badge(r)} <span class="small mut">{r["passed"]}/{r["total"]}</span></td><td class="small mut">{kst(r["created_at"])}</td></tr>'
-        for r in recent) or '<tr><td colspan="6" class="mut">아직 실행 기록이 없다</td></tr>'
-
-    return (f'<h1>대시보드</h1><div class="grid">{sprint_card}{status_card}</div>{coverage_card(catalog, coverage, catalog_error)}'
-            f'<h2>dev 배포 {badge(f"미검증 {unverified}", "warn" if unverified else "ok")}{h("dash.deploys")}</h2><div class="card">'
-            f'<table><tr><th>SHA</th><th>PR</th><th>배포</th><th>검증</th><th></th></tr>{rows}</table>'
-            f'<p class="small mut">GitHub Actions 의 성공한 dev 배포를 읽어 표시한다. 검증은 사람이 [검증] 을 눌러야 시작된다.</p></div>'
-            f'<h2>최근 테스트 실행{h("runs.list")}</h2><div class="card"><table><tr><th>ID</th><th>실행 종류{h("runs.trigger")}</th><th>담당자</th><th>대상</th><th>결과{h("run.verdict")}</th><th>시각</th></tr>{rec}</table></div>')
 
 
 # ---- 런 생성(확인 화면) ------------------------------------------------------------------------

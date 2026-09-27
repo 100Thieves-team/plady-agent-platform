@@ -71,6 +71,14 @@ JOBS_SQL = """CREATE TABLE IF NOT EXISTS hermes_jobs (
 );
 CREATE INDEX IF NOT EXISTS ix_hermes_jobs_created ON hermes_jobs(created_at);
 """
+# Sanity (docs/qa-platform-v2.md §4, §9.1) — PR 하나를 스펙대로 확인한 한 번. 다섯 단계의 결과를 JSON 으로 쌓는다.
+SANITY_SQL = """CREATE TABLE IF NOT EXISTS sanity (
+  id TEXT PRIMARY KEY, pr_number INTEGER NOT NULL, pr_title TEXT, sha TEXT, operator TEXT NOT NULL, status TEXT NOT NULL,
+  step INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT,
+  scope TEXT NOT NULL DEFAULT '{}', findings TEXT NOT NULL DEFAULT '[]', log TEXT NOT NULL DEFAULT '[]', run_id TEXT, job_id TEXT, error TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_sanity_pr ON sanity(pr_number, created_at);
+"""
 QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
   member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
 );"""
@@ -106,6 +114,7 @@ class Store:
             self._db.execute("CREATE INDEX IF NOT EXISTS ix_run_steps_op ON run_steps(op_id, id)")
             self._db.executescript(QA_MEMBERS_SQL)
             self._db.executescript(JOBS_SQL)
+            self._db.executescript(SANITY_SQL)
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -444,3 +453,44 @@ class Store:
             r["tool_calls"] = json.loads(r["tool_calls"] or "[]")
             r["draft_ids"] = json.loads(r["draft_ids"] or "[]")
         return rows
+
+    # ---- Sanity (docs/qa-platform-v2.md §9.1) ---------------------------------
+    _SANITY_JSON = ("scope", "findings", "log")
+
+    def add_sanity(self, *, pr_number: int, pr_title: str | None, sha: str | None, operator: str) -> str:
+        sid = "s-" + secrets.token_hex(5)
+        at = now_iso()
+        self._x("INSERT INTO sanity (id, pr_number, pr_title, sha, operator, status, step, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (sid, pr_number, pr_title, sha, operator, "queued", 0, at, at))
+        return sid
+
+    def _sanity(self, r: dict | None) -> dict | None:
+        if r:
+            for k in self._SANITY_JSON:
+                r[k] = json.loads(r[k] or ("{}" if k == "scope" else "[]"))
+        return r
+
+    def get_sanity(self, sid: str) -> dict | None:
+        return self._sanity(self._one("SELECT * FROM sanity WHERE id=?", (sid,)))
+
+    def update_sanity(self, sid: str, **fields):
+        fields["updated_at"] = now_iso()
+        for k in self._SANITY_JSON:
+            if k in fields:
+                fields[k] = json.dumps(fields[k], ensure_ascii=False)
+        cols = ", ".join(f"{k}=?" for k in fields)
+        self._x(f"UPDATE sanity SET {cols} WHERE id=?", (*fields.values(), sid))
+
+    def latest_sanity(self) -> dict[int, dict]:
+        """PR 번호 → 가장 최근 Sanity."""
+        out: dict[int, dict] = {}
+        for r in self._q("SELECT * FROM sanity ORDER BY created_at DESC"):
+            out.setdefault(r["pr_number"], self._sanity(r))
+        return out
+
+    def list_sanity(self, pr_number: int) -> list[dict]:
+        return [self._sanity(r) for r in self._q("SELECT * FROM sanity WHERE pr_number=? ORDER BY created_at DESC", (pr_number,))]
+
+    def interrupt_sanity(self) -> int:
+        """재시작 때 돌던 Sanity 를 멈춤으로 닫는다(다시 돌리지 않는다 — 사람이 다시 누른다)."""
+        return self._x("UPDATE sanity SET status='interrupted', updated_at=? WHERE status IN ('queued','running')", (now_iso(),))

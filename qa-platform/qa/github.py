@@ -87,14 +87,31 @@ class GitHub:
                     "author": (pr.get("user") or {}).get("login"), "merged_at": pr.get("merged_at")}
         return None
 
+    def merged_prs(self, limit: int = 12) -> list[dict]:
+        """dev 로 머지된 PR, 최신순 (docs/qa-platform-v2.md §4.4). [{number, title, url, author, merged_at, sha, changed_files, additions, deletions}]"""
+        data = self._get(f"/repos/{self.cfg.backend_repo}/pulls", ttl=60,
+                         params=f"?state=closed&base={self.cfg.backend_branch}&sort=updated&direction=desc&per_page=40")
+        out = []
+        for pr in data or []:
+            if not pr.get("merged_at"):
+                continue
+            out.append({"number": pr.get("number"), "title": pr.get("title"), "url": pr.get("html_url"), "author": (pr.get("user") or {}).get("login"),
+                        "merged_at": pr.get("merged_at"), "sha": pr.get("merge_commit_sha"), "body": pr.get("body") or ""})
+        out.sort(key=lambda x: x["merged_at"], reverse=True)
+        return out[:limit]
+
     def pr_files(self, number: int) -> list[str]:
-        files: list[str] = []
+        return [f["filename"] for f in self.pr_file_details(number)]
+
+    def pr_file_details(self, number: int) -> list[dict]:
+        """PR 변경 파일 [{filename, status, additions, deletions, patch}]. patch 는 GitHub 가 큰 파일에서 빼기도 한다."""
+        files: list[dict] = []
         for page in (1, 2, 3):
             data = self._get(f"/repos/{self.cfg.backend_repo}/pulls/{number}/files", ttl=None,
                              params=f"?per_page=100&page={page}")
             if not data:
                 break
-            files.extend(f.get("filename") for f in data if f.get("filename"))
+            files.extend({k: f.get(k) for k in ("filename", "status", "additions", "deletions", "patch")} for f in data if f.get("filename"))
             if len(data) < 100:
                 break
         return files

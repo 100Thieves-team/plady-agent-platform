@@ -38,6 +38,7 @@ from qa.hermes import triage as hermes_triage  # noqa: E402
 from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
 from qa.mcp_server import McpServer  # noqa: E402
 from qa import report as reportmod  # noqa: E402
+from qa import sanity as sanitymod  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.reminder import Reminder  # noqa: E402
 from qa.runner import Runner  # noqa: E402
@@ -87,6 +88,9 @@ class App:
         self.mcp = McpServer(self, hidden_triggers=HIDDEN_TRIGGERS)
         self.qadata = QaData(self)     # dev 전용 QA 데이터 API(삭제·초기화·회원 생성) 클라이언트
         self.runner.actors.extra = self.store.qa_member_map   # 플랫폼이 만든 QA 회원도 테스트 계정 이름으로
+        self.store.interrupt_sanity()     # 재시작 전에 돌던 Sanity 는 멈춤으로 (docs/qa-platform-v2.md §9.1)
+        self._qa_snap: tuple[float, dict] | None = None      # 홈에 쓰는 남은 QA 데이터 (QA 데이터 화면을 열 때 갱신)
+        self._sanity_todo: int | None = None                  # 왼쪽 메뉴의 Sanity 숫자 (PR 목록을 읽을 때 갱신)
 
     def start(self):
         self.runner.start()
@@ -1301,15 +1305,61 @@ class App:
                + (f"\n실패: {', '.join(bad[:8])}" if bad else "") + f"\n{self.cfg.public_url}/runs/{run['id']}")
         slack(self.cfg.slack_webhook_url, msg)
 
-    # ---- 대시보드 데이터 ------------------------------------------------------------
-    def deploys_with_status(self) -> list[dict]:
+    # ---- 홈 · 왼쪽 메뉴 (docs/qa-platform-v2.md §7) --------------------------------------
+    def smoke_scripts(self) -> list:
+        """스모크에서 돌 수 있는 스크립트 — 테스트 데이터 만들기 카드와 API 호출 전용(manual)은 뺀다."""
+        return [c for c in self.cases.values() if c.suite not in ("setup", "manual")]
+
+    def nav_counts(self) -> dict:
+        return {"sanity": self._sanity_todo, "smoke": len(self.smoke_scripts())}
+
+    def sanity_prs(self, limit: int = 12) -> list[dict]:
+        """dev 로 머지된 PR 과 그 PR 의 마지막 Sanity (§4.4). API 가 바뀐 PR 이 앞, 나머지는 뒤."""
+        last = self.store.latest_sanity()
         out = []
-        for d in self.github.list_deploys():
-            d = dict(d)
-            d["pr"] = self.github.pr_for_sha(d["sha"]) if d.get("sha") else None
-            d["runs"] = [r for r in self.store.runs_for_sha(d["sha"]) if r["trigger"] == "deploy-sanity"] if d.get("sha") else []
-            out.append(d)
+        for pr in self.github.merged_prs(limit):
+            s = sanitymod.summarize(self.github.pr_file_details(pr["number"]))
+            out.append({**pr, **s, "sanity": last.get(pr["number"])})
+        self._sanity_todo = sum(1 for p in out if p["api"] and (not p["sanity"] or p["sanity"]["status"] in ("needs_spec", "failed", "error", "interrupted")))
         return out
+
+    def qa_snapshot(self, fresh: bool = False) -> dict | None:
+        """남은 QA 데이터. fresh 면 dev 에 묻고, 아니면 마지막으로 물은 값(10분 안)만 돌려준다 — 홈이 dev 를 기다리지 않게."""
+        import time
+        if fresh:
+            self._qa_snap = (time.monotonic(), self.qadata.snapshot())
+        if self._qa_snap and time.monotonic() - self._qa_snap[0] < 600:
+            return self._qa_snap[1]
+        return None
+
+    def home_todo(self, prs: list[dict]) -> list[dict]:
+        """지금 할 일 (§7.2). 한 줄에 버튼 하나. tone: warn · info · plain · bad"""
+        todo = []
+        for p in prs:
+            s = p["sanity"]
+            if not p["api"]:
+                continue
+            if s and s["status"] == "needs_spec":
+                n = sum(1 for f in s["findings"] if f.get("kind") in sanitymod.BLOCKING and not f.get("resolved_at"))
+                todo.append({"tone": "warn", "icon": "!", "title": f"PR #{p['number']} 스펙 확인이 {n}건 필요해요", "desc": p["title"],
+                             "href": f"/sanity/{p['number']}", "button": "질문 보기"})
+            elif s and s["status"] in ("failed", "error", "interrupted"):
+                todo.append({"tone": "bad", "icon": "✕", "title": f"PR #{p['number']} Sanity 가 {sanitymod.STATUS_KO[s['status']]}했어요".replace("멈춤했어요", "멈췄어요"),
+                             "desc": p["title"], "href": f"/sanity/{p['number']}", "button": "결과 보기"})
+            elif not s:
+                todo.append({"tone": "info", "icon": "#", "title": f"PR #{p['number']} · 아직 검증하지 않았어요", "desc": p["title"],
+                             "href": f"/sanity/{p['number']}", "button": "Sanity 시작"})
+        sprint = self.cfg.current_sprint()
+        if not self.store.runs_since(sprint["starts_at"].isoformat().replace("+00:00", "Z"), "sprint-smoke"):
+            end = sprint["ends_at"].astimezone(ui.KST)
+            todo.append({"tone": "plain", "icon": "▶", "title": f"이번 스프린트(Cycle {sprint['number']}) 스모크를 아직 안 했어요",
+                         "desc": f"스크립트 {len(self.smoke_scripts())}개 · {end.month}월 {end.day}일 전까지", "href": "/smoke", "button": "스모크 실행"})
+        snap = self.qa_snapshot()
+        if snap and (snap.get("rooms") or snap.get("members")):
+            nr, nm = len(snap.get("rooms") or []), len(snap.get("members") or [])
+            todo.append({"tone": "plain", "icon": "▦", "title": f"dev 에 QA 데이터가 남아 있어요 (룸 {nr} · 회원 {nm})",
+                         "desc": "실패한 실행이 만든 룸일 수 있어요", "href": "/data", "button": "정리하기"})
+        return todo
 
 
 # ---- HTTP -------------------------------------------------------------------------------------
@@ -1382,7 +1432,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _page(self, title, body, active="", flash=None, status=200, context=None, autostart=None, inline_chat=None):
         self._send(status, ui.page(title, body, active=active, operator=self._operator(), flash=flash, context=context, hermes=bool(self.app.cfg.hermes_key),
-                                   operators=self.app.cfg.operators, autostart=autostart, inline_chat=inline_chat))
+                                   operators=self.app.cfg.operators, autostart=autostart, inline_chat=inline_chat, counts=self.app.nav_counts()))
 
     # -- SSE (Hermes 위젯) --
     def _sse_start(self):
@@ -1514,16 +1564,11 @@ class Handler(BaseHTTPRequestHandler):
 
         # ---------- 대시보드 ----------
         if path == "/" and method == "GET":
-            sprint = app.cfg.current_sprint()
-            since = sprint["starts_at"].isoformat().replace("+00:00", "Z")
-            cat = app.current_catalog()
-            body = ui.dashboard(deploys=app.deploys_with_status(), sprint=sprint, sprint_runs=app.store.runs_since(since, "sprint-smoke"),
-                                recent=app.store.list_runs(10), cfg_summary=app.cfg.summary(), case_count=len(app.cases),
-                                case_errors=app.case_errors, gh_error=app.github.last_error, runner_current=app.runner.current,
-                                catalog=cat, coverage=app.coverage(cat) if cat else None, catalog_error=app.catalog.last_error)
-            ov, chk = app.scenario_view()
-            body += ui.scenario_tree(ov, errors=chk["errors"])
-            return self._page("대시보드", body, "dash")
+            prs = app.sanity_prs()
+            ov, _ = app.scenario_view()
+            body = ui.home(operator=self._operator(), todo=app.home_todo(prs), ov=ov, counts=app.nav_counts(),
+                           recent=app.store.list_runs(5, exclude=HIDDEN_TRIGGERS), target=app.cfg.target_base_url, gh_error=app.github.last_error)
+            return self._page("홈", body, "home")
 
         # ---------- 시나리오 (docs/qa-platform-scenarios.md §12) ----------
         if path == "/features" and method == "GET":
@@ -1790,6 +1835,7 @@ class Handler(BaseHTTPRequestHandler):
                                    changes=app.catalog.changes, wiki_available=app.wiki.available,
                                    operators=app.cfg.operators, operator=self._operator(), hermes=bool(app.cfg.hermes_key),
                                    op=g("op"), op_ids=cat.by_operation().get(g("op")) if g("op") else None)
+            body = body.replace("</h1>", "</h1>" + ui.coverage_card(cat, cov, app.catalog.last_error), 1)    # 옛 대시보드의 커버리지 표 (v2 §7.2)
             return self._page("테스트 조건", body, "catalog", flash=("ok", g("msg")) if g("msg") else None)
         if path == "/catalog/tc" and method == "GET":
             cat = app.current_catalog()
