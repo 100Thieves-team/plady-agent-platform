@@ -35,60 +35,6 @@ scenarios:
         kind: extra
         title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
         checks: ['op.roomCreationLimit:200']
-      - key: account-active
-        kind: reject
-        at: R6
-        title: 이용이 제한된 계정이 룸을 만들면 E1002 로 거절된다
-        checks: [G.room.create#account-active]
-        then: E1002
-      - key: duplicate-slot-left
-        kind: reject
-        at: R6
-        title: 같은 회사·공고·직무의 활성 룸이 이미 3개인데 또 만들면 E1427 로 거절된다
-        checks: [G.room.create#duplicate-slot-left]
-        then: E1427
-      - key: login-required
-        kind: reject
-        at: R6
-        title: 로그인하지 않고 룸을 만들면 E1102 로 거절된다
-        checks: [G.room.create#login-required]
-        then: E1102
-      - key: participation-slot-left
-        kind: reject
-        at: R6
-        title: 참여 중인 룸이 이미 3개인데 룸을 만들면 E1425 로 거절된다
-        checks: [G.room.create#participation-slot-left]
-        then: E1425
-      - key: interview-stage-required
-        kind: reject
-        at: R6
-        title: 면접 차수를 고르지 않고 룸을 만들면 거절된다
-        checks: [G.room.create#interview-stage-required]
-        mode: manual
-      - key: offline-region-required
-        kind: reject
-        at: R6
-        title: 오프라인 룸에 지역을 넣지 않으면 거절된다
-        checks: [G.room.create#offline-region-required]
-        mode: manual
-      - key: qna-type-only
-        kind: reject
-        at: R6
-        title: 질의응답형이 아닌 면접 유형을 고르면 거절된다
-        checks: [G.room.create#qna-type-only]
-        mode: manual
-      - key: each-schedule-passes-create
-        kind: reject
-        at: R143
-        title: 여러 일정 중 하나라도 생성 조건에 맞지 않으면 거절된다
-        checks: [G.room.create_batch#each-schedule-passes-create]
-        mode: manual
-      - key: schedule-count-within-limit
-        kind: reject
-        at: R143
-        title: 고를 수 있는 일정 개수를 넘기면 거절된다
-        checks: [G.room.create_batch#schedule-count-within-limit]
-        mode: manual
     basis:
       R1: 77abae97
       R2: e7be3cf6
@@ -129,7 +75,7 @@ scenarios:
         title: 일반 참여자가 없는 모집 중인 룸을 방장이 취소한다
         given: 방장만 있는 모집 중인 룸
         then: 취소 200
-        checks: [C.room.cancel]
+        checks: [C.room.cancel, 'op.cancelRoom:200']
       - key: host-leave
         kind: branch
         at: R148
@@ -141,48 +87,6 @@ scenarios:
         given: 방장이 한 번 취소한 룸
         then: 409 E1410
         checks: [G.room.cancel#room-recruiting]
-      - key: update.host-only
-        kind: reject
-        at: R146
-        title: 방장이 아닌 사람이 룸 정보를 고치면 E1406 으로 거절된다
-        checks: [G.room.update#host-only]
-        then: E1406
-      - key: max-headcount-not-below-joined
-        kind: reject
-        at: R146
-        title: 최대 모집 인원을 지금 참여 인원보다 적게 고치면 E1417 로 거절된다
-        checks: [G.room.update#max-headcount-not-below-joined]
-        then: E1417
-      - key: update.room-recruiting
-        kind: reject
-        at: R146
-        title: 모집 중이 아닌 룸을 고치면 E1418 로 거절된다
-        checks: [G.room.update#room-recruiting]
-        then: E1418
-      - key: cancel.host-only
-        kind: reject
-        at: R147
-        title: 방장이 아닌 사람이 룸을 취소하면 E1406 으로 거절된다
-        checks: [G.room.cancel#host-only]
-        then: E1406
-      - key: no-other-joined-members
-        kind: reject
-        at: R147
-        title: 일반 참여자가 있는 룸을 취소하면 E1420 으로 거절된다
-        checks: [G.room.cancel#no-other-joined-members]
-        then: E1420
-      - key: own-participation
-        kind: reject
-        at: R148
-        title: 다른 사람의 참여를 대신 취소하면 E1419 로 거절된다
-        checks: [G.participation.cancel#own-participation]
-        then: E1419
-      - key: participation-joined
-        kind: reject
-        at: R148
-        title: 이미 끝난 참여를 다시 취소하면 E1419 로 거절된다
-        checks: [G.participation.cancel#participation-joined]
-        then: E1419
     basis:
       R144: 2e88acca
       R145: 73d22ca7

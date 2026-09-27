@@ -1,0 +1,66 @@
+# 「룸 진행 마무리 및 출석」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 룸 진행 마무리 및 출석
+scenarios:
+  - id: S2
+    actor: qa-host
+    gates:
+      R63: [G.room.complete]
+      R70: [G.room.autocomplete]
+    variants:
+      - key: happy
+        kind: happy
+        title: 방장이 진행 완료를 누르고 출석을 입력하면 룸이 완료되고 출석이 기록된다
+        given: 진행 확정된 룸
+        then: 완료 200, 룸 상태 COMPLETED, 출석 기록 200
+        checks: [C.room.complete, 'op.completeRoomProgress:200', 'op.recordRoomAttendances:200']
+      - key: autocomplete
+        kind: branch
+        at: R70
+        title: 방장이 진행 완료를 누르지 않으면 예정 시각 8시간 뒤 자동 완료되고 확정 참여자 모두 후기를 쓸 수 있다
+        checks: [C.room.autocomplete]
+        mode: manual
+      - key: notify
+        kind: extra
+        title: 완료되면 전체 참여자에게 완료 알림과 후기 요청 알림이 함께 간다
+        mode: manual
+      - key: my-attendance
+        kind: extra
+        title: 완료된 룸의 참여자는 자신의 출석 결과를 확인한다
+        checks: ['op.getMyAttendance:200']
+      - key: attendance-twice
+        kind: extra
+        title: 출석을 두 번 기록하면 E1708 로 거절된다
+        then: E1708
+        checks: ['op.recordRoomAttendances:E1708']
+      - key: attendance-roster-matches
+        kind: reject
+        at: R63
+        title: 출석 명단이 확정 참여자와 다르면 E1706 으로 거절된다
+        checks: [G.room.complete#attendance-roster-matches]
+        then: E1706
+      - key: host-only
+        kind: reject
+        at: R63
+        title: 방장이 아닌 참여자가 진행 완료를 누르면 E1406 으로 거절된다
+        checks: [G.room.complete#host-only]
+        then: E1406
+      - key: room-confirmed
+        kind: reject
+        at: R63
+        title: 진행 확정되지 않은 룸을 완료하면 E1707 로 거절된다
+        checks: [G.room.complete#room-confirmed]
+        then: E1707
+    basis:
+      R61: d1166481
+      R62: 71bd5340
+      R63: b3b57f01
+      R70: 99e07197
+      R64: f078241f
+      R65: a902851e
+      C.room.autocomplete: 5ef4d9f0
+      C.room.complete: 61176fc7
+      G.room.autocomplete#room-confirmed: c61eb116
+      G.room.autocomplete#schedule-plus-8h-passed: bac4a811
+      G.room.complete#attendance-roster-matches: cf6da01d
+      G.room.complete#host-only: b30e36d5
+      G.room.complete#room-confirmed: 81e2571d

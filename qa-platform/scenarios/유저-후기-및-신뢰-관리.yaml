@@ -31,6 +31,7 @@ scenarios:
         title: 참여자가 후기 작성을 참여자별로 건너뛴다.
         given: 참여자가 후기 작성을 참여자별로 건너뛴다.
         written_by: hermes
+        checks: ['op.skipReview:200']
       - key: return-from-my-interview
         kind: branch
         at: R96
@@ -55,6 +56,55 @@ scenarios:
         then: 유저 후기가 삭제되고 같은 대상자에게 다시 제출된다.
         checks: [C.review.delete, C.review.submit]
         written_by: hermes
+      - key: author-attended
+        kind: reject
+        at: R1
+        title: 출석하지 않은 사람이 후기를 쓰면 E2002 로 거절된다
+        checks: [G.review.write#author-attended]
+        then: E2002
+      - key: not-already-written
+        kind: reject
+        at: R1
+        title: 같은 사람에게 후기를 두 번 쓰면 E2005 로 거절된다
+        checks: [G.review.write#not-already-written]
+        then: E2005
+      - key: not-self
+        kind: reject
+        at: R1
+        title: 자기 자신에게 후기를 쓰면 E2004 로 거절된다
+        checks: [G.review.write#not-self]
+        then: E2004
+      - key: room-completed
+        kind: reject
+        at: R1
+        title: 완료되지 않은 룸에서 후기를 쓰면 E2001 로 거절된다
+        checks: [G.review.write#room-completed]
+        then: E2001
+      - key: target-attended
+        kind: reject
+        at: R1
+        title: 출석하지 않은 사람에게 후기를 쓰면 E2003 으로 거절된다
+        checks: [G.review.write#target-attended]
+        then: E2003
+      - key: author-only
+        kind: reject
+        at: R97
+        title: 다른 사람이 쓴 후기를 고치거나 지우면 E2007 로 거절된다
+        checks: [G.review.edit#author-only]
+        then: E2007
+      - key: review-effective
+        kind: reject
+        at: R97
+        title: 지워졌거나 숨겨진 후기를 고치면 E2006 으로 거절된다
+        checks: [G.review.edit#review-effective]
+        then: E2006
+      - key: within-edit-window
+        kind: reject
+        at: R97
+        title: 제출한 지 3시간이 지난 후기를 고치면 E2008 로 거절된다
+        checks: [G.review.edit#within-edit-window]
+        then: E2008
+    actor: qa-guest
     basis:
       R1: 14b08176
       R94: 94b272cb
@@ -87,6 +137,35 @@ scenarios:
         then: 신고된 후기는 관리자 검토 대상으로 표시된다.
         checks: [C.review.report]
         written_by: hermes
+      - key: report
+        kind: extra
+        title: 부적절한 후기를 신고하면 관리자 검토 대상으로 표시된다
+        checks: [C.review.report]
+        mode: manual
+      - key: received-login
+        kind: extra
+        title: 로그인하지 않고 받은 후기를 열면 E1102 로 거절된다
+        then: E1102
+        checks: ['op.getReceivedReviews:E1102']
+      - key: review-effective
+        kind: reject
+        at: R101
+        title: 지워졌거나 숨겨진 후기를 신고하면 거절된다
+        checks: [G.review.report#review-effective]
+        mode: manual
+      - key: review-reflected
+        kind: reject
+        at: R101
+        title: 아직 반영되지 않은(제출 3시간 전) 후기를 신고하면 거절된다
+        checks: [G.review.report#review-reflected]
+        mode: manual
+      - key: review-target-only
+        kind: reject
+        at: R101
+        title: 후기를 받은 사람이 아닌데 신고하면 거절된다
+        checks: [G.review.report#review-target-only]
+        mode: manual
+    actor: qa-guest
     basis:
       R99: ef3a364d
       R100: 6196cea8

@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+SEED = ROOT / "tests" / "fixtures" / "scenarios"      # 2026-09-27 초안 전의 시나리오 파일. 실제 scenarios/ 는 계속 자라므로 동작 시험은 이 판으로 한다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
@@ -16,7 +17,7 @@ from qa import httpx, ui  # noqa: E402
 from qa import scenarios as S  # noqa: E402
 from test_editor import HAS_WIKI, FakeGitHub, make_app  # noqa: E402
 
-TEXT = (ROOT / "scenarios" / "룸-생성.yaml").read_text(encoding="utf-8")
+TEXT = (SEED / "룸-생성.yaml").read_text(encoding="utf-8")
 NEW_REJECT = {"key": "schedule-not-passed", "kind": "reject", "at": "R6", "title": "지난 시각이면 E1407 로 거절된다",
               "given": "", "then": "E1407", "checks": "G.room.create#schedule-not-passed", "mode": "auto"}
 
@@ -74,7 +75,7 @@ class FlowTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.orig = httpx.request
         self.gh = FakeGitHub()
-        for p in (ROOT / "scenarios").glob("*.yaml"):
+        for p in SEED.glob("*.yaml"):
             self.gh.files[f"qa-platform/scenarios/{p.name}"] = p.read_text(encoding="utf-8")
         httpx.request = self.gh
         self.app = make_app(self.tmp.name)

@@ -1,0 +1,72 @@
+# 「룸 참여 및 참여자 관리」 PRD 2장의 시나리오를 따른다. 시나리오 제목과 단계는 PRD 에서 읽는다 (docs/qa-platform-scenarios.md §5).
+feature: 룸 참여 및 참여자 관리
+scenarios:
+  - id: S1
+    actor: qa-guest
+    gates:
+      R5: [G.application.submit]
+      R7: [G.application.accept, G.application.reject]
+      R179: [G.application.withdraw]
+      R10: [G.participation.cancel, G.participation.kick]
+    variants:
+      - key: happy
+        kind: happy
+        title: 참가를 신청하면 대기 중이 되고 방장이 수락하면 참여자가 된다
+        given: 모집 중인 룸, 신청자가 참여 중인 룸이 없다
+        then: 신청 PENDING, 수락 ACCEPTED, 참여자 목록에 신청자가 보인다
+        checks: [C.application.submit, C.application.accept]
+      - key: withdraw
+        kind: branch
+        at: R179
+        title: 방장이 처리하기 전에 신청을 철회하면 처리 대상에서 빠진다
+        given: 대기 중인 신청
+        then: 철회 200
+        checks: [C.application.withdraw, 'op.withdrawRoomApplication:200']
+      - key: reapply-after-withdraw
+        kind: branch
+        at: R180
+        title: 신청을 철회한 사람이 같은 룸에 다시 신청한다
+      - key: reapply-after-cancel
+        kind: branch
+        at: R181
+        title: 참여를 직접 취소한 사람이 같은 룸에 다시 신청한다
+    basis:
+      R1: 16f87808
+      R2: f3ab5523
+      R3: d592396f
+      R4: a1bbc866
+      R5: b883c7f7
+      R6: 3871cbdf
+      R7: cd32e462
+      R179: a88edea6
+      R180: 4be10ebb
+      R8: 7096fc86
+      R9: d809d929
+      R10: 9c643cdf
+      R181: 797928b0
+      C.application.accept: 8d2069e0
+      C.application.submit: 7c1210e0
+      C.application.withdraw: a39c2282
+      G.application.accept#application-pending: 8e74b67b
+      G.application.accept#capacity-left: 14dc585e
+      G.application.accept#host-only: 1af1cac7
+      G.application.accept#room-recruiting: a9b068be
+      G.application.reject#application-pending: dafe6630
+      G.application.reject#host-only: a4f94631
+      G.application.submit#account-active: 213037ad
+      G.application.submit#login-required: 84fc3a27
+      G.application.submit#not-already-engaged: 5f7d086d
+      G.application.submit#not-host: 5a4f5ede
+      G.application.submit#not-rejected-or-removed: 1322ad91
+      G.application.submit#participation-slot-left: 20bc1b33
+      G.application.submit#pending-limit-left: f41c23c7
+      G.application.submit#room-recruiting: cf91be64
+      G.application.submit#schedule-not-passed: 4d51592f
+      G.application.withdraw#application-pending: 9edc94fd
+      G.application.withdraw#own-application: 30c519cc
+      G.participation.cancel#own-participation: e076a190
+      G.participation.cancel#participation-joined: bd3229da
+      G.participation.kick#host-only: 0d9c5684
+      G.participation.kick#room-recruiting: 636f04d1
+      G.participation.kick#target-joined: 8024990f
+      G.participation.kick#target-not-host: fa81b341

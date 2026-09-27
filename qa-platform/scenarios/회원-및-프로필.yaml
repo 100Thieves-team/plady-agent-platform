@@ -14,6 +14,19 @@ scenarios:
         then: 최초 로그인 시 계정이 생성되고 닉네임이 자동 부여되며 로그인 완료 후 기존 참여 또는 생성 흐름으로 바로 복귀한다.
         checks: [C.member.signup, C.member.login]
         written_by: hermes
+        mode: manual
+      - key: login-required
+        kind: reject
+        at: R2
+        title: 로그인하지 않고 참여·생성을 하려 하면 E1102 로 거절된다
+        checks: [G.member.mutate#login-required]
+        then: E1102
+      - key: account-active
+        kind: reject
+        at: R2
+        title: 이용이 제한된 계정이 참여·생성을 하려 하면 거절된다
+        checks: [G.member.mutate#account-active]
+        mode: manual
     basis:
       R1: 82e80c6c
       R2: '63959874'
@@ -56,6 +69,7 @@ scenarios:
         given: 사용자는 마이페이지에서 프로필을 조회·수정한다.
         then: 현재 기기에서 로그아웃한다.
         written_by: hermes
+        checks: ['op.authLogout:200']
       - key: withdraw
         kind: branch
         at: R136
@@ -64,6 +78,98 @@ scenarios:
         then: 탈퇴 전에 안내를 확인한다.
         checks: [C.member.withdraw]
         written_by: hermes
+        mode: manual
+      - key: nickname-check
+        kind: extra
+        title: 닉네임을 바꾸기 전에 쓸 수 있는지 확인한다
+        checks: ['op.nicknameAvailability:200']
+      - key: own-profile-only
+        kind: reject
+        at: R6
+        title: 다른 사람의 프로필을 고치면 거절된다
+        checks: [G.member.edit_profile#own-profile-only]
+        mode: manual
+      - key: length-limit
+        kind: reject
+        at: R129
+        title: 닉네임이 길이 제한을 넘으면 E1005 로 거절된다
+        checks: [G.member.set_nickname#length-limit]
+        then: E1005
+      - key: nickname-not-taken
+        kind: reject
+        at: R129
+        title: 다른 회원이 쓰는 닉네임으로 바꾸면 E1007 로 거절된다
+        checks: [G.member.set_nickname#nickname-not-taken]
+        then: E1007
+      - key: no-forbidden-chars
+        kind: reject
+        at: R129
+        title: 닉네임에 쓸 수 없는 문자를 넣으면 E1005 로 거절된다
+        checks: [G.member.set_nickname#no-forbidden-chars]
+        then: E1005
+      - key: not-policy-violating
+        kind: reject
+        at: R129
+        title: 운영 정책에 어긋나는 닉네임을 쓰면 E1005 로 거절된다
+        checks: [G.member.set_nickname#not-policy-violating]
+        then: E1005
+      - key: resume-slot-left
+        kind: reject
+        at: R131
+        title: 이력서가 이미 10개인데 또 올리면 E1011 로 거절된다
+        checks: [G.resume.create#resume-slot-left]
+        then: E1011
+      - key: account-active
+        kind: reject
+        at: R131
+        title: 이용이 제한된 계정이 이력서를 올리면 거절된다
+        checks: [G.resume.create#account-active]
+        mode: manual
+      - key: rename.resume-not-deleted
+        kind: reject
+        at: R132
+        title: 지운 이력서의 이름을 고치면 E1010 으로 거절된다
+        checks: [G.resume.rename#resume-not-deleted]
+        then: E1010
+        mode: manual
+      - key: rename.resume-owner-only
+        kind: reject
+        at: R132
+        title: 다른 사람의 이력서 이름을 고치면 E1010 으로 거절된다
+        checks: [G.resume.rename#resume-owner-only]
+        then: E1010
+        mode: manual
+      - key: set-default.resume-not-deleted
+        kind: reject
+        at: R133
+        title: 지운 이력서를 기본으로 지정하면 E1010 으로 거절된다
+        checks: [G.resume.set_default#resume-not-deleted]
+        then: E1010
+      - key: set-default.resume-owner-only
+        kind: reject
+        at: R133
+        title: 다른 사람의 이력서를 기본으로 지정하면 E1010 으로 거절된다
+        checks: [G.resume.set_default#resume-owner-only]
+        then: E1010
+      - key: summary-done
+        kind: reject
+        at: R133
+        title: AI 요약이 끝나지 않은 이력서를 기본으로 지정하면 E1012 로 거절된다
+        checks: [G.resume.set_default#summary-done]
+        then: E1012
+      - key: delete.resume-not-deleted
+        kind: reject
+        at: R134
+        title: 이미 지운 이력서를 또 지우면 E1010 으로 거절된다
+        checks: [G.resume.delete#resume-not-deleted]
+        then: E1010
+      - key: delete.resume-owner-only
+        kind: reject
+        at: R134
+        title: 다른 사람의 이력서를 지우면 E1010 으로 거절된다
+        checks: [G.resume.delete#resume-owner-only]
+        then: E1010
+    actor: qa-guest
     basis:
       R6: fecd2b7e
       R129: c955de6f

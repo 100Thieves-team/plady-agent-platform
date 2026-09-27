@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+SEED = ROOT / "tests" / "fixtures" / "scenarios"      # 2026-09-27 초안 전의 시나리오 파일. 실제 scenarios/ 는 계속 자라므로 동작 시험은 이 판으로 한다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
@@ -88,7 +89,7 @@ class HermesScenarioTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.orig = httpx.request
         self.gh = FakeGitHub()
-        for p in (ROOT / "scenarios").glob("*.yaml"):
+        for p in SEED.glob("*.yaml"):
             self.gh.files[f"qa-platform/scenarios/{p.name}"] = p.read_text(encoding="utf-8")
         httpx.request = Router(self.gh, [])
         self.app = make_app(self.tmp.name)
@@ -209,7 +210,7 @@ class HermesScenarioTest(unittest.TestCase):
 
 class MergeTest(unittest.TestCase):
     def test_merge_keeps_existing(self):
-        text = (ROOT / "scenarios" / "룸-생성.yaml").read_text(encoding="utf-8")
+        text = (SEED / "룸-생성.yaml").read_text(encoding="utf-8")
         op = {"feature": "룸 생성", "scenario": "*", "action": "merge", "scenarios": [
             {"id": "S2", "actor": "qa-guest", "gates": {"R146": ["G.room.nope"], "R144": ["G.room.update"]},
              "variants": [{"key": "cancel", "kind": "extra", "title": "덮어쓰면 안 된다"}, {"key": "new-one", "kind": "extra", "title": "새것", "written_by": "hermes"}]}]}

@@ -13,24 +13,6 @@ scenarios:
         then: 방장과 참여자는 방명록에 준비에 필요한 내용(공지·질문·안내)을 글로 남기고 룸이 종료되거나 취소되면 방명록은 24시간 후에 읽기 전용으로 전환된다
         checks: [C.guestbook.post, C.guestbook.freeze]
         written_by: hermes
-      - key: guestbook-not-readonly
-        kind: reject
-        at: R3
-        title: 읽기 전용이 된 방명록에 글을 쓰면 E2101 로 거절된다
-        checks: [G.guestbook.post_write#guestbook-not-readonly]
-        then: E2101
-      - key: joined-member-only
-        kind: reject
-        at: R3
-        title: 룸을 나간 사람이 방명록에 글을 쓰면 E1419 로 거절된다
-        checks: [G.guestbook.post_write#joined-member-only]
-        then: E1419
-      - key: account-active
-        kind: reject
-        at: R3
-        title: 이용이 제한된 계정이 방명록에 글을 쓰면 거절된다
-        checks: [G.guestbook.post_write#account-active]
-        mode: manual
     basis:
       R1: aa9021e5
       R2: 848a5963

@@ -30,6 +30,144 @@ scenarios:
         kind: branch
         at: R181
         title: 참여를 직접 취소한 사람이 같은 룸에 다시 신청한다
+      - key: account-active
+        kind: reject
+        at: R5
+        title: 이용이 제한된 계정이 참가 신청을 하면 E1002 로 거절된다
+        checks: [G.application.submit#account-active]
+        then: E1002
+      - key: login-required
+        kind: reject
+        at: R5
+        title: 로그인하지 않고 참가 신청을 하면 E1102 로 거절된다
+        checks: [G.application.submit#login-required]
+        then: E1102
+      - key: not-already-engaged
+        kind: reject
+        at: R5
+        title: 이미 참여 중이거나 대기 중인 신청이 있는데 또 신청하면 E1413 으로 거절된다
+        checks: [G.application.submit#not-already-engaged]
+        then: E1413
+      - key: not-host
+        kind: reject
+        at: R5
+        title: 방장이 자기 룸에 신청하면 E1414 로 거절된다
+        checks: [G.application.submit#not-host]
+        then: E1414
+      - key: not-rejected-or-removed
+        kind: reject
+        at: R5
+        title: 반려되거나 내보내진 룸에 다시 신청하면 E1415 로 거절된다
+        checks: [G.application.submit#not-rejected-or-removed]
+        then: E1415
+      - key: participation-slot-left
+        kind: reject
+        at: R5
+        title: 참여 중인 룸이 이미 3개인데 신청하면 E1425 로 거절된다
+        checks: [G.application.submit#participation-slot-left]
+        then: E1425
+      - key: pending-limit-left
+        kind: reject
+        at: R5
+        title: 처리 대기 중인 신청이 한도만큼 있는데 또 신청하면 E1416 으로 거절된다
+        checks: [G.application.submit#pending-limit-left]
+        then: E1416
+      - key: submit.room-recruiting
+        kind: reject
+        at: R5
+        title: 모집 중이 아닌 룸에 신청하면 E1410 으로 거절된다
+        checks: [G.application.submit#room-recruiting]
+        then: E1410
+      - key: schedule-not-passed
+        kind: reject
+        at: R5
+        title: 진행 일정이 지난 룸에 신청하면 E1412 로 거절된다
+        checks: [G.application.submit#schedule-not-passed]
+        then: E1412
+      - key: accept.application-pending
+        kind: reject
+        at: R7
+        title: 이미 처리된 신청을 수락하면 E1409 로 거절된다
+        checks: [G.application.accept#application-pending]
+        then: E1409
+      - key: capacity-left
+        kind: reject
+        at: R7
+        title: 최대 모집 인원이 찬 룸에서 신청을 수락하면 E1411 로 거절된다
+        checks: [G.application.accept#capacity-left]
+        then: E1411
+      - key: accept.host-only
+        kind: reject
+        at: R7
+        title: 방장이 아닌 사람이 신청을 수락하면 E1406 으로 거절된다
+        checks: [G.application.accept#host-only]
+        then: E1406
+      - key: accept.room-recruiting
+        kind: reject
+        at: R7
+        title: 모집 중이 아닌 룸에서 신청을 수락하면 E1410 으로 거절된다
+        checks: [G.application.accept#room-recruiting]
+        then: E1410
+      - key: reject.application-pending
+        kind: reject
+        at: R7
+        title: 이미 처리된 신청을 반려하면 E1409 로 거절된다
+        checks: [G.application.reject#application-pending]
+        then: E1409
+      - key: reject.host-only
+        kind: reject
+        at: R7
+        title: 방장이 아닌 사람이 신청을 반려하면 E1406 으로 거절된다
+        checks: [G.application.reject#host-only]
+        then: E1406
+      - key: withdraw.application-pending
+        kind: reject
+        at: R179
+        title: 방장이 이미 처리한 신청을 철회하면 E1409 로 거절된다
+        checks: [G.application.withdraw#application-pending]
+        then: E1409
+      - key: own-application
+        kind: reject
+        at: R179
+        title: 다른 사람의 신청을 철회하면 E1408 로 거절된다
+        checks: [G.application.withdraw#own-application]
+        then: E1408
+      - key: own-participation
+        kind: reject
+        at: R10
+        title: 다른 사람의 참여를 대신 취소하면 E1419 로 거절된다
+        checks: [G.participation.cancel#own-participation]
+        then: E1419
+      - key: participation-joined
+        kind: reject
+        at: R10
+        title: 이미 끝난 참여를 다시 취소하면 E1419 로 거절된다
+        checks: [G.participation.cancel#participation-joined]
+        then: E1419
+      - key: kick.host-only
+        kind: reject
+        at: R10
+        title: 방장이 아닌 사람이 참여자를 내보내면 거절된다
+        checks: [G.participation.kick#host-only]
+        mode: manual
+      - key: kick.room-recruiting
+        kind: reject
+        at: R10
+        title: 진행 확정 뒤에 참여자를 내보내면 거절된다
+        checks: [G.participation.kick#room-recruiting]
+        mode: manual
+      - key: target-joined
+        kind: reject
+        at: R10
+        title: 이미 참여가 끝난 사람을 내보내면 거절된다
+        checks: [G.participation.kick#target-joined]
+        mode: manual
+      - key: target-not-host
+        kind: reject
+        at: R10
+        title: 방장이 자기 자신을 내보내면 거절된다
+        checks: [G.participation.kick#target-not-host]
+        mode: manual
     basis:
       R1: 16f87808
       R2: f3ab5523

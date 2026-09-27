@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
+SEED = ROOT / "tests" / "fixtures" / "scenarios"      # 2026-09-27 초안 전의 시나리오 파일. 실제 scenarios/ 는 계속 자라므로 동작 시험은 이 판으로 한다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
@@ -30,7 +31,7 @@ Q = quote(SLUG)
 
 def seeded_gh(mutate=None):
     gh = FakeGitHub()
-    for p in (ROOT / "scenarios").glob("*.yaml"):
+    for p in SEED.glob("*.yaml"):
         text = p.read_text(encoding="utf-8")
         if mutate and p.stem == SLUG:
             text = mutate(text)
@@ -45,7 +46,7 @@ def stale_r6(text: str) -> str:
 
 class GroupTest(unittest.TestCase):
     def test_group_run_cases(self):
-        feats, _ = S.load_dir(ROOT / "scenarios")
+        feats, _ = S.load_dir(SEED)
         rc = lambda i, cid, variant=None: {"id": i, "case_id": cid, "case_title": cid, "case_suite": "sanity", "verdict": "pass" if i != 2 else "fail",  # noqa: E731
                                            "error": None, "case_yaml": f"id: {cid}\n" + (f"variant: {variant}\n" if variant else "")}
         rcs = [rc(1, "room.cancel", "룸-생성/S2/cancel"), rc(2, "room.create", "룸-생성/S1/happy"), rc(3, "auth.x"), rc(4, "room.old", "룸-생성/S1/gone")]
@@ -87,7 +88,7 @@ class DriftTest(unittest.TestCase):
         return f, next(x for x in f["scenarios"] if x["id"] == sid)
 
     def test_seed_has_basis_and_no_drift(self):
-        feats, _ = S.load_dir(ROOT / "scenarios")
+        feats, _ = S.load_dir(SEED)
         self.assertTrue(all(s.basis for f in feats.values() for s in f.scenarios))
         self.assertIn("G.room.create#headcount-range", feats[SLUG].scenario("S1").basis)     # gates 에 적은 게이트의 검사까지
         self.assertFalse(any(k.startswith("op.") for f in feats.values() for s in f.scenarios for k in s.basis))   # API 계약은 넣지 않는다

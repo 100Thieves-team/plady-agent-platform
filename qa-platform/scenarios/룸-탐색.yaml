@@ -2,6 +2,7 @@
 feature: 룸 탐색
 scenarios:
   - id: S1
+    actor: qa-guest
     gates:
       R87: [G.member.my_interviews]
       R5: [G.application.enter]
@@ -10,21 +11,77 @@ scenarios:
         kind: happy
         title: 사용자가 조건으로 룸을 찾고 적합한 룸이면 참가 신청을 시작한다
         written_by: hermes
+        checks: ['op.rooms:200', 'op.roomDetail:200']
+        then: 목록 200, 상세 200
       - key: r87
         kind: branch
         at: R87
         title: 사용자가 내 면접 페이지에서 신청한 면접, 참여 중인 면접, 완료된 면접을 나눠 보고 완료된 면접의 후기 작성 버튼을 누른다
         written_by: hermes
+        checks: ['op.getInterviewOverview:200']
       - key: r88
         kind: branch
         at: R88
         title: 사용자가 결과를 일정 빠른 순, 최근 생성순, 모집 마감 임박순 중 하나로 정렬해 비교한다
         written_by: hermes
+        checks: ['op.rooms:200']
       - key: r89
         kind: branch
         at: R89
         title: 검색 결과가 없으면 사용자가 같은 회사·같은 직무에서 가장 가까운 시간대의 룸을 확인한다
         written_by: hermes
+        mode: manual
+      - key: my-interviews-login
+        kind: extra
+        title: 로그인하지 않고 내 면접을 열면 E1102 로 거절된다
+        then: E1102
+        checks: ['op.getInterviewOverview:E1102']
+      - key: bad-filter
+        kind: extra
+        title: 목록 조건 값이 형식에 맞지 않으면 400 으로 거절된다
+        checks: ['op.rooms:E400']
+      - key: login-required
+        kind: reject
+        at: R5
+        title: 로그인하지 않고 참가 신청을 시작하면 거절된다
+        checks: [G.application.enter#login-required]
+        mode: manual
+      - key: no-pending-application
+        kind: reject
+        at: R5
+        title: 결과를 기다리는 신청이 있는 룸에서 다시 신청을 시작하면 거절된다
+        checks: [G.application.enter#no-pending-application]
+        mode: manual
+      - key: not-already-joined
+        kind: reject
+        at: R5
+        title: 이미 참여 중인 룸에서 참가 신청을 시작하면 거절된다
+        checks: [G.application.enter#not-already-joined]
+        mode: manual
+      - key: room-recruiting
+        kind: reject
+        at: R5
+        title: 진행 확정·취소된 룸에서 참가 신청을 시작하면 거절된다
+        checks: [G.application.enter#room-recruiting]
+        mode: manual
+      - key: schedule-not-passed
+        kind: reject
+        at: R5
+        title: 진행 일정이 지난 룸에서 참가 신청을 시작하면 거절된다
+        checks: [G.application.enter#schedule-not-passed]
+        mode: manual
+      - key: my-interviews.login-required
+        kind: reject
+        at: R87
+        title: 로그인하지 않고 내 면접을 열면 거절된다
+        checks: [G.member.my_interviews#login-required]
+        mode: manual
+      - key: own-entries-only
+        kind: reject
+        at: R87
+        title: 다른 사람의 면접이 내 면접 목록에 섞이면 거절된다
+        checks: [G.member.my_interviews#own-entries-only]
+        mode: manual
     basis:
       R1: 49e36140
       R87: 365ae943

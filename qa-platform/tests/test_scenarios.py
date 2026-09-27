@@ -270,7 +270,8 @@ class SeedTest(unittest.TestCase):
         self.assertNotIn("room.create-and-cancel", self.app.cases)
         self.assertEqual(self.app.cases["room.cancel-not-recruiting"].covers, ["G.room.cancel#room-recruiting", "op.cancelRoom:E1410"])   # E1419 검사와 어긋나던 것을 바로잡았다
         f = next(x for x in ov if x["slug"] == "룸-생성")
-        self.assertGreater(f["counts"]["rejects"], 0)
+        self.assertEqual(f["counts"]["rejects"], 0)                                           # 2026-09-27 초안으로 거절 조건마다 케이스가 생겼다
+        self.assertEqual({x["slug"] for x in ov if not x.get("file")}, {"룸-진행", "룸-진행-준비"})   # MVP 밖 두 기능만 파일이 없다
         self.assertEqual(len(ov), len(self.app.wiki.prd_docs()))
         ctx = self.app.editor_context()
         self.assertIn("룸-생성/S1/happy", [v["id"] for v in ctx["variants"]])
