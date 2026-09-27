@@ -252,6 +252,16 @@ class RouteTest(unittest.TestCase):
         st, body, _ = self.req("/sanity/138")
         self.assertIn("Sanity 시작", body)
         self.assertIn('action="/sanity/start"', body)
+        for path, marks in (("/", ("todo", "features")), ("/sanity/138", ("prs", "tabs", "start")), ("/smoke", ("scope", "mode", "run")),
+                            ("/data", ("make", "left")), ("/catalog", ("filters", "write"))):
+            st, body, _ = self.req(path)
+            self.assertIn("window.QA_TOUR=", body, path)                                      # 처음 쓰는 사람을 위한 둘러보기
+            self.assertIn("data-tour-start", body, path)
+            for m in marks:
+                self.assertIn(f'data-tour="{m}"', body, (path, m))
+        st, js, _ = self.req("/static/tour.js")
+        self.assertEqual(st, 200)
+        self.assertIn("window.qaTour", js)
         st, _, loc = self.req("/setup")
         self.assertEqual((st, loc), (303, "/data"))
         st, _, loc = self.req("/sanity/start", {"pr": "138", "operator": "bebe"})

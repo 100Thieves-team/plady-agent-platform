@@ -175,6 +175,11 @@ ADMIN_NAV = (("features", "/features", "▤", "시나리오"), ("cases", "/cases
 _ACTIVE_ALIAS = {"dash": "home", "setup": "data"}
 
 
+def tour_script(active: str) -> str:
+    from .tour import script_tag
+    return script_tag(active)
+
+
 def side_nav(active: str, operator: str, counts: dict | None = None) -> str:
     """왼쪽 고정 메뉴 (docs/qa-platform-v2.md §7.1). 주 메뉴 넷 + 관리 묶음 + 담당자."""
     active = _ACTIVE_ALIAS.get(active, active)
@@ -186,8 +191,10 @@ def side_nav(active: str, operator: str, counts: dict | None = None) -> str:
         return f'<a class="nv {"on" if active == key else ""}" href="{href}"><span class="ic">{ic}</span>{label}{cnt}</a>'
     me = (f'<div class="me"><b>{e(operator[:2])}</b><div>{e(operator)}<small>담당자 · <a href="/whoami" onclick="this.href=\'/whoami?next=\'+encodeURIComponent(location.pathname+location.search)">바꾸기</a>{h("whoami")}</small></div></div>'
           if operator else '<div class="me"><a href="/whoami">담당자 고르기</a></div>')
+    from .tour import tour_for
+    replay = '<button type="button" class="btn" data-tour-start title="이 화면 쓰는 법을 한 곳씩 짚어 가며 보여 줘요" style="height:30px;padding:0 10px;font-size:12px">둘러보기</button>' if tour_for(active) else ""
     return (f'<aside class="side"><a class="brand" href="/"><i></i>Plady QA</a>{"".join(item(*x) for x in MAIN_NAV)}'
-            f'<div class="sub"><div class="lbl">관리</div>{"".join(item(*x) for x in ADMIN_NAV)}</div><div class="foot">{me}</div></aside>')
+            f'<div class="sub"><div class="lbl">관리</div>{"".join(item(*x) for x in ADMIN_NAV)}</div><div class="foot">{me}{replay}</div></aside>')
 
 
 def page(title: str, body: str, *, active: str = "", operator: str = "", flash: tuple[str, str] | None = None,
@@ -204,7 +211,7 @@ def page(title: str, body: str, *, active: str = "", operator: str = "", flash: 
             f'<title>{e(title)} · QA</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">'
             f'<style>{CSS}</style></head><body>{side_nav(active, operator, counts)}<div class="shade" id="shade"></div><div class="drawer" id="drawer"></div>'
             f'<main>{fl}{body}{inline}</main>'
-            f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script><script src="/static/jobs.js?v={JOBS_JS_VERSION}" defer></script></body></html>')
+            f'<script>window.QA={json.dumps(qa, ensure_ascii=False).replace("</", "<\\/")}</script><script src="/static/hermes.js?v={HERMES_JS_VERSION}" defer></script><script src="/static/help.js?v={HELP_JS_VERSION}" defer></script><script src="/static/jobs.js?v={JOBS_JS_VERSION}" defer></script>{tour_script(active)}</body></html>')
 
 
 # ---- 홈 (docs/qa-platform-v2.md §7.2) -------------------------------------------------------
@@ -241,8 +248,8 @@ def home(*, operator: str, todo: list[dict], ov: list[dict], counts: dict, recen
             f'<a class="card" href="/smoke"><div class="n">💨 스모크 테스트</div><div class="d">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요.</div><div class="go">스크립트 {counts.get("smoke") or 0}개 →</div></a>'
             f'<a class="card" href="/data"><div class="n">🧪 QA 데이터</div><div class="d">테스트용 룸·신청·계정을 만들고, 다 쓰면 지워요.</div><div class="go">만들기 · 지우기 →</div></a></div>'
             f'<div class="cols" style="grid-template-columns:1fr 340px"><div>'
-            f'<div class="card flush"><div class="ch"><h2>지금 할 일</h2>{("<span class=\"small\" style=\"color:var(--bad)\">PR 목록을 못 읽었어요: " + e(gh_error) + "</span>") if gh_error else ""}</div>{todo_html}</div>'
-            f'<div class="card flush"><div class="ch"><h2>기능별 테스트 준비</h2><span>{legend}</span></div>'
+            f'<div class="card flush" data-tour="todo"><div class="ch"><h2>지금 할 일</h2>{("<span class=\"small\" style=\"color:var(--bad)\">PR 목록을 못 읽었어요: " + e(gh_error) + "</span>") if gh_error else ""}</div>{todo_html}</div>'
+            f'<div class="card flush" data-tour="features"><div class="ch"><h2>기능별 테스트 준비</h2><span>{legend}</span></div>'
             f'<table><tr><th>기능</th><th></th><th class="num">케이스</th><th class="num">스크립트</th><th class="num">사람이 확인</th><th class="num">테스트 없음</th></tr>{rows}</table></div></div>'
             f'<div><div class="card flush"><div class="ch"><h2>한눈에</h2></div><div class="cb" style="padding-top:6px;padding-bottom:6px">'
             f'{stat("케이스", sum(f["counts"]["variants"] for f in feats))}{stat("스크립트", counts.get("smoke") or 0)}{stat("대상", "<span class=mono>" + e(target) + "</span>")}</div></div>'
@@ -309,10 +316,10 @@ def smoke_page(groups: list[dict], *, operator: str, sprint: dict, last_smoke: d
                  if last_smoke else '<span class="mut">아직 없어요</span>')
     dis = "" if operator else "disabled"
     return (f'<h1>스모크 테스트</h1><p class="lead">저장된 스크립트로 핵심 흐름 전체가 돌아가는지 한 번에 확인해요. 줄을 누르면 스크립트가 펼쳐져요.</p>'
-            f'<div class="cols" style="grid-template-columns:minmax(0,1fr) 320px"><div class="card flush"><div class="ch"><span class="tabs" style="flex:1">{seg}</span>'
+            f'<div class="cols" style="grid-template-columns:minmax(0,1fr) 320px"><div class="card flush" data-tour="scope"><div class="ch"><span class="tabs" style="flex:1" data-tour="mode">{seg}</span>'
             f'<span class="small mut">스크립트가 있는 케이스만 돌아요. 나머지는 Sanity 가 PR 마다 채워 가요.</span></div>'
             f'<table><tr><th></th><th>기능</th><th class="num">스크립트</th><th class="num">단계</th><th>지난 결과</th></tr>{rows}</table></div>'
-            f'<div class="card flush" style="position:sticky;top:22px"><div class="ch"><h2>실행</h2></div><div class="cb">'
+            f'<div class="card flush" style="position:sticky;top:22px" data-tour="run"><div class="ch"><h2>실행</h2></div><div class="cb">'
             f'<div style="font-size:28px;font-weight:800;line-height:1.2" id="sm-n">{total}개</div><div class="small mut" id="sm-d" style="margin-bottom:14px"></div>'
             f'<div class="kvl" style="border:1px solid var(--line);border-radius:10px;padding:2px 14px;margin-bottom:14px;font-size:13px">'
             f'<div style="display:flex;justify-content:space-between;padding:8px 0"><span class="mut">실행 종류</span><b>스프린트 스모크 (Cycle {sprint["number"]})</b></div>'
@@ -810,9 +817,9 @@ def catalog_list(catalog, coverage: dict, last: dict[str, dict], *, domain: str,
             f' 테스트 조건 소스 버전{h("tc.versions")}: SSOT <span class="mono">{e(v.get("ssot") or "–")}</span> · OpenAPI <span class="mono">{e(v.get("openapi") or "–")}</span> · 위키 HEAD <span class="mono">{e(v.get("wiki_head") or "–")}</span> · {kst(catalog.built_at)}'
             f'{"" if wiki_available else " · <b style=\"color:var(--warn)\">위키 체크아웃 없음 — 비즈니스 규칙 테스트 조건 없음</b>"} &nbsp; {refresh_form(operator=operator, next_url="/catalog?domain=" + domain, spec_hash=v.get("openapi"), fetched_ago=None)}</p>'
             f'{("<div class=\"flash ok\">API <span class=\"mono\">" + e(op) + "</span> 의 테스트 조건만 보인다 (모든 도메인). <a href=\"/catalog\">전체 보기</a> · <a href=\"/explorer?op=" + e(op) + "\">호출해 보기</a></div>") if op_set is not None else ""}'
-            f'<div class="tabs">{h("tc.filter")} {tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div>'
+            f'<div data-tour="filters"><div class="tabs">{h("tc.filter")} {tabs}</div><div class="tabs">{ltabs}</div><div class="tabs">{otabs}</div></div></div>'
             f'{("<details class=\"card\"><summary>스펙 불일치 경고 " + str(len(catalog.warnings)) + " — API 매핑·OpenAPI 스펙이 서로 맞지 않는 항목" + h("tc.warnings") + "</summary><ul>" + warns + "</ul></details>") if catalog.warnings else ""}'
-            f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0">'
+            f'<form method="post" action="/drafts/generate"><div class="card"><div class="actions" style="margin-top:0" data-tour="write">'
             f'<select name="operator" required><option value="">— 담당자 —</option>{"".join(f"<option value=\"{e(o)}\" {"selected" if o == operator else ""}>{e(o)}</option>" for o in (operators or []))}</select>'
             f'<button class="primary" {"" if hermes else "disabled title=\"HERMES_API_KEY 없음\""}>고른 테스트 조건으로 Hermes 가 스크립트 쓰기</button>{h("tc.draft")}'
             f'<button formaction="/cases/new" formmethod="get">고른 테스트 조건으로 직접 쓰기 (폼)</button>{h("cases.new")}'
@@ -1450,7 +1457,7 @@ def data_page(cases: list, *, actors: list[str], operators: list[str], operator:
                    for k, title in (("room", "룸"), ("account", "계정 · 이력서")))
     errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
     return (f'{DATA_CSS}<h1>QA 데이터</h1><p class="lead">테스트용 데이터를 dev 에 만들고 지워요. 만든 데이터는 이름이 <span class="mono">[QA]</span> 로 시작해요. 만들기는 실행 기록에, 지우기는 감사 로그에 남아요.</p>{errs}'
-            f'<div class="cols data-cols"><div>{left}</div><div>{leftover_section(cleanup, operator=operator)}</div></div>{tpls}'
+            f'<div class="cols data-cols"><div data-tour="make">{left}</div><div data-tour="left">{leftover_section(cleanup, operator=operator)}</div></div>{tpls}'
             + (f'<script>window.DATA_OPEN="result"</script>' if result else "") + f'<script>{DATA_JS}</script>')
 
 

@@ -1960,6 +1960,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(status, resp)
 
         # ---------- 담당자 고르기 (처음 들어올 때, 사용자 요청 2026-09-22) ----------
+        if path == "/static/tour.js" and method == "GET":
+            from qa import tour
+            return self._send(200, tour.JS, "application/javascript; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
         if path == "/static/help.js" and method == "GET":
             return self._send(200, helpmod.js(), "application/javascript; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
         if path == "/whoami":

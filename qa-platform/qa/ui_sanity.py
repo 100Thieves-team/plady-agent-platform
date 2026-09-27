@@ -81,7 +81,7 @@ def _not_started(p: dict, operator: str, target: str, hermes: bool) -> str:
     if p["api"]:
         body = ('<div class="empty" style="padding:48px"><b>아직 이 PR 을 검증하지 않았어요</b>시작하면 관련 스펙 찾기 → 스펙 점검 → 케이스 준비 → 스크립트 만들기 → 실행 순서로 진행해요.'
                 '<br>스펙이 모호하거나 코드와 다르면 그 자리에서 멈추고 알려 드려요.</div>')
-        btn = f'<button class="primary lg" data-dialog="dlg-start" {"" if (operator and hermes) else "disabled"}>Sanity 시작</button>'
+        btn = f'<button class="primary lg" data-dialog="dlg-start" data-tour="start" {"" if (operator and hermes) else "disabled"}>Sanity 시작</button>'
         st = '<span class="b none">검증 안 함</span>'
     else:
         body = '<div class="empty" style="padding:48px"><b>API 를 바꾼 파일이 없어요</b>인프라·로그·문서만 바뀐 PR 이에요. 보통은 Sanity 가 필요 없어요.</div>'
@@ -105,7 +105,7 @@ def _steps(s: dict) -> str:
         elif i == step and st in ("error",):
             cls, mark = "bad", "✕"
         out += f'<div class="stp {cls}"><div class="c">{mark}</div><div><div class="n">{name}</div><div class="d">{e(last.get(i, ""))[:40]}</div></div></div>'
-    return f'<div class="steps">{out}</div>'
+    return f'<div class="steps" data-tour="steps">{out}</div>'
 
 
 def _banner(s: dict, left: int) -> str:
@@ -168,7 +168,7 @@ def _detail(p: dict, s: dict, *, operator: str, cases: list[dict], run: dict | N
     if fs:
         slack_btn = (f'<form method="post" action="/sanity/{e(sid)}/slack" style="margin:0"><input type="hidden" name="operator" value="{e(operator)}">'
                      f'<button {"" if (operator and left) else "disabled"}>남은 질문 Slack 으로 묻기</button></form>') if blocking else ""
-        fhtml = (f'<div class="card flush"><div class="ch"><h2>스펙 확인{h("sanity.findings")}</h2><span class="small mut">{len(blocking)}건 중 {len(blocking) - left}건 정함</span>{slack_btn}</div>'
+        fhtml = (f'<div class="card flush" data-tour="findings"><div class="ch"><h2>스펙 확인{h("sanity.findings")}</h2><span class="small mut">{len(blocking)}건 중 {len(blocking) - left}건 정함</span>{slack_btn}</div>'
                  + "".join(_finding(f, sid, operator, not live) for f in blocking + other) + '</div>')
     items = (s.get("scope") or {}).get("items") or []
     scope = ""
@@ -181,7 +181,7 @@ def _detail(p: dict, s: dict, *, operator: str, cases: list[dict], run: dict | N
     auto = sum(1 for c in cases if c["state"] == "auto")
     make = sum(1 for c in cases if c["state"] == "untested" and c["mode"] != "manual" and c["checks"])
     man = len(cases) - auto - make
-    metrics = (f'<div class="card flush"><div class="ch"><h2>이번 범위의 케이스</h2><span class="small mut">관련 요구에 걸린 케이스와 그 시나리오의 정상 흐름</span></div>'
+    metrics = (f'<div class="card flush" data-tour="cases"><div class="ch"><h2>이번 범위의 케이스</h2><span class="small mut">관련 요구에 걸린 케이스와 그 시나리오의 정상 흐름</span></div>'
                f'<div class="metrics"><div><span>스크립트 있음</span><b>{auto}</b></div><div><span>Hermes 가 만들 스크립트</span><b style="color:var(--info)">{make}</b></div>'
                f'<div><span>사람이 확인 · 근거 없음</span><b style="color:var(--warn)">{man}</b></div></div>'
                f'<table style="border-top:1px solid var(--line)"><tr><th>기능 · 시나리오</th><th>종류</th><th>케이스</th><th>상태</th></tr>'
@@ -223,5 +223,5 @@ def sanity_page(prs: list[dict], sel: dict | None, sanity: dict | None, *, opera
     else:
         right = _detail(sel, sanity, operator=operator, cases=cases, run=run, history=history) + _start_dialog(sel, operator, target)
     return (f'{CSS}<div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:16px"><div style="flex:1"><h1 style="margin:0">Sanity 테스트{h("sanity.page")}</h1>'
-            f'<p class="lead" style="margin:4px 0 0">머지된 PR 하나를 골라 스펙대로 동작하는지 확인해요. 시작은 사람이 눌러요.</p></div><div class="tabs">{tabs}</div></div>'
-            f'<div class="split"><div class="card flush plist">{lst}</div><div>{right}</div></div>{JS}')
+            f'<p class="lead" style="margin:4px 0 0">머지된 PR 하나를 골라 스펙대로 동작하는지 확인해요. 시작은 사람이 눌러요.</p></div><div class="tabs" data-tour="tabs">{tabs}</div></div>'
+            f'<div class="split"><div class="card flush plist" data-tour="prs">{lst}</div><div>{right}</div></div>{JS}')
