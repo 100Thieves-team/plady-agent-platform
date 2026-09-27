@@ -1,6 +1,7 @@
 # QA 자동화 플랫폼 — 설계·런북 (MOI-483)
 
 > 상태: **P0·P1 구현됨 (2026-09-21)** — 설계 2판을 사용자가 승인한 뒤 구현. 아래 §0~§13 은 설계, §14 는 구현 결과와 운영 절차.
+> **2026-09-27 화면과 흐름을 세 가지 일(Sanity · 스모크 · QA 데이터)로 다시 짰다 — [qa-platform-v2.md](qa-platform-v2.md).** 이 문서의 대시보드·배포 검증 설명은 옛 판이다.
 > 이슈: [MOI-483 QA 자동화 플랫폼 구축](https://linear.app/100-thieves/issue/MOI-483/qa-자동화-플랫폼-구축)
 > 플랫폼 계약 SSOT는 [`platform-contract.md`](platform-contract.md). 소스는 [`qa-platform/`](../qa-platform/README.md).
 >

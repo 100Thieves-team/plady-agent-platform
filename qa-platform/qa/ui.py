@@ -1494,8 +1494,12 @@ def _sec(title: str, body: str) -> str:
 
 def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> str:
     intro = ('<h1>가이드 — 이 플랫폼은 무엇을 하고, 어떻게 쓰는가</h1>'
-             '<div class="card"><p style="margin:0"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·상태-SSOT)와 백엔드 API 계약(OpenAPI)에서 <b>검증 기준(테스트 조건)</b> 을 뽑고 '
-             '그 테스트 조건을 검증하는 <b>스크립트</b>(YAML)를 사람이 버튼을 눌러 dev 서버에 실행해 <b>누가 언제 무엇을 검증했는지</b> 남긴다. 자동으로 도는 것은 없다.</p></div>')
+             '<div class="card"><p style="margin:0 0 10px"><b>한 줄.</b> 기획 문서(llm-wiki 의 PRD·규칙표 SSOT)와 백엔드 API 문서(OpenAPI)를 정답지로 삼아 dev 서버를 확인하고, '
+             '<b>누가 언제 무엇을 확인했는지</b> 남긴다. 시작은 언제나 사람이 누른다.</p>'
+             '<table><tr><th style="width:150px">일</th><th>언제</th><th>어떻게</th></tr>'
+             '<tr><td><a href="/sanity"><b>Sanity 테스트</b></a></td><td>PR 이 dev 에 머지됐을 때</td><td>PR 을 고르고 [Sanity 시작]. Hermes 가 관련 스펙 찾기 → 스펙 점검 → 케이스 준비 → 스크립트 만들기 → 실행까지 한다. 스펙이 모호하거나 코드와 다르면 멈추고 묻는다.</td></tr>'
+             '<tr><td><a href="/smoke"><b>스모크 테스트</b></a></td><td>스프린트마다 · 릴리스 전</td><td>저장된 스크립트로 핵심 흐름 전체를 한 번에. 기능별로 골라 돌릴 수도 있다.</td></tr>'
+             '<tr><td><a href="/data"><b>QA 데이터</b></a></td><td>손으로 볼 데이터가 필요할 때</td><td>룸·신청·계정을 버튼 하나로 만들고, 다 쓰면 지운다. 이름은 [QA] 로 시작한다.</td></tr></table></div>')
 
     # ---- 0. 개발 과정에서 이렇게 쓴다 (사용자 요청 2026-09-22: 개발 프로세스 기준 + 예시 시나리오 하나. 일반 QA 용어만, 첫 등장에 풀이) ----
     s_howto = """
@@ -1503,10 +1507,10 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <table><tr><th style="width:150px">단계</th><th style="width:70px">누가</th><th>플랫폼에서 하는 일</th><th>결과</th></tr>
 <tr><td><b>1. 기획 확정</b></td><td>기획</td><td>위키의 기획 문서(PRD)와 정책 규칙표(SSOT — 기능마다 "누가 · 어떤 조건이면 · 무엇이 바뀐다"를 적은 표)를 고친다. 플랫폼은 여기서 <b>테스트 조건(테스트 조건, "무엇을 확인해야 하는가" 한 건)</b>를 자동으로 뽑는다</td><td><a href="/catalog">테스트 조건</a> 화면에 확인 항목이 생긴다. 사람이 플랫폼에서 테스트 조건을 손으로 쓰지 않는다 — 빠졌으면 위키를 고친다</td></tr>
 <tr><td><b>2. 구현 · PR · dev 머지</b></td><td>개발</td><td><b>평소와 같다.</b> 새 API 가 생겼으면 API 문서(OpenAPI)에 응답 예시·에러 코드가 실리게 하고, 규칙표의 기능과 API 를 잇는 표(API 매핑, <span class="mono">catalog/bindings.yaml</span>)에 한 줄 더한다</td><td>테스트 조건 화면에 "API 계약" 테스트 조건이 생긴다</td></tr>
-<tr class="ex"><td>dev 자동 배포</td><td>자동</td><td>없음 — 플랫폼은 배포를 <b>감지만</b> 한다</td><td><a href="/">대시보드</a>에 그 배포가 <span class="b warn">미검증</span> 으로 뜬다</td></tr>
-<tr><td><b>3. 배포 검증</b></td><td>개발</td><td>대시보드에서 [검증]. 플랫폼이 PR 이 바꾼 파일에서 도메인(룸·신청·회원 같은 기능 영역)을 읽어 그 도메인의 <b>sanity 테스트 스크립트</b>(바뀐 부분 위주로 dev 에 요청을 보내 확인하는 것)를 제안한다. 담당자를 고르고 실행</td><td>Slack 에 결과. 통과하면 배포에 ✓. 실패하면 실행 상세의 [Hermes 실패 분석] — 팀 AI 비서 Hermes 가 <b>버그 / 스크립트 노후 / 환경 문제</b> 중 무엇인지 근거와 함께 제안</td></tr>
+<tr class="ex"><td>dev 머지 · 배포</td><td>자동</td><td>없음. 플랫폼은 머지를 <b>감지만</b> 한다</td><td><a href="/sanity">Sanity</a> 목록과 <a href="/">홈</a>의 "지금 할 일" 에 그 PR 이 <span class="b none">검증 안 함</span> 으로 뜬다</td></tr>
+<tr><td><b>3. Sanity 테스트</b></td><td>개발</td><td><a href="/sanity">Sanity</a> 에서 PR 을 고르고 [Sanity 시작]. Hermes 가 관련 스펙을 찾고, 스펙과 코드가 다른 곳·모호한 곳을 알리고(사람이 정할 때까지 멈춤), 케이스를 채우거나 다시 맞추고, 스크립트를 만들어 dev 에 실행한다</td><td>PR 별 Sanity 결과. 실패한 스크립트에는 Hermes 실패 분석 — <b>버그 / 스크립트 낡음 / 환경 문제</b> 중 무엇인지 근거와 함께</td></tr>
 <tr><td><b>4. 테스트 스크립트 늘리기</b></td><td>개발 · QA</td><td>새 기능의 테스트 조건이 <span class="b uncovered">미자동화</span>(확인하는 스크립트가 없음)로 남아 있다. <a href="/apis">API</a> 화면에서 그 API 를 열어 테스트 조건을 고르고 [고른 테스트 조건으로 Hermes 가 스크립트 쓰기](진행이 실시간으로 보이고, 검증을 통과하면 바로 저장된다) 또는 [고른 테스트 조건으로 직접 쓰기 (폼)]. 폼은 [저장 전에 한 번 실행해 보기] 로 먼저 돌려 본다. 저장하면 플랫폼이 main 에 커밋하고 바로 실행 스위트에 넣는다</td><td>검증(형식·테스트 조건 대조·계약 일치)을 통과하지 못한 스크립트는 저장되지 않는다</td></tr>
-<tr><td><b>5. 스프린트 마감 · 릴리스</b></td><td>QA</td><td>스프린트(Linear 사이클, 7일)마다 [스프린트 smoke 실행] — 핵심 기능이 죽지 않았는지 전체를 빠르게 확인하는 읽기 위주 묶음. 릴리스 전 [릴리스 QA] + 체크리스트 + GO / NO-GO <b>기록</b></td><td>안 돌리면 대시보드 배지와 Slack 리마인드(자동 실행은 없다). main 승격은 사람이 따로 — 플랫폼은 막지 않고 근거만 남긴다</td></tr></table>
+<tr><td><b>5. 스프린트 마감 · 릴리스</b></td><td>QA</td><td>스프린트(Linear 사이클, 7일)마다 [스모크 실행] — 핵심 기능이 죽지 않았는지 전체를 빠르게 확인하는 읽기 위주 묶음. 릴리스 전 [릴리스 QA] + 체크리스트 + GO / NO-GO <b>기록</b></td><td>안 돌리면 홈 배지와 Slack 리마인드(자동 실행은 없다). main 승격은 사람이 따로 — 플랫폼은 막지 않고 근거만 남긴다</td></tr></table>
 
 <h3 style="margin-top:18px">예시 — 참가 신청 반려에 사유를 붙인다</h3>
 <p class="small mut">방장이 참가 신청을 반려할 때 사유(직무 불일치 등)를 고르게 하는 기능. 규칙표에는 이미 "방장만 반려할 수 있다", "대기 중인 신청만 반려된다"가 있고, 이번에 "사유는 정해진 값 중 하나여야 한다"가 더해진다. 기획자 A, 개발자 B, QA 담당 C 가 한 스프린트 안에서 이렇게 움직인다.</p>
@@ -1516,7 +1520,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li>플랫폼이 규칙표를 다시 읽어 테스트 조건 화면에 새 테스트 조건(<span class="mono">G.application.reject#reason-in-options</span> "선택지에 없는 사유는 거절")을 만든다. 기존 반려 스크립트에 <span class="b drift">테스트 조건 변경</span> 표시 — 확인 기준이 바뀌었으니 스크립트를 다시 보라는 뜻.</li></ul></td></tr>
 <tr><td><b>화</b><br><span class="small mut">구현·배포</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 구현. 반려 API(<span class="mono">POST /v1/rooms/{roomId}/applications/{applicationId}/reject</span>)가 본문에 <span class="mono">reason</span> 을 받고, 없는 값이면 400 <span class="mono">E400</span>. 선택지 조회 API(<span class="mono">GET /v1/rooms/reject-reasons</span>)가 새로 생긴다. REST Docs 테스트에 요청 예시와 400 예시를 넣는다.</li>
-<li>PR → 리뷰 → dev 머지 → 자동 배포. 대시보드에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" 테스트 조건(<span class="mono">op.rejectApplication:E400</span>)이 생긴다.</li></ul></td></tr>
+<li>PR → 리뷰 → dev 머지 → 자동 배포. 홈에 <span class="b warn">미검증</span> 배포로 뜬다. 새 API 는 API 화면에도 나타나고 "API 계약" 테스트 조건(<span class="mono">op.rejectApplication:E400</span>)이 생긴다.</li></ul></td></tr>
 <tr><td><b>화 오후</b><br><span class="small mut">배포 검증</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 [검증]. PR 변경 파일 → 도메인 <span class="mono">application</span> → sanity 3개 제안. 실행. <span class="b fail">2 통과 · 1 실패</span> — 기존 반려 스크립트의 반려 단계가 400 을 받았다.</li>
 <li>[Hermes 실패 분석] → "스크립트 노후: 반려 요청에 <span class="mono">reason</span> 이 필수가 됐는데 스크립트가 안 보낸다. 버그 아님." B 가 동의.</li>
@@ -1524,10 +1528,10 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li>다시 [검증] → <span class="b pass">3/3 통과</span>. 배포에 ✓. Slack: "B 가 PR #131 배포 검증 → 3/3 통과".</li></ul></td></tr>
 <tr><td><b>수</b><br><span class="small mut">스크립트 추가</span></td><td><ul style="margin:0;padding-left:18px">
 <li><b>B</b> 가 API 화면 → <span class="mono">rejectApplication</span> 상세. 테스트 조건 4건 중 <span class="b uncovered">미자동화</span> 2건(<span class="mono">E400</span>, <span class="mono">G.application.reject#reason-in-options</span>). 둘을 체크 → [고른 테스트 조건으로 Hermes 가 스크립트 쓰기]. Hermes 가 쓴 스크립트가 형식·테스트 조건 일치 검사를 통과해 바로 저장된다.</li>
-<li>손으로도 한 번 본다. <a href="/setup">테스트 데이터 만들기</a>에서 "신청이 하나 들어온 룸" 실행 → 결과값 <span class="mono">roomId</span>·<span class="mono">applicationId</span>. <a href="/explorer">API 호출</a>에서 <span class="mono">rejectApplication</span> 을 열면 그 값이 입력칸에 이미 들어 있다. Normal(값만 넣는 입력 폼)에 <span class="mono">reason</span> 을 엉뚱한 값으로 넣고 보내기 → 400 <span class="mono">E400</span> 확인. Swagger(실제로 나가는 요청 원문)로 보낸 JSON 도 확인.</li>
+<li>손으로도 한 번 본다. <a href="/data">QA 데이터</a>에서 "신청이 하나 들어온 룸" 실행 → 결과값 <span class="mono">roomId</span>·<span class="mono">applicationId</span>. <a href="/explorer">API 호출</a>에서 <span class="mono">rejectApplication</span> 을 열면 그 값이 입력칸에 이미 들어 있다. Normal(값만 넣는 입력 폼)에 <span class="mono">reason</span> 을 엉뚱한 값으로 넣고 보내기 → 400 <span class="mono">E400</span> 확인. Swagger(실제로 나가는 요청 원문)로 보낸 JSON 도 확인.</li>
 <li>저장과 동시에 main 에 커밋. 바로 sanity 에 실린다. 테스트 조건 화면의 <span class="mono">application</span> 도메인 자동화 수가 올라간다.</li></ul></td></tr>
 <tr><td><b>금</b><br><span class="small mut">스프린트 마감</span></td><td><ul style="margin:0;padding-left:18px">
-<li><b>C</b> 가 [스프린트 smoke 실행]. 실행 상세에 요약 카드(전체·완료·통과율·실패)와 도메인별 막대. <span class="b pass">전부 통과</span>. Slack 에 결과.</li>
+<li><b>C</b> 가 [스모크 실행]. 실행 상세에 요약 카드(전체·완료·통과율·실패)와 도메인별 막대. <span class="b pass">전부 통과</span>. Slack 에 결과.</li>
 <li>스크립트 목록의 "최근 5회 통과율 80%" 로 화요일 실패가 스크립트 노후였음을 다시 확인. <span class="b warn">불안정 (flaky)</span> 표시(스크립트를 안 고쳤는데 결과가 오락가락함)는 없다 — 고친 뒤로는 계속 통과.</li></ul></td></tr>
 <tr><td><b>릴리스 전</b></td><td><ul style="margin:0;padding-left:18px">
 <li><b>C</b> 가 [릴리스 QA] → 통과. 체크리스트(백엔드 <span class="mono">release-checklist.md</span>)를 확인하고 <b>GO</b> 와 사유를 기록. 필요하면 [위키에 보고서 게시]. main 승격은 팀이 따로.</li>
@@ -1535,7 +1539,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
 <h3 style="margin-top:18px">플랫폼이 하지 않는 것</h3>
 <ul style="margin:0;padding-left:18px">
-<li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 대시보드 표시와 Slack 알림까지만.</li>
+<li>저절로 실행하지 않는다. 배포 뒤 자동 검증, 시간 맞춰 도는 smoke, 웹훅 — 없다. 홈 표시와 Slack 알림까지만.</li>
 <li>live(운영) 서버를 건드리지 않는다. 확인 대상은 항상 dev.</li>
 <li>테스트 조건을 플랫폼 안에서 만들지 않는다. 확인 항목이 빠졌으면 위키(규칙표·기획 문서)나 API 문서를 고친다.</li>
 <li>AI 가 실행·발행하지 않는다. Hermes 는 스크립트 쓰기(검증을 통과하면 저장, "Hermes 작성" 표시)와 분석과 답변까지.</li>
@@ -1545,7 +1549,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
     s1 = f"""
 <ol>
-<li><b>사람이 버튼을 누른다.</b> 대시보드의 [검증](배포 1건) · [스프린트 smoke 실행] · [릴리스 검증] · [수동 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
+<li><b>사람이 버튼을 누른다.</b> 홈의 [검증](배포 1건) · [스모크 실행] · [릴리스 검증] · [수동 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
 <li><b>확인 화면</b>에서는 플랫폼이 범위를 <i>제안</i>한다. 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 스크립트, 스프린트면 smoke 전체다. 담당자(자기 신고)를 고르고 스크립트를 조정한 뒤 [실행].</li>
 <li><b>테스트 실행이 만들어지면서</b> 그 시점의 스크립트 본문(스냅샷)·테스트 조건 소스 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 실행 기록에 고정된다. 나중에 스크립트나 테스트 조건이 바뀌어도 과거 기록은 그대로다.</li>
 <li><b>러너가 순서대로 보낸다.</b> 한 번에 실행 하나, 스크립트는 순차, 단계는 요청 → 응답 → 검증 항목(assertion)(expect 5종: status · result · error_code · json · exists). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
@@ -1566,20 +1570,20 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
     s3 = """
 <table><tr><th>화면</th><th>언제 여나</th><th>하는 일</th></tr>
-<tr><td><a href="/">대시보드</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, 테스트 조건 커버리지 매트릭스, 최근 테스트 실행</td></tr>
+<tr><td><a href="/">홈</a></td><td>매일</td><td>미검증 dev 배포, 이번 스프린트 smoke 여부, 테스트 조건 커버리지 매트릭스, 최근 테스트 실행</td></tr>
 <tr><td><a href="/runs">실행 기록</a></td><td>실행 후</td><td>테스트 실행 목록·상세(단계별 요청·응답·검증 항목(assertion)), Hermes 실패 분석, 릴리스 판단 기록</td></tr>
 <tr><td><a href="/cases">테스트 스크립트</a></td><td>스크립트 관리</td><td>원본은 git <span class="mono">qa-platform/cases/*.yaml</span>. 정합성·테스트 조건 변경 배지·실행 이력. [파일에서 다시 읽기]</td></tr>
 <tr><td><a href="/catalog">테스트 조건</a></td><td>커버리지 확인 · 스크립트 늘릴 때</td><td>도메인×층 테스트 조건 목록, 검증하는 스크립트, API 매핑, 제외 사유, 스펙 불일치 경고(스펙 누락 등). 테스트 조건을 골라 [Hermes 가 스크립트 쓰기] 또는 [직접 쓰기 (폼)]</td></tr>
 <tr><td><a href="/drafts">변경 기록</a></td><td>누가 무엇을 바꿨나 볼 때</td><td>폼·Hermes 가 저장한 스크립트·수동 작성 테스트 조건 변경과 커밋 링크. 저장은 초안·승인 없이 바로 된다</td></tr>
 <tr><td><a href="/chat">Hermes</a></td><td>물어볼 때</td><td>Hermes 와 대화. 실행·스크립트·테스트 조건 상세의 [Hermes 와 이야기] 로 그 객체를 첨부해 연다. Hermes 가 부른 도구와 저장한 스크립트가 대화에 남는다</td></tr>
 <tr><td><a href="/apis">API</a></td><td>"이 API 검증이 어디까지 됐지" 할 때</td><td>API 하나를 축으로 모아 본다 — 스펙(파라미터·예시·에러 코드), 그 API 에 해당하는 테스트 조건(층별, 자동화 여부), 호출하는 스크립트, 최근 호출 20건(스크립트 실행·API 호출 전송 모두). 목록에서 "호출하는 스크립트 없음" 필터가 테스트 커버리지가 비는 API</td></tr>
-<tr><td><a href="/setup">테스트 데이터 만들기</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 같은 화면 아래 "QA 데이터 정리"에서 지운다(dev 전용 API, [QA] 제목만). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
+<tr><td><a href="/data">QA 데이터</a></td><td>손으로 볼 데이터가 필요할 때</td><td>버튼 하나로 dev 에 테스트 데이터를 만든다(모집 중인 룸, 신청 들어온 룸, 확정된 룸). 입력 몇 개 넣고 [실행] → 결과값(roomId 등)이 표로 나오고 API 호출 화면의 입력칸에 최근에 넣은 값으로 뜬다. 만든 데이터는 같은 화면 아래 "QA 데이터 정리"에서 지운다(dev 전용 API, [QA] 제목만). 스크립트는 <span class="mono">cases/setup.yaml</span> 의 <span class="mono">suite: setup</span> — <span class="mono">inputs</span>(입력칸) · <span class="mono">outputs</span>(돌려줄 save 변수) · <span class="mono">{{input.x}}</span> 치환</td></tr>
 <tr><td><a href="/explorer">API 호출</a></td><td>손으로 확인할 때</td><td>OpenAPI 로 만든 입력 폼에서 dev 에 한 번 보낸다. <b>Normal</b> 은 값만 넣는 입력 폼, <b>Swagger</b> 는 실제로 나가는 요청 원문(메서드·경로·파라미터·JSON) — 같은 값을 두 모양으로 본다. 폼 위의 배지가 그 API 의 테스트 조건 수와 자동화 상태. ☆ 즐겨찾기와 한 번 넣은 path·query 값은 이 브라우저에 기억된다. 보낸 것은 실행 기록에 남고, 응답을 [스크립트 단계로 담기]</td></tr>
 <tr><td><a href="/activity">감사 로그</a></td><td>누가 뭘 했는지</td><td>감사 로그 전부</td></tr></table>"""
 
     s4 = """
 <ol>
-<li><b>PR 을 dev 에 머지한다.</b> 백엔드 CI 가 dev 에 배포하면 대시보드 "dev 배포" 에 <span class="b warn">미검증</span> 으로 뜬다 (GitHub Actions 조회, 1분 캐시).</li>
+<li><b>PR 을 dev 에 머지한다.</b> 백엔드 CI 가 dev 에 배포하면 홈 "dev 배포" 에 <span class="b warn">미검증</span> 으로 뜬다 (GitHub Actions 조회, 1분 캐시).</li>
 <li><b>[검증] 을 누른다.</b> 플랫폼이 PR 변경 파일에서 도메인을 읽어 그 도메인의 sanity 를 제안한다. 확인하고 실행. 통과하면 그 배포에 ✅ 가 붙는다.</li>
 <li><b>실패하면 셋 중 하나다.</b> (a) 버그 → 고친다. (b) 스크립트 노후 — 기획이 바뀌어 스크립트가 틀렸다 → 스크립트 상세의 [폼으로 고치기] → 저장. (c) 환경 — 픽스처(공고 id 등)가 바뀜 → SSM <span class="mono">qa-fixtures</span> 를 고친다. Hermes 실패 분석이 셋 중 무엇인지 제안한다.</li>
 <li><b>새 기능이면 테스트 조건을 먼저 본다.</b> 기획이 SSOT 에 반영돼 있으면 테스트 조건 화면에 테스트 조건이 이미 있다. 없으면 위키(SSOT/PRD)를 먼저 고친다. 플랫폼에서 테스트 조건을 직접 만들지 않는다. API 가 새로 생겼으면 <span class="mono">catalog/bindings.yaml</span> 에 command ↔ operationId 를 잇는다.</li>
@@ -1589,7 +1593,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 
     s5 = f"""
 <ul>
-<li><b>스프린트마다 한 번</b> ({sprint_days}일 주기, Linear 사이클과 같은 번호) 대시보드에서 [스프린트 smoke 실행]. 배지가 "미실행" 이면 아직 안 한 것이다. 마감 하루 전까지 없으면 Slack 에 한 번 알린다 — 알림만 하고 실행은 하지 않는다.</li>
+<li><b>스프린트마다 한 번</b> ({sprint_days}일 주기, Linear 사이클과 같은 번호) <a href="/smoke">스모크</a>에서 [스모크 실행]. 배지가 "미실행" 이면 아직 안 한 것이다. 마감 하루 전까지 없으면 Slack 에 한 번 알린다 — 알림만 하고 실행은 하지 않는다.</li>
 <li><b>실배포 전</b> [릴리스 검증] → smoke 전체 실행 → 실행 상세의 릴리스 체크리스트(백엔드 <span class="mono">docs/knowledge/release-checklist.md</span> 에서 읽어 옴)를 확인하고 GO / NO-GO 를 <b>기록</b>한다. 기록만 하고 승격을 막지는 않는다.</li>
 <li><b>보고서.</b> 스프린트·릴리스 실행은 [위키에 보고서 게시] 로 llm-wiki <span class="mono">wiki/qa/</span> 에 남길 수 있다. 사람이 누를 때만, 개인 식별값은 마스킹.</li>
 </ul>"""
