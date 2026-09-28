@@ -188,3 +188,57 @@ cases:
       - name: 없는 공고·직무
         request: { method: GET, path: /v1/rooms/creation-limit, query: { jobPostingId: 999999999, jobRoleId: 999999 } }
         expect: { status: 200, result: SUCCESS, json: { "data.activeRoomCount": 0 }, exists: [data.limit, data.remaining] }
+
+  - id: room.confirm-host-only
+    title: 방장이 아닌 참여자가 진행을 확정하면 E1406으로 거절된다
+    suite: sanity
+    variant: 룸-진행-확정/S1/host-only
+    domains:
+    - room
+    operations:
+    - confirmRoom
+    covers:
+    - G.room.confirm#host-only
+    source:
+    - PRD/룸 진행 확정 R2
+    - PRD/룸 진행 확정 R8
+    - PRD/룸 진행 확정 R10
+    - PRD/룸 진행 확정 R11
+    - PRD/룸 진행 확정 R12
+    - PRD/룸 진행 확정 R13
+    - PRD/룸 진행 확정 R34
+    - PRD/룸 진행 확정 R35
+    - PRD/룸 진행 확정 R36
+    - PRD/룸 진행 확정 §8
+    actor: qa-host
+    reviewed:
+      at: '2026-09-28'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 진행 확정 host-only sanity {{rand}}'
+    steps:
+    - name: 참여자가 진행 확정을 시도하면 거절된다
+      actor: qa-guest
+      covers:
+      - G.room.confirm#host-only
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/confirmation
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E1406
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
