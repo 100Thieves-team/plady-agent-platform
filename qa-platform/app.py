@@ -42,6 +42,7 @@ from qa.mcp_server import McpServer  # noqa: E402
 from qa import report as reportmod  # noqa: E402
 from qa import sanity as sanitymod  # noqa: E402
 from qa import targets as targetsmod  # noqa: E402
+from qa import specfix as specfixmod  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.reminder import Reminder  # noqa: E402
 from qa.runner import Runner  # noqa: E402
@@ -95,6 +96,8 @@ class App:
         self._qa_snap: dict[str, tuple[float, dict]] = {}     # 대상 주소 → 남은 QA 데이터 (QA 데이터 화면을 열 때 갱신)
         self.runner.actors.by_base = self.target_actors      # 대상 서버마다 따로 적은 테스트 계정
         self._sanity_todo: int | None = None                  # 왼쪽 메뉴의 Sanity 숫자 (PR 목록을 읽을 때 갱신)
+        import threading as _th
+        self._finding_lock = _th.Lock()     # 스펙 확인 항목을 화면과 뒤에서 도는 수정안 작업이 함께 고친다
 
     def start(self):
         self.runner.start()
@@ -1069,8 +1072,9 @@ class App:
                                     "href": variant_url(v["id"]), "state": v["state"], "mode": va.mode, "checks": va.checks, "state_html": state_badge(v["state"])})
         return out
 
-    def sanity_resolve(self, sid: str, fid: str, *, choice: str, note: str, operator: str, session_hash=None, ip=None) -> dict:
-        """스펙 확인 항목 하나를 사람이 정한다 — 추천대로 · 다르게(사유). 위키는 고치지 않는다(§10-3)."""
+    def sanity_resolve(self, sid: str, fid: str, *, choice: str, note: str, operator: str, session_hash=None, ip=None, sync: bool = False) -> dict:
+        """스펙 확인 항목 하나를 사람이 정한다 — 추천대로 · 다르게(어떻게). 고칠 수 있는 종류면 Hermes 가 PRD·규칙표 수정안을 만든다(§14).
+        위키는 사람이 [위키에 반영]을 누를 때만 바뀐다."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         s = self.store.get_sanity(sid) or {}
@@ -1082,24 +1086,117 @@ class App:
             raise BadRequest("추천대로 · 다르게 중 하나")
         if choice == "other" and not note.strip():
             raise BadRequest("다르게 정할 때는 어떻게 정했는지 적어야 한다")
-        f.update(resolution=choice, resolved_by=operator, resolved_at=now_iso(), note=note.strip()[:500] or None)
-        self.store.update_sanity(sid, findings=fs)
+        f = self._update_finding(sid, fid, resolution=choice, resolved_by=operator, resolved_at=now_iso(), note=note.strip()[:500] or None)
         self.store.add_event(operator=operator, action="sanity.finding.resolve", target=sid, session_hash=session_hash, ip=ip,
                              detail={"finding": fid, "title": f["title"][:200], "choice": choice, "note": note.strip()[:300]})
-        return f
+        if f["kind"] in specfixmod.FIXABLE and self.cfg.hermes_key and self.wiki.available:
+            self.sanity_propose(sid, fid, operator=operator, session_hash=session_hash, ip=ip, sync=sync)
+        return next(x for x in self.store.get_sanity(sid)["findings"] if x["id"] == fid)
+
+    # ---- 스펙 수정안 (docs/qa-platform-v2.md §14) ----------------------------------------------
+    def _update_finding(self, sid: str, fid: str, **fields) -> dict:
+        with self._finding_lock:
+            s = self.store.get_sanity(sid) or {}
+            fs = list(s.get("findings") or [])
+            f = next((x for x in fs if x.get("id") == fid), None)
+            if not f:
+                raise BadRequest("그 항목이 없다")
+            f.update(fields)
+            self.store.update_sanity(sid, findings=fs)
+            return f
+
+    def sanity_propose(self, sid: str, fid: str, *, operator: str, session_hash=None, ip=None, sync: bool = False):
+        """[수정안 만들기] — 정한 결정대로 Hermes 가 PRD·규칙표를 찾아 바꾸기로 고친 안을 낸다. 위키에는 아직 쓰지 않는다."""
+        s = self.store.get_sanity(sid) or {}
+        f = next((x for x in s.get("findings") or [] if x.get("id") == fid), None)
+        if not f:
+            raise BadRequest("그 항목이 없다")
+        if f["kind"] not in specfixmod.FIXABLE or f.get("resolution") not in ("recommended", "other"):
+            raise BadRequest("추천대로나 다르게로 정한, 스펙과 코드가 다르거나 모호한 항목만 수정안을 만들 수 있다")
+        if not self.wiki.available:
+            raise BadRequest("위키 체크아웃이 없어 PRD 를 읽을 수 없다")
+        feats = sorted({x["feature"] for x in (s.get("scope") or {}).get("items") or []})
+        pr = {"number": s["pr_number"], "title": s.get("pr_title")}
+
+        def fn(job):
+            self._update_finding(sid, fid, proposal={"status": "making", "job_id": job.id, "made_by": operator})
+            try:
+                out = specfixmod.propose(finding=f, pr=pr, root=self.wiki.root, scope_features=feats, ask=job.ask)
+            except Exception as ex:
+                self._update_finding(sid, fid, proposal={"status": "failed", "error": str(ex)[:600], "made_by": operator, "made_at": now_iso()})
+                self.store.add_event(operator=operator, action="sanity.spec.propose", target=sid, session_hash=session_hash, ip=ip,
+                                     detail={"finding": fid, "error": str(ex)[:300]})
+                raise
+            self._update_finding(sid, fid, proposal={"status": "ready" if out["files"] else "empty", **out, "made_by": operator, "made_at": now_iso()})
+            self.store.add_event(operator=operator, action="sanity.spec.propose", target=sid, session_hash=session_hash, ip=ip,
+                                 detail={"finding": fid, "summary": out["summary"][:200], "files": [x["path"] for x in out["files"]]})
+            return {"summary": out["summary"] or "수정안을 만들었어요", "links": [{"href": f"/sanity/{s['pr_number']}", "label": f"PR #{s['pr_number']} Sanity"}]}
+        return self.start_job("specfix", operator=operator, label=f"PR #{s['pr_number']} · {f['title'][:60]}", fn=fn,
+                              back={"href": f"/sanity/{s['pr_number']}", "label": f"PR #{s['pr_number']}"}, session_hash=session_hash, ip=ip, sync=sync)
+
+    def sanity_discard(self, sid: str, fid: str, *, operator: str, session_hash=None, ip=None) -> None:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        self._update_finding(sid, fid, proposal={"status": "discarded", "discarded_by": operator, "discarded_at": now_iso()})
+        self.store.add_event(operator=operator, action="sanity.spec.discard", target=sid, session_hash=session_hash, ip=ip, detail={"finding": fid})
+
+    def sanity_apply(self, sid: str, fids: list[str], *, operator: str, session_hash=None, ip=None) -> dict:
+        """[위키에 반영] — 고른 수정안을 지금 위키 파일에 다시 적용해 검증하고, PRD 는 wiki_apply(archive), 규칙표 조각은
+        wiki_content_write 뒤 wiki_content_commit 으로 커밋한다. 다시 점검은 사람이 따로 누른다(사용자 결정 2026-09-28)."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        if not (self.cfg.wiki_mcp_url and self.cfg.wiki_mcp_token):
+            raise BadRequest("LLM_WIKI_MCP_* 가 없어 위키에 쓸 수 없다")
+        s = self.store.get_sanity(sid) or {}
+        pick = [f for f in s.get("findings") or [] if f.get("id") in fids and (f.get("proposal") or {}).get("status") == "ready"]
+        if not pick:
+            raise BadRequest("반영할 수정안이 없다")
+        try:
+            before, after = specfixmod.combine(self.wiki.root, [f["proposal"] for f in pick])
+        except specfixmod.SpecFixError as ex:
+            raise BadRequest(str(ex))
+        changed = [p for p in after if after[p] != before[p]]
+        if not changed:
+            raise BadRequest("바뀌는 곳이 없다 — 이미 반영됐을 수 있다")
+        first = pick[0]["proposal"].get("summary") or pick[0]["title"]
+        msg = f"spec: {first}{f' 외 {len(pick) - 1}건' if len(pick) > 1 else ''} — PR #{s['pr_number']} Sanity (qa-platform, {operator})"
+        client = McpClient(self.cfg.wiki_mcp_url, self.cfg.wiki_mcp_token, timeout=60)
+        commits = {}
+        try:
+            yml = [p for p in changed if p.endswith(".yaml")]
+            for p in yml:
+                client.call_tool("wiki_content_write", {"uri": specfixmod.uri_of(p), "content": after[p]})
+            md = [p for p in changed if p.endswith(".md")]
+            if md:
+                res = client.call_tool("wiki_apply", {"mode": "archive", "changes": [{"path": p, "content": after[p]} for p in md], "message": msg})
+                commits["prd"] = McpClient.tool_text(res)[:300]
+            if yml:
+                try:
+                    res = client.call_tool("wiki_content_commit", {"message": msg, "slugs": ",".join(specfixmod.uri_of(p) for p in yml)})
+                except McpError:
+                    res = client.call_tool("wiki_content_commit", {"message": msg})
+                commits["ssot"] = McpClient.tool_text(res)[:300]
+        except McpError as ex:
+            self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
+                                 detail={"findings": [f["id"] for f in pick], "files": changed, "error": str(ex)[:300]})
+            raise BadRequest(f"위키에 쓰지 못했어요: {ex}")
+        at = now_iso()
+        for f in pick:
+            self._update_finding(sid, f["id"], proposal={**f["proposal"], "status": "applied", "applied_by": operator, "applied_at": at, "commit_message": msg})
+        self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
+                             detail={"findings": [f["id"] for f in pick], "files": changed, "message": msg, "commits": commits})
+        return {"files": changed, "message": msg, "count": len(pick)}
 
     def sanity_continue(self, sid: str, *, reason: str, operator: str, session_hash=None, ip=None, sync: bool = False):
         """[이대로 계속] — 남은 확인 항목은 '정하지 않고 계속' 으로 적고 3단계부터. 그 요구의 케이스는 스크립트를 만들지 않는다."""
         s = self.store.get_sanity(sid)
         if not s or s["status"] not in ("needs_spec", "error", "interrupted", "canceled", "failed"):
             raise BadRequest("멈춘 Sanity 만 이어서 할 수 있다")
-        fs = list(s["findings"])
-        left = [f for f in fs if f["kind"] in sanitymod.BLOCKING and not f.get("resolved_at")]
+        left = [f for f in s["findings"] if f["kind"] in sanitymod.BLOCKING and not f.get("resolved_at")]
         if left and not reason.strip():
             raise BadRequest("정하지 않은 항목이 있으면 사유를 적어야 한다")
         for f in left:
-            f.update(resolution="continued", resolved_by=operator, resolved_at=now_iso(), note=reason.strip()[:500])
-        self.store.update_sanity(sid, findings=fs)
+            self._update_finding(sid, f["id"], resolution="continued", resolved_by=operator, resolved_at=now_iso(), note=reason.strip()[:500])
         self.store.add_event(operator=operator, action="sanity.continue", target=sid, session_hash=session_hash, ip=ip, detail={"left": len(left), "reason": reason.strip()[:300]})
         start = 3 if s["step"] >= 2 else 1
         return self._sanity_job(sid, start, operator=operator, session_hash=session_hash, ip=ip, sync=sync)
@@ -2451,7 +2548,7 @@ class Handler(BaseHTTPRequestHandler):
             except BadRequest as ex:
                 return self._redirect(f"/sanity/{num}?err={_urlq(str(ex))}", set_operator=operator)
             return self._redirect(f"/sanity/{num}", set_operator=operator)
-        m = re.match(r"^/sanity/(s-[0-9a-f]+)/(continue|recheck|resolve|slack|cancel)$", path)
+        m = re.match(r"^/sanity/(s-[0-9a-f]+)/(continue|recheck|resolve|slack|cancel|propose|apply|discard)$", path)
         if m and method == "POST":
             sid, act = m.group(1), m.group(2)
             s = app.store.get_sanity(sid)
@@ -2471,6 +2568,15 @@ class Handler(BaseHTTPRequestHandler):
                     app.sanity_recheck(sid, **kw)
                 elif act == "resolve":
                     app.sanity_resolve(sid, fv("fid"), choice=fv("choice"), note=fv("note"), **kw)
+                elif act == "propose":
+                    app.sanity_propose(sid, fv("fid"), **kw)
+                    msg = "Hermes 가 수정안을 만들고 있어요. 다 되면 이 화면에 바뀐 줄이 보여요"
+                elif act == "discard":
+                    app.sanity_discard(sid, fv("fid"), **kw)
+                elif act == "apply":
+                    res = app.sanity_apply(sid, [str(x) for x in f.get("fid") or []], **kw)
+                    msg = (f"수정안 {res['count']}개를 위키에 반영했어요 ({', '.join(res['files'])}). "
+                           "고칠 것을 다 반영했으면 [위키 고친 뒤 다시 점검]을 눌러 주세요")
                 elif act == "slack":
                     msg = f"질문 {app.sanity_slack(sid, **kw)}건을 Slack 으로 보냈어요"
                 elif act == "cancel":

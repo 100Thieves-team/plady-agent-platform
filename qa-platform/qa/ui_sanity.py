@@ -22,7 +22,13 @@ CSS = """<style>
 .box.q{background:var(--infobg)}.box.q b{color:var(--info)}.box.q .rec{margin-top:6px;color:var(--mut);font-size:12px}
 .box.q form{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}.box.q input[name=note]{height:30px;flex:1;min-width:120px;font-size:12px}
 .box.q form button{height:30px;font-size:12px;padding:0 10px}
-.done-mark{color:var(--ok);font-weight:700;font-size:13px;margin-top:10px}.done-mark.cont{color:var(--warn)}
+.done-mark{color:var(--ok);font-weight:700;font-size:13px;margin-top:10px}
+.prop{grid-column:1/-1;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#FCFCFD}
+.prop .phead{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}.prop .phead span{color:var(--ink2);font-size:13px;flex:1}.prop .phead.ok b{color:var(--ok)}
+.prop .phead label{order:3;color:var(--mut)}.prop .pmsg{font-size:13px;color:var(--ink2)}.prop .pmsg.bad{color:var(--bad)}
+.prop .acts{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}.prop .dfile{margin-top:6px}.prop .dfile .mono{margin-bottom:2px}
+pre.df{background:#fff;color:var(--ink);border:1px solid var(--line);max-height:320px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+pre.df span{display:block;padding:0 6px}pre.df .a{background:#E6F6EE;color:#136C3F}pre.df .r{background:#FEEEEF;color:#B4232F;text-decoration:line-through;text-decoration-color:rgba(180,35,47,.35)}pre.df .h{color:var(--mut)}.done-mark.cont{color:var(--warn)}
 .reqs{margin:0;padding:0;list-style:none}.reqs li{display:grid;grid-template-columns:44px 1fr;gap:6px;font-size:13px;color:var(--ink2);padding:2px 0}
 .metrics{display:grid;grid-template-columns:repeat(3,1fr)}.metrics div{padding:14px 18px;border-right:1px solid var(--line)}.metrics div:last-child{border-right:0}
 .metrics span{color:var(--mut);font-size:12px}.metrics b{display:block;font-size:22px;font-weight:800}
@@ -124,6 +130,51 @@ def _banner(s: dict, left: int) -> str:
     return f'<div class="banner bad"><div><b>{e(S.STATUS_KO.get(st, st))}</b><span>{e(s.get("error") or "다시 시작하거나 이어서 할 수 있어요")}</span></div></div>'
 
 
+FIXABLE = {"mismatch", "ambiguous"}
+
+
+def _diff_html(d: str) -> str:
+    out = []
+    for ln in d.splitlines():
+        if ln.startswith(("---", "+++")):
+            continue
+        cls = "a" if ln.startswith("+") else "r" if ln.startswith("-") else "h" if ln.startswith("@@") else ""
+        out.append(f'<span class="{cls}">{e(ln) or " "}</span>')
+    return '<pre class="df">' + "".join(out) + "</pre>"
+
+
+def _proposal(f: dict, sid: str, operator: str) -> str:
+    """정한 항목의 PRD·규칙표 수정안 (docs/qa-platform-v2.md §14)."""
+    if f["kind"] not in FIXABLE or f.get("resolution") not in ("recommended", "other"):
+        return ""
+    pr = f.get("proposal") or {}
+    st = pr.get("status")
+    dis = "" if operator else "disabled"
+
+    def form(action, label, cls=""):
+        return (f'<form method="post" action="/sanity/{e(sid)}/{action}" class="inline"><input type="hidden" name="fid" value="{e(f["id"])}">'
+                f'<input type="hidden" name="operator" value="{e(operator)}"><button class="{cls}" {dis}>{label}</button></form>')
+    files = "".join(f'<div class="dfile"><div class="mono">{e(x["path"])}</div>{_diff_html(x["diff"])}</div>' for x in pr.get("files") or [])
+    if st == "making":
+        body = '<div class="pmsg">Hermes 가 이 결정대로 PRD·규칙표 수정안을 만들고 있어요. 다 되면 바뀐 줄이 여기에 보여요.</div>'
+    elif st == "ready":
+        body = (f'<div class="phead"><label class="small"><input type="checkbox" name="fid" value="{e(f["id"])}" form="apply-all" checked> 한 번에 반영에 넣기</label>'
+                f'<b>수정안</b><span>{e(pr.get("summary"))}</span></div>{files}'
+                f'<div class="acts">{form("apply", "위키에 반영", "primary")}{form("propose", "다시 만들기")}{form("discard", "버리기")}'
+                f'<span class="small mut">반영하기 전에는 위키가 바뀌지 않아요 · {e(pr.get("made_by"))} · {kst(pr.get("made_at"))}</span></div>')
+    elif st == "applied":
+        body = (f'<div class="phead ok"><b>✓ 위키에 반영했어요</b><span>{e(pr.get("summary"))} · {e(pr.get("applied_by"))} · {kst(pr.get("applied_at"))}</span></div>'
+                f'<details><summary class="small mut">바뀐 줄 보기</summary>{files}</details>')
+    elif st == "empty":
+        body = f'<div class="pmsg">Hermes 가 고칠 곳이 없다고 봤어요. {e(pr.get("summary"))}</div><div class="acts">{form("propose", "다시 만들기")}</div>'
+    elif st == "failed":
+        body = f'<div class="pmsg bad">수정안을 만들지 못했어요. {e(pr.get("error"))}</div><div class="acts">{form("propose", "다시 만들기")}</div>'
+    else:
+        note = "버린 수정안이 있어요. " if st == "discarded" else ""
+        body = f'<div class="pmsg">{note}이 결정대로 PRD·규칙표를 고칠 수정안을 Hermes 에게 만들게 할 수 있어요.</div><div class="acts">{form("propose", "수정안 만들기", "soft")}</div>'
+    return f'<div class="prop">{body}</div>'
+
+
 def _finding(f: dict, sid: str, operator: str, can_edit: bool) -> str:
     blocking = f["kind"] in S.BLOCKING
     res = ""
@@ -133,7 +184,7 @@ def _finding(f: dict, sid: str, operator: str, can_edit: bool) -> str:
                f'{(" · " + e(f["note"])) if f.get("note") else ""}</div>')
     elif blocking and can_edit:
         res = (f'<form method="post" action="/sanity/{e(sid)}/resolve"><input type="hidden" name="fid" value="{e(f["id"])}"><input type="hidden" name="operator" value="{e(operator)}">'
-               f'<button class="primary" name="choice" value="recommended" {"" if operator else "disabled"}>추천대로</button>'
+               f'<button class="primary" name="choice" value="recommended" {"" if operator else "disabled"} title="정하면 Hermes 가 PRD·규칙표 수정안을 만들어요. 위키는 [위키에 반영]을 눌러야 바뀌어요">추천대로</button>'
                f'<input name="note" placeholder="다르게 정한다면 어떻게"><button name="choice" value="other" {"" if operator else "disabled"}>다르게</button></form>')
     extra = f'<div class="small mut" style="margin-top:6px">요구 {e(", ".join(f["reqs"]))}</div>' if f.get("reqs") else ""
     scripts = f'<div class="small mut" style="margin-top:6px">스크립트 {" ".join("<a class=mono href=/cases/" + e(x) + ">" + e(x) + "</a>" for x in f["scripts"])}</div>' if f.get("scripts") else ""
@@ -142,17 +193,18 @@ def _finding(f: dict, sid: str, operator: str, can_edit: bool) -> str:
     src = "Hermes 가" if f.get("source") == "hermes" else "플랫폼이"
     return (f'<div class="find"><div class="hd"><span class="k {"" if blocking else "info"}">{e(S.KIND_KO.get(f["kind"], f["kind"]))}</span><span class="t">{e(f["title"])}</span>'
             f'<span class="small mut">{src} 찾음</span></div>'
-            f'<div class="box"><b>스펙</b>{e(f.get("spec"))}{extra}</div><div class="box"><b>코드</b>{e(f.get("code"))}{scripts}</div>{q}</div>')
+            f'<div class="box"><b>스펙</b>{e(f.get("spec"))}{extra}</div><div class="box"><b>코드</b>{e(f.get("code"))}{scripts}</div>{q}{_proposal(f, sid, operator)}</div>')
 
 
 def _detail(p: dict, s: dict, *, operator: str, cases: list[dict], run: dict | None, history: list[dict]) -> str:
     st = s["status"]
-    live = st in ("queued", "running")
     fs = s.get("findings") or []
+    running = st in ("queued", "running")                                               # Sanity 단계가 도는 중
+    live = running or any((f.get("proposal") or {}).get("status") == "making" for f in fs)   # 화면을 새로 고칠 때 (수정안을 만드는 중도)
     left = sum(1 for f in fs if f["kind"] in S.BLOCKING and not f.get("resolved_at"))
     sid = s["id"]
     acts = ""
-    if live:
+    if running:
         acts = (f'<form method="post" action="/sanity/{e(sid)}/cancel"><input type="hidden" name="operator" value="{e(operator)}">'
                 f'<button class="danger lg" {"" if operator else "disabled"}>그만두기</button></form>')
     else:
@@ -168,8 +220,11 @@ def _detail(p: dict, s: dict, *, operator: str, cases: list[dict], run: dict | N
     if fs:
         slack_btn = (f'<form method="post" action="/sanity/{e(sid)}/slack" style="margin:0"><input type="hidden" name="operator" value="{e(operator)}">'
                      f'<button {"" if (operator and left) else "disabled"}>남은 질문 Slack 으로 묻기</button></form>') if blocking else ""
-        fhtml = (f'<div class="card flush" data-tour="findings"><div class="ch"><h2>스펙 확인{h("sanity.findings")}</h2><span class="small mut">{len(blocking)}건 중 {len(blocking) - left}건 정함</span>{slack_btn}</div>'
-                 + "".join(_finding(f, sid, operator, not live) for f in blocking + other) + '</div>')
+        ready = sum(1 for f in fs if (f.get("proposal") or {}).get("status") == "ready")
+        batch = (f'<form id="apply-all" method="post" action="/sanity/{e(sid)}/apply" style="margin:0"><input type="hidden" name="operator" value="{e(operator)}">'
+                 f'<button class="primary" {"" if operator else "disabled"}>고른 수정안 {ready}개 한 번에 반영</button></form>') if ready > 1 else ""
+        fhtml = (f'<div class="card flush" data-tour="findings"><div class="ch"><h2>스펙 확인{h("sanity.findings")}</h2><span class="small mut">{len(blocking)}건 중 {len(blocking) - left}건 정함</span>{batch}{slack_btn}</div>'
+                 + "".join(_finding(f, sid, operator, not running) for f in blocking + other) + '</div>')
     items = (s.get("scope") or {}).get("items") or []
     scope = ""
     if items:

@@ -343,7 +343,7 @@ PRD 2장과 규칙표로 시나리오 파일을 모든 MVP 기능에 채웠다(�
 - 남은 한계: 내부 주소 검사는 등록할 때 이름을 한 번 풀어 본다. 나중에 그 이름이 내부 주소로 바뀌는 경우는 막지 않는다.
 - 시험: tests/test_targets.py 3건.
 
-## 14. 스펙 확인에서 위키 수정까지 (설계, 검토 전)
+## 14. 스펙 확인에서 위키 수정까지 (구현됨 2026-09-28)
 
 사용자 결정(2026-09-28): [추천대로]를 누르면 PRD 가 고쳐질 거라 생각했다. §10-3("Sanity 는 질문만 만들고 위키는 사람이 고친다")을 바꾼다. **플랫폼이 수정안을 만들고, 사람이 확인하고 반영한다.**
 
@@ -383,7 +383,16 @@ PRD 2장과 규칙표로 시나리오 파일을 모든 MVP 기능에 채웠다(�
 - 조립본, `wiki/policy/` 렌더 결과, scope 밖 기능의 PRD 는 고칠 수 없다.
 - Hermes 결과는 사람이 [위키에 반영]을 누르기 전에는 위키에 닿지 않는다.
 
-### 14.4 정할 것
+### 14.4 결정 (2026-09-28)
 
-1. 반영한 뒤 다시 점검을 저절로 이어 할까. 추천: 이어 한다. 반영을 누른 사람이 시작한 것으로 본다.
-2. 위키 커밋 메시지 형식. 추천: `spec: <요약> — PR #139 Sanity (qa-platform, bebe)`.
+1. 반영한 뒤 다시 점검은 **저절로 하지 않는다**. 사용자: "모호한 게 6가지고 6개 다 수정했을 때 6번 점검할 필요는 없잖아". 반영을 다 한 뒤 사람이 [위키 고친 뒤 다시 점검]을 한 번 누른다. 위 흐름의 "이어서 2단계부터 다시 점검" 은 이것으로 바뀐다.
+2. 위키 커밋 메시지는 `spec: <요약> — PR #<번호> Sanity (qa-platform, <담당자>)`. 여러 개를 한 번에 반영하면 `<첫 요약> 외 n건`.
+
+### 14.5 구현
+
+- `qa/specfix.py`: 프롬프트(SYSTEM), 고칠 수 있는 파일(allowed_paths: scope 기능의 PRD·기능 조각, 공통·결정 조각), 찾아 바꾸기 적용(정확히 한 번), 검증(요구 id 삭제 금지, yaml, 임시 사본에서 ssot_load assemble·check), 비교(unified diff), 반영 직전 다시 적용(combine).
+- `App.sanity_resolve` 가 고칠 수 있는 종류면 Hermes 작업 `specfix` 를 시작한다. `sanity_propose`(다시 만들기) · `sanity_discard` · `sanity_apply`.
+- 반영: 조각은 `wiki_content_write` 뒤 `wiki_content_commit`, PRD 는 `wiki_apply` archive. 감사 로그 `sanity.spec.propose` · `sanity.spec.apply` · `sanity.spec.discard`.
+- 화면: 항목 아래 수정안(바뀐 줄 초록·빨강), [위키에 반영] [다시 만들기] [버리기], 카드 머리 [고른 수정안 n개 한 번에 반영]. 수정안을 만드는 동안 4초마다 새로 고친다.
+- 시험: tests/test_specfix.py 4건.
+- 운영에서 아직 안 해 본 것: `wiki_content_write`·`wiki_content_commit` 실제 호출(dry run 이 없다). `slugs` 인자가 거절되면 인자 없이 다시 커밋한다.
