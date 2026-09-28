@@ -1,0 +1,84 @@
+# application — QA 플랫폼 폼으로 만든 파일.
+cases:
+  - id: application.submit-accept
+    title: 참가를 신청하면 대기 중이 되고 방장이 수락하면 참여자가 된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/happy
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    - acceptApplication
+    covers:
+    - C.application.submit
+    - C.application.accept
+    - op.submitRoomApplication:201
+    - op.acceptApplication:200
+    source:
+    - PRD/룸 참여 및 참여자 관리 §4.2
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    - PRD/룸 참여 및 참여자 관리 §2
+    - PRD/룸 참여 및 참여자 관리 §4.4
+    actor: qa-guest
+    reviewed:
+      at: '2026-09-28'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 참가 신청 수락 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 참가자가 모집 중인 룸에 참가 신청을 제출한다
+      actor: qa-guest
+      covers:
+      - C.application.submit
+      - op.submitRoomApplication:201
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 참가 신청 sanity {{rand}}'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+        exists:
+        - data.applicationId
+      save:
+        applicationId: data.applicationId
+    - name: 방장이 참가 신청을 수락한다
+      actor: qa-host
+      covers:
+      - C.application.accept
+      - op.acceptApplication:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.applicationId: '{{applicationId}}'
+          data.status: ACCEPTED
+        exists:
+        - data.recruit.current
+        - data.recruit.max
+        - data.recruit.recruitStatus
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      actor: qa-host
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
