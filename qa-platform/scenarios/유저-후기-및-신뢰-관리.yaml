@@ -2,6 +2,7 @@
 feature: 유저 후기 및 신뢰 관리
 scenarios:
   - id: S1
+    actor: qa-guest
     gates:
       R1: [G.review.write]
       R94: [G.review.write]
@@ -59,9 +60,11 @@ scenarios:
       - key: author-attended
         kind: reject
         at: R1
-        title: 출석하지 않은 사람이 후기를 쓰면 E2002 로 거절된다
+        title: 룸에 출석하지 않은 참여자가 후기를 쓰면 E2002 로 거절된다
+        given: 작성자가 이 룸에 출석한 참여자가 아니다.
+        then: 이 룸에 출석한 참여자만 후기를 쓸 수 있어요
         checks: [G.review.write#author-attended]
-        then: E2002
+        written_by: hermes
       - key: not-already-written
         kind: reject
         at: R1
@@ -83,9 +86,11 @@ scenarios:
       - key: target-attended
         kind: reject
         at: R1
-        title: 출석하지 않은 사람에게 후기를 쓰면 E2003 으로 거절된다
+        title: 이 룸에 출석하지 않은 사람에게 후기를 쓰면 E2003 으로 거절된다
+        given: 후기 대상자가 이 룸에 출석하지 않았다.
+        then: 이 룸에 출석하지 않은 사람에게는 후기를 쓸 수 없어요
         checks: [G.review.write#target-attended]
-        then: E2003
+        written_by: hermes
       - key: author-only
         kind: reject
         at: R97
@@ -104,7 +109,6 @@ scenarios:
         title: 제출한 지 3시간이 지난 후기를 고치면 E2008 로 거절된다
         checks: [G.review.edit#within-edit-window]
         then: E2008
-    actor: qa-guest
     basis:
       R1: 14b08176
       R94: 94b272cb
@@ -120,11 +124,11 @@ scenarios:
       G.review.edit#author-only: 0f63df6b
       G.review.edit#review-effective: 2b0c60f5
       G.review.edit#within-edit-window: 70baba1f
-      G.review.write#author-attended: 73ebc76a
+      G.review.write#author-attended: 92a4a48a
       G.review.write#not-already-written: d2cce185
       G.review.write#not-self: ea5d7ee7
       G.review.write#room-completed: 0c7ed98b
-      G.review.write#target-attended: 95eb5db0
+      G.review.write#target-attended: '19357609'
 
   - id: S2
     gates:
