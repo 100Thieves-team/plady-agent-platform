@@ -88,38 +88,44 @@ scenarios:
         kind: reject
         at: R7
         title: 이미 처리된 신청을 수락하면 E1409 로 거절된다
-        checks: [G.application.accept#application-pending]
         then: E1409
+        checks: [G.application.accept#application-pending]
+        written_by: hermes
       - key: capacity-left
         kind: reject
         at: R7
         title: 최대 모집 인원이 찬 룸에서 신청을 수락하면 E1411 로 거절된다
-        checks: [G.application.accept#capacity-left]
         then: E1411
+        checks: [G.application.accept#capacity-left]
+        written_by: hermes
       - key: accept.host-only
         kind: reject
         at: R7
         title: 방장이 아닌 사람이 신청을 수락하면 E1406 으로 거절된다
-        checks: [G.application.accept#host-only]
         then: E1406
+        checks: [G.application.accept#host-only]
+        written_by: hermes
       - key: accept.room-recruiting
         kind: reject
         at: R7
         title: 모집 중이 아닌 룸에서 신청을 수락하면 E1410 으로 거절된다
-        checks: [G.application.accept#room-recruiting]
         then: E1410
+        checks: [G.application.accept#room-recruiting]
+        written_by: hermes
       - key: reject.application-pending
         kind: reject
         at: R7
         title: 이미 처리된 신청을 반려하면 E1409 로 거절된다
-        checks: [G.application.reject#application-pending]
         then: E1409
+        checks: [G.application.reject#application-pending]
+        written_by: hermes
       - key: reject.host-only
         kind: reject
         at: R7
         title: 방장이 아닌 사람이 신청을 반려하면 E1406 으로 거절된다
-        checks: [G.application.reject#host-only]
         then: E1406
+        checks: [G.application.reject#host-only]
+        written_by: hermes
       - key: withdraw.application-pending
         kind: reject
         at: R179
@@ -175,10 +181,10 @@ scenarios:
       R4: a1bbc866
       R5: b883c7f7
       R6: 3871cbdf
-      R7: cd32e462
+      R7: fe916c4f
       R179: a88edea6
       R180: 4be10ebb
-      R8: 7096fc86
+      R8: 4eba5601
       R9: d809d929
       R10: 9c643cdf
       R181: 797928b0
