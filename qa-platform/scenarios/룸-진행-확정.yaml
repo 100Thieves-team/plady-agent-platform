@@ -30,26 +30,30 @@ scenarios:
         kind: reject
         at: R4
         title: 방장이 아닌 참여자가 진행을 확정하면 E1406 으로 거절된다
-        checks: [G.room.confirm#host-only]
         then: E1406
+        checks: [G.room.confirm#host-only]
+        written_by: hermes
       - key: min-headcount-met
         kind: reject
         at: R4
         title: 최소 진행 인원이 모이지 않은 룸을 확정하면 E1421 로 거절된다
-        checks: [G.room.confirm#min-headcount-met]
         then: E1421
+        checks: [G.room.confirm#min-headcount-met]
+        written_by: hermes
       - key: confirm.room-recruiting
         kind: reject
         at: R4
-        title: 이미 확정된 룸을 다시 확정하면 E1410 으로 거절된다
-        checks: [G.room.confirm#room-recruiting]
+        title: 이미 확정되었거나 모집 중이 아닌 룸을 확정하면 E1410 으로 거절된다
         then: E1410
+        checks: [G.room.confirm#room-recruiting]
+        written_by: hermes
       - key: schedule-not-passed
         kind: reject
         at: R4
         title: 진행 일정이 지난 룸을 확정하면 E1422 로 거절된다
-        checks: [G.room.confirm#schedule-not-passed]
         then: E1422
+        checks: [G.room.confirm#schedule-not-passed]
+        written_by: hermes
       - key: change-schedule.room-recruiting
         kind: reject
         at: R47
@@ -72,10 +76,12 @@ scenarios:
       R1: bce27098
       R2: c45af1eb
       R3: 5e5aec3d
-      R4: 3c5b9f02
+      R4: 1b1aaae9
       R5: f839c3d1
       R47: bfac7b01
       R48: d0b9ed1f
+      R49: 02ba76e7
+      R50: 8e6acba2
       C.participation.cancel: becd4e61
       C.room.confirm: 06232486
       G.participation.cancel#own-participation: e076a190
