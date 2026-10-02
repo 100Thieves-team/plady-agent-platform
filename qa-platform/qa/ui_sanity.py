@@ -26,6 +26,7 @@ CSS = """<style>
 .prop{grid-column:1/-1;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#FCFCFD}
 .prop .phead{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}.prop .phead span{color:var(--ink2);font-size:13px;flex:1}.prop .phead.ok b{color:var(--ok)}
 .prop .phead label{order:3;color:var(--mut)}.prop .pmsg{font-size:13px;color:var(--ink2)}.prop .pmsg.bad{color:var(--bad)}
+.prop .pmsg.warn{color:var(--warn);margin-bottom:6px}.prop .cited{color:var(--ink2);margin:4px 0 6px}.prop .cited ul{margin:4px 0 0 18px;padding:0}.prop .cited .ok{color:var(--ok);font-size:12px}
 .prop .acts{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}.prop .dfile{margin-top:6px}.prop .dfile .mono{margin-bottom:2px}
 pre.df{background:#fff;color:var(--ink);border:1px solid var(--line);max-height:320px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 pre.df span{display:block;padding:0 6px}pre.df .a{background:#E6F6EE;color:#136C3F}pre.df .r{background:#FEEEEF;color:#B4232F;text-decoration:line-through;text-decoration-color:rgba(180,35,47,.35)}pre.df .h{color:var(--mut)}.done-mark.cont{color:var(--warn)}
@@ -156,10 +157,22 @@ def _proposal(f: dict, sid: str, operator: str) -> str:
                 f'<input type="hidden" name="operator" value="{e(operator)}"><button class="{cls}" {dis}>{label}</button></form>')
     files = "".join(f'<div class="dfile"><div class="mono">{e(x["path"])}</div>{_diff_html(x["diff"])}</div>' for x in pr.get("files") or [])
     if st == "making":
-        body = '<div class="pmsg">Hermes 가 이 결정대로 PRD·규칙표 수정안을 만들고 있어요. 다 되면 바뀐 줄이 여기에 보여요.</div>'
+        why = "다른 수정안과 같은 줄을 고쳐서 지금 위키 기준으로 " if pr.get("remade") else "이 결정대로 "
+        body = f'<div class="pmsg">Hermes 가 {why}PRD·규칙표 수정안을 만들고 있어요. 다 되면 바뀐 줄이 여기에 보여요.</div>'
     elif st == "ready":
+        notes = []
+        if pr.get("remade"):
+            notes.append('<div class="pmsg warn">다른 수정안과 같은 줄을 고쳐서 지금 위키 기준으로 다시 만들었어요. 바뀐 줄을 확인하고 반영해 주세요.</div>')
+        elif pr.get("rebased_at"):
+            notes.append(f'<div class="small mut">다른 수정안을 반영한 뒤 지금 위키 기준으로 바뀐 줄을 다시 계산했어요 · {kst(pr.get("rebased_at"))}</div>')
+        cited = pr.get("cited") or []
+        if cited:
+            rows = "".join(f'<li><b>{e(c["doc"])} {e(c["req"])}</b> '
+                           + (" · ".join(f'<span class="mono">{e(r["id"])}</span>{" <span class=ok>고침</span>" if r["edited"] else ""}' for r in c["records"])
+                              or '<span class="mut">인용한 기록 없음</span>') + '</li>' for c in cited)
+            notes.append(f'<div class="small cited">PRD 문장이 바뀌는 요구와 그 요구를 인용한 규칙표 기록이에요. 고침 표시가 없는 기록은 새 문장과 맞는지 한 번 봐 주세요. 반영할 때 규칙표 기준 날짜(index.yaml)도 함께 올려요.<ul>{rows}</ul></div>')
         body = (f'<div class="phead"><label class="small"><input type="checkbox" name="fid" value="{e(f["id"])}" form="apply-all" checked> 한 번에 반영에 넣기</label>'
-                f'<b>수정안</b><span>{e(pr.get("summary"))}</span></div>{files}'
+                f'<b>수정안</b><span>{e(pr.get("summary"))}</span></div>{"".join(notes)}{files}'
                 f'<div class="acts">{form("apply", "위키에 반영", "primary")}{form("propose", "다시 만들기")}{form("discard", "버리기")}'
                 f'<span class="small mut">반영하기 전에는 위키가 바뀌지 않아요 · {e(pr.get("made_by"))} · {kst(pr.get("made_at"))}</span></div>')
     elif st == "applied":

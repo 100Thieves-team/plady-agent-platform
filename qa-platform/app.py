@@ -98,6 +98,7 @@ class App:
         self._sanity_todo: int | None = None                  # 왼쪽 메뉴의 Sanity 숫자 (PR 목록을 읽을 때 갱신)
         import threading as _th
         self._finding_lock = _th.Lock()     # 스펙 확인 항목을 화면과 뒤에서 도는 수정안 작업이 함께 고친다
+        self.blobs = specfixmod.Blobs(cfg.data_dir / "specfix")    # 수정안의 원래 파일·고친 파일 (반영 때 3-way merge)
 
     def start(self):
         self.runner.start()
@@ -1105,8 +1106,9 @@ class App:
             self.store.update_sanity(sid, findings=fs)
             return f
 
-    def sanity_propose(self, sid: str, fid: str, *, operator: str, session_hash=None, ip=None, sync: bool = False):
-        """[수정안 만들기] — 정한 결정대로 Hermes 가 PRD·규칙표를 찾아 바꾸기로 고친 안을 낸다. 위키에는 아직 쓰지 않는다."""
+    def sanity_propose(self, sid: str, fid: str, *, operator: str, session_hash=None, ip=None, sync: bool = False, remade: str | None = None):
+        """[수정안 만들기] — 정한 결정대로 Hermes 가 PRD·규칙표를 찾아 바꾸기로 고친 안을 낸다. 위키에는 아직 쓰지 않는다.
+        remade 는 반영하다 같은 줄 충돌이 나서 플랫폼이 다시 만들게 한 이유다. 화면에 '다시 만들었어요, 확인 후 반영' 으로 보인다."""
         s = self.store.get_sanity(sid) or {}
         f = next((x for x in s.get("findings") or [] if x.get("id") == fid), None)
         if not f:
@@ -1121,16 +1123,19 @@ class App:
         def fn(job):
             self._update_finding(sid, fid, proposal={"status": "making", "job_id": job.id, "made_by": operator})
             try:
-                out = specfixmod.propose(finding=f, pr=pr, root=self.wiki.root, scope_features=feats, ask=job.ask)
+                out = specfixmod.propose(finding=f, pr=pr, root=self.wiki.root, scope_features=feats, ask=job.ask, blobs=self.blobs)
             except Exception as ex:
                 self._update_finding(sid, fid, proposal={"status": "failed", "error": str(ex)[:600], "made_by": operator, "made_at": now_iso()})
                 self.store.add_event(operator=operator, action="sanity.spec.propose", target=sid, session_hash=session_hash, ip=ip,
                                      detail={"finding": fid, "error": str(ex)[:300]})
                 raise
-            self._update_finding(sid, fid, proposal={"status": "ready" if out["files"] else "empty", **out, "made_by": operator, "made_at": now_iso()})
+            self._update_finding(sid, fid, proposal={"status": "ready" if out["files"] else "empty", **out, "made_by": operator, "made_at": now_iso(),
+                                                     **({"remade": remade} if remade else {})})
             self.store.add_event(operator=operator, action="sanity.spec.propose", target=sid, session_hash=session_hash, ip=ip,
-                                 detail={"finding": fid, "summary": out["summary"][:200], "files": [x["path"] for x in out["files"]]})
+                                 detail={"finding": fid, "summary": out["summary"][:200], "files": [x["path"] for x in out["files"]],
+                                         **({"remade": remade[:300]} if remade else {})})
             return {"summary": out["summary"] or "수정안을 만들었어요", "links": [{"href": f"/sanity/{s['pr_number']}", "label": f"PR #{s['pr_number']} Sanity"}]}
+        self._update_finding(sid, fid, proposal={"status": "making", "made_by": operator, **({"remade": remade} if remade else {})})   # 그사이 옛 수정안을 반영하지 않게
         return self.start_job("specfix", operator=operator, label=f"PR #{s['pr_number']} · {f['title'][:60]}", fn=fn,
                               back={"href": f"/sanity/{s['pr_number']}", "label": f"PR #{s['pr_number']}"}, session_hash=session_hash, ip=ip, sync=sync)
 
@@ -1140,9 +1145,11 @@ class App:
         self._update_finding(sid, fid, proposal={"status": "discarded", "discarded_by": operator, "discarded_at": now_iso()})
         self.store.add_event(operator=operator, action="sanity.spec.discard", target=sid, session_hash=session_hash, ip=ip, detail={"finding": fid})
 
-    def sanity_apply(self, sid: str, fids: list[str], *, operator: str, session_hash=None, ip=None) -> dict:
-        """[위키에 반영] — 고른 수정안을 지금 위키 파일에 다시 적용해 검증하고, PRD 는 wiki_apply(archive), 규칙표 조각은
-        wiki_content_write 뒤 wiki_content_commit 으로 커밋한다. 다시 점검은 사람이 따로 누른다(사용자 결정 2026-09-28)."""
+    def sanity_apply(self, sid: str, fids: list[str], *, operator: str, session_hash=None, ip=None, sync: bool = False) -> dict:
+        """[위키에 반영] — 고른 수정안을 지금 위키 파일에 줄 단위 3-way merge 로 얹어 검증하고 커밋한다(§14.5).
+        같은 줄 충돌이 난 수정안은 빼고 나머지만 반영한 뒤, 충돌한 것은 Hermes 가 지금 위키 기준으로 다시 만든다.
+        반영 뒤 이 Sanity 의 다른 대기 수정안은 바뀐 줄 비교를 지금 파일 기준으로 다시 계산한다(같은 줄이면 다시 만들기).
+        커밋 순서: 규칙표 조각 → PRD(wiki_apply archive) → index.yaml 기준 날짜 → wiki_content_commit. 다시 점검은 사람이 따로 누른다."""
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         if not (self.cfg.wiki_mcp_url and self.cfg.wiki_mcp_token):
@@ -1152,24 +1159,68 @@ class App:
         if not pick:
             raise BadRequest("반영할 수정안이 없다")
         try:
-            before, after = specfixmod.combine(self.wiki.root, [f["proposal"] for f in pick])
+            before, after, conflicts = specfixmod.combine(self.wiki.root, [f["proposal"] for f in pick], self.blobs)
         except specfixmod.SpecFixError as ex:
-            raise BadRequest(str(ex))
+            raise BadRequest(f"합친 결과가 검증을 넘지 못했어요. 수정안을 하나씩 반영하거나 [다시 만들기]를 눌러 주세요 ({ex})")
+        ok = [f for i, f in enumerate(pick) if i not in conflicts]
+        clash = [(f, conflicts[i]) for i, f in enumerate(pick) if i in conflicts]
         changed = [p for p in after if after[p] != before[p]]
-        if not changed:
-            raise BadRequest("바뀌는 곳이 없다 — 이미 반영됐을 수 있다")
-        first = pick[0]["proposal"].get("summary") or pick[0]["title"]
-        msg = f"spec: {first}{f' 외 {len(pick) - 1}건' if len(pick) > 1 else ''} — PR #{s['pr_number']} Sanity (qa-platform, {operator})"
+        msg = None
+        if ok and changed:
+            first = ok[0]["proposal"].get("summary") or ok[0]["title"]
+            msg = f"spec: {first}{f' 외 {len(ok) - 1}건' if len(ok) > 1 else ''} — PR #{s['pr_number']} Sanity (qa-platform, {operator})"
+            commits = self._spec_write(changed, after, msg)
+            if "error" in commits:
+                self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
+                                     detail={"findings": [f["id"] for f in ok], "files": changed, "error": commits["error"][:300]})
+                raise BadRequest(f"위키에 쓰지 못했어요: {commits['error']}")
+            at = now_iso()
+            for f in ok:
+                self._update_finding(sid, f["id"], proposal={**f["proposal"], "status": "applied", "applied_by": operator, "applied_at": at, "commit_message": msg})
+            self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
+                                 detail={"findings": [f["id"] for f in ok], "files": changed, "message": msg, "commits": commits,
+                                         "conflicts": [f["id"] for f, _ in clash]})
+        elif ok:
+            for f in ok:                                                                   # 이미 같은 내용이 위키에 있다
+                self._update_finding(sid, f["id"], proposal={**f["proposal"], "status": "empty", "summary": "이미 위키에 같은 내용이 있어요"})
+            ok = []
+        cur = lambda p: after[p] if p in after else (self.wiki.root / p).read_text(encoding="utf-8")  # noqa: E731
+        remake = list(clash)
+        if msg:
+            done = {f["id"] for f in pick}
+            for f in (self.store.get_sanity(sid) or {}).get("findings") or []:
+                pr = f.get("proposal") or {}
+                if f["id"] in done or pr.get("status") != "ready":
+                    continue
+                try:
+                    new = specfixmod.rebase(pr, {p: cur(p) for p in specfixmod._paths(pr)}, self.blobs)
+                except specfixmod.SpecFixError as ex:
+                    remake.append((f, str(ex)))
+                    continue
+                self._update_finding(sid, f["id"], proposal={**new, "status": "ready" if new["files"] else "empty", "rebased_at": now_iso(),
+                                                             **({} if new["files"] else {"summary": "이미 위키에 같은 내용이 있어요"})})
+        for f, why in remake:
+            self.store.add_event(operator=operator, action="sanity.spec.conflict", target=sid, session_hash=session_hash, ip=ip,
+                                 detail={"finding": f["id"], "reason": why[:300]})
+            self.sanity_propose(sid, f["id"], operator=operator, session_hash=session_hash, ip=ip, sync=sync, remade=why)
+        return {"files": changed if msg else [], "message": msg, "count": len(ok), "remade": len(remake)}
+
+    def _spec_write(self, changed: list[str], after: dict[str, str], msg: str) -> dict:
+        """조각 → PRD → index.yaml 순서로 쓰고 커밋. 렌더러는 조각(_src) 해시가 바뀔 때 PRD 를 읽어 렌더하니,
+        기준 날짜는 PRD 가 바뀐 뒤에 써야 렌더가 새 PRD 문장을 기준으로 잡는다."""
         client = McpClient(self.cfg.wiki_mcp_url, self.cfg.wiki_mcp_token, timeout=60)
         commits = {}
+        yml = [p for p in changed if p.endswith(".yaml")]
         try:
-            yml = [p for p in changed if p.endswith(".yaml")]
             for p in yml:
-                client.call_tool("wiki_content_write", {"uri": specfixmod.uri_of(p), "content": after[p]})
+                if p != specfixmod.INDEX:
+                    client.call_tool("wiki_content_write", {"uri": specfixmod.uri_of(p), "content": after[p]})
             md = [p for p in changed if p.endswith(".md")]
             if md:
                 res = client.call_tool("wiki_apply", {"mode": "archive", "changes": [{"path": p, "content": after[p]} for p in md], "message": msg})
                 commits["prd"] = McpClient.tool_text(res)[:300]
+            if specfixmod.INDEX in yml:
+                client.call_tool("wiki_content_write", {"uri": specfixmod.uri_of(specfixmod.INDEX), "content": after[specfixmod.INDEX]})
             if yml:
                 try:
                     res = client.call_tool("wiki_content_commit", {"message": msg, "slugs": ",".join(specfixmod.uri_of(p) for p in yml)})
@@ -1177,15 +1228,8 @@ class App:
                     res = client.call_tool("wiki_content_commit", {"message": msg})
                 commits["ssot"] = McpClient.tool_text(res)[:300]
         except McpError as ex:
-            self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
-                                 detail={"findings": [f["id"] for f in pick], "files": changed, "error": str(ex)[:300]})
-            raise BadRequest(f"위키에 쓰지 못했어요: {ex}")
-        at = now_iso()
-        for f in pick:
-            self._update_finding(sid, f["id"], proposal={**f["proposal"], "status": "applied", "applied_by": operator, "applied_at": at, "commit_message": msg})
-        self.store.add_event(operator=operator, action="sanity.spec.apply", target=sid, session_hash=session_hash, ip=ip,
-                             detail={"findings": [f["id"] for f in pick], "files": changed, "message": msg, "commits": commits})
-        return {"files": changed, "message": msg, "count": len(pick)}
+            commits["error"] = str(ex)
+        return commits
 
     def sanity_continue(self, sid: str, *, reason: str, operator: str, session_hash=None, ip=None, sync: bool = False):
         """[이대로 계속] — 남은 확인 항목은 '정하지 않고 계속' 으로 적고 3단계부터. 그 요구의 케이스는 스크립트를 만들지 않는다."""
@@ -2593,8 +2637,14 @@ class Handler(BaseHTTPRequestHandler):
                     app.sanity_discard(sid, fv("fid"), **kw)
                 elif act == "apply":
                     res = app.sanity_apply(sid, [str(x) for x in f.get("fid") or []], **kw)
-                    msg = (f"수정안 {res['count']}개를 위키에 반영했어요 ({', '.join(res['files'])}). "
-                           "고칠 것을 다 반영했으면 [위키 고친 뒤 다시 점검]을 눌러 주세요")
+                    parts = []
+                    if res["count"]:
+                        parts.append(f"수정안 {res['count']}개를 위키에 반영했어요 ({', '.join(res['files'])})")
+                    if res["remade"]:
+                        parts.append(f"{res['remade']}개는 같은 줄을 고쳐서 Hermes 가 지금 위키 기준으로 다시 만들고 있어요. 다 되면 확인하고 반영해 주세요")
+                    msg = ". ".join(parts) or "반영할 내용이 없었어요"
+                    if res["count"]:
+                        msg += ". 고칠 것을 다 반영했으면 [위키 고친 뒤 다시 점검]을 눌러 주세요"
                 elif act == "slack":
                     msg = f"질문 {app.sanity_slack(sid, **kw)}건을 Slack 으로 보냈어요"
                 elif act == "cancel":
