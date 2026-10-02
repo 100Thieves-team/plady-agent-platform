@@ -1,4 +1,4 @@
-"""QA 테스트 회원 만들기 + 시작 시각 변경 카드 — 회원 생성이 테스트 계정 이름이 되고, 러너가 그 이름으로 토큰을 받고, 응답의 토큰은 기록에 안 남는다."""
+"""QA 테스트 회원 만들기 + 시작 시각 변경 카드 — 회원 생성이 테스트 계정 이름이 되고, 러너가 그 이름으로 토큰을 받고, 토큰은 화면에만 보이고 기록에 안 남는다."""
 from __future__ import annotations
 
 import json
@@ -59,9 +59,11 @@ class QaMembersTest(unittest.TestCase):
 
     def test_create_member_becomes_actor_and_token_flows(self):
         res = self.app.create_qa_member("qa-3", operator="bebe", session_hash=None, ip=None)
-        self.assertTrue(res["ok"]); self.assertNotIn("accessToken", res["member"])                  # 토큰은 버린다
+        self.assertTrue(res["ok"]); self.assertNotIn("accessToken", res["member"]); self.assertEqual(res["token"], "secret")   # 토큰은 따로 돌려준다
         self.assertEqual(self.app.all_actors(), {"qa-host": "m1", "qa-3": "m-new"})
-        self.assertEqual(self.app.runner.actors.token("qa-3", "https://dev"), "tok-m-new")          # 이름으로 dev-sessions 토큰
+        self.assertEqual(self.app.runner.actors.token("qa-3", "https://dev"), "tok-m-new")          # 다른 대상이면 dev-sessions 토큰
+        ev = [x for x in self.app.store.list_events(5) if x["action"] == "qa_data.create_member"][0]
+        self.assertNotIn("secret", json.dumps(ev, ensure_ascii=False, default=str))                 # 감사 로그에 토큰 없음
         self.assertIn(("qa_data.create_member", "qa-3"), [(ev["action"], ev["target"]) for ev in self.app.store.list_events(5)])
         with self.assertRaises(BadRequest):
             self.app.create_qa_member("qa-3", operator="bebe", session_hash=None, ip=None)         # 중복 이름
@@ -71,6 +73,23 @@ class QaMembersTest(unittest.TestCase):
         self.assertEqual(snap["members"][0]["label"], "qa-3")                                       # 정리 표에 이름이 붙는다
         self.app.qa_data_action("delete_member", "m-new", operator="bebe", session_hash=None, ip=None)
         self.assertNotIn("qa-3", self.app.all_actors())                                             # 지우면 목록에서도 빠진다
+
+    def test_member_token_shown_not_stored(self):
+        self.app.create_qa_member("qa-3", operator="bebe", session_hash=None, ip=None)
+        n = len(self.http.calls)
+        res = self.app.qa_member_token("m-new", operator="bebe", session_hash=None, ip=None)
+        self.assertEqual(res, {"ok": True, "token": "secret", "error": None})                        # 만들 때 받은 토큰을 다시 부르지 않고
+        self.assertEqual(len(self.http.calls), n)
+        res = self.app.qa_member_token("m-other", operator="bebe", session_hash=None, ip=None)
+        self.assertEqual(res["token"], "tok-m-other")                                                 # 이름 없는 회원도 dev-sessions 로
+        evs = [x for x in self.app.store.list_events(10) if x["action"] == "qa_data.view_token"]
+        self.assertEqual(len(evs), 2); self.assertNotIn("tok-m-other", json.dumps(evs, ensure_ascii=False, default=str))
+        self.assertNotIn("secret", json.dumps(self.app.store.list_qa_members(), ensure_ascii=False, default=str))
+        m = dict(self.app.store.list_qa_members()[0], **self.app.qa_member_token("m-new", operator="bebe", session_hash=None, ip=None))
+        h = ui.data_page(self.app.setup_cases(), actors=sorted(self.app.all_actors()), operators=["bebe"], operator="bebe", result=None, errors=[],
+                          cleanup=self.app.qadata.snapshot(), qa_members=self.app.store.list_qa_members(), created=m)
+        for frag in ("QA 회원을 만들었어요", "액세스 토큰", 'data-copy="secret"', 'window.DATA_OPEN="member-created"', 'data-token="m-new"', "토큰 보기"):
+            self.assertIn(frag, h)
 
     def test_mask_secrets_in_recorded_response(self):
         self.assertEqual(_mask_secrets({"data": {"memberId": "m", "accessToken": "s", "nested": [{"refreshToken": "r"}]}}),

@@ -1625,12 +1625,30 @@ class App:
             raise BadRequest("이름은 소문자·숫자·하이픈 (예: qa-3)")
         if label in self.all_actors():
             raise BadRequest(f"이미 있는 테스트 계정 이름: {label}")
-        ok, data, status = self.qadata.create_member(base=self.target_for(operator)["base_url"])
+        base = self.target_for(operator)["base_url"]
+        ok, data, status = self.qadata.create_member(base=base)
+        token = None
         if ok:
+            data = dict(data)
+            token = data.pop("accessToken", None)      # 화면에 보여 주기만 — DB·감사 로그에는 안 남긴다
             self.store.add_qa_member(member_id=data["memberId"], label=label, nickname=data.get("nickname"), email=data.get("email"), operator=operator)
+            if token:
+                self.runner.actors.remember(data["memberId"], base, token)
         self.store.add_event(operator=operator, action="qa_data.create_member", target=label, session_hash=session_hash, ip=ip,
                              detail={"ok": ok, "status": status, "error": (None if ok else data.get("code"))})
-        return {"ok": ok, "member": data if ok else None, "error": (None if ok else data)}
+        return {"ok": ok, "member": data if ok else None, "token": token, "error": (None if ok else data)}
+
+    def qa_member_token(self, member_id: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
+        """QA 회원의 액세스 토큰 — 화면에서 복사해 앱·Postman 에서 그 회원으로 로그인할 때. 담당자가 고른 대상 서버의 dev-sessions 로 받는다.
+        토큰 값은 저장하지 않고, 본 사실만 감사 로그 `qa_data.view_token` 에 남긴다."""
+        base = self.target_for(operator)["base_url"]
+        try:
+            token, err = self.runner.actors.token_for_member(member_id, base), None
+        except Exception as ex:  # noqa: BLE001
+            token, err = None, str(ex)
+        self.store.add_event(operator=operator, action="qa_data.view_token", target=member_id, session_hash=session_hash, ip=ip,
+                             detail={"ok": bool(token), "error": err})
+        return {"ok": bool(token), "token": token, "error": err}
 
     def qa_data_action(self, action: str, target: str, *, operator: str, session_hash: str | None, ip: str | None) -> dict:
         """정리 화면의 버튼 — delete_room(룸 id) · delete_all(호스트 테스트 계정 이름 또는 빈 값) · reset(테스트 계정 이름) · delete_member(회원 id).
@@ -2632,8 +2650,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = {"run": run, "case": rcs[0] if rcs else None, "steps": app.store.list_steps(rcs[0]["id"]) if rcs else [],
                           "outputs": app.setup_outputs(run)}
             notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)
-            return self._page("QA 데이터", ui.data_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators,
-                                                       qa_members=app.store.list_qa_members(), operator=self._operator(), result=result,
+            qa_members = app.store.list_qa_members()
+            created = None
+            if g("member") and self._operator():          # 방금 만든 QA 회원 — 정보와 토큰을 패널로
+                m = next((x for x in qa_members if x["member_id"] == g("member")), None)
+                if m:
+                    created = dict(m, **app.qa_member_token(m["member_id"], operator=self._operator(), session_hash=self._session_hash(), ip=self._ip()))
+            return self._page("QA 데이터", ui.data_page(app.setup_cases(), actors=sorted(app.all_actors()), operators=app.cfg.operators, created=created,
+                                                       qa_members=qa_members, operator=self._operator(), result=result,
                                                        errors=[x for x in app.case_errors if "setup" in x], cleanup=app.qa_snapshot(self._operator(), fresh=True)),
                               "data", flash=notice, context={"run": run["id"]} if run else None)
         if path == "/setup/member" and method == "POST":
@@ -2647,10 +2671,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200 if res["ok"] else 409, res)
             from urllib.parse import quote
             if res["ok"]:
-                m = res["member"]
-                return self._redirect(f"/data?done={quote(f'QA 회원을 만들었어요. 테스트 계정 이름 {fv('label').strip()} (닉네임 {m.get('nickname')}). 스크립트 actor: 와 API 호출 화면에서 고를 수 있어요')}", set_operator=operator)
+                m = res["member"]      # 토큰은 주소에 싣지 않는다 — /data 가 member 로 패널을 열고 캐시에서 꺼내 보여 준다
+                return self._redirect(f"/data?member={quote(str(m.get('memberId') or ''))}&done={quote(f'QA 회원을 만들었어요. 테스트 계정 이름 {fv('label').strip()} (닉네임 {m.get('nickname')}). 스크립트 actor: 와 API 호출 화면에서 고를 수 있어요')}", set_operator=operator)
             e = res["error"] or {}
             return self._redirect(f"/data?err={quote(f'{e.get('code')}: {e.get('message')}')}", set_operator=operator)
+        if path == "/setup/member-token" and method == "POST":     # 정리 표의 [토큰 보기] — 값은 응답 본문으로만 (주소·기록에 안 남긴다)
+            f = self._form()
+            fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731
+            operator = str(fv("operator")).strip()
+            if not operator or operator not in app.cfg.operators:
+                raise BadRequest("담당자를 목록에서 골라야 한다")
+            res = app.qa_member_token(str(fv("member")).strip(), operator=operator, session_hash=self._session_hash(), ip=self._ip())
+            return self._json(200 if res["ok"] else 409, res)
         if path == "/setup/cleanup" and method == "POST":
             f = self._form()
             fv = lambda k, d="": (f.get(k) or [d])[0]  # noqa: E731

@@ -85,11 +85,8 @@ class QaData:
         return self._call("DELETE", f"/v1/dev/members/{member_id}", base=base)
 
     def create_member(self, base: str | None = None) -> tuple[bool, dict, int]:
-        """QA 테스트 회원 생성. 응답의 accessToken 은 쓰지 않는다 — 나중에 dev-sessions 로 memberId 만 있으면 토큰을 받는다."""
-        ok, data, status = self._call("POST", "/v1/dev/members", base=base)
-        if ok:
-            data = {k: v for k, v in data.items() if k != "accessToken"}
-        return ok, data, status
+        """QA 테스트 회원 생성. 응답의 accessToken 도 그대로 돌려준다 — 화면에 보여 주기만 하고 저장하지 않는다 (호출하는 쪽 책임)."""
+        return self._call("POST", "/v1/dev/members", base=base)
 
     # ---- 화면용 스냅샷 -----------------------------------------------------------
     def snapshot(self, base: str | None = None) -> dict:

@@ -168,7 +168,7 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "draft.save": "스크립트 초안 편집 (예전)", "draft.check": "스크립트 초안 시험 실행 (예전)", "draft.approve": "남은 초안 저장", "draft.reject": "남은 초안 버림",
              "case.save": "스크립트 저장", "case.delete": "스크립트 삭제", "case.try": "저장 전 실행", "manual_tc.save": "수동 작성 테스트 조건 저장", "manual_tc.delete": "수동 작성 테스트 조건 삭제",
              "hermes.generate": "Hermes 가 쓰기", "hermes.rejected_by_validation": "Hermes 결과 검증 탈락", "explorer.to_form": "API 호출을 스크립트 폼으로",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "qa_data.view_token": "QA 회원 토큰 보기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
 DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 봄", "approved": "저장됨", "rejected": "버림", "failed": "저장 실패"}
 
 
@@ -1403,6 +1403,13 @@ DATA_JS = r"""
     if(ev.target===sh || ev.target.closest('[data-close]')) close();
     var c=ev.target.closest('button[data-copy]'); if(c){ navigator.clipboard&&navigator.clipboard.writeText(c.dataset.copy); c.textContent='복사됨'; setTimeout(function(){c.textContent='복사'},1200); }
     var d=ev.target.closest('[data-dialog]'); if(d){ var dl=document.getElementById(d.dataset.dialog); if(dl) dl.showModal(); }
+    var t=ev.target.closest('button[data-token]'); if(t){ var out=t.closest('tr').querySelector('[data-token-out]'); t.disabled=true;
+      fetch('/setup/member-token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Accept':'application/json'},
+        body:new URLSearchParams({member:t.dataset.token, operator:(window.QA&&window.QA.operator)||''})})
+      .then(function(r){return r.json()}).then(function(j){ out.hidden=false; out.textContent='';
+        if(j.ok){ out.append(j.token+' '); var b=document.createElement('button'); b.type='button'; b.dataset.copy=j.token; b.textContent='복사'; out.append(b); }
+        else { out.textContent='토큰을 받지 못했어요: '+(j.error||''); } })
+      .catch(function(){ out.hidden=false; out.textContent='토큰을 받지 못했어요'; }).finally(function(){ t.disabled=false; }); }
   });
   document.addEventListener('keydown',function(ev){
     if(ev.key==='Escape') close();
@@ -1476,6 +1483,20 @@ def _member_form(operator: str, available: bool, actors: list[str]) -> str:
             f'<div class="df"><button type="button" data-close>닫기</button><button class="primary lg" {dis}>만들기 <span class="small" style="opacity:.7">⌘↵</span></button></div></form>')
 
 
+def _member_created_panel(m: dict) -> str:
+    """QA 회원을 만든 직후 — 회원 정보와 액세스 토큰. 토큰은 화면에만 (주소·DB·기록에 안 남긴다)."""
+    def row(k, val):
+        return (f'<div class="o"><span>{e(k)}</span><span><span class="mono" style="word-break:break-all">{e(val) if val else "(없음)"}</span> '
+                f'{("<button type=\"button\" data-copy=\"" + e(val) + "\">복사</button>") if val else ""}</span></div>')
+    tok = m.get("token")
+    return (f'<div class="dh"><div style="flex:1"><h3>QA 회원을 만들었어요</h3><p>테스트 계정 이름 <span class="mono">{e(m.get("label"))}</span></p></div><button type="button" class="x" data-close>×</button></div>'
+            f'<div class="db"><div class="res {"" if tok else "bad"}"><b>회원 정보</b>{row("테스트 계정 이름", m.get("label"))}{row("닉네임", m.get("nickname"))}{row("이메일", m.get("email"))}'
+            f'{row("회원 id", m.get("member_id"))}{row("액세스 토큰", tok)}</div>'
+            + (f'<p class="hint">요청 헤더 <span class="mono">Authorization: Bearer &lt;토큰&gt;</span> 로 넣으면 이 회원으로 API 를 불러요. 플랫폼은 토큰을 저장하지 않아요 — 다시 필요하면 오른쪽 표의 [토큰 보기].</p>'
+               if tok else f'<p class="hint bad">토큰을 받지 못했어요: {e(m.get("error") or "")}</p>')
+            + '</div><div class="df"><span style="flex:1"></span><a class="btn lg" href="/explorer">API 호출로</a><button type="button" class="lg" data-close>닫기</button></div>')
+
+
 def _result_panel(result: dict, cleanup_ok: bool, operator: str) -> str:
     run, rc, steps, outs = result["run"], result["case"], result["steps"], result["outputs"]
     v = run.get("verdict") or run["status"]
@@ -1498,7 +1519,7 @@ def _result_panel(result: dict, cleanup_ok: bool, operator: str) -> str:
 
 
 def data_page(cases: list, *, actors: list[str], operators: list[str], operator: str, result: dict | None, errors: list[str], cleanup: dict | None = None,
-              qa_members: list[dict] | None = None) -> str:
+              qa_members: list[dict] | None = None, created: dict | None = None) -> str:
     """QA 데이터 (docs/qa-platform-v2.md §5): 왼쪽 만들기 목록 → 오른쪽 입력 패널, 오른쪽 열에 dev 에 남은 QA 데이터와 지우기."""
     available = bool(cleanup and cleanup.get("available"))
     tpls, groups = "", {"room": "", "account": ""}
@@ -1512,6 +1533,8 @@ def data_page(cases: list, *, actors: list[str], operators: list[str], operator:
     tpls += f'<template id="tpl-qa-member">{_member_form(operator, available, actors)}</template>'
     if result:
         tpls += f'<template id="tpl-result">{_result_panel(result, available, operator)}</template>'
+    if created:
+        tpls += f'<template id="tpl-member-created">{_member_created_panel(created)}</template>'
     if not cases:
         groups["room"] = '<div class="empty"><b>만들기 카드가 없어요</b><span class="mono">cases/*.yaml</span> 에 <span class="mono">suite: setup</span> 으로 적어요 (가이드 참고).</div>'
     left = "".join(f'<div class="card flush"><div class="ch"><h2>{title} 만들기{h("setup.cards") if k == "room" else ""}</h2></div>{groups[k]}</div>'
@@ -1519,7 +1542,7 @@ def data_page(cases: list, *, actors: list[str], operators: list[str], operator:
     errs = "".join(f'<div class="flash err">{e(x)}</div>' for x in errors)
     return (f'{DATA_CSS}<h1>QA 데이터</h1><p class="lead">테스트용 데이터를 dev 에 만들고 지워요. 만든 데이터는 이름이 <span class="mono">[QA]</span> 로 시작해요. 만들기는 실행 기록에, 지우기는 감사 로그에 남아요.</p>{errs}'
             f'<div class="cols data-cols"><div data-tour="make">{left}</div><div data-tour="left">{leftover_section(cleanup, operator=operator)}</div></div>{tpls}'
-            + (f'<script>window.DATA_OPEN="result"</script>' if result else "") + f'<script>{DATA_JS}</script>')
+            + (f'<script>window.DATA_OPEN="member-created"</script>' if created else (f'<script>window.DATA_OPEN="result"</script>' if result else "")) + f'<script>{DATA_JS}</script>')
 
 
 def leftover_section(cu: dict | None, *, operator: str) -> str:
@@ -1544,8 +1567,10 @@ def leftover_section(cu: dict | None, *, operator: str) -> str:
         f'<td>{badge(r.get("status"))}</td><td class="small mut">{e((r.get("createdAt") or "")[5:16].replace("T", " "))}</td>'
         f'<td class="right">{form("delete_room", str(r.get("roomId") or ""), "지우기", confirm=f"[{r.get("title") or ""}] 룸과 딸린 데이터를 지워요. 되돌릴 수 없어요.")}</td></tr>' for r in rooms)
     rows += "".join(
-        f'<tr><td class="small mut">회원</td><td><div style="font-weight:600">{e(m.get("nickname"))}{(" <span class=\"mono\">" + e(m["label"]) + "</span>") if m.get("label") else ""}</div><div class="small mut">{e(m.get("email"))}</div></td>'
-        f'<td></td><td></td><td class="right">{form("delete_member", str(m.get("memberId") or ""), "지우기", confirm="QA 회원과 그 회원의 데이터를 지워요. 되돌릴 수 없어요.")}</td></tr>' for m in members)
+        f'<tr><td class="small mut">회원</td><td><div style="font-weight:600">{e(m.get("nickname"))}{(" <span class=\"mono\">" + e(m["label"]) + "</span>") if m.get("label") else ""}</div><div class="small mut">{e(m.get("email"))}</div>'
+        f'<div class="small mono" data-token-out hidden style="word-break:break-all;margin-top:4px"></div></td>'
+        f'<td></td><td></td><td class="right"><button type="button" data-token="{e(str(m.get("memberId") or ""))}" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>토큰 보기</button> '
+        f'{form("delete_member", str(m.get("memberId") or ""), "지우기", confirm="QA 회원과 그 회원의 데이터를 지워요. 되돌릴 수 없어요.")}</td></tr>' for m in members)
     listing = "".join(f'<div><span>룸</span><b>{e(r.get("title"))}</b></div>' for r in rooms)
     dialog = (f'<dialog id="dlg-clean"><h3>[QA] 룸 {len(rooms)}개를 전부 지울까요?</h3><p class="sd">제목이 [QA] 로 시작하는 룸과 딸린 신청·참여만 지워요. 되돌릴 수 없어요.</p>'
               f'<div class="kvl">{listing or "<div><span>지울 룸이 없어요</span></div>"}</div><form method="post" action="/setup/cleanup" class="mf">'

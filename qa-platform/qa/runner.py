@@ -25,7 +25,7 @@ class ActorPool:
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self._tokens: dict[tuple, str] = {}     # (대상 주소, 계정 이름) → 토큰 — 대상마다 회원이 다르다 (docs/qa-platform-v2.md §13)
+        self._tokens: dict[tuple, str] = {}     # (대상 주소, 회원 id) → 토큰 — 대상마다 회원이 다르다 (docs/qa-platform-v2.md §13)
         self._lock = threading.Lock()
         self.extra = None      # () -> {name: memberId} — 플랫폼이 만든 QA 테스트 회원(store.qa_members). App 이 꽂는다
         self.by_base = None    # (base_url) -> {name: memberId} — 등록한 대상 서버의 테스트 계정. App 이 꽂는다
@@ -56,21 +56,31 @@ class ActorPool:
         mid = self.member_id(name, base)
         if not mid:
             raise TemplateError(f"actor.{name}", "actor")
+        return self.token_for_member(mid, base, name=name)
+
+    def token_for_member(self, member_id: str, base_url: str | None = None, *, name: str | None = None) -> str:
+        """회원 id 로 dev-sessions 토큰. 테스트 계정 이름이 없는 QA 회원도 정리 표에서 토큰을 볼 수 있게."""
+        base = base_url or self.cfg.target_base_url
         with self._lock:
-            if (base, name) in self._tokens:
-                return self._tokens[(base, name)]
-        r = httpx.request("POST", f"{base}/v1/auth/dev-sessions", body={"memberId": mid},
+            if (base, member_id) in self._tokens:
+                return self._tokens[(base, member_id)]
+        r = httpx.request("POST", f"{base}/v1/auth/dev-sessions", body={"memberId": member_id},
                           timeout=self.cfg.request_timeout)
         tok = get_path(r.json, "data.accessToken") if r.json else None
         if r.status != 200 or not tok:
-            raise RuntimeError(f"테스트 계정 '{name}' 토큰 발급 실패: status={r.status} {r.error or (r.text or '')[:200]}")
-        with self._lock:
-            self._tokens[(base, name)] = tok
+            raise RuntimeError(f"테스트 계정 '{name or member_id}' 토큰 발급 실패: status={r.status} {r.error or (r.text or '')[:200]}")
+        self.remember(member_id, base, tok)
         return tok
 
-    def invalidate(self, name: str):
+    def remember(self, member_id: str, base_url: str, token: str) -> None:
+        """회원 생성 응답의 토큰을 캐시에 넣는다 — 바로 보여 줄 때 dev-sessions 를 한 번 더 부르지 않게. 메모리에만."""
         with self._lock:
-            for k in [k for k in self._tokens if k[1] == name]:
+            self._tokens[(base_url, member_id)] = token
+
+    def invalidate(self, name: str):
+        mid = self.mapping().get(name) or name
+        with self._lock:
+            for k in [k for k in self._tokens if k[1] == mid]:
                 self._tokens.pop(k, None)
 
 
