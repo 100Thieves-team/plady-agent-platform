@@ -414,3 +414,123 @@ PRD 2장과 규칙표로 시나리오 파일을 모든 MVP 기능에 채웠다(�
 - **충돌하면 다시 만들기.** 여러 개를 반영할 때 충돌한 수정안은 빼고 나머지만 커밋한다. 충돌한 수정안은 플랫폼이 Hermes 에게 지금 위키 기준으로 다시 만들게 하고, 화면에 "다시 만들었어요, 확인 후 반영" 으로 보인다. 위키에는 사람이 다시 [위키에 반영]을 눌러야 쓴다. 감사 로그 `sanity.spec.conflict`.
 - **남은 수정안 다시 계산.** 하나를 반영하면 같은 Sanity 의 대기 수정안은 지금 파일 기준으로 base·after·바뀐 줄을 다시 계산한다. 같은 줄이면 위처럼 다시 만든다.
 - 시험: tests/test_specfix.py 7건(merge3, 기준 날짜, 인용 기록, 문맥이 겹친 두 수정안, 충돌 뒤 다시 만들기).
+
+## 15. 알림 QA — 웹 푸시와 메일 (설계 초안 2026-10-03, 검토 대기)
+
+사용자 요청: "fcm 알림, 이메일과 관련된 QA도 플랫폼에서 할 수 있으면 좋겠다. UI/UX 를 신경써서 편하게." 이어서 "플랫폼이 알림을 구독해서 확인할 수 없을까".
+
+한 줄 요약: 플랫폼이 QA 회원의 웹 푸시 기기와 메일함이 된다. 백엔드가 실제로 보낸 알림을 실제 경로로 받아서, 스크립트 단계로 검사하고 화면의 알림함에 보여 준다.
+
+### 15.1 확인한 사실 (moimyeon-backend origin/dev 1d4d0658, 2026-10-03)
+
+- 흐름: core-api 가 도메인 변경과 같은 트랜잭션에 outbox 를 쓴다. relay 가 채널마다 Redis Stream `notification-events` 에 한 건씩 넣는다. core-worker 가 1초마다 읽어 보낸다. 실패하면 1분에서 15분까지 늘려 5번 다시 보내고, 그래도 안 되면 `notification-dead-letters` 로 간다.
+- 웹 푸시: firebase-admin `sendEachForMulticast`. Firebase 프로젝트 `moimyeon-development`. 내용은 notification(title, body), data(`eventId`, `eventType`), 누르면 가는 주소 `https://dev.moimyeon.plady.io/rooms/{roomId}`. 기기 등록은 `PUT /v1/members/me/web-push-subscriptions` `{"registration": "<FCM 토큰>"}`, 해제는 같은 경로 `DELETE`. 토큰이 `UNREGISTERED` 면 등록을 지운다.
+- 메일: AWS SES(보내는 주소 `no-reply@moimyeon.plady.io`)가 먼저, 안 되면 Gmail SMTP. 템플릿 없이 평문이다. 제목은 알림 title, 본문은 body 와 빈 줄, 그 아래 이동 주소.
+- 알림 종류(`EventType`)와 발송 정책:
+
+| 알림 | 받는 사람 | 정책 |
+|---|---|---|
+| ROOM_APPLICATION_SUBMITTED | 방장 | 웹 푸시, 닿지 않으면 메일 |
+| ROOM_APPLICATION_ACCEPTED | 신청자 | 웹 푸시와 메일 둘 다 |
+| ROOM_APPLICATION_REJECTED | 신청자 | 웹 푸시, 닿지 않으면 메일 |
+| ROOM_CONFIRMED | 참여자 / 마감된 신청자 | 둘 다 / 웹 푸시, 닿지 않으면 메일 |
+| ROOM_COMPLETED | 확정 참여자 | 웹 푸시, 닿지 않으면 메일. 출석·불참·후기 요청에 따라 본문이 다르다 |
+| ROOM_CANCELED | 참여자, 취소한 방장, 마감된 신청자 | 둘 다 |
+| ROOM_HOST_DELEGATED | 참여자 | 웹 푸시, 닿지 않으면 메일 |
+| REVIEW_PUBLISHED | 후기 대상자 | 웹 푸시만. 1분마다 도는 작업이 공개 시각 뒤에 보낸다 |
+| ROOM_COMMENT_POSTED | 작성자를 뺀 참여자 | 웹 푸시만 |
+
+  "닿지 않으면" 은 등록된 기기가 없거나 모든 기기에 실패한 경우다.
+- 보낸 기록을 남기는 곳이 없다. outbox 는 보내면 지워지고, 관리자 화면 `/admin/notifications` 는 대기 수와 실패(dead letter)만 보여 준다.
+- dev 서버는 실제로 보낸다. 받는 주소를 바꾸거나 막는 설정이 없다. `POST /v1/dev/members` 로 만든 QA 회원의 메일은 `qa-<key>@qa.moimyeon.test` 라서 받을 수 없는 주소로 실제 발송된다. SES 반송률에도 좋지 않다.
+- 웹 프론트(moimyeon-frontend main)에는 아직 FCM 토큰을 받는 코드가 없다. 생성된 SDK 에 등록 API 만 있다. 그래서 웹용 Firebase 설정값(apiKey, appId, VAPID 공개키)이 저장소에 없다.
+- PRD 「회원 및 프로필」 §4.10 의 알림 수신 설정(R141~R163, MOI-544)은 백엔드 dev 에 아직 없다.
+- SSOT 규칙: `P.notification.room_comment` · `room_canceled` · `room_host_delegated` · `room_recruiting_reopened` · `room_confirmed` · `receive_setting`, 그리고 `C.member.update_notification_setting`. 신청 접수·수락·반려, 완료, 후기 공개 알림은 PRD 문장에는 있지만 SSOT 규칙 기록은 없다.
+
+### 15.2 받는 방법
+
+**웹 푸시.** 플랫폼 안에 "수신기" 를 둔다. 수신기는 Firebase 에 웹 클라이언트로 등록해 FCM 토큰을 받고, 그 토큰을 QA 회원 이름으로 백엔드에 기기 등록한다. 이후 백엔드가 그 회원에게 보내는 웹 푸시가 수신기로 온다. 실제 사용자와 같은 FCM 경로다.
+
+- 1안: 브라우저 없이 FCM 웹 클라이언트를 흉내 내는 라이브러리(Python `firebase-messaging`). 가볍다. Chrome 이 하는 등록 절차를 따라 하므로 Google 이 절차를 바꾸면 깨질 수 있다.
+- 2안: 플랫폼 컨테이너에 화면 없는 Chromium(Playwright)을 두고, 플랫폼이 내주는 작은 페이지와 서비스 워커로 받는다. 실제 브라우저와 똑같다. 이미지가 수백 MB 커진다.
+- 추천: 먼저 1안을 dev 로 시험하고, 안 되면 2안. 어느 쪽이든 필요한 값은 웹용 Firebase 설정(apiKey, appId, projectId, messagingSenderId, VAPID 공개키)이다. 공개해도 되는 값이지만 Firebase 콘솔에서 사람이 꺼내야 한다.
+- QA 회원마다 수신기 등록이 하나씩 생긴다. 사람이 같은 QA 계정으로 브라우저에서 알림을 허용하면 그 기기도 함께 받는다.
+- QA 회원을 지우면 백엔드가 기기 등록도 지운다. QA 데이터 화면에서 회원을 다시 만들면 수신기가 다시 등록한다.
+
+**메일.** QA 회원의 메일 주소를 플랫폼이 읽을 수 있는 메일함으로 둔다.
+
+- 추천: QA 전용 Gmail 계정 하나와 `+` 주소. 예: `moimyeon.qa+qa-host@gmail.com`. Gmail 은 `+` 뒤를 무시하고 한 메일함에 모은다. DNS 설정이 필요 없다. 플랫폼은 IMAP 으로 읽고, 앱 비밀번호는 SSM `qa-mail-app-password` 에 둔다.
+- 다른 안: plady.io 하위 도메인에 Cloudflare 메일 전달을 켜고 전부 한 메일함으로 보낸다. 주소가 깔끔하지만 Cloudflare 설정이 필요하다.
+- 백엔드 수정이 하나 필요하다. `QaMemberCreator` 의 메일 주소를 설정값으로 바꿀 수 있게 한다(예: `QA_MEMBER_EMAIL_TEMPLATE=moimyeon.qa+qa-{key}@gmail.com`). QA 회원 판별은 지금처럼 OAuth 식별자 접두어로도 하므로 도메인이 바뀌어도 정리 기능은 그대로다. 받을 수 없는 `qa.moimyeon.test` 로 보내던 문제도 같이 풀린다. 백엔드 레포 PR 은 사람이 리뷰한다.
+
+### 15.3 저장
+
+- `inbox` 표: 받은 알림 한 건씩. 채널(웹 푸시·메일), 받는 QA 회원, 대상 서버, 알림 종류(웹 푸시는 `data.eventType`, 메일은 제목으로 추정), 제목, 본문, 이동 주소, 받은 시각, 원본(JSON 또는 메일 원문), 맞춘 실행·단계.
+- `receivers` 표: QA 회원과 대상 서버마다 웹 푸시 등록 상태(토큰, 등록 시각, 마지막 수신, 오류)와 메일 주소.
+- 30일 지난 알림은 지운다. 실행 결과에 붙은 알림은 실행이 남아 있는 동안 둔다.
+
+### 15.4 스크립트 단계
+
+API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `notify`:
+
+```yaml
+- name: 신청자에게 수락 알림이 웹 푸시와 메일로 온다
+  notify:
+    to: qa-guest
+    type: ROOM_APPLICATION_ACCEPTED
+    channels: [web_push, email]   # 둘 다 와야 통과
+    within: 60s
+    expect:
+      title_contains: "{{roomTitle}}"
+      link: /rooms/{{roomId}}
+  covers: [P.notification.application_accepted]   # SSOT 기록이 생기면
+- name: 댓글 작성자에게는 오지 않는다
+  notify:
+    to: qa-host
+    type: ROOM_COMMENT_POSTED
+    none: true
+    within: 20s
+```
+
+- 기다리는 시간은 단계를 시작한 뒤부터 센다. 그 전에 온 알림은 보지 않는다.
+- `none: true` 는 정한 시간 동안 오지 않아야 통과한다. 받는 사람 범위와 "작성자 제외" 같은 규칙을 검사한다.
+- 후기 공개처럼 1분 주기 작업이 보내는 알림은 `within` 을 90초쯤으로 둔다.
+- 실행 결과의 단계 카드에 받은 알림을 보여 준다. 웹 푸시는 브라우저 알림 모양, 메일은 메일 모양 카드에 제목·본문·이동 주소·걸린 시간을 적는다. 실패하면 그 시간 동안 그 회원에게 온 다른 알림도 같이 보여 줘서 "다른 종류가 왔다" 와 "아무것도 안 왔다" 를 구분하게 한다.
+- Hermes 가 스크립트를 만들 때 SSOT 의 `P.notification.*` 를 보고 알림 단계를 넣는다. 테스트 조건 정본은 지금처럼 SSOT 다.
+
+### 15.5 화면: 알림함
+
+왼쪽 메뉴에 **알림함** 을 더한다. 노트북 화면 기준 두 칸이다.
+
+- 왼쪽 칸: QA 회원 목록. 회원마다 "웹 푸시 받는 중" · "메일 주소" 표시, 마지막으로 받은 시각. [웹 푸시 받기 켜기] 버튼 한 번으로 수신기 등록. 맨 위 "전체".
+- 오른쪽 칸: 받은 알림 시간순. 위에 걸러 보기(채널, 알림 종류, 최근 10분·1시간·오늘). 새 알림은 몇 초 안에 위에 나타나고 잠깐 강조된다.
+- 카드를 누르면 오른쪽 패널에 원본(웹 푸시 JSON, 메일 원문)과 이 알림을 맞춘 실행 단계 링크.
+- 손으로 하는 QA 에 쓴다. dev 웹에서 QA 계정으로 무언가를 하고, 알림함을 옆에 띄워 두면 무엇이 언제 누구에게 왔는지 바로 보인다.
+- 홈과 대상 서버 띠에 "웹 푸시 수신기 꺼짐" 같은 문제만 짧게 알린다.
+
+### 15.6 규칙과의 관계
+
+- 수신기는 받기만 한다. 알림이 왔다고 실행을 시작하지 않는다. 실행 시작은 지금처럼 사람이다.
+- 수신기 등록, 해제, 메일함 설정 바꾸기는 사람 행위라 감사 로그 events 에 남긴다.
+- 대상 서버가 dev 가 아니면(§13) 그 서버의 Firebase 프로젝트가 다를 수 있다. 처음에는 dev 만 지원하고, 다른 대상에서는 알림 단계를 "건너뜀(알림 수신 미설정)" 으로 보인다.
+
+### 15.7 사람이 할 일
+
+1. Firebase 콘솔 `moimyeon-development` 에서 웹 앱 설정값과 웹 푸시 인증서(VAPID 공개키)를 꺼내 준다. 프론트가 웹 푸시를 붙일 때도 같은 값이 필요하다.
+2. QA 전용 Gmail 계정을 만들고 2단계 인증과 앱 비밀번호를 켠다. 앱 비밀번호는 SSM 에 넣는다.
+3. 백엔드 `QaMemberCreator` 메일 주소 설정 PR 을 리뷰·머지한다. dev 환경변수에 템플릿을 넣는다.
+
+### 15.8 순서
+
+1. 시험: 1안 수신기로 dev 에서 QA 회원 하나에 웹 푸시를 실제로 받아 본다(댓글 작성 알림). 안 되면 2안.
+2. 수신기와 `inbox` · `receivers` 저장, 알림함 화면.
+3. 메일 수신(IMAP), 백엔드 PR.
+4. 스크립트 `notify` 단계, 실행 결과 카드, Hermes 프롬프트.
+5. 알림 수신 설정(R141~)이 백엔드에 들어오면 그 테스트.
+
+### 15.9 정할 것
+
+1. 웹 푸시 수신 방식: 1안 먼저(추천) / 처음부터 2안.
+2. 메일함: QA 전용 Gmail `+` 주소(추천) / Cloudflare 하위 도메인 전달.
+3. 백엔드 QA 회원 메일 주소 수정: 이번 작업에서 PR 까지 만든다(추천) / 백엔드 담당에게 맡긴다.
+4. SSOT 에 없는 알림 규칙(신청 접수·수락·반려, 완료, 후기 공개): PRD 문장을 근거로 규칙 기록을 더하는 위키 수정안을 같이 만든다(추천) / 지금은 PRD 문장만 근거로 둔다.
