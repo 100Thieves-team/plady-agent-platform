@@ -43,6 +43,11 @@ from qa import report as reportmod  # noqa: E402
 from qa import sanity as sanitymod  # noqa: E402
 from qa import targets as targetsmod  # noqa: E402
 from qa import specfix as specfixmod  # noqa: E402
+from qa import httpx  # noqa: E402
+from qa import inbox as inboxmod  # noqa: E402,F401
+from qa import ui_inbox  # noqa: E402
+from qa.mailrecv import MailReader  # noqa: E402
+from qa.pushrecv import PushError, PushReceivers  # noqa: E402
 from qa.notify import slack  # noqa: E402
 from qa.reminder import Reminder  # noqa: E402
 from qa.runner import Runner  # noqa: E402
@@ -99,10 +104,149 @@ class App:
         import threading as _th
         self._finding_lock = _th.Lock()     # 스펙 확인 항목을 화면과 뒤에서 도는 수정안 작업이 함께 고친다
         self.blobs = specfixmod.Blobs(cfg.data_dir / "specfix")    # 수정안의 원래 파일·고친 파일 (반영 때 3-way merge)
+        # 알림 QA (docs/qa-platform-v2.md §15): 플랫폼이 테스트 계정의 웹 푸시 기기와 메일함이 된다. 받기만 한다
+        self.push = PushReceivers(cfg, self.store, self.runner.actors)
+        self.mail = MailReader(cfg, self.store, self._mail_actor)
+        self.runner.notify = self
+        self._email_refresh_at = 0.0
 
     def start(self):
         self.runner.start()
         self.reminder.start()      # 알림만. 실행은 여전히 사람 버튼
+        self.push.start()          # 켜 두었던 웹 푸시 수신기를 다시 연다
+        self.mail.start()          # 메일함을 15초마다 읽는다 (받기만)
+        self._prune_inbox()
+
+    # ---- 알림 QA (docs/qa-platform-v2.md §15) -------------------------------------------
+    def _prune_inbox(self) -> None:
+        from datetime import timedelta, timezone
+        before = (datetime.now(timezone.utc) - timedelta(days=self.cfg.inbox_keep_days)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        self.store.prune_inbox(before)
+
+    def notify_actors(self) -> list[str]:
+        """알림함에 보이는 테스트 계정 — SSM 고정 계정 + 플랫폼이 만든 QA 회원."""
+        return sorted(self.runner.actors.mapping())
+
+    def _actor_email(self, actor: str, *, refresh: bool = False) -> str | None:
+        """테스트 계정의 메일 주소. 모르면 GET /v1/members/me 로 읽어 receivers 에 적는다."""
+        base = self.cfg.target_base_url
+        r = self.store.get_receiver(base, actor) or {}
+        if r.get("email") and not refresh:
+            return r["email"]
+        try:
+            res = httpx.request("GET", base + "/v1/members/me", headers={"Authorization": "Bearer " + self.runner.actors.token(actor, base),
+                                                                       "Accept": "application/json"}, timeout=self.cfg.request_timeout)
+            me = ((res.json or {}).get("data") or {}) if res.status == 200 else {}
+        except Exception:
+            me = {}
+        if me.get("email"):
+            self.store.save_receiver(base, actor, email=me["email"].lower(), member_id=me.get("memberId"))
+            return me["email"].lower()
+        return r.get("email")
+
+    def _mail_actor(self, address: str):
+        """메일 주소 → (대상, 테스트 계정). 모르는 주소면 5분에 한 번 계정 주소를 다시 읽는다."""
+        import time as _t
+        address = (address or "").lower()
+        for r in self.store.list_receivers(self.cfg.target_base_url):
+            if r.get("email") == address:
+                return r["base_url"], r["actor"]
+        if _t.monotonic() - self._email_refresh_at > 300:
+            self._email_refresh_at = _t.monotonic()
+            for a in self.notify_actors():
+                if self._actor_email(a, refresh=True) == address:
+                    return self.cfg.target_base_url, a
+        return None
+
+    def notify_ready(self, actor: str, channel: str, base_url: str) -> str | None:
+        """알림 기다리기 단계가 이 계정의 이 채널을 볼 수 있나. None 이면 볼 수 있다."""
+        if base_url.rstrip("/") != self.cfg.target_base_url:
+            return "알림 수신은 기본 대상(dev)만 지원한다"
+        if actor not in self.runner.actors.mapping():
+            return f"테스트 계정 {actor} 가 없다"
+        if channel == "web_push":
+            return self.push.ready(actor, base_url)
+        why = self.mail.unavailable()
+        if why:
+            return why
+        em = self._actor_email(actor)
+        if not em:
+            return f"{actor} 의 메일 주소를 읽지 못했다"
+        if not self.mail.mine(em):
+            return f"{actor} 의 메일 주소({em})가 플랫폼 메일함 주소가 아니다. QA 데이터 화면에서 QA 회원을 다시 만든다"
+        return None
+
+    def inbox_for(self, actor: str, channel: str, base_url: str, since: str) -> list[dict]:
+        rows = self.store.list_inbox(base_url=base_url, actor=actor, channel=channel, since=since)
+        if channel == "email":
+            em = self._actor_email(actor)
+            if em:                                  # 주소를 알기 전에 들어온 메일도 본다
+                seen = {x["id"] for x in rows}
+                rows += [x for x in self.store.list_inbox(channel="email", address=em, since=since) if x["id"] not in seen]
+        return sorted(rows, key=lambda x: x["id"])
+
+    def poll_mail(self) -> None:
+        self.mail.poll(min_gap=3)
+
+    def inbox_items(self, filters: dict, after_id: int = 0) -> list[dict]:
+        from datetime import timedelta, timezone
+        now = datetime.now(timezone.utc)
+        w = filters.get("window") or ""
+        since = None
+        if w == "10m":
+            since = now - timedelta(minutes=10)
+        elif w == "today":
+            k = now + timedelta(hours=9)
+            since = k.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=9)
+        elif w != "all":
+            since = now - timedelta(hours=1)
+        iso = since.replace(microsecond=0).isoformat().replace("+00:00", "Z") if since else None
+        items = self.store.list_inbox(actor=filters.get("actor") or None, channel=filters.get("channel") or None, type=filters.get("type") or None,
+                                      since=iso, after_id=after_id, limit=200)
+        if filters.get("actor") and filters.get("channel") in (None, "", "email"):
+            em = (self.store.get_receiver(self.cfg.target_base_url, filters["actor"]) or {}).get("email")
+            if em:
+                seen = {x["id"] for x in items}
+                items += [x for x in self.store.list_inbox(channel="email", address=em, type=filters.get("type") or None, since=iso, after_id=after_id)
+                          if x["id"] not in seen]
+                items.sort(key=lambda x: -x["id"])
+        runs = {}
+        for x in items:
+            if x.get("run_case_id"):
+                if x["run_case_id"] not in runs:
+                    rc = self.store._one("SELECT run_id FROM run_cases WHERE id=?", (x["run_case_id"],))
+                    runs[x["run_case_id"]] = rc["run_id"] if rc else None
+                x["run_id"] = runs[x["run_case_id"]]
+        return items
+
+    def receiver_on(self, actor: str, *, operator: str, session_hash=None, ip=None) -> dict:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        try:
+            r = self.push.enable(actor, operator=operator)
+        except PushError as ex:
+            self.store.add_event(operator=operator, action="notify.receiver.on", target=actor, session_hash=session_hash, ip=ip, detail={"error": str(ex)[:300]})
+            raise BadRequest(str(ex))
+        self.store.add_event(operator=operator, action="notify.receiver.on", target=actor, session_hash=session_hash, ip=ip, detail={"base": self.cfg.target_base_url})
+        return r
+
+    def receiver_off(self, actor: str, *, operator: str, session_hash=None, ip=None) -> None:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        self.push.disable(actor, operator=operator)
+        self.store.add_event(operator=operator, action="notify.receiver.off", target=actor, session_hash=session_hash, ip=ip, detail={"base": self.cfg.target_base_url})
+
+    def inbox_refresh(self, *, operator: str, session_hash=None, ip=None) -> int:
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        why = self.mail.unavailable()
+        if why:
+            raise BadRequest(why)
+        n = self.mail.poll()
+        self.store.add_event(operator=operator, action="notify.mail.refresh", target="inbox", session_hash=session_hash, ip=ip, detail={"added": n, "error": self.mail.error})
+        if self.mail.error:
+            raise BadRequest(f"메일함을 읽지 못했어요: {self.mail.error}")
+        return n
 
     # ---- 스크립트 -----------------------------------------------------------------
     def reload_cases(self) -> tuple[int, list[str]]:
@@ -2654,6 +2798,49 @@ class Handler(BaseHTTPRequestHandler):
             except BadRequest as ex:
                 return self._redirect(f"/sanity/{s['pr_number']}?err={_urlq(str(ex))}", set_operator=operator)
             return self._redirect(f"/sanity/{s['pr_number']}" + (f"?done={_urlq(msg)}" if msg else ""), set_operator=operator)
+        # ---------- 알림함 (docs/qa-platform-v2.md §15.5) ----------
+        if path in ("/inbox", "/inbox/items") and method == "GET":
+            filters = {k: g(k) for k in ("actor", "channel", "type", "window") if g(k)}
+            if path == "/inbox/items":
+                try:
+                    after = int(g("after") or 0)
+                except ValueError:
+                    after = 0
+                return self._send(200, ui_inbox.cards(app.inbox_items(filters, after), new=True))
+            actors = app.notify_actors()
+            receivers = {r["actor"]: r for r in app.store.list_receivers(app.cfg.target_base_url)}
+            for a in actors:
+                if a not in receivers or not receivers[a].get("email"):
+                    app._actor_email(a)
+            receivers = {r["actor"]: r for r in app.store.list_receivers(app.cfg.target_base_url)}
+            items = app.inbox_items(filters)
+            counts = {"all": len(app.store.list_inbox(limit=10000))}
+            body = ui_inbox.inbox_page(items=items, actors=actors, receivers=receivers, filters=filters, operator=self._operator(),
+                                       push_why=app.push.unavailable(), mail_why=app.mail.unavailable(),
+                                       mail_state={"error": app.mail.error, "last_ok": app.mail.last_ok, "user": app.cfg.mail_user},
+                                       mail_mine=app.mail.mine, counts=counts, target=app.target_for(self._operator()))
+            return self._page("알림함", body, "inbox")
+        m = re.match(r"^/inbox/(receivers/on|receivers/off|refresh)$", path)
+        if m and method == "POST":
+            f = self._form()
+            fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+            operator = fv("operator").strip() or self._operator()
+            kw = {"operator": operator, "session_hash": self._session_hash(), "ip": self._ip()}
+            actor = fv("actor").strip()
+            try:
+                if m.group(1) == "receivers/on":
+                    app.receiver_on(actor, **kw)
+                    msg = f"{actor} 의 웹 푸시를 받기 시작했어요. 이제 이 계정에 온 웹 푸시가 여기에 보여요"
+                elif m.group(1) == "receivers/off":
+                    app.receiver_off(actor, **kw)
+                    msg = f"{actor} 의 웹 푸시 받기를 껐어요. 백엔드의 기기 등록도 지웠어요"
+                else:
+                    n = app.inbox_refresh(**kw)
+                    msg = f"메일함을 읽었어요. 새 알림 메일 {n}건"
+            except BadRequest as ex:
+                return self._redirect(f"/inbox?err={_urlq(str(ex))}", set_operator=operator)
+            back = f"/inbox?actor={_urlq(actor)}&" if actor else "/inbox?"
+            return self._redirect(f"{back}done={_urlq(msg)}", set_operator=operator)
         # ---------- 대상 서버 (docs/qa-platform-v2.md §13) ----------
         if path == "/targets" and method == "GET":
             notice = ("ok", g("done")) if g("done") else (("err", g("err")) if g("err") else None)

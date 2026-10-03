@@ -250,11 +250,13 @@ def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[st
     w = confirmed_cancel_warning(case)
     if w:
         warnings.append(w)
-    if case.suite == "sanity" and any(s["request"]["method"] in WRITE for s in case.steps):
-        last = case.steps[-1]["request"]
+    if case.suite == "sanity" and any(s["request"]["method"] in WRITE for s in case.api_steps):
+        last = case.api_steps[-1]["request"]
         if not (last["method"] == "DELETE" or CLEANUP_HINT.search(last.get("path") or "")):
             warnings.append("쓰기 스크립트인데 마지막 단계가 정리(취소·철회·삭제)로 보이지 않는다")
     for i, s in enumerate(case.own_steps, 1):
+        if not s.get("request"):
+            continue
         body = s["request"].get("body")
         if s["request"]["method"] in WRITE and isinstance(body, dict) and isinstance(body.get("title"), str) and not body["title"].startswith("[QA]"):
             warnings.append(f"단계 {i} 의 title 이 [QA] 로 시작하지 않는다 — 나중에 찾아 지우기 어렵다")

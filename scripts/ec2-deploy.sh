@@ -36,6 +36,10 @@
 #   QA_REPO_TOKEN_PARAM=/plady/agent-platform/<env>/qa-repo-token (optional; fine-grained PAT, contents: write on
 #     plady-agent-platform only. qa-platform commits approved script/manual-TC drafts to main with [skip ci].
 #     Absent -> approval still works, the draft page offers the changed file for a manual commit)
+#   QA_FCM_WEB_CONFIG_PARAM=/plady/agent-platform/<env>/qa-fcm-web-config (optional; Firebase web app config JSON
+#     {apiKey, appId, projectId, messagingSenderId} of the dev Firebase project. Public values. Absent -> no web push receiver)
+#   QA_MAIL_USER_PARAM / QA_MAIL_APP_PASSWORD_PARAM=/plady/agent-platform/<env>/qa-mail-user · qa-mail-app-password
+#     (optional; QA mailbox read over IMAP for notification QA, docs/qa-platform-v2.md §15. Absent -> no mail receiver)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -81,6 +85,9 @@ QA_REPO_TOKEN_PARAM="${QA_REPO_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV
 # QA MCP bearer (docs/qa-platform-hermes.md §6): optional. Absent -> qa-platform /mcp answers 503 and
 # hermes-config-init leaves mcp_servers.qa-platform out, so Hermes has no QA tools until it is filled.
 QA_MCP_TOKEN_PARAM="${QA_MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mcp-token}"
+QA_FCM_WEB_CONFIG_PARAM="${QA_FCM_WEB_CONFIG_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fcm-web-config}"
+QA_MAIL_USER_PARAM="${QA_MAIL_USER_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mail-user}"
+QA_MAIL_APP_PASSWORD_PARAM="${QA_MAIL_APP_PASSWORD_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mail-app-password}"
 
 COMPOSE_FILE="${APP_DIR}/compose.ec2.yaml"
 ENV_FILE="${APP_DIR}/.env.ec2"
@@ -150,6 +157,13 @@ QA_REPO_TOKEN="$(ssm_get "$QA_REPO_TOKEN_PARAM")"
 [ "$QA_REPO_TOKEN" = "None" ] && QA_REPO_TOKEN=""
 QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
 [ "$QA_MCP_TOKEN" = "None" ] && QA_MCP_TOKEN=""
+QA_FCM_WEB_CONFIG="$(ssm_get "$QA_FCM_WEB_CONFIG_PARAM")"
+[ "$QA_FCM_WEB_CONFIG" = "None" ] && QA_FCM_WEB_CONFIG=""
+QA_MAIL_USER="$(ssm_get "$QA_MAIL_USER_PARAM")"
+[ "$QA_MAIL_USER" = "None" ] && QA_MAIL_USER=""
+QA_MAIL_APP_PASSWORD="$(ssm_get "$QA_MAIL_APP_PASSWORD_PARAM")"
+[ "$QA_MAIL_APP_PASSWORD" = "None" ] && QA_MAIL_APP_PASSWORD=""
+echo "  qa-platform notify QA: web push $([ -n "$QA_FCM_WEB_CONFIG" ] && echo "on" || echo "off (${QA_FCM_WEB_CONFIG_PARAM} absent)"); mail $([ -n "$QA_MAIL_USER" ] && [ -n "$QA_MAIL_APP_PASSWORD" ] && echo "on" || echo "off (qa-mail-user / qa-mail-app-password absent)")"
 echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); repo write $([ -n "$QA_REPO_TOKEN" ] && echo "present — saves commit to main" || echo "absent — saves offer a file"); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
@@ -245,6 +259,9 @@ QA_FIXTURES=${QA_FIXTURES}
 QA_GITHUB_TOKEN=${QA_GITHUB_TOKEN}
 QA_REPO_TOKEN=${QA_REPO_TOKEN}
 QA_MCP_TOKEN=${QA_MCP_TOKEN}
+QA_FCM_WEB_CONFIG=${QA_FCM_WEB_CONFIG}
+QA_MAIL_USER=${QA_MAIL_USER}
+QA_MAIL_APP_PASSWORD=${QA_MAIL_APP_PASSWORD}
 ENV
 chmod 600 "$ENV_FILE"
 

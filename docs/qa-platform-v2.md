@@ -415,7 +415,7 @@ PRD 2장과 규칙표로 시나리오 파일을 모든 MVP 기능에 채웠다(�
 - **남은 수정안 다시 계산.** 하나를 반영하면 같은 Sanity 의 대기 수정안은 지금 파일 기준으로 base·after·바뀐 줄을 다시 계산한다. 같은 줄이면 위처럼 다시 만든다.
 - 시험: tests/test_specfix.py 7건(merge3, 기준 날짜, 인용 기록, 문맥이 겹친 두 수정안, 충돌 뒤 다시 만들기).
 
-## 15. 알림 QA — 웹 푸시와 메일 (설계 초안 2026-10-03, 검토 대기)
+## 15. 알림 QA — 웹 푸시와 메일 (설계 2026-10-03, 결정 반영)
 
 사용자 요청: "fcm 알림, 이메일과 관련된 QA도 플랫폼에서 할 수 있으면 좋겠다. UI/UX 를 신경써서 편하게." 이어서 "플랫폼이 알림을 구독해서 확인할 수 없을까".
 
@@ -483,7 +483,7 @@ API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `not
     expect:
       title_contains: "{{roomTitle}}"
       link: /rooms/{{roomId}}
-  covers: [P.notification.application_accepted]   # SSOT 기록이 생기면
+  covers: [C.application.accept]   # 알림을 일으킨 명령. 알림 규칙(P.notification.*)은 아직 테스트 조건이 아니다
 - name: 댓글 작성자에게는 오지 않는다
   notify:
     to: qa-host
@@ -534,3 +534,24 @@ API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `not
 2. 메일함: QA 전용 Gmail `+` 주소(추천) / Cloudflare 하위 도메인 전달.
 3. 백엔드 QA 회원 메일 주소 수정: 이번 작업에서 PR 까지 만든다(추천) / 백엔드 담당에게 맡긴다.
 4. SSOT 에 없는 알림 규칙(신청 접수·수락·반려, 완료, 후기 공개): PRD 문장을 근거로 규칙 기록을 더하는 위키 수정안을 같이 만든다(추천) / 지금은 PRD 문장만 근거로 둔다.
+
+### 15.10 결정 (2026-10-03)
+
+1. 웹 푸시는 가벼운 수신기(1안) 먼저 시험한다. 안 되면 2안.
+2. 메일은 QA 전용 Gmail 의 `+` 주소로 받는다.
+3. 백엔드 QA 회원 메일 주소 설정 PR 을 이번 작업에서 만든다. 리뷰·머지는 사람이 한다.
+4. SSOT 에 규칙 기록이 없는 알림(신청 접수·수락·반려, 완료, 후기 공개)은 지금은 PRD 문장만 근거로 둔다. 스크립트 `source` 에 PRD 요구 id 를 적고, `covers` 에는 SSOT 기록이 있는 것만 적는다.
+
+### 15.11 구현 (2026-10-04, 1단계)
+
+- `qa/inbox.py`: 받은 웹 푸시·메일을 알림 한 건으로 읽기, 메일 제목으로 알림 종류 알아내기(`TYPES`, 백엔드 NotificationComposer 문구), `notify` 블록 검사(`validate`), 맞추기(`match` · `judge`).
+- `qa/pushrecv.py`: 웹 푸시 수신기. `firebase-messaging` 0.4.5 로 FCM 토큰을 받아 `PUT /v1/members/me/web-push-subscriptions` 로 등록, 받은 메시지를 알림함에 넣는다. 자격은 receivers 표에 두고 재시작하면 다시 접속한다. 끄면 백엔드 등록도 `DELETE`.
+- `qa/mailrecv.py`: 메일함을 IMAP 읽기 전용으로 15초마다 읽는다. 받은편지함과 스팸함(`\Junk`)을 폴더마다 UID 로 이어 읽는다. 플랫폼 메일함의 `+` 주소로 온 메일만 담는다.
+- 저장: `inbox` · `receivers` 표. 같은 알림은 한 번만 담는다(FCM persistent id, 메일 Message-ID).
+- 스크립트: `notify` 단계. 기다리는 시간은 바로 앞 API 단계를 시작한 때부터 센다(알림이 단계보다 먼저 올 수 있어서). 메일은 보내는 서버 시계 차이로 5초 넉넉히 본다. 받을 준비가 안 됐으면 그 단계만 건너뛰고 스크립트는 이어 가며, 결과에 "알림 확인을 건너뛰었다" 를 적는다.
+- `covers`: 알림 규칙 `P.notification.*` 은 아직 테스트 조건 목록에 없어서 알림을 일으킨 명령(`C.*`)을 적는다. 알림 규칙을 테스트 조건으로 만드는 것은 다음 단계.
+- 화면: 왼쪽 메뉴 **알림함**. 실행 결과의 알림 단계 아래에 받은 알림 카드. 둘러보기 3단계.
+- Hermes 스크립트 규칙 10번: 알림 단계 쓰는 법과 발송 정책.
+- 배포: 이미지에 `firebase-messaging`. SSM `qa-fcm-web-config`(Firebase 웹 앱 설정 JSON), `qa-mail-user`, `qa-mail-app-password`. 없으면 그 채널만 꺼진다.
+- 시험: tests/test_notify.py 8건(가짜 FCM 라이브러리·가짜 IMAP).
+- 아직 안 한 것: 실제 FCM 수신 시험(Firebase 웹 앱 설정을 받은 뒤), 백엔드 PR(moimyeon-backend#150) 머지와 dev 의 `QA_MEMBER_EMAIL_TEMPLATE`.

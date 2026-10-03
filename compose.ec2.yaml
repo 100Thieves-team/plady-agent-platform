@@ -861,6 +861,10 @@ services:
       # QA MCP 서버 (docs/qa-platform-hermes.md §3.1): Hermes 가 부르는 읽기·제안 도구. 내부 전용,
       # Caddy 는 /mcp 를 403. SSM qa-mcp-token (ec2-deploy.sh). 비어 있으면 /mcp 는 503 이고 Hermes 에 등록되지 않는다
       QA_MCP_TOKEN: ${QA_MCP_TOKEN:-}
+      # 알림 QA (docs/qa-platform-v2.md §15): dev Firebase 웹 앱 설정(공개값)과 QA 메일함(IMAP). 비어 있으면 그 채널 수신이 꺼진다
+      QA_FCM_WEB_CONFIG: ${QA_FCM_WEB_CONFIG:-}
+      QA_MAIL_USER: ${QA_MAIL_USER:-}
+      QA_MAIL_APP_PASSWORD: ${QA_MAIL_APP_PASSWORD:-}
       TZ: Asia/Seoul
     volumes:
       - qa-data:/data

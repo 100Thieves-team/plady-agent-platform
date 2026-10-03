@@ -37,7 +37,14 @@ DRAFT_SYSTEM = (
     "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} {{time:rand}} 만. 룸 생성의 startTime 은 `{{time:rand}}` 로 쓴다 — 같은 방장·공고·직무·시작 시각의 활성 룸이 있으면 백엔드가 새로 만들지 않고 그 룸을 돌려준다.\n"
     "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
     "9. 테스트 데이터 만들기 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
-    "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다."
+    "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다.\n"
+    "10. 확인하는 동작이 알림을 보내면(참가 신청 접수·수락·반려, 진행 확정, 완료, 취소, 방장 위임, 후기 공개, 댓글) 그 API 단계 바로 뒤에 알림 기다리기 단계를 둘 수 있다: "
+    "`- name: …\n    notify: {to: 테스트 계정, type: 알림 종류, channels: [web_push, email], within: 60s, expect: {link: /rooms/{{roomId}}}}`. "
+    "request·expect·save 는 쓰지 않는다. 받으면 안 되는 사람은 `none: true` 와 짧은 within(10s). 후기 공개는 1분 주기 작업이 보내니 within 90s. "
+    "type 은 ROOM_APPLICATION_SUBMITTED · ROOM_APPLICATION_ACCEPTED · ROOM_APPLICATION_REJECTED · ROOM_CONFIRMED · ROOM_APPLICATION_CLOSED · ROOM_COMPLETED · "
+    "ROOM_CANCELED · ROOM_HOST_DELEGATED · ROOM_HOST_CHANGED · REVIEW_PUBLISHED · ROOM_COMMENT_POSTED 중 하나. "
+    "채널은 백엔드 발송 정책을 따른다: 수락·확정(참여자)·취소는 웹 푸시와 메일 둘 다, 후기 공개·댓글은 웹 푸시만, 나머지는 웹 푸시(닿지 않으면 메일)라 web_push 만 쓴다. "
+    "알림 단계는 정리 단계보다 앞에 둔다."
 )
 
 
@@ -123,7 +130,7 @@ def confirmed_cancel_warning(case: Case) -> str | None:
     def ok2xx(st):
         v = (st.get("expect") or {}).get("status")
         return v is None or str(v).startswith("2")
-    steps = case.steps
+    steps = case.api_steps
     confirmed = any(st["request"]["method"] == "POST" and str(st["request"].get("path") or "").endswith("/confirmation") and ok2xx(st) for st in steps[:-1])
     last = steps[-1]["request"] if steps else {}
     if confirmed and last.get("method") == "POST" and str(last.get("path") or "").endswith("/cancellation") and ok2xx(steps[-1]):
@@ -167,16 +174,17 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
             errors.append(f"없는 픽스처 키 {key}")
         elif not cfg.fixtures:
             warnings.append(f"픽스처 {key} — 이 환경에 QA_FIXTURES 가 없어 확인 못 함")
-    writes = [i for i, s in enumerate(case.steps) if s["request"]["method"] in WRITE and s["request"]["method"] != "DELETE"]
+    api = case.api_steps
+    writes = [i for i, s in enumerate(api) if s["request"]["method"] in WRITE and s["request"]["method"] != "DELETE"]
     w = confirmed_cancel_warning(case)
     if w:
         warnings.append(w)
     if writes:
-        last = case.steps[-1]["request"]
+        last = api[-1]["request"]
         if not (last["method"] == "DELETE" or CLEANUP_HINT.search(last.get("path") or "")):
             warnings.append("쓰기 스크립트인데 마지막 단계가 정리(취소·철회·삭제)로 보이지 않는다")
         for i in writes:
-            body = case.steps[i]["request"].get("body")
+            body = api[i]["request"].get("body")
             if isinstance(body, dict) and isinstance(body.get("title"), str) and not body["title"].startswith("[QA]"):
                 warnings.append(f"step {i + 1} 의 title 이 [QA] 로 시작하지 않는다")
     if errors:

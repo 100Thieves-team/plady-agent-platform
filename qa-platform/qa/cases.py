@@ -16,6 +16,8 @@ from pathlib import Path
 
 import yaml
 
+from . import inbox as inbox_mod
+
 SUITES = ("smoke", "sanity", "manual", "setup")   # setup = 준비 작업(버튼 하나로 테스트 데이터 만들기, docs/qa-platform-api.md §5.4)
 _INPUT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INPUT_EXPR = re.compile(r"\{\{\s*input\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
@@ -81,6 +83,11 @@ class Case:
         """실행 기록 스냅샷 — 카드가 나중에 바뀌어도 그때 돌린 단계가 남는다."""
         return yaml.safe_dump(self.run_raw(), allow_unicode=True, sort_keys=False)
 
+    @property
+    def api_steps(self) -> list:
+        """API 를 부르는 단계 (알림 기다리기 단계를 뺀 것)."""
+        return [s for s in self.steps if s.get("request")]
+
     def needs_actor(self) -> bool:
         return bool(self.actor) or any(s.get("actor") for s in self.steps)
 
@@ -143,9 +150,22 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
         if s.get("given") is not None and not d.get("given_by"):
             raise CaseError(f"{file}:{cid}: step {i} 의 given 은 로더가 붙인다 — 전제 단계는 uses 로 쓴다")
         s.setdefault("name", f"step {i}")
+        if "notify" in s:
+            # 알림 기다리기 단계 (docs/qa-platform-v2.md §15.4) — 요청 없이 받은 웹 푸시·메일을 확인한다
+            if s.get("request") is not None or s.get("expect") or s.get("save"):
+                raise CaseError(f"{file}:{cid}: step {i} notify 단계에는 request · expect · save 를 쓰지 않는다")
+            try:
+                s["notify"] = inbox_mod.validate(s["notify"])
+            except inbox_mod.NotifyError as e:
+                raise CaseError(f"{file}:{cid}: step {i} {e}") from None
+            s.pop("request", None)
+            s["covers"] = _tc_list(s.get("covers"), f"{file}:{cid}: step {i}")
+            if "always" in s and not s["always"]:
+                s.pop("always")
+            continue
         req = s.get("request")
         if not isinstance(req, dict):
-            raise CaseError(f"{file}:{cid}: step {i} request 필요")
+            raise CaseError(f"{file}:{cid}: step {i} request 필요 (알림을 확인하는 단계면 notify)")
         m = str(req.get("method", "")).upper()
         if m not in METHODS:
             raise CaseError(f"{file}:{cid}: step {i} method 는 {METHODS}: {req.get('method')!r}")
@@ -427,7 +447,9 @@ def select(cases: dict[str, Case], suite: str | None = None, ids: list[str] | No
 def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
     """단계가 계약 테스트 조건의 method·path·기대와 맞는지. (경로 일치, 문제 목록)."""
     from .spec import match_path
-    req = step["request"]
+    req = step.get("request")
+    if not req:
+        return False, []                 # 알림 기다리기 단계는 API 계약과 맞추지 않는다
     if req["method"] != str(hint.get("method", "")).upper() or not match_path(str(hint.get("path", "")), req.get("path", "")):
         return False, []
     problems = []

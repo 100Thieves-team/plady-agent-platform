@@ -110,6 +110,16 @@ class Config:
         # Slack (WIKI_SLACK_WEBHOOK_URL 재사용 — 사용자 결정)
         self.slack_webhook_url = g("WIKI_SLACK_WEBHOOK_URL", "")
 
+        # 알림 QA (docs/qa-platform-v2.md §15): 플랫폼이 QA 회원의 웹 푸시 기기와 메일함이 된다.
+        # 웹 푸시는 기본 대상(dev)의 Firebase 웹 앱 설정(apiKey·appId·projectId·messagingSenderId, 공개값). 비어 있으면 웹 푸시 수신이 꺼진다
+        self.fcm_web: dict = _json_env(env, "QA_FCM_WEB_CONFIG")
+        # 메일은 QA 전용 메일함을 IMAP 으로 읽는다. 비밀번호(앱 비밀번호)는 SSM qa-mail-app-password. 비어 있으면 메일 수신이 꺼진다
+        self.mail_imap_host = g("QA_MAIL_IMAP_HOST", "imap.gmail.com")
+        self.mail_user = g("QA_MAIL_USER", "")
+        self.mail_password = g("QA_MAIL_APP_PASSWORD", "")
+        self.mail_poll = int(g("QA_MAIL_POLL", "15"))          # 메일함을 읽는 간격(초). 알림 기다리기 단계 중에는 3초마다
+        self.inbox_keep_days = int(g("QA_INBOX_KEEP_DAYS", "30"))
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "qa.sqlite"

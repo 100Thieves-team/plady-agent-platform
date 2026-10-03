@@ -168,11 +168,11 @@ ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 �
              "draft.save": "스크립트 초안 편집 (예전)", "draft.check": "스크립트 초안 시험 실행 (예전)", "draft.approve": "남은 초안 저장", "draft.reject": "남은 초안 버림",
              "case.save": "스크립트 저장", "case.delete": "스크립트 삭제", "case.try": "저장 전 실행", "manual_tc.save": "수동 작성 테스트 조건 저장", "manual_tc.delete": "수동 작성 테스트 조건 삭제",
              "hermes.generate": "Hermes 가 쓰기", "hermes.rejected_by_validation": "Hermes 결과 검증 탈락", "explorer.to_form": "API 호출을 스크립트 폼으로",
-             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "qa_data.view_token": "QA 회원 토큰 보기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)"}
+             "run.publish": "위키 보고서 게시", "explorer.send": "API 직접 호출", "operator.pick": "담당자 고르기", "hermes_job.start": "Hermes 작업 시작", "hermes_job.cancel": "Hermes 작업 그만두기", "draft.form_save": "폼으로 초안 저장 (예전)", "draft.delete_request": "삭제 요청 (예전)", "setup.run": "테스트 데이터 만들기 실행", "qa_data.delete_room": "QA 룸 삭제", "qa_data.delete_all": "QA 데이터 일괄 삭제", "qa_data.reset": "테스트 계정 초기화", "qa_data.delete_member": "QA 회원 삭제", "qa_data.create_member": "QA 테스트 회원 만들기", "qa_data.view_token": "QA 회원 토큰 보기", "spec.refresh": "API 문서 다시 읽기", "scenario.save": "시나리오 저장", "scenario.delete": "시나리오 삭제", "sprint.remind": "스프린트 smoke 리마인드(Slack)", "notify.receiver.on": "웹 푸시 받기 켜기", "notify.receiver.off": "웹 푸시 받기 끄기", "notify.mail.refresh": "메일함 지금 읽기"}
 DRAFT_KO = {"draft": "저장 안 됨", "checked": "저장 안 됨 · 실행해 봄", "approved": "저장됨", "rejected": "버림", "failed": "저장 실패"}
 
 
-MAIN_NAV = (("home", "/", "⌂", "홈"), ("sanity", "/sanity", "✓", "Sanity"), ("smoke", "/smoke", "▶", "스모크"), ("data", "/data", "▦", "QA 데이터"))
+MAIN_NAV = (("home", "/", "⌂", "홈"), ("sanity", "/sanity", "✓", "Sanity"), ("smoke", "/smoke", "▶", "스모크"), ("data", "/data", "▦", "QA 데이터"), ("inbox", "/inbox", "◉", "알림함"))
 ADMIN_NAV = (("features", "/features", "▤", "시나리오"), ("cases", "/cases", "{}", "스크립트"), ("catalog", "/catalog", "≡", "테스트 조건"),
              ("apis", "/apis", "⌗", "API"), ("explorer", "/explorer", "↗", "API 호출"), ("runs", "/runs", "◷", "실행 기록"),
              ("drafts", "/drafts", "✎", "변경 기록"), ("chat", "/chat", "✉", "Hermes 대화"), ("targets", "/targets", "⇄", "대상 서버"),
@@ -568,6 +568,13 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         st, given = "", ""
         for s in steps:
             req, resp = s["request"], s.get("response") or {}
+            if req.get("method") == "NOTIFY":     # 알림 기다리기 단계 (docs/qa-platform-v2.md §15.4) — 받은 알림을 카드로
+                from .ui_inbox import step_cards
+                st += (f'<details {"open" if s["verdict"] != "pass" or s.get("inbox") else ""}><summary>{badge(s["verdict"])} {s["ord"] + 1}. {e(s["name"])} '
+                       f'<span class="b none">알림 기다리기</span> <span class="small">{e(req.get("path"))}</span> <span class="small mut">{s.get("duration_ms") or 0} ms</span></summary>'
+                       f'{("<div class=\"small\" style=\"color:var(--bad)\">" + e(s.get("error")) + "</div>") if s.get("error") else ""}'
+                       f'{_checks_html(s["checks"])}{step_cards(s.get("inbox") or [])}</details>')
+                continue
             rbody = resp.get("json") if resp.get("json") is not None else resp.get("text")
             st += (f'<details {"open" if s["verdict"] not in ("pass",) else ""}><summary>{badge(s["verdict"])} {s["ord"] + 1}. {e(s["name"])} '
                    f'<span class="mono small">{e(req.get("method"))} {e(req.get("path"))}</span>'
@@ -595,7 +602,8 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
         body_cases += (f'<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">{badge(rc["verdict"])} {badge(rc["case_suite"])} '
                        f'<a href="/cases/{e(rc["case_id"])}" class="mono">{e(rc["case_id"])}</a> <b>{e(rc["case_title"])}</b>'
                        f'<span class="small mut">{rc.get("duration_ms") or 0} ms · 스크립트 버전 {e(rc["case_hash"])}</span><span style="margin-left:auto">{tri}</span></div>'
-                       f'{("<div class=\"small\" style=\"color:var(--bad);margin-top:4px\">" + e(rc.get("error")) + "</div>") if rc.get("error") and rc["verdict"] == "skipped" else ""}{st}</div>')
+                       f'{("<div class=\"small\" style=\"color:var(--bad);margin-top:4px\">" + e(rc.get("error")) + "</div>") if rc.get("error") and rc["verdict"] == "skipped" else ""}'
+                       f'{("<div class=\"small\" style=\"color:var(--warn);margin-top:4px\">" + e(rc.get("error")) + "</div>") if rc.get("error") and rc["verdict"] == "pass" else ""}{st}</div>')
         cards[rc["id"]] = body_cases
     body_cases = "" if shown else body_cases
     if groups and any(g["rcs"] for g in groups[0]):
@@ -1455,6 +1463,11 @@ def _card_form(c, operator: str, actors: list[str]) -> str:
                    f'{("<p class=\"hint\">" + e(spec["hint"]) + "</p>") if spec.get("hint") else ""}</div>')
     raw = ""
     for i, st in enumerate(c.steps, 1):
+        if st.get("notify"):
+            from .inbox import describe
+            raw += (f'<div style="margin:6px 0"><span class="mut small">{i}.</span> <span class="b none">알림 기다리기</span> '
+                    f'<span>{e(describe(st["notify"]))}</span> <span class="small mut">{e(st["name"])}</span></div>')
+            continue
         req = st["request"]
         body = f'<pre style="margin:4px 0 0">{e(_fmt_json(req["body"]))}</pre>' if req.get("body") is not None else ""
         who = st.get("actor", c.actor)

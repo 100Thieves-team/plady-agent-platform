@@ -86,6 +86,19 @@ TARGETS_SQL = """CREATE TABLE IF NOT EXISTS targets (
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
 """
+INBOX_SQL = """CREATE TABLE IF NOT EXISTS inbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, channel TEXT NOT NULL, base_url TEXT NOT NULL, actor TEXT, address TEXT,
+  type TEXT, title TEXT, body TEXT, link TEXT, event_id TEXT, received_at TEXT NOT NULL, raw TEXT NOT NULL DEFAULT '',
+  dedup TEXT UNIQUE, run_case_id INTEGER, step_ord INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_inbox_at ON inbox(received_at DESC);
+CREATE INDEX IF NOT EXISTS ix_inbox_actor ON inbox(base_url, actor, received_at);
+CREATE TABLE IF NOT EXISTS receivers (
+  base_url TEXT NOT NULL, actor TEXT NOT NULL, member_id TEXT, email TEXT, push_token TEXT, credentials TEXT,
+  enabled INTEGER NOT NULL DEFAULT 0, status TEXT, error TEXT, last_at TEXT, operator TEXT, updated_at TEXT NOT NULL,
+  PRIMARY KEY (base_url, actor)
+);
+"""
 QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
   member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
 );"""
@@ -123,6 +136,7 @@ class Store:
             self._db.executescript(JOBS_SQL)
             self._db.executescript(SANITY_SQL)
             self._db.executescript(TARGETS_SQL)
+            self._db.executescript(INBOX_SQL)
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:
@@ -254,6 +268,8 @@ class Store:
             r["request"] = json.loads(r["request"])
             r["response"] = json.loads(r["response"]) if r["response"] else None
             r["checks"] = json.loads(r["checks"])
+            if r["request"].get("method") == "NOTIFY":       # 알림 기다리기 단계가 받은 알림 (docs/qa-platform-v2.md §15.4)
+                r["inbox"] = self.inbox_for_step(rcid, r["ord"])
         return rows
 
     def case_history(self, case_id: str, limit: int = 10) -> list[dict]:
@@ -533,3 +549,56 @@ class Store:
     def set_setting(self, key: str, value: str) -> None:
         self._x("INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                 (key, value, now_iso()))
+
+    # ---- 알림함 (docs/qa-platform-v2.md §15) ---------------------------------
+    def add_inbox(self, *, channel: str, base_url: str, actor: str | None, address: str | None, type: str | None, title: str | None,
+                  body: str | None, link: str | None, event_id: str | None, raw: str, dedup: str, received_at: str | None = None) -> int | None:
+        """받은 알림 한 건. dedup 이 같으면 다시 넣지 않는다(FCM 재전달, 메일함을 다시 읽을 때)."""
+        with self._lock:
+            cur = self._db.execute(
+                "INSERT OR IGNORE INTO inbox (channel, base_url, actor, address, type, title, body, link, event_id, received_at, raw, dedup) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (channel, base_url, actor, address, type, title, body, link, event_id, received_at or now_iso(), raw, dedup))
+            return cur.lastrowid if cur.rowcount else None
+
+    def list_inbox(self, *, base_url: str | None = None, actor: str | None = None, channel: str | None = None, type: str | None = None,
+                   address: str | None = None, since: str | None = None, after_id: int = 0, limit: int = 200) -> list[dict]:
+        sql, args = "SELECT * FROM inbox WHERE id > ?", [after_id]
+        for col, v in (("base_url", base_url), ("actor", actor), ("channel", channel), ("type", type), ("address", address)):
+            if v:
+                sql += f" AND {col}=?"
+                args.append(v)
+        if since:
+            sql += " AND received_at >= ?"
+            args.append(since)
+        return self._q(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
+
+    def get_inbox(self, iid: int) -> dict | None:
+        return self._one("SELECT * FROM inbox WHERE id=?", (iid,))
+
+    def link_inbox(self, ids: list[int], run_case_id: int, step_ord: int) -> None:
+        for i in ids:
+            self._x("UPDATE inbox SET run_case_id=?, step_ord=? WHERE id=? AND run_case_id IS NULL", (run_case_id, step_ord, i))
+
+    def inbox_for_step(self, run_case_id: int, step_ord: int) -> list[dict]:
+        return self._q("SELECT * FROM inbox WHERE run_case_id=? AND step_ord=? ORDER BY id", (run_case_id, step_ord))
+
+    def prune_inbox(self, before: str) -> None:
+        """오래된 알림을 지운다. 실행 결과에 붙은 것은 그 실행이 남아 있는 동안 둔다."""
+        self._x("DELETE FROM inbox WHERE received_at < ? AND (run_case_id IS NULL OR run_case_id NOT IN (SELECT id FROM run_cases))", (before,))
+
+    def get_receiver(self, base_url: str, actor: str) -> dict | None:
+        return self._one("SELECT * FROM receivers WHERE base_url=? AND actor=?", (base_url, actor))
+
+    def list_receivers(self, base_url: str | None = None) -> list[dict]:
+        if base_url:
+            return self._q("SELECT * FROM receivers WHERE base_url=? ORDER BY actor", (base_url,))
+        return self._q("SELECT * FROM receivers ORDER BY base_url, actor")
+
+    def save_receiver(self, base_url: str, actor: str, **fields) -> None:
+        cur = self.get_receiver(base_url, actor) or {}
+        row = {**{k: cur.get(k) for k in ("member_id", "email", "push_token", "credentials", "enabled", "status", "error", "last_at", "operator")}, **fields}
+        self._x("INSERT OR REPLACE INTO receivers (base_url, actor, member_id, email, push_token, credentials, enabled, status, error, last_at, operator, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (base_url, actor, row["member_id"], row["email"], row["push_token"], row["credentials"], int(row["enabled"] or 0), row["status"],
+                 row["error"], row["last_at"], row["operator"], now_iso()))

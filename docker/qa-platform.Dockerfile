@@ -1,6 +1,6 @@
-# qa-platform — docs/qa-platform.md. 표준 라이브러리 + PyYAML 만 쓴다.
+# qa-platform — docs/qa-platform.md. 표준 라이브러리 + PyYAML, 알림 QA 의 웹 푸시 수신기(firebase-messaging, docs/qa-platform-v2.md §15.2).
 FROM python:3.12-alpine
-RUN pip install --no-cache-dir --disable-pip-version-check "PyYAML==6.0.3"
+RUN pip install --no-cache-dir --disable-pip-version-check "PyYAML==6.0.3" "firebase-messaging==0.4.5"
 WORKDIR /app
 COPY qa-platform/app.py /app/app.py
 COPY qa-platform/qa /app/qa

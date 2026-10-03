@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import traceback
+from datetime import datetime, timedelta, timezone
 
 from . import httpx
+from . import inbox as inboxmod
 from .cases import Case
 from .config import Config
 from .store import Store, now_iso
@@ -134,6 +137,7 @@ class Runner:
     def __init__(self, cfg: Config, store: Store, cases: dict[str, Case], on_finish=None, op_resolver=None):
         # op_resolver(method, path) -> operationId|None. 단계 기록에 op id 를 박는다 (docs/qa-platform-api.md §6). 없으면 NULL
         self.op_resolver = op_resolver
+        self.notify = None          # 알림 기다리기 단계용 (App): notify_ready(actor, channel, base) → 못 받는 이유, poll_mail() (§15.4)
         self.cfg = cfg
         self.store = store
         self.cases = cases
@@ -230,10 +234,21 @@ class Runner:
         ctx = Context(actors=self.actors.mapping(), fixtures=self.cfg.fixtures)
         total_ms = 0
         verdict, err = "pass", None
+        action_at = datetime.now(timezone.utc)      # 알림 기다리기는 바로 앞 API 단계를 시작한 때부터 센다
+        skipped_notes = []
         for i, step in enumerate(case.steps):
             if verdict != "pass" and not step.get("always"):
                 continue            # 앞 단계가 실패했다 — always 표시가 있는 정리 단계만 돈다 (2026-09-25)
-            sv, ms, serr = self._run_step(case, step, i, rcid, ctx, run["base_url"] or self.cfg.target_base_url, after_failure=verdict != "pass")
+            base = run["base_url"] or self.cfg.target_base_url
+            if step.get("notify"):
+                sv, ms, serr = self._run_notify(step, i, rcid, ctx, base, action_at, run["id"])
+                total_ms += ms
+                if sv == "skipped":
+                    skipped_notes.append(serr)      # 받을 준비가 안 된 알림 확인은 건너뛰고 다음 단계를 이어 간다
+                    continue
+            else:
+                action_at = datetime.now(timezone.utc)
+                sv, ms, serr = self._run_step(case, step, i, rcid, ctx, base, after_failure=verdict != "pass")
             total_ms += ms
             if verdict != "pass":
                 continue            # 실패 뒤 정리 단계의 결과는 기록만 한다. 판정은 처음 실패가 정한다
@@ -244,8 +259,51 @@ class Runner:
                     verdict = "error"
                 if step.get("given") and sv != "skipped":
                     err = f"전제 준비 실패({step['given']}): {serr}"
+        if verdict == "pass" and skipped_notes:
+            err = "알림 확인을 건너뛰었다: " + "; ".join(dict.fromkeys(skipped_notes))
         self.store.update_run_case(rcid, verdict=verdict, duration_ms=total_ms, error=err)
         return verdict, total_ms, err
+
+    def _run_notify(self, step: dict, i: int, rcid: int, ctx: Context, base_url: str, since: datetime, rid: str) -> tuple[str, int, str | None]:
+        """알림 기다리기 단계 (docs/qa-platform-v2.md §15.4). 바로 앞 API 단계를 시작한 때부터 within 초 안에 그 회원에게 온 알림을 본다.
+        받을 준비가 안 됐으면(수신기 꺼짐, 메일함 없음) skipped — 스크립트의 다른 단계는 이어 간다."""
+        name = step.get("name") or f"step {i + 1}"
+        t0 = time.monotonic()
+        try:
+            spec = ctx.render(step["notify"])
+        except TemplateError as e:
+            msg = str(e)
+            self.store.add_step(rcid, i, name, {"method": "NOTIFY", "path": "", "notify": step["notify"]}, None, [], "error", 0, msg)
+            return "error", 0, msg
+        record = {"method": "NOTIFY", "path": inboxmod.describe(spec), "actor": spec["to"], "notify": spec}
+        missing = []
+        for ch in spec["channels"]:
+            why = self.notify.notify_ready(spec["to"], ch, base_url) if self.notify else "알림 수신이 설정되지 않았다"
+            if why:
+                missing.append(f"{inboxmod.CHANNEL_KO[ch]}: {why}")
+        if missing:
+            msg = f"{name}: " + "; ".join(missing)
+            self.store.add_step(rcid, i, name, record, None, [], "skipped", 0, msg)
+            return "skipped", 0, msg
+        start = {"web_push": since, "email": since - timedelta(seconds=5)}     # 메일 Date 는 보내는 서버 시계라 조금 넉넉히
+        iso = lambda d: d.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
+        deadline = since.timestamp() + spec["within"]
+        while True:
+            if "email" in spec["channels"]:
+                self.notify.poll_mail()
+            got = {ch: self.notify.inbox_for(spec["to"], ch, base_url, iso(start[ch])) for ch in spec["channels"]}
+            ok, checks = inboxmod.judge(spec, got)
+            if ok != bool(spec.get("none")) or time.time() >= deadline or self._canceled(rid):      # 왔으면 바로 끝, none 은 오면 바로 실패
+                break
+            time.sleep(2)
+        ids = [x for c in checks for x in c.pop("ids", [])]
+        if ids:
+            self.store.link_inbox(ids, rcid, i)
+        seen = sorted({x["id"] for v in got.values() for x in v})
+        ms = int((time.monotonic() - t0) * 1000)
+        err = None if ok else f"{name}: " + "; ".join(f"{c['check']} 기대 {c['expected']} 실제 {c['actual']}" for c in checks if not c["ok"])
+        self.store.add_step(rcid, i, name, record, {"inbox_ids": ids, "seen_ids": seen[-10:]}, checks, "pass" if ok else "fail", ms, err)
+        return ("pass" if ok else "fail"), ms, err
 
     def _run_step(self, case: Case, step: dict, i: int, rcid: int, ctx: Context, base_url: str, after_failure: bool = False) -> tuple[str, int, str | None]:
         """런에 기록된 base_url 로 요청한다 — 런은 생성 시점의 대상을 고정한다."""
