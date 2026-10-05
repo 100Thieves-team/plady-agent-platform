@@ -141,6 +141,17 @@ class PushReceivers:
             raise PushError(f"{method} {path} → {r.status or r.error}: {(r.text or '')[:200]}")
         return r.json
 
+    def refresh(self, actor: str) -> str | None:
+        """백엔드 기기 등록을 다시 보낸다(PUT, 멱등). 알림 기다리기 단계 앞에서 부른다. 실패하면 이유."""
+        r = self.store.get_receiver(self.base, actor) or {}
+        if not r.get("enabled") or not r.get("push_token"):
+            return "수신기가 꺼져 있다"
+        try:
+            self._call("PUT", actor, SUB_PATH, {"registration": r["push_token"]})
+            return None
+        except Exception as ex:
+            return str(ex)[:200]
+
     def setting(self, actor: str) -> dict | None:
         """그 계정의 알림 수신 설정(GET notification-setting). 예전 백엔드거나 못 읽으면 None."""
         try:
@@ -171,8 +182,10 @@ class PushReceivers:
         if register:                # [웹 푸시 받기] — 그 계정의 웹 푸시 수신을 켜고 이 기기를 등록한다(#147). 예전 백엔드는 등록만
             self._call("PATCH", actor, SETTING_PATH, {"isWebPushAllowed": True, "webPushRegistration": token},
                        fallback=("PUT", SUB_PATH, {"registration": token}))
-        elif token != row.get("push_token"):
-            self._call("PUT", actor, SUB_PATH, {"registration": token})   # 다시 접속했는데 토큰이 바뀌었으면 등록만 갱신(끈 회원이면 백엔드가 무시)
+        else:
+            # 다시 접속할 때마다 등록을 갱신한다(웹 앱이 열릴 때 하는 것과 같다). 백엔드가 그사이 등록을 지웠을 수 있다
+            # (FCM 이 UNREGISTERED 를 돌려주면 지운다, 2026-10-05 FID 발송 버그 때 실제로 지워졌다). 끈 회원이면 백엔드가 무시한다
+            self._call("PUT", actor, SUB_PATH, {"registration": token})
         me = {}
         try:
             me = (self._call("GET", actor, "/v1/members/me") or {}).get("data") or {}

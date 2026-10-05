@@ -255,11 +255,13 @@ steps:
         self.assertEqual(self.net.subs, {"fcm-qa-guest": "guest-1", "fcm-qa-host": "host-1"})          # 그 회원 이름으로 기기 등록
         r = self.app.store.get_receiver(BASE, "qa-guest")
         self.assertEqual((r["status"], r["email"]), ("listening", "moimyeon.qa+qa-guest@gmail.com"))
+        self.net.subs.pop("fcm-qa-guest")                                                              # 백엔드가 그사이 등록을 지웠다(FCM UNREGISTERED)
         guest = next(c for c in FakeClient.made if c.ctx == "qa-guest")
-        self.net.on_comment = lambda: guest.push(PUSH, "p-1")
+        self.net.on_comment = lambda: guest.push(PUSH, "p-1") if self.net.subs.get("fcm-qa-guest") == "guest-1" else None
         rc, steps = self.run_case(self.CASE)
         self.assertEqual(rc["verdict"], "pass", rc["error"])
         self.assertEqual([s["verdict"] for s in steps], ["pass", "pass", "pass"])
+        self.assertEqual(self.net.subs.get("fcm-qa-guest"), "guest-1")                                 # 스크립트를 시작할 때 다시 등록했다
         self.assertEqual(steps[1]["request"]["method"], "NOTIFY")
         self.assertEqual([x["title"] for x in steps[1]["inbox"]], ["새 댓글이 달렸어요"])            # 받은 알림이 단계에 붙는다
         guest.push(PUSH, "p-1")                                                                     # FCM 재전달은 한 번만 담긴다
@@ -303,6 +305,12 @@ steps:
         self.app.receiver_off("qa-guest", operator="bebe")
         self.assertEqual(self.net.subs, {})                                                                # 예전 해제 API
         self.assertEqual(self.app.webpush_tokens(BASE), {})
+
+    def test_restore_reregisters(self):
+        self.app.receiver_on("qa-guest", operator="bebe")
+        self.net.subs.clear()                                                                           # 백엔드가 지웠다
+        self.app.push._connect("qa-guest", register=False)                                              # 재시작 뒤 다시 접속
+        self.assertEqual(self.net.subs, {"fcm-qa-guest": "guest-1"})
 
     def test_not_ready_is_skipped_but_case_goes_on(self):
         self.net.on_comment = None

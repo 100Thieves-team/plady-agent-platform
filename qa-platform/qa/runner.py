@@ -236,6 +236,12 @@ class Runner:
                       webpush=self.notify.webpush_tokens(base0) if self.notify else {})
         total_ms = 0
         verdict, err = "pass", None
+        push_to = {s["notify"]["to"] for s in case.steps if s.get("notify") and "web_push" in s["notify"]["channels"]}
+        if push_to and self.notify:
+            try:
+                self.notify.notify_prepare(push_to, base0)      # 웹 푸시 기기 등록 갱신 — 알림을 일으킬 API 단계보다 먼저
+            except Exception:
+                traceback.print_exc()
         action_at = datetime.now(timezone.utc)      # 알림 기다리기는 바로 앞 API 단계를 시작한 때부터 센다
         skipped_notes = []
         for i, step in enumerate(case.steps):

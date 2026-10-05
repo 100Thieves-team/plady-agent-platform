@@ -176,6 +176,15 @@ class App:
             return f"{actor} 의 메일 주소({em})가 플랫폼 메일함 주소가 아니다. QA 데이터 화면에서 QA 회원을 다시 만든다"
         return None
 
+    def notify_prepare(self, actors: set[str], base_url: str) -> None:
+        """스크립트를 시작하기 전에 알림을 기다릴 계정의 백엔드 기기 등록을 다시 보낸다. 알림은 앞 API 단계에서 나가므로 시작할 때 해야 한다.
+        백엔드가 그사이 등록을 지웠을 수 있다(FCM UNREGISTERED)."""
+        if base_url.rstrip("/") != self.cfg.target_base_url:
+            return
+        for a in actors:
+            if self.push.ready(a, base_url) is None:
+                self.push.refresh(a)
+
     def inbox_for(self, actor: str, channel: str, base_url: str, since: str) -> list[dict]:
         rows = self.store.list_inbox(base_url=base_url, actor=actor, channel=channel, since=since)
         if channel == "email":
