@@ -18,6 +18,7 @@ from . import inbox as I
 from .store import now_iso
 
 SUB_PATH = "/v1/members/me/web-push-subscriptions"
+SETTING_PATH = "/v1/members/me/notification-setting"       # 알림 수신 설정 (moimyeon-backend #147, MOI-544)
 
 
 class PushError(RuntimeError):
@@ -114,19 +115,30 @@ class PushReceivers:
                 pass
         if r.get("push_token"):
             try:
-                self._api("DELETE", actor, {"registration": r["push_token"]})
+                # 끄기는 그 회원의 웹 푸시 수신 설정을 끈다 — 백엔드가 모든 기기 등록을 지운다(#147). 예전 백엔드는 등록 해제 API
+                self._call("PATCH", actor, SETTING_PATH, {"isWebPushAllowed": False}, fallback=("DELETE", SUB_PATH, {"registration": r["push_token"]}))
             except Exception:
                 pass                     # 회원이 지워졌으면 등록도 이미 없다
         self.store.save_receiver(self.base, actor, enabled=0, status="off", error=None, push_token=None, operator=operator)
 
     # ---- 내부 ---------------------------------------------------------------------------
-    def _api(self, method: str, actor: str, body: dict | None = None):
+    def _call(self, method: str, actor: str, path: str, body: dict | None = None, *, fallback: tuple | None = None):
+        """테스트 계정으로 백엔드를 부른다. 404·405 면 fallback (method, path, body) 로 — #147 전의 백엔드."""
         token = self.actors.token(actor, self.base)
-        r = httpx.request(method, self.base + SUB_PATH if method != "GET" else self.base + "/v1/members/me",
-                          headers={"Authorization": "Bearer " + token, "Accept": "application/json"}, body=body, timeout=self.cfg.request_timeout)
+        r = httpx.request(method, self.base + path, headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                          body=body, timeout=self.cfg.request_timeout)
+        if fallback and r.status in (404, 405):
+            return self._call(fallback[0], actor, fallback[1], fallback[2])
         if r.error or r.status >= 300:
-            raise PushError(f"{method} {SUB_PATH if method != 'GET' else '/v1/members/me'} → {r.status or r.error}: {(r.text or '')[:200]}")
+            raise PushError(f"{method} {path} → {r.status or r.error}: {(r.text or '')[:200]}")
         return r.json
+
+    def setting(self, actor: str) -> dict | None:
+        """그 계정의 알림 수신 설정(GET notification-setting). 예전 백엔드거나 못 읽으면 None."""
+        try:
+            return ((self._call("GET", actor, SETTING_PATH) or {}).get("data")) or None
+        except Exception:
+            return None
 
     def _register_config(self):
         fm = _lib()
@@ -148,11 +160,14 @@ class PushReceivers:
                                   config=fm.FcmPushClientConfig(abort_on_sequential_error_count=None))
         token = self._run(client.checkin_or_register())
         self.store.save_receiver(self.base, actor, credentials=json.dumps(client.credentials))
-        if register or token != row.get("push_token"):
-            self._api("PUT", actor, {"registration": token})       # 토큰이 바뀌었으면 백엔드 등록도 바꾼다
+        if register:                # [웹 푸시 받기] — 그 계정의 웹 푸시 수신을 켜고 이 기기를 등록한다(#147). 예전 백엔드는 등록만
+            self._call("PATCH", actor, SETTING_PATH, {"isWebPushAllowed": True, "webPushRegistration": token},
+                       fallback=("PUT", SUB_PATH, {"registration": token}))
+        elif token != row.get("push_token"):
+            self._call("PUT", actor, SUB_PATH, {"registration": token})   # 다시 접속했는데 토큰이 바뀌었으면 등록만 갱신(끈 회원이면 백엔드가 무시)
         me = {}
         try:
-            me = (self._api("GET", actor) or {}).get("data") or {}
+            me = (self._call("GET", actor, "/v1/members/me") or {}).get("data") or {}
         except Exception:
             pass
         self._run(client.start())

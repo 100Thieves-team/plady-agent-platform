@@ -4,6 +4,7 @@
   {{name}}                  save 로 저장된 변수
   {{actor.X.memberId}}      테스트 계정 X 의 회원 UUID
   {{fixture.key}}           환경 픽스처 (키에 점이 있어도 정확히 일치하는 키를 먼저 본다)
+  {{webpush.X}}             테스트 계정 X 의 플랫폼 웹 푸시 수신기 FCM 토큰 (알림 수신 설정을 다시 켤 때, docs/qa-platform-v2.md §15)
   {{date:+N}} / {{date:-N}} 오늘(KST) 기준 N 일 뒤/전 ISO 날짜
   {{uuid}} / {{rand}}       임의값
   {{time:rand}}             09:00~20:50 사이 10분 단위 임의 시각(HH:MM). 룸 생성은 (방장, 공고, 직무, 시작 시각)이 같으면
@@ -36,8 +37,9 @@ class TemplateError(KeyError):
 
 class Context:
     def __init__(self, actors: dict | None = None, fixtures: dict | None = None, variables: dict | None = None,
-                 today: datetime | None = None):
+                 today: datetime | None = None, webpush: dict | None = None):
         self.actors = actors or {}
+        self.webpush = webpush or {}
         self.fixtures = fixtures or {}
         self.vars = dict(variables or {})
         self.today = today
@@ -64,6 +66,11 @@ class Context:
             if len(parts) != 3 or parts[2] != "memberId" or parts[1] not in self.actors:
                 raise TemplateError(expr, "actor")
             return self.actors[parts[1]]
+        if expr.startswith("webpush."):
+            name = expr[len("webpush."):]
+            if not self.webpush.get(name):
+                raise TemplateError(expr, "webpush")
+            return self.webpush[name]
         if expr.startswith("fixture."):
             key = expr[len("fixture."):]
             if key in self.fixtures:

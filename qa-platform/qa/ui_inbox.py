@@ -66,7 +66,8 @@ def cards(items: list[dict], *, new: bool = False) -> str:
     return "".join(card(x, new=new) for x in items)
 
 
-def _receiver_row(actor: str, r: dict | None, *, selected: bool, operator: str, push_why: str | None, mail_why: str | None, mail_mine) -> str:
+def _receiver_row(actor: str, r: dict | None, *, selected: bool, operator: str, push_why: str | None, mail_why: str | None, mail_mine,
+                  setting: dict | None = None) -> str:
     r = r or {}
     if push_why:
         push = f'<span class="off">웹 푸시 쓸 수 없음</span>'
@@ -97,16 +98,20 @@ def _receiver_row(actor: str, r: dict | None, *, selected: bool, operator: str, 
         btn = (f'<form method="post" action="/inbox/receivers/on" onclick="event.stopPropagation()"><input type="hidden" name="actor" value="{e(actor)}">'
                f'<input type="hidden" name="operator" value="{e(operator)}"><button class="soft" {dis} title="플랫폼을 이 계정의 웹 푸시 기기로 등록해요">웹 푸시 받기</button></form>')
     last = f' · 마지막 {_ago(r.get("last_at"))}' if r.get("last_at") else ""
+    off = [n for k, n in (("isWebPushAllowed", "웹 푸시"), ("isActivityEmailEnabled", "메일")) if (setting or {}).get(k) is False]
+    if off:     # 백엔드 알림 수신 설정(#147)을 스크립트나 사람이 꺼 둔 채다 — 그 채널 알림은 오지 않는다
+        mail += f'<span class="err" title="이 계정의 알림 수신 설정에서 꺼져 있어 백엔드가 그 채널로 보내지 않아요. 웹 푸시는 [끄기] 뒤 [웹 푸시 받기]로 다시 켜요">수신 설정 꺼짐: {e(" · ".join(off))}</span>'
     return (f'<div class="li link{" sel" if selected else ""}" onclick="location.href=\'/inbox?{urlencode({"actor": actor})}\'"><div class="dot info">{e(actor.removeprefix("qa-")[:2].upper())}</div>'
             f'<div class="tx"><div class="t">{e(actor)}</div><div class="st">{push}{mail}{("<span>" + e(last.strip(" ·")) + "</span>") if last else ""}</div></div>{btn}</div>')
 
 
 def inbox_page(*, items: list[dict], actors: list[str], receivers: dict, filters: dict, operator: str, push_why: str | None, mail_why: str | None,
-               mail_state: dict, mail_mine, counts: dict, target: dict) -> str:
+               mail_state: dict, mail_mine, counts: dict, target: dict, settings: dict | None = None) -> str:
     actor = filters.get("actor") or ""
     who = (f'<div class="li link{" sel" if not actor else ""}" onclick="location.href=\'/inbox\'"><div class="dot">전체</div>'
            f'<div class="tx"><div class="t">모든 계정</div><div class="st">받은 알림 {counts.get("all", 0)}건</div></div></div>')
-    who += "".join(_receiver_row(a, receivers.get(a), selected=a == actor, operator=operator, push_why=push_why, mail_why=mail_why, mail_mine=mail_mine)
+    who += "".join(_receiver_row(a, receivers.get(a), selected=a == actor, operator=operator, push_why=push_why, mail_why=mail_why, mail_mine=mail_mine,
+                                 setting=(settings or {}).get(a))
                    for a in actors) or '<div class="empty"><b>테스트 계정이 없어요</b>QA 데이터 화면에서 QA 회원을 만들어 주세요.</div>'
     if push_why:
         push = f'<span><b>웹 푸시</b><span class="off">꺼짐</span> · {e(push_why)}</span>'

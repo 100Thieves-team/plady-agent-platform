@@ -231,7 +231,9 @@ class Runner:
         except Exception as e:
             self.store.update_run_case(rcid, verdict="error", error=f"스크립트 스냅샷 파싱 실패: {e}")
             return "error", 0, str(e)
-        ctx = Context(actors=self.actors.mapping(), fixtures=self.cfg.fixtures)
+        base0 = run["base_url"] or self.cfg.target_base_url
+        ctx = Context(actors=self.actors.mapping(), fixtures=self.cfg.fixtures,
+                      webpush=self.notify.webpush_tokens(base0) if self.notify else {})
         total_ms = 0
         verdict, err = "pass", None
         action_at = datetime.now(timezone.utc)      # 알림 기다리기는 바로 앞 API 단계를 시작한 때부터 센다
@@ -329,8 +331,8 @@ class Runner:
             record.update({"url": url, "query": req.get("query"), "body": req.get("body"),
                            "headers": {k: ("Bearer ***" if k == "Authorization" else v) for k, v in headers.items()}})
         except TemplateError as e:
-            verdict = "skipped" if (e.kind in ("actor", "fixture") or after_failure) else "error"
-            msg = (f"{'테스트 계정' if e.kind == 'actor' else '픽스처'} 미설정: {e}" if e.kind in ("actor", "fixture") else
+            verdict = "skipped" if (e.kind in ("actor", "fixture", "webpush") or after_failure) else "error"
+            msg = (f"{ {'actor': '테스트 계정', 'fixture': '픽스처', 'webpush': '웹 푸시 수신기'}[e.kind]} 미설정: {e}" if e.kind in ("actor", "fixture", "webpush") else
                    (f"앞 단계가 실패해 값이 없어 이 정리 단계를 건너뛰었다: {e}" if after_failure else str(e)))
             self.store.add_step(rcid, i, name, record, None, [], verdict, 0, msg, op_id=op_id)
             return verdict, 0, msg

@@ -44,7 +44,9 @@ DRAFT_SYSTEM = (
     "type 은 ROOM_APPLICATION_SUBMITTED · ROOM_APPLICATION_ACCEPTED · ROOM_APPLICATION_REJECTED · ROOM_CONFIRMED · ROOM_APPLICATION_CLOSED · ROOM_COMPLETED · "
     "ROOM_CANCELED · ROOM_HOST_DELEGATED · ROOM_HOST_CHANGED · REVIEW_PUBLISHED · ROOM_COMMENT_POSTED 중 하나. "
     "채널은 백엔드 발송 정책을 따른다: 수락·확정(참여자)·취소는 웹 푸시와 메일 둘 다, 후기 공개·댓글은 웹 푸시만, 나머지는 웹 푸시(닿지 않으면 메일)라 web_push 만 쓴다. "
-    "알림 단계는 정리 단계보다 앞에 둔다."
+    "알림 단계는 정리 단계보다 앞에 둔다. "
+    "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 PUSH_ELSE_EMAIL 은 메일로, PUSH_ONLY 는 오지 않음을 확인할 수 있다. "
+    "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰)."
 )
 
 

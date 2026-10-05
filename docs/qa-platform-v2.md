@@ -561,3 +561,13 @@ API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `not
 사용자 결정: 앱 비밀번호 하나를 공용으로 쓴다. QA 메일함은 dev 백엔드의 Gmail 대체 발송 계정 `100dodukteam@gmail.com` 이고, 비밀번호는 백엔드가 이미 쓰는 SSM `/moimyeon/dev/core-worker/NOTIFICATION_EMAIL_GMAIL_APP_PASSWORD` 를 ec2-deploy 가 그대로 읽는다(같은 AWS 계정, 인스턴스 역할 AmazonSSMManagedInstanceCore). QA 회원 주소는 `100dodukteam+qa-{key}@gmail.com`(백엔드 dev 기본값).
 
 알아 둘 것: 플랫폼은 팀 메일함 전체를 읽기 전용으로 훑고 `+` 주소로 온 메일만 담는다. SES 가 실패해 같은 계정이 Gmail 로 대신 보낸 메일은 받은편지함에 안 들어올 수 있어 놓칠 수 있다. 비밀번호를 바꾸면 백엔드와 플랫폼이 함께 바뀐다(다음 배포 때 읽는다).
+
+### 15.13 백엔드 알림 수신 설정(moimyeon-backend #147, MOI-544)에 맞춤 (2026-10-05)
+
+#147 이 `GET`·`PATCH /v1/members/me/notification-setting` 을 더하고 `DELETE /v1/members/me/web-push-subscriptions` 를 없앴다. worker 는 보내기 직전에 회원 설정을 보고 채널을 뺀다(웹 푸시를 못 받으면 PUSH_ELSE_EMAIL 은 메일, 둘 다 끄면 없음).
+
+- 수신기 [웹 푸시 받기] 는 `PATCH {isWebPushAllowed: true, webPushRegistration: 토큰}` 으로 그 계정의 웹 푸시 수신을 켜고 등록한다. [끄기] 는 `PATCH {isWebPushAllowed: false}` 라 그 계정의 모든 기기 등록이 지워진다. 재시작 뒤 토큰이 바뀌면 `PUT` 으로 등록만 갱신한다(끈 계정이면 백엔드가 무시). #147 전 백엔드면 예전 등록·해제 API 로 되돌아간다.
+- 스크립트 치환 `{{webpush.테스트 계정}}`: 켜 둔 수신기의 FCM 토큰. 스크립트가 웹 푸시를 껐다가 다시 켤 때 쓴다. 수신기가 꺼져 있으면 그 스크립트는 건너뛴다.
+- 알림함은 계정마다 백엔드 수신 설정을 읽어, 웹 푸시나 메일이 꺼져 있으면 "수신 설정 꺼짐" 을 보인다.
+- Hermes 스크립트 규칙: 설정을 바꾸는 스크립트는 `always: true` 정리 단계로 되돌린다.
+- 알아 둘 것: 백엔드 QA 계정 초기화(`POST /v1/dev/members/{id}/reset`)는 알림 수신 설정을 되돌리지 않는다. 설정을 끈 스크립트가 정리 전에 멈추면 그 계정은 꺼진 채로 남는다.

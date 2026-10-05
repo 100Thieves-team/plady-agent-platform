@@ -185,6 +185,12 @@ class App:
                 rows += [x for x in self.store.list_inbox(channel="email", address=em, since=since) if x["id"] not in seen]
         return sorted(rows, key=lambda x: x["id"])
 
+    def webpush_tokens(self, base_url: str) -> dict:
+        """{{webpush.X}} — 켜 둔 수신기의 FCM 토큰. 스크립트가 알림 수신 설정을 다시 켤 때 쓴다(PATCH notification-setting)."""
+        if base_url.rstrip("/") != self.cfg.target_base_url:
+            return {}
+        return {r["actor"]: r["push_token"] for r in self.store.list_receivers(self.cfg.target_base_url) if r["enabled"] and r["push_token"]}
+
     def poll_mail(self) -> None:
         self.mail.poll(min_gap=3)
 
@@ -2818,7 +2824,8 @@ class Handler(BaseHTTPRequestHandler):
             body = ui_inbox.inbox_page(items=items, actors=actors, receivers=receivers, filters=filters, operator=self._operator(),
                                        push_why=app.push.unavailable(), mail_why=app.mail.unavailable(),
                                        mail_state={"error": app.mail.error, "last_ok": app.mail.last_ok, "user": app.cfg.mail_user},
-                                       mail_mine=app.mail.mine, counts=counts, target=app.target_for(self._operator()))
+                                       mail_mine=app.mail.mine, counts=counts, target=app.target_for(self._operator()),
+                                       settings={a: app.push.setting(a) for a in actors})
             return self._page("알림함", body, "inbox")
         m = re.match(r"^/inbox/(receivers/on|receivers/off|refresh)$", path)
         if m and method == "POST":

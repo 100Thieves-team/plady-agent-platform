@@ -38,11 +38,14 @@ def mail(to: str, subject: str, body: str, link: str, mid: str = "<1@ses>") -> b
 
 
 class Backend:
-    """dev 흉내 — 요청을 적고, 댓글을 달면 그 룸 참여자에게 웹 푸시가 온 것처럼 수신기 콜백을 부른다."""
+    """dev 흉내 — 요청을 적고, 댓글을 달면 그 룸 참여자에게 웹 푸시가 온 것처럼 수신기 콜백을 부른다.
+    알림 수신 설정(#147): PATCH 로 켜면 기기 등록, 끄면 그 회원 기기를 모두 지우고 그 뒤 PUT 은 무시. old=True 면 #147 전(등록·해제 API)."""
 
-    def __init__(self):
+    def __init__(self, old: bool = False):
         self.sent = []
         self.subs = {}
+        self.allowed = {}
+        self.old = old
         self.on_comment = None
         self.emails = {"guest-1": "moimyeon.qa+qa-guest@gmail.com", "host-1": "moimyeon.qa+qa-host@gmail.com"}
 
@@ -51,11 +54,25 @@ class Backend:
         who = (headers or {}).get("Authorization", "").replace("Bearer tok-", "")
         if url.endswith("/v1/auth/dev-sessions"):
             return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"accessToken": "tok-" + body["memberId"]}}), 1)
+        if url.endswith(pushrecv.SETTING_PATH):
+            if self.old:
+                return httpx.HttpResult(404, {}, "", 1)
+            if method == "PATCH":
+                if body.get("isWebPushAllowed") is True:
+                    self.allowed[who] = True
+                    self.subs[body["webPushRegistration"]] = who
+                elif body.get("isWebPushAllowed") is False:
+                    self.allowed[who] = False
+                    self.subs = {k: v for k, v in self.subs.items() if v != who}
+            return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"isWebPushAllowed": self.allowed.get(who, True), "isActivityEmailEnabled": True}}), 1)
         if url.endswith(pushrecv.SUB_PATH):
             if method == "PUT":
-                self.subs[body["registration"]] = who
-            else:
+                if self.allowed.get(who, True):
+                    self.subs[body["registration"]] = who
+            elif self.old:
                 self.subs.pop(body["registration"], None)
+            else:
+                return httpx.HttpResult(405, {}, "", 1)               # #147 에서 DELETE 가 없어졌다
             return httpx.HttpResult(204 if method == "DELETE" else 200, {}, "", 1)
         if url.endswith("/v1/members/me"):
             return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"memberId": who, "email": self.emails.get(who, "x@qa.moimyeon.test")}}), 1)
@@ -253,11 +270,39 @@ steps:
         rc, steps = self.run_case(self.CASE)
         self.assertEqual((rc["verdict"], steps[2]["verdict"]), ("fail", "fail"))
         self.assertIn("1건 옴", steps[2]["error"])
+        # 스크립트가 수신 설정을 껐다가 수신기 토큰으로 다시 켠다
+        rc, steps = self.run_case("""
+id: member.push-toggle
+title: 웹 푸시 끄고 다시 켜기
+suite: sanity
+covers: [C.member.update_notification_setting]
+actor: qa-guest
+steps:
+  - name: 끈다
+    request: {method: PATCH, path: /v1/members/me/notification-setting, body: {isWebPushAllowed: false}}
+    expect: {status: 200}
+  - name: 수신기 토큰으로 다시 켠다
+    request: {method: PATCH, path: /v1/members/me/notification-setting, body: {isWebPushAllowed: true, webPushRegistration: "{{webpush.qa-guest}}"}}
+    expect: {status: 200}
+""")
+        self.assertEqual(rc["verdict"], "pass", rc["error"])
+        self.assertEqual(self.net.subs.get("fcm-qa-guest"), "guest-1")
         self.app.receiver_off("qa-guest", operator="bebe")
         self.assertNotIn("fcm-qa-guest", self.net.subs)
+        self.assertIs(self.net.allowed["guest-1"], False)                                                  # 끄기는 그 계정의 웹 푸시 수신을 끈다
+        self.app.receiver_on("qa-guest", operator="bebe")                                                 # 다시 켜면 설정도 켜진다
+        self.assertEqual((self.net.subs.get("fcm-qa-guest"), self.net.allowed["guest-1"]), ("guest-1", True))
         acts = [x["action"] for x in self.app.store.list_events(20)]
         for a in ("notify.receiver.on", "notify.receiver.off"):
             self.assertIn(a, acts)
+
+    def test_old_backend_falls_back(self):
+        self.net.old = True
+        self.app.receiver_on("qa-guest", operator="bebe")
+        self.assertEqual(self.net.subs, {"fcm-qa-guest": "guest-1"})                                     # 예전 등록 API
+        self.app.receiver_off("qa-guest", operator="bebe")
+        self.assertEqual(self.net.subs, {})                                                                # 예전 해제 API
+        self.assertEqual(self.app.webpush_tokens(BASE), {})
 
     def test_not_ready_is_skipped_but_case_goes_on(self):
         self.net.on_comment = None
@@ -309,6 +354,13 @@ steps:
                                    mail_state={"user": MAILBOX}, mail_mine=self.app.mail.mine, counts={"all": 1}, target={"default": True})
         for frag in ("알림함", "● 웹 푸시 받는 중", "새 댓글이 달렸어요", "→ /rooms/r-1", "웹 푸시 받기", "메일 받는 중", "메일함 지금 읽기"):
             self.assertIn(frag, html)
+        self.app.push._call("PATCH", "qa-guest", pushrecv.SETTING_PATH, {"isWebPushAllowed": False})          # 스크립트가 끈 채로 끝났다
+        settings = {x: self.app.push.setting(x) for x in self.app.notify_actors()}
+        self.assertIs(settings["qa-guest"]["isWebPushAllowed"], False)
+        html = ui_inbox.inbox_page(items=items, actors=self.app.notify_actors(), receivers=receivers, filters={}, operator="bebe", push_why=None,
+                                   mail_why=None, mail_state={"user": MAILBOX}, mail_mine=self.app.mail.mine, counts={"all": 1}, target={"default": True},
+                                   settings=settings)
+        self.assertEqual(html.count("수신 설정 꺼짐: 웹 푸시"), 1)
         self.assertEqual(self.app.inbox_items({}, after_id=items[0]["id"]), [])
         self.assertEqual(len(self.app.inbox_items({"channel": "email"})), 0)
 
