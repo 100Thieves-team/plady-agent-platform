@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import sys
 import threading
 import traceback
 
@@ -68,6 +70,12 @@ class PushReceivers:
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         with self._lock:
             if self._loop is None:
+                lg = logging.getLogger("firebase_messaging")          # 연결·복호화 경고를 컨테이너 로그로 (원인 찾기)
+                if not lg.handlers:
+                    h = logging.StreamHandler(sys.stderr)
+                    h.setFormatter(logging.Formatter("[fcm] %(levelname)s %(message)s"))
+                    lg.addHandler(h)
+                    lg.setLevel(logging.INFO)
                 loop = asyncio.new_event_loop()
                 threading.Thread(target=loop.run_forever, name="fcm-receivers", daemon=True).start()
                 self._loop = loop
@@ -178,10 +186,12 @@ class PushReceivers:
             except Exception:
                 pass
         self._clients[actor] = client
+        print(f"[push] {actor} listening (token {token[:8]}…, registered={register})", file=sys.stderr, flush=True)
         self.store.save_receiver(self.base, actor, push_token=token, status="listening", error=None,
                                  member_id=me.get("memberId") or row.get("member_id"), email=(me.get("email") or row.get("email") or "").lower() or None)
 
     def _on_message(self, msg: dict, persistent_id: str, actor) -> None:
+        print(f"[push] {actor} received {persistent_id} keys={sorted(msg) if isinstance(msg, dict) else type(msg).__name__}", file=sys.stderr, flush=True)
         try:
             item = I.from_push(msg)
             item["persistent_id"] = persistent_id

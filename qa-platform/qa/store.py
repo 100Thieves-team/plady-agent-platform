@@ -137,6 +137,8 @@ class Store:
             self._db.executescript(SANITY_SQL)
             self._db.executescript(TARGETS_SQL)
             self._db.executescript(INBOX_SQL)
+            # 2026-10-05: + 주소가 아닌 팀 메일 주소로 온 메일을 담던 버그로 들어온 행을 지운다(공용 메일함의 팀 메일)
+            self._db.execute("DELETE FROM inbox WHERE channel='email' AND (address IS NULL OR instr(address, '+') = 0)")
 
     # ---- 공통 --------------------------------------------------------------
     def _q(self, sql: str, args: tuple = ()) -> list[dict]:

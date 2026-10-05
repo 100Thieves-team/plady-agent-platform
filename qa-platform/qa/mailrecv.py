@@ -32,12 +32,12 @@ class MailReader:
         return None
 
     def mine(self, address: str | None) -> bool:
-        """이 메일함의 + 주소인가."""
+        """이 메일함의 + 주소인가. 메일함 주소 그대로 온 메일은 팀 메일이라 담지 않는다(공용 계정, §15.12)."""
         if not address or "@" not in self.cfg.mail_user:
             return False
         user, dom = self.cfg.mail_user.lower().split("@", 1)
         a = address.lower()
-        return a.endswith("@" + dom) and (a.split("@")[0] == user or a.split("@")[0].startswith(user + "+"))
+        return a.endswith("@" + dom) and a.split("@")[0].startswith(user + "+")
 
     def start(self) -> None:
         if self.unavailable():

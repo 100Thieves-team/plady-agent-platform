@@ -314,6 +314,7 @@ steps:
 
     def test_mail_reader_and_email_step(self):
         self.boxes["INBOX"].append(mail("someone@else.com", "광고", "x", "https://x.io"))                         # QA 주소가 아니면 담지 않는다
+        self.boxes["INBOX"].append(mail(MAILBOX, "Weekly Report", "팀 메일", "https://x.io", "<3@x>"))          # 메일함 주소 그대로 온 팀 메일도 담지 않는다
         self.boxes["[Gmail]/&wqTVOA-"].append(mail("moimyeon.qa+qa-guest@gmail.com", "참가 신청이 수락되었어요", "'[QA] 룸' 모임에 참여할 수 있게 되었어요.",
                                                    "https://dev.moimyeon.plady.io/rooms/r-9", "<2@ses>"))
         self.assertEqual(self.app.mail.poll(), 1)                                                   # 스팸함도 읽는다
