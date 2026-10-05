@@ -555,3 +555,9 @@ API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `not
 - 배포: 이미지에 `firebase-messaging`. SSM `qa-fcm-web-config`(Firebase 웹 앱 설정 JSON), `qa-mail-user`, `qa-mail-app-password`. 없으면 그 채널만 꺼진다.
 - 시험: tests/test_notify.py 8건(가짜 FCM 라이브러리·가짜 IMAP).
 - 아직 안 한 것: 실제 FCM 수신 시험(Firebase 웹 앱 설정을 받은 뒤), 백엔드 PR(moimyeon-backend#150) 머지와 dev 의 `QA_MEMBER_EMAIL_TEMPLATE`.
+
+### 15.12 메일함 결정 (2026-10-05)
+
+사용자 결정: 앱 비밀번호 하나를 공용으로 쓴다. QA 메일함은 dev 백엔드의 Gmail 대체 발송 계정 `100dodukteam@gmail.com` 이고, 비밀번호는 백엔드가 이미 쓰는 SSM `/moimyeon/dev/core-worker/NOTIFICATION_EMAIL_GMAIL_APP_PASSWORD` 를 ec2-deploy 가 그대로 읽는다(같은 AWS 계정, 인스턴스 역할 AmazonSSMManagedInstanceCore). QA 회원 주소는 `100dodukteam+qa-{key}@gmail.com`(백엔드 dev 기본값).
+
+알아 둘 것: 플랫폼은 팀 메일함 전체를 읽기 전용으로 훑고 `+` 주소로 온 메일만 담는다. SES 가 실패해 같은 계정이 Gmail 로 대신 보낸 메일은 받은편지함에 안 들어올 수 있어 놓칠 수 있다. 비밀번호를 바꾸면 백엔드와 플랫폼이 함께 바뀐다(다음 배포 때 읽는다).

@@ -38,8 +38,10 @@
 #     Absent -> approval still works, the draft page offers the changed file for a manual commit)
 #   QA_FCM_WEB_CONFIG_PARAM=/plady/agent-platform/<env>/qa-fcm-web-config (optional; Firebase web app config JSON
 #     {apiKey, appId, projectId, messagingSenderId} of the dev Firebase project. Public values. Absent -> no web push receiver)
-#   QA_MAIL_USER_PARAM / QA_MAIL_APP_PASSWORD_PARAM=/plady/agent-platform/<env>/qa-mail-user · qa-mail-app-password
-#     (optional; QA mailbox read over IMAP for notification QA, docs/qa-platform-v2.md §15. Absent -> no mail receiver)
+#   QA_MAIL_USER_PARAM=/plady/agent-platform/<env>/qa-mail-user (optional; default 100dodukteam@gmail.com, the dev backend's
+#     Gmail fallback sender). QA_MAIL_APP_PASSWORD_PARAM defaults to the backend's own Gmail app password
+#     /moimyeon/<env>/core-worker/NOTIFICATION_EMAIL_GMAIL_APP_PASSWORD (same account; one shared app password, user decision 2026-10-05).
+#     QA mailbox read over IMAP for notification QA, docs/qa-platform-v2.md §15. No password -> no mail receiver
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -87,7 +89,7 @@ QA_REPO_TOKEN_PARAM="${QA_REPO_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV
 QA_MCP_TOKEN_PARAM="${QA_MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mcp-token}"
 QA_FCM_WEB_CONFIG_PARAM="${QA_FCM_WEB_CONFIG_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fcm-web-config}"
 QA_MAIL_USER_PARAM="${QA_MAIL_USER_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mail-user}"
-QA_MAIL_APP_PASSWORD_PARAM="${QA_MAIL_APP_PASSWORD_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mail-app-password}"
+QA_MAIL_APP_PASSWORD_PARAM="${QA_MAIL_APP_PASSWORD_PARAM:-/moimyeon/${PLATFORM_ENV}/core-worker/NOTIFICATION_EMAIL_GMAIL_APP_PASSWORD}"
 
 COMPOSE_FILE="${APP_DIR}/compose.ec2.yaml"
 ENV_FILE="${APP_DIR}/.env.ec2"
@@ -160,10 +162,10 @@ QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
 QA_FCM_WEB_CONFIG="$(ssm_get "$QA_FCM_WEB_CONFIG_PARAM")"
 [ "$QA_FCM_WEB_CONFIG" = "None" ] && QA_FCM_WEB_CONFIG=""
 QA_MAIL_USER="$(ssm_get "$QA_MAIL_USER_PARAM")"
-[ "$QA_MAIL_USER" = "None" ] && QA_MAIL_USER=""
+{ [ "$QA_MAIL_USER" = "None" ] || [ -z "$QA_MAIL_USER" ]; } && QA_MAIL_USER="100dodukteam@gmail.com"
 QA_MAIL_APP_PASSWORD="$(ssm_get "$QA_MAIL_APP_PASSWORD_PARAM")"
 [ "$QA_MAIL_APP_PASSWORD" = "None" ] && QA_MAIL_APP_PASSWORD=""
-echo "  qa-platform notify QA: web push $([ -n "$QA_FCM_WEB_CONFIG" ] && echo "on" || echo "off (${QA_FCM_WEB_CONFIG_PARAM} absent)"); mail $([ -n "$QA_MAIL_USER" ] && [ -n "$QA_MAIL_APP_PASSWORD" ] && echo "on" || echo "off (qa-mail-user / qa-mail-app-password absent)")"
+echo "  qa-platform notify QA: web push $([ -n "$QA_FCM_WEB_CONFIG" ] && echo "on" || echo "off (${QA_FCM_WEB_CONFIG_PARAM} absent)"); mail $([ -n "$QA_MAIL_APP_PASSWORD" ] && echo "on (${QA_MAIL_USER})" || echo "off (${QA_MAIL_APP_PASSWORD_PARAM} absent)")"
 echo "  qa-platform: on (actors $([ -n "$QA_ACTORS" ] && echo present || echo ABSENT — actor cases will be skipped); fixtures $([ -n "$QA_FIXTURES" ] && echo present || echo absent); github token $([ -n "$QA_GITHUB_TOKEN" ] && echo present || echo absent); repo write $([ -n "$QA_REPO_TOKEN" ] && echo "present — saves commit to main" || echo "absent — saves offer a file"); qa mcp $([ -n "$QA_MCP_TOKEN" ] && echo "present — hermes gets QA tools" || echo "ABSENT — ${QA_MCP_TOKEN_PARAM} missing, hermes has no QA tools"))"
 if [ -n "$WIKI_SLACK_WEBHOOK_URL" ]; then
   echo "  wiki slack notify: on (webhook present)"
