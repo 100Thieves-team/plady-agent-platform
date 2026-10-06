@@ -25,7 +25,7 @@ TOURS: dict[str, list[dict]] = {
     ],
     "sanity": [
         {"title": "Sanity 테스트", "body": "머지된 PR 하나가 스펙대로 동작하는지 확인해요. 사람은 PR 을 고르고 [Sanity 시작]만 누르면 돼요. 나머지는 Hermes 와 플랫폼이 해요."},
-        {"sel": "[data-tour=prs]", "title": "PR 목록", "body": "dev 로 머지된 PR 이 최신순으로 있어요. API 가 바뀐 PR 이 위에, 인프라·문서만 바꾼 PR 은 흐리게 아래에 있어요. 오른쪽 표시로 검증했는지 알 수 있어요."},
+        {"sel": "[data-tour=prs]", "title": "PR 목록", "body": "dev 로 머지된 PR 이 최신순으로 있어요. API 나 동작 코드를 바꾼 PR 이 위에, 시험·문서·인프라만 바꾼 PR 은 흐리게 아래에 있어요. 응답·요청 DTO 만 바꿔도 API 변경으로 봐요. 오른쪽 표시로 검증했는지 알 수 있어요."},
         {"sel": "[data-tour=tabs]", "title": "거르기", "body": "검증 안 함 · 확인 필요 · 끝남 으로 거를 수 있어요."},
         {"sel": "[data-tour=start]", "title": "시작", "body": "누르면 확인 창이 떠요. 시작하면 관련 스펙 찾기 → 스펙 점검 → 케이스 준비 → 스크립트 만들기 → 실행 순서로 진행해요. 머지만으로는 저절로 시작하지 않아요."},
         {"sel": "[data-tour=steps]", "title": "다섯 단계", "body": "지금 어디까지 왔는지 보여요. 주황색 ! 는 사람이 정해야 해서 멈춘 곳이에요."},

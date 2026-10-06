@@ -571,3 +571,12 @@ API 단계 뒤에 "알림 기다리기" 단계를 둔다. 새 단계 종류 `not
 - 알림함은 계정마다 백엔드 수신 설정을 읽어, 웹 푸시나 메일이 꺼져 있으면 "수신 설정 꺼짐" 을 보인다.
 - Hermes 스크립트 규칙: 설정을 바꾸는 스크립트는 `always: true` 정리 단계로 되돌린다.
 - 알아 둘 것: 백엔드 QA 계정 초기화(`POST /v1/dev/members/{id}/reset`)는 알림 수신 설정을 되돌리지 않는다. 설정을 끈 스크립트가 정리 전에 멈추면 그 계정은 꺼진 채로 남는다.
+
+### 15.14 고친 것: "API 변경 없음" 판단 (2026-10-06)
+
+PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticipants` 를 더했는데 플랫폼이 "API 변경 없음 · 인프라·로그·문서만 바뀐 PR" 이라고 보였다. 판단이 `…Controller.kt` 파일만 보았기 때문이다.
+
+이제 PR 을 셋으로 나눈다(`sanity.summarize` 의 scope).
+- API 변경: 컨트롤러와 그 아래 요청·응답 DTO(`/controller/**`), API 문서(`src/docs/asciidoc`). 화면에 모양이 바뀐 DTO 이름을 보인다.
+- 동작 변경: 그 밖의 `src/main` 코드(도메인·파사드·저장소·마이그레이션). API 모양은 그대로여도 Sanity 대상이다.
+- 변경 없음: 시험 코드·작업 기록·문서·인프라만.

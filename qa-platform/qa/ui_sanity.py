@@ -59,6 +59,16 @@ def _status(s: dict | None, api: bool) -> str:
     return '<span class="b none">검증 안 함</span>' if api else ""
 
 
+def _scope_line(p: dict) -> str:
+    """API 를 어떻게 바꿨나 — 응답·요청 모양을 바꾼 DTO 이름까지."""
+    sc = p.get("scope") or ("api" if p["api"] else "none")
+    if sc == "api" and p.get("contract"):
+        return f'요청·응답 모양이 바뀌었어요: <span class="mono">{e(", ".join(p["contract"][:4]))}</span>{" 외" if len(p["contract"]) > 4 else ""}'
+    if sc == "code":
+        return "API 모양은 그대로지만 동작을 바꾼 코드가 있어요"
+    return ""
+
+
 def _pr_row(p: dict, sel: int | None) -> str:
     return (f'<a class="li {"sel" if p["number"] == sel else ""} {"" if p["api"] else "faded"}" href="/sanity/{p["number"]}">'
             f'<div class="tx"><div class="t">#{p["number"]} {e(p["title"])}</div>'
@@ -86,14 +96,18 @@ def _start_dialog(p: dict, operator: str, target: str) -> str:
 def _not_started(p: dict, operator: str, target: str, hermes: bool) -> str:
     why = "" if hermes else '<p class="hint bad" style="padding:0 18px">HERMES_API_KEY 가 없어 지금은 시작할 수 없어요.</p>'
     if p["api"]:
-        body = ('<div class="empty" style="padding:48px"><b>아직 이 PR 을 검증하지 않았어요</b>시작하면 관련 스펙 찾기 → 스펙 점검 → 케이스 준비 → 스크립트 만들기 → 실행 순서로 진행해요.'
+        sl = _scope_line(p)
+        body = ('<div class="empty" style="padding:48px"><b>아직 이 PR 을 검증하지 않았어요</b>'
+                + (f'{sl}.<br>' if sl else "")
+                + '시작하면 관련 스펙 찾기 → 스펙 점검 → 케이스 준비 → 스크립트 만들기 → 실행 순서로 진행해요.'
                 '<br>스펙이 모호하거나 코드와 다르면 그 자리에서 멈추고 알려 드려요.</div>')
         btn = f'<button class="primary lg" data-dialog="dlg-start" data-tour="start" {"" if (operator and hermes) else "disabled"}>Sanity 시작</button>'
         st = '<span class="b none">검증 안 함</span>'
     else:
-        body = '<div class="empty" style="padding:48px"><b>API 를 바꾼 파일이 없어요</b>인프라·로그·문서만 바뀐 PR 이에요. 보통은 Sanity 가 필요 없어요.</div>'
+        body = ('<div class="empty" style="padding:48px"><b>API 와 동작 코드를 바꾼 파일이 없어요</b>'
+                '시험 코드·문서·작업 기록·인프라만 바뀐 PR 이에요. 보통은 Sanity 가 필요 없어요.</div>')
         btn = f'<button class="lg" data-dialog="dlg-start" {"" if (operator and hermes) else "disabled"}>그래도 시작</button>'
-        st = '<span class="small mut">API 변경 없음</span>'
+        st = f'<span class="small mut">{S.SCOPE_KO["none"]}</span>'
     return f'<div class="card flush">{_pr_head(p, st, btn)}{why}{body}</div>{_start_dialog(p, operator, target)}'
 
 
@@ -280,8 +294,8 @@ def sanity_page(prs: list[dict], sel: dict | None, sanity: dict | None, *, opera
     seln = sel["number"] if sel else None
     tabs = "".join(f'<a class="{"on" if flt == k else ""}" href="/sanity{"" if k == "all" else "?f=" + k}">{n} {counts[k]}</a>'
                    for k, n in (("all", "전체"), ("todo", "검증 안 함"), ("need", "확인 필요"), ("done", "끝남")))
-    lst = ('<div class="sec-h">API 가 바뀐 PR</div>' + ("".join(_pr_row(p, seln) for p in api if keep(p)) or '<div class="empty">없어요</div>')
-           + ('<div class="sec-h">API 변경이 없는 PR</div>' + "".join(_pr_row(p, seln) for p in rest if keep(p)) if any(keep(p) for p in rest) else ""))
+    lst = ('<div class="sec-h">API 나 동작을 바꾼 PR</div>' + ("".join(_pr_row(p, seln) for p in api if keep(p)) or '<div class="empty">없어요</div>')
+           + ('<div class="sec-h">API·코드 변경이 없는 PR</div>' + "".join(_pr_row(p, seln) for p in rest if keep(p)) if any(keep(p) for p in rest) else ""))
     if gh_error and not prs:
         lst = f'<div class="empty"><b>PR 목록을 못 읽었어요</b>{e(gh_error)}</div>'
     if sel is None:

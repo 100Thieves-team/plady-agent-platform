@@ -96,7 +96,18 @@ class UnitTest(unittest.TestCase):
         s = S.summarize(FILES)
         self.assertEqual((s["changed_files"], s["additions"], s["deletions"], s["api"]), (4, 26, 85, True))
         self.assertIn("room", s["domains"])
+        self.assertEqual(s["scope"], "api")
         self.assertFalse(S.summarize([{"filename": "infra/a.tf"}])["api"])
+        base = "core/core-api/src/main/kotlin/io/plady/moimyeon/core/"
+        pr153 = [{"filename": ".worklog/MOI-571/plan.md"}, {"filename": base + "api/controller/v1/response/RoomParticipantsResponse.kt"},
+                 {"filename": base + "domain/participation/RoomParticipantReader.kt"},
+                 {"filename": "core/core-api/src/test/kotlin/io/plady/moimyeon/core/api/controller/v1/RoomParticipantControllerTest.kt"}]
+        s = S.summarize(pr153)                                                              # PR #153: 응답 DTO 에 필드를 더했다 — 컨트롤러는 그대로
+        self.assertEqual((s["scope"], s["api"], s["contract"]), ("api", True, ["RoomParticipantsResponse.kt"]))
+        s = S.summarize([pr153[0], pr153[2], pr153[3]])                                      # API 모양은 그대로, 동작 코드만
+        self.assertEqual((s["scope"], s["api"]), ("code", True))
+        s = S.summarize([pr153[0], pr153[3], {"filename": "infra/terraform/a.tf"}])         # 시험·작업 기록·인프라만
+        self.assertEqual((s["scope"], s["api"]), ("none", False))
         self.assertEqual(S.endpoint_changes(FILES), [{"change": "removed", "method": "POST", "path": "/v1/rooms/{roomId}/cancellation", "file": "RoomController.kt"}])
         self.assertEqual(S.decision_files(FILES), [".worklog/MOI-541-room-lifecycle/decisions.md"])
         ex = S.diff_excerpt(FILES)
@@ -175,7 +186,7 @@ class FlowTest(unittest.TestCase):
         prs = self.app.sanity_prs()
         self.assertEqual([(p["number"], p["api"]) for p in prs], [(138, True), (136, False)])
         page = ui.page("x", ui_sanity_page(self.app, prs, 138), active="sanity", operator="bebe")
-        for frag in ("룸 취소 API 가 없어졌어요", "정하지 않고 계속했어요", "추천대로 정했어요", "이번 범위의 케이스", "API 변경이 없는 PR", "실패"):
+        for frag in ("룸 취소 API 가 없어졌어요", "정하지 않고 계속했어요", "추천대로 정했어요", "이번 범위의 케이스", "API·코드 변경이 없는 PR", "실패"):
             self.assertIn(frag, page)
         todo = self.app.home_todo(prs)
         self.assertEqual(todo[0]["href"], "/sanity/138")

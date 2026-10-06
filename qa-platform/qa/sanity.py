@@ -22,14 +22,23 @@ BLOCKING = {"mismatch", "ambiguous", "missing_api", "undocumented_api"}      # �
 _CONTROLLER = re.compile(r"/controller/(v1/)?[A-Za-z]+Controller\.kt$")
 _MAPPING = re.compile(r'^([+-])\s*@(Get|Post|Put|Patch|Delete)Mapping\(\s*(?:value\s*=\s*)?"([^"]+)"')
 _WORKLOG = re.compile(r"(^|/)\.worklog/.+/decisions\.md$")
+# API 모양: 컨트롤러와 그 아래 요청·응답 DTO, API 문서(asciidoc). 동작 코드: 그 밖의 src/main (도메인·파사드·저장소·마이그레이션)
+_CONTRACT = re.compile(r"/controller/.+\.kt$|/src/docs/asciidoc/")
+_MAIN = re.compile(r"(^|/)src/main/")
+SCOPE_KO = {"api": "API 변경", "code": "동작 변경", "none": "API·코드 변경 없음"}
 
 
 def summarize(files: list[dict]) -> dict:
-    """PR 변경 파일 → {changed_files, additions, deletions, api, domains}. api 는 컨트롤러가 바뀌었는가(§4.4)."""
+    """PR 변경 파일 → {changed_files, additions, deletions, scope, api, contract, domains} (§4.4).
+    scope: api(컨트롤러·요청/응답 DTO·API 문서가 바뀜) · code(API 모양은 그대로, 동작 코드가 바뀜) · none(시험·문서·인프라만).
+    api 는 Sanity 대상인가(scope 가 none 이 아님). contract 는 API 모양을 바꾼 파일 이름(컨트롤러 빼고 DTO 등)."""
     names = [f["filename"] for f in files]
+    contract = [n for n in names if _CONTRACT.search(n) and "/src/test/" not in n]
+    code = [n for n in names if _MAIN.search(n) and "/src/test/" not in n]
+    scope = "api" if contract else ("code" if code else "none")
     return {"changed_files": len(files), "additions": sum(f.get("additions") or 0 for f in files),
-            "deletions": sum(f.get("deletions") or 0 for f in files),
-            "api": any(_CONTROLLER.search(n) for n in names), "domains": sorted(domains_from_files(names))}
+            "deletions": sum(f.get("deletions") or 0 for f in files), "scope": scope, "api": scope != "none",
+            "contract": [n.rsplit("/", 1)[-1] for n in contract if not _CONTROLLER.search(n)], "domains": sorted(domains_from_files(names))}
 
 
 def endpoint_changes(files: list[dict]) -> list[dict]:
