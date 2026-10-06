@@ -242,3 +242,64 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: room.complete
+    title: 방장이 진행 완료를 누르고 출석을 입력하면 룸이 완료되고 출석이 기록된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/happy
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - C.room.complete
+    - op.completeRoomProgress:200
+    source:
+    - PRD/룸 진행 마무리 및 출석 §2
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    actor: qa-host
+    reviewed:
+      at: '2026-10-06'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 진행 완료 sanity {{rand}}'
+    steps:
+    - name: 방장이 출석을 입력하며 룸 완료
+      covers:
+      - C.room.complete
+      - op.completeRoomProgress:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ABSENT
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: COMPLETED
+          data.attendances[0].memberId: '{{actor.qa-host.memberId}}'
+          data.attendances[0].status: ATTENDED
+          data.attendances[1].memberId: '{{actor.qa-guest.memberId}}'
+          data.attendances[1].status: ABSENT
+        exists:
+        - data.attendances[0].nickname
+        - data.attendances[1].nickname
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
