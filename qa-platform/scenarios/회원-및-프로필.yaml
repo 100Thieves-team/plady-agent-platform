@@ -6,6 +6,7 @@ scenarios:
       R2: [G.member.mutate]
       R3: [G.member.login]
       R4: [G.member.signup]
+      R168: [G.member.login, G.member.restore]
     variants:
       - key: happy
         kind: happy
@@ -27,19 +28,33 @@ scenarios:
         title: 이용이 제한된 계정이 참여·생성을 하려 하면 거절된다
         checks: [G.member.mutate#account-active]
         mode: manual
+      - key: restore-withdrawn-google-account
+        kind: happy
+        at: R168
+        title: 탈퇴했던 회원이 같은 Google 계정으로 로그인하면 계정 복구를 확인하고 복구된 계정으로 로그인한다.
+        given: 탈퇴했던 회원이 같은 Google 계정으로 다시 로그인하려는 사용자
+        then: 탈퇴한 계정이라는 안내와 계정 복구 확인을 거친 뒤, 복구된 계정으로 로그인한다.
+        checks: [G.member.login#not-withdrawn, C.member.restore, G.member.restore#oauth-authenticated, G.member.restore#withdrawn, G.member.restore#confirmed-in-window, C.member.login]
+        mode: manual
+        written_by: hermes
     basis:
       R1: 82e80c6c
       R2: '63959874'
       R3: ef20fc21
+      R168: 51cab758
       R4: 752cc8b4
       R5: b7dfcc37
       C.member.login: 672eaf51
+      C.member.restore: e20143d3
       C.member.signup: c62a6dad
-      G.member.login#not-withdrawn: 3f929b6d
+      G.member.login#not-withdrawn: 0bc47ed0
       G.member.login#oauth-authenticated: c1c687c0
       G.member.login#oauth-id-matches-member: 9c0838ee
       G.member.mutate#account-active: c720dad5
       G.member.mutate#login-required: 5518d7de
+      G.member.restore#confirmed-in-window: e66cff43
+      G.member.restore#oauth-authenticated: e79f05fb
+      G.member.restore#withdrawn: 39e3cae7
       G.member.signup#oauth-authenticated: 1bac2174
       G.member.signup#oauth-id-not-registered: 0db2473a
       G.member.signup#terms-agreed: baa5bf6f
