@@ -422,3 +422,59 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: room.complete-not-confirmed-rejected
+    title: 진행 확정된 룸이 아니면 방장의 완료 요청도 거절된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/room-confirmed
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - G.room.complete#room-confirmed-or-idempotent-retry
+    source:
+    - PRD/룸 진행 마무리 및 출석 R62
+    - PRD/룸 진행 마무리 및 출석 R63
+    - PRD/룸 진행 마무리 및 출석 R67
+    - PRD/룸 진행 마무리 및 출석 R68
+    - PRD/룸 진행 마무리 및 출석 R71
+    - PRD/룸 진행 마무리 및 출석 R76
+    actor: qa-host
+    reviewed:
+      at: '2026-10-06'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 진행 완료 거절 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 모집 중인 룸을 방장이 완료하려 하면 거절된다
+      covers:
+      - G.room.complete#room-confirmed-or-idempotent-retry
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1707
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
