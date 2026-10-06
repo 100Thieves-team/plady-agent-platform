@@ -46,7 +46,9 @@ DRAFT_SYSTEM = (
     "채널은 백엔드 발송 정책을 따른다: 수락·확정(참여자)·취소는 웹 푸시와 메일 둘 다, 후기 공개·댓글은 웹 푸시만, 나머지는 웹 푸시(닿지 않으면 메일)라 web_push 만 쓴다. "
     "알림 단계는 정리 단계보다 앞에 둔다. "
     "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 PUSH_ELSE_EMAIL 은 메일로, PUSH_ONLY 는 오지 않음을 확인할 수 있다. "
-    "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰)."
+    "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰).\n"
+    "11. API 요청·응답의 필드·상태 코드·에러 코드는 OpenAPI 발췌가 정본이다. PRD·규칙표에 없는 API 세부라도 OpenAPI 에 있으면 그대로 쓰고, "
+    "케이스가 확인하는 결과에 해당하는 응답 필드(새로 생긴 필드 포함)는 expect.json · expect.exists 로 확인한다."
 )
 
 

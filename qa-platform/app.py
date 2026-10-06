@@ -1080,7 +1080,7 @@ class App:
                 if ep["change"] == "added" and not ep.get("op"):
                     found.append({"kind": "undocumented_api", "title": f"{ep['method']} {ep['path']} 가 코드에는 있지만 dev API 문서에 없어요",
                                   "spec": "dev API 문서(openapi3.yaml)", "code": f"{ep['file']} 에 새로 생긴 끝점",
-                                  "question": "백엔드에 REST Docs 추가를 요청할까요?", "suggestion": "요청한다. 문서에 없으면 스크립트를 만들 수 없어요.", "source": "platform"})
+                                  "question": "", "suggestion": "멈추지 않고 계속해요. 이 끝점은 문서가 생기면 다음 Sanity 에서 스크립트를 만들어요. 문서가 계속 없으면 백엔드에 REST Docs 를 요청해요.", "source": "platform"})
         ssot = self.ssot() or {}
         feats = sorted({x["feature"] for x in scope["items"]})
         rules = []

@@ -97,6 +97,8 @@ class UnitTest(unittest.TestCase):
         self.assertEqual((s["changed_files"], s["additions"], s["deletions"], s["api"]), (4, 26, 85, True))
         self.assertIn("room", s["domains"])
         self.assertEqual(s["scope"], "api")
+        self.assertNotIn("undocumented_api", S.BLOCKING)                                    # API 문서에 없는 새 끝점은 멈추지 않는다
+        self.assertIn("OpenAPI", S.CHECK_SYSTEM)                                            # API 세부는 PRD·규칙표와 대조하지 않는다
         self.assertFalse(S.summarize([{"filename": "infra/a.tf"}])["api"])
         base = "core/core-api/src/main/kotlin/io/plady/moimyeon/core/"
         pr153 = [{"filename": ".worklog/MOI-571/plan.md"}, {"filename": base + "api/controller/v1/response/RoomParticipantsResponse.kt"},

@@ -17,7 +17,7 @@ STATUS_BADGE = {"queued": "running", "running": "running", "needs_spec": "need",
                 "error": "fail", "canceled": "none", "interrupted": "none", "empty": "none"}
 KIND_KO = {"mismatch": "스펙과 코드가 달라요", "ambiguous": "스펙이 모호해요", "missing_api": "없어진 API 를 써요",
            "undocumented_api": "API 문서에 없어요", "no_rules": "규칙표가 없어요", "impact": "영향"}
-BLOCKING = {"mismatch", "ambiguous", "missing_api", "undocumented_api"}      # 사람이 정해야 넘어가는 종류
+BLOCKING = {"mismatch", "ambiguous", "missing_api"}      # 사람이 정해야 넘어가는 종류. API 문서에 없는 새 끝점(undocumented_api)은 알림만 (2026-10-06)
 
 _CONTROLLER = re.compile(r"/controller/(v1/)?[A-Za-z]+Controller\.kt$")
 _MAPPING = re.compile(r'^([+-])\s*@(Get|Post|Put|Patch|Delete)Mapping\(\s*(?:value\s*=\s*)?"([^"]+)"')
@@ -88,15 +88,20 @@ FIND_SYSTEM = (
 )
 
 CHECK_SYSTEM = (
-    "너는 Spring 백엔드 팀의 QA 엔지니어다. 머지된 PR 의 변경과 스펙(PRD 단계·규칙표)을 나란히 읽고, 테스트를 만들기 전에 사람이 정해야 할 것을 찾는다. "
-    "아래 근거만 쓰고, 한국어로 쓴다. 확실한 근거가 있는 것만 적는다. 없으면 빈 목록이다.\n\n"
+    "너는 Spring 백엔드 팀의 QA 엔지니어다. 머지된 PR 의 변경과 스펙(PRD 단계·규칙표)을 나란히 읽고, 테스트를 만들기 전에 사람이 꼭 정해야 하는 것만 찾는다. "
+    "목적은 스펙을 다듬는 것이 아니라 테스트를 만들 수 있는지 확인하는 것이다. 세부 케이스와 경계 조건은 다음 단계(케이스 준비)에서 꼼꼼히 채우니 여기서 찾지 않는다. "
+    "아래 근거만 쓰고, 한국어로 쓴다. 대부분의 PR 은 찾을 것이 없다. 그러면 빈 목록이 정답이다.\n\n"
     "출력 규칙(어기면 버려진다):\n"
     "1. 출력은 ```json 코드 블록 하나: {\"findings\": [{\"kind\": \"mismatch\"|\"ambiguous\", \"title\", \"spec\", \"code\", \"question\", \"suggestion\"}]}\n"
-    "2. mismatch 는 스펙과 코드가 다른 것, ambiguous 는 코드가 정한 규칙이 스펙에 없거나 스펙이 두 가지로 읽히는 것이다.\n"
-    "3. title 은 해요체 한 문장(예: \"진행 완료와 출석 기록이 나뉘었어요\"). spec 은 「기능」 Sn Rn · 그 문장, code 는 파일 이름이나 결정 기록 id · 요약.\n"
-    "4. question 은 사람에게 묻는 한 문장. suggestion 은 추천 답과 이유 한 문장. 팀 원칙: PRD 가 백엔드 코드와 아예 안 맞으면 백엔드 dev 기준으로 PRD·규칙표를 맞춘다. "
+    "2. 적는 기준은 하나다: 이것을 사람이 정하지 않으면 테스트의 기대 결과(성공인지 거절인지, 상태가 무엇으로 바뀌는지, 누가 할 수 있는지)를 정할 수 없는가. 아니면 적지 않는다.\n"
+    "   - mismatch: PRD·규칙표의 사용자 규칙과 코드의 동작이 서로 반대이거나 다르다(예: PRD 는 거절, 코드는 허용).\n"
+    "   - ambiguous: 이 PR 이 바꾼 사용자 규칙이 PRD·규칙표에서 두 가지로 읽혀 기대 결과가 갈린다.\n"
+    "3. 적지 않는 것: API 세부(경로·메서드·요청·응답 필드 이름과 모양·DTO 에 더한 필드·상태 코드·에러 코드·페이지 크기). API 계약의 정본은 OpenAPI(REST Docs)라서 "
+    "PRD·규칙표에 없어도 정상이다. 그 밖에 문구·표현, 구현 방식(트랜잭션·쿼리·로그·성능), 스펙이 말하지 않는 세부를 코드가 정한 것, 엣지 케이스, 이 PR 과 상관없는 기존 스펙 문제도 적지 않는다.\n"
+    "4. title 은 해요체 한 문장(예: \"진행 완료와 출석 기록이 나뉘었어요\"). spec 은 「기능」 Sn Rn · 그 문장, code 는 파일 이름이나 결정 기록 id · 요약.\n"
+    "5. question 은 사람에게 묻는 한 문장. suggestion 은 추천 답과 이유 한 문장. 팀 원칙: PRD 가 백엔드 코드와 아예 안 맞으면 백엔드 dev 기준으로 PRD·규칙표를 맞춘다. "
     "단 PRD 규칙을 코드가 빠뜨린 것이면 백엔드 결함으로 본다.\n"
-    "5. 아래 '플랫폼이 이미 찾은 것' 과 같은 내용은 다시 쓰지 않는다. 최대 8개."
+    "6. 아래 '플랫폼이 이미 찾은 것' 과 같은 내용은 다시 쓰지 않는다. 최대 3개. 확신이 없으면 적지 않는다."
 )
 
 
@@ -130,7 +135,7 @@ def parse_scope(text: str, catalog: dict[str, dict[str, set]]) -> list[dict]:
 
 def parse_findings(text: str) -> list[dict]:
     out = []
-    for x in (_json_block(text).get("findings") or [])[:8]:
+    for x in (_json_block(text).get("findings") or [])[:3]:
         if not isinstance(x, dict) or x.get("kind") not in ("mismatch", "ambiguous") or not x.get("title"):
             continue
         out.append({k: str(x.get(k) or "")[:600] for k in ("kind", "title", "spec", "code", "question", "suggestion")}
