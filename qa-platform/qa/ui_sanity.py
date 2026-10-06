@@ -31,7 +31,7 @@ CSS = """<style>
 pre.df{background:#fff;color:var(--ink);border:1px solid var(--line);max-height:320px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 pre.df span{display:block;padding:0 6px}pre.df .a{background:#E6F6EE;color:#136C3F}pre.df .r{background:#FEEEEF;color:#B4232F;text-decoration:line-through;text-decoration-color:rgba(180,35,47,.35)}pre.df .h{color:var(--mut)}.done-mark.cont{color:var(--warn)}
 .reqs{margin:0;padding:0;list-style:none}.reqs li{display:grid;grid-template-columns:44px 1fr;gap:6px;font-size:13px;color:var(--ink2);padding:2px 0}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr)}.metrics div{padding:14px 18px;border-right:1px solid var(--line)}.metrics div:last-child{border-right:0}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr)}.metrics div{padding:14px 18px;border-right:1px solid var(--line)}.metrics div:last-child{border-right:0}
 .metrics span{color:var(--mut);font-size:12px}.metrics b{display:block;font-size:22px;font-weight:800}
 .logl{font-size:12px;color:var(--ink2);padding:8px 18px;border-bottom:1px solid var(--line);display:flex;gap:10px}.logl:last-child{border-bottom:0}.logl .mut{white-space:nowrap}
 dialog{border:0;border-radius:16px;padding:22px 24px 18px;width:480px;box-shadow:0 16px 48px rgba(0,0,0,.18)}dialog::backdrop{background:rgba(25,31,40,.28)}
@@ -262,10 +262,12 @@ def _detail(p: dict, s: dict, *, operator: str, cases: list[dict], run: dict | N
                            for x in items) + '</table></div>')
     auto = sum(1 for c in cases if c["state"] == "auto")
     make = sum(1 for c in cases if c["state"] == "untested" and c["mode"] != "manual" and c["checks"])
-    man = len(cases) - auto - make
+    wait = sum(1 for c in cases if c["state"] in ("no_api", "needs_tool", "na", "excluded"))
+    man = len(cases) - auto - make - wait
     metrics = (f'<div class="card flush" data-tour="cases"><div class="ch"><h2>이번 범위의 케이스</h2><span class="small mut">관련 요구에 걸린 케이스와 그 시나리오의 정상 흐름</span></div>'
                f'<div class="metrics"><div><span>스크립트 있음</span><b>{auto}</b></div><div><span>Hermes 가 만들 스크립트</span><b style="color:var(--info)">{make}</b></div>'
-               f'<div><span>사람이 확인 · 근거 없음</span><b style="color:var(--warn)">{man}</b></div></div>'
+               f'<div><span>사람이 확인 · 근거 없음</span><b style="color:var(--warn)">{man}</b></div>'
+               f'<div><span>백엔드 미구현 · 도구 필요 · 해당 없음</span><b style="color:var(--mut)">{wait}</b></div></div>'
                f'<table style="border-top:1px solid var(--line)"><tr><th>기능 · 시나리오</th><th>종류</th><th>케이스</th><th>상태</th></tr>'
                + "".join(f'<tr><td class="small mut" style="white-space:nowrap">{e(c["feature"])} {e(c["scenario"])}</td><td style="white-space:nowrap">{e(c["kind_ko"])}</td>'
                          f'<td><a href="{e(c["href"])}" style="color:var(--ink)">{e(c["title"])}</a> <span class="mono">{e(c["key"])}</span></td><td>{c["state_html"]}</td></tr>' for c in cases)

@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from . import scenarios as S
 from .scenarios import KIND_KO, STATE_KO
 from .ui import badge, e, h, kst, tc_link
 
 _GRID = "display:grid;grid-template-columns:minmax(180px,1.4fr) repeat(7,minmax(54px,.5fr)) minmax(120px,1fr);gap:8px;align-items:center"
 _VCOLS = '<colgroup><col><col style="width:110px"><col style="width:240px"><col style="width:170px"></colgroup>'     # 시나리오마다 표가 따로라 열 너비를 고정한다
-STATE_CLS = {"auto": "covered", "manual": "warn", "excluded": "excluded", "untested": "uncovered"}
+STATE_CLS = {"auto": "covered", "manual": "warn", "no_api": "unchecked", "needs_tool": "unchecked", "na": "excluded", "excluded": "excluded", "untested": "uncovered"}
 
 
 def state_badge(st: str) -> str:
@@ -40,13 +41,16 @@ def _last(lv: dict | None) -> str:
 def _bar(c: dict) -> str:
     tot = c["variants"] or 1
     seg = "".join(f'<i class="{cls}" style="width:{c[k] * 100 / tot:.1f}%" title="{e(STATE_KO[k])} {c[k]}"></i>'
-                  for k, cls in (("auto", "p"), ("manual", "r"), ("excluded", "s"), ("untested", "f")) if c[k])
+                  for k, cls in (("auto", "p"), ("manual", "r"), ("no_api", "s"), ("needs_tool", "s"), ("na", "s"), ("excluded", "s"), ("untested", "f")) if c.get(k))
     return f'<div class="bar" title="케이스 {c["variants"]}개">{seg}</div>'
 
 
 def _count_vals(c: dict) -> list[str]:
     """케이스 · 자동화됨 · 사람이 확인 · 제외 · 테스트 없음 · 아직 테스트가 없는 거절 조건 · 최근 결과."""
-    return [str(c["variants"]) if c["variants"] else '<span class="mut">0</span>', str(c["auto"]), str(c["manual"]), str(c["excluded"]),
+    wait = sum(c.get(k, 0) for k in ("no_api", "needs_tool", "na"))
+    detail = " · ".join(f"{label} {c.get(k, 0)}" for k, label in (("no_api", "백엔드 미구현"), ("needs_tool", "dev 도구 필요"), ("na", "해당 없음"), ("excluded", "제외")) if c.get(k))
+    return [str(c["variants"]) if c["variants"] else '<span class="mut">0</span>', str(c["auto"]), str(c["manual"]),
+            f'<span title="{e(detail)}">{wait + c["excluded"]}</span>' if (wait or c["excluded"]) else "0",
             f'<b style="color:var(--bad)">{c["untested"]}</b>' if c["untested"] else "0",
             f'<b style="color:var(--warn)">{c["rejects"]}</b>' if c["rejects"] else "0",
             f'통과 {c["pass"]} · 실패 {c["fail"]}' if (c["pass"] or c["fail"]) else '<span class="mut">–</span>']
@@ -104,7 +108,7 @@ def scenario_tree(ov: list[dict], *, errors: list[str] | None = None, title: str
                  + "".join(f'<span class="small">{x}</span>' for x in _count_vals(c))
                  + f'{_bar(c)}</summary>{scn}</details></td></tr>')
     head = (f'<div style="{_GRID};padding:0 8px 6px;color:var(--mut);font-size:12px;font-weight:600">'
-            '<span>기능</span><span>케이스</span><span>자동화됨</span><span>사람이 확인</span><span>제외</span><span>테스트 없음</span><span>아직 테스트가 없는 거절 조건</span><span>최근 결과</span><span></span></div>')
+            '<span>기능</span><span>케이스</span><span>자동화됨</span><span>사람이 확인</span><span>대기·제외</span><span>테스트 없음</span><span>아직 테스트가 없는 거절 조건</span><span>최근 결과</span><span></span></div>')
     errs = "".join(f'<li class="small" style="color:var(--bad)">{e(x)}</li>' for x in errors or [])
     return (f'<h2>{e(title)}{h("dash.scenarios")} <a class="small" href="/features">기능 목록</a></h2>'
             f'{("<div class=\"flash err\"><b>시나리오 파일 오류</b><ul>" + errs + "</ul></div>") if errs else ""}'
@@ -178,7 +182,7 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None,
         vrows = "".join(_variant_row(v, indent=False) for v in s["variants"]) or '<tr><td colspan="4" class="mut">케이스 없음 — 시나리오 파일에 케이스를 더한다</td></tr>'
         rej = "".join(
             f'<tr><td>{tc_link(r["id"])}</td><td class="mono small">{e(r["at"])}</td><td class="small">{e(r["title"])}</td>'
-            f'<td class="mono small">{e(r["error_code"] or "")}</td><td class="small">{"자동" if r["mode"] == "auto" else "<span class=mut>사람이 확인으로 시작 (ErrorCode 없음)</span>"}</td>'
+            f'<td class="mono small">{e(r["error_code"] or "")}</td><td class="small">{"자동" if r["error_code"] else "자동 <span class=mut>(코드 없음 · 거절됨만 확인)</span>"}</td>'
             f'<td><a class="btn" href="{e(_reject_prefill(f, s, r))}">케이스로 추가</a></td></tr>'
             for r in s["untested_rejects"])
         rej_html = (f'<h4>아직 테스트가 없는 거절 조건 {len(s["untested_rejects"])}개{h("feature.rejects")}</h4>'
@@ -202,7 +206,8 @@ def feature_page(f: dict, *, check: dict, gate_names: dict, prd_url: str | None,
             f'<button>고른 케이스 실행</button>{h("scenario.run")}</form></div>{_PICK_JS}'
             f'<div class="card"><div class="stats" style="margin:0">'
             + "".join(f'<div class="stat"><div class="l">{e(label)}</div><b>{c[k]}</b></div>'
-                      for k, label in (("variants", "케이스"), ("auto", "자동화됨"), ("manual", "사람이 확인"), ("excluded", "제외"), ("untested", "테스트 없음"), ("rejects", "아직 테스트가 없는 거절 조건")))
+                      for k, label in (("variants", "케이스"), ("auto", "자동화됨"), ("manual", "사람이 확인"), ("no_api", "백엔드 미구현"), ("needs_tool", "dev 도구 필요"),
+                                       ("na", "해당 없음"), ("excluded", "제외"), ("untested", "테스트 없음"), ("rejects", "아직 테스트가 없는 거절 조건")) if k in ("variants", "auto", "manual", "untested", "rejects") or c.get(k))
             + f'</div>{_bar(c)}</div>'
             f'{("<div class=\"card\"><b>검증</b>" + h("feature.check") + "<ul style=\"margin:6px 0 0\">" + msgs + "</ul></div>") if msgs else ""}{body}')
 
@@ -238,7 +243,7 @@ def variant_page(f: dict, s: dict, v: dict, *, check: dict, tc_records: dict, hi
             f'<p class="small mut"><a href="{feature_url(f["slug"])}">{e(f["feature"])}</a> › <a href="{feature_url(f["slug"])}#{e(s["id"])}">{e(s["id"])} {e(s["title"])}</a> › <span class="mono">{e(v["id"])}</span></p>'
             f'{("<div class=\"card\"><ul style=\"margin:0\">" + "".join("<li style=\"color:var(--warn)\">" + e(x) + "</li>" for x in mine) + "</ul></div>") if mine else ""}'
             f'<div class="card"><div class="kv">{at}<div>전제</div><div>{e(va.given) or "<span class=mut>–</span>"}</div>'
-            f'<div>기대 결과</div><div>{e(va.then) or "<span class=mut>–</span>"}</div><div>확인 방식</div><div>{"스크립트" if va.mode == "auto" else "사람이 확인"}</div></div></div>'
+            f'<div>기대 결과</div><div>{e(va.then) or "<span class=mut>–</span>"}</div><div>확인 방식</div><div>{"스크립트" if va.mode == "auto" else ("사람이 확인" + (" · " + e(S.MANUAL_REASON_KO.get(va.manual_reason, "")) if va.manual_reason else ""))}</div></div></div>'
             f'<h2>확인할 테스트 조건 (checks){h("variant.checks")}</h2><div class="card"><ul style="margin:0;padding-left:18px">{checks}</ul></div>'
             f'<h2>구현한 스크립트</h2><div class="card"><table><tr><th>스크립트</th><th>제목</th><th>스위트</th></tr>{scripts}</table>'
             f'<div class="actions"><a class="btn" href="/cases/new?{q}">스크립트 만들기 (폼)</a>{h("variant.new_script")} '
@@ -298,7 +303,9 @@ def variant_form(f: dict, s: dict, raw: dict, *, mode: str, operator: str, tc_op
             f'<div class="field"><label>기대 결과 (then)</label><input name="then" value="{e(raw.get("then") or "")}"></div>'
             f'<div class="field"><label>확인할 테스트 조건 (checks){h("variant.checks")}</label><input name="checks" class="mono" list="dl-scn-tcs" value="{e(checks)}" placeholder="G.room.create#headcount-range">'
             f'<p class="hint">쉼표로 여러 개. 거절 케이스는 검사 하나가 기본이다</p></div>'
-            f'<div class="field"><label>확인 방식</label>{_op_select("mode", [("auto", "스크립트로 확인 (auto)"), ("manual", "사람이 확인 (manual)")], raw.get("mode") or "auto")}</div>'
+            f'<div class="field"><label>확인 방식</label>{_op_select("mode", [("auto", "스크립트로 확인 (auto)"), ("manual", "스크립트로 못 함 (manual)")], raw.get("mode") or "auto")}</div>'
+            f'<div class="field"><label>스크립트로 못 하는 이유</label>{_op_select("manual_reason", [(k, v) for k, v in S.MANUAL_REASON_KO.items()], raw.get("manual_reason") or "", blank="— (확인 방식이 manual 일 때)")}'
+            f'<p class="hint">화면을 봐야 함만 "사람이 확인" 으로 센다. 백엔드에 API 가 없음·dev 도구가 있어야 함·구조상 일어날 수 없음은 따로 모은다</p></div>'
             f'<datalist id="dl-scn-tcs">{"".join(f"<option value=\"{e(t)}\">{e(label)}</option>" for t, label in tc_options)}</datalist>'
             f'<div class="actions"><button class="primary" {dis}>저장</button> <a href="{back}">돌아가기</a></div>'
             f'<p class="small mut">저장하면 §6.1 검사를 거쳐 main 의 <span class="mono">scenarios/{e(f["slug"])}.yaml</span> 에 바로 커밋된다.</p></form>')

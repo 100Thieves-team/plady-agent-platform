@@ -225,17 +225,29 @@ class CheckTest(unittest.TestCase):
         self.assertEqual([s["id"] for s in f["scenarios"]], ["S1", "S2"])            # PRD 에만 있는 S2 도 "변형 없음" 으로 실린다
         st = {v["variant"].key: v["state"] for v in f["scenarios"][0]["variants"]}
         self.assertEqual(st, {"happy": "auto", "pasted": "manual", "headcount": "untested", "cancel": "excluded"})
-        self.assertEqual(f["counts"] | {}, {"auto": 1, "manual": 1, "excluded": 1, "untested": 1, "variants": 4, "rejects": 2, "pass": 1, "fail": 0, "drift": 0})
+        self.assertEqual(f["counts"] | {}, {"auto": 1, "manual": 1, "no_api": 0, "needs_tool": 0, "na": 0, "excluded": 1, "untested": 1, "variants": 4, "rejects": 2,
+                                            "pass": 1, "fail": 0, "drift": 0})
         rej = f["scenarios"][0]["untested_rejects"]                                  # 확인 중인 headcount·제외된 login 은 빠진다
-        self.assertEqual([(r["id"], r["mode"]) for r in rej], [("G.room.create#schedule-not-passed", "auto"), ("G.room.create#title-required", "manual")])
+        self.assertEqual([(r["id"], r["mode"]) for r in rej], [("G.room.create#schedule-not-passed", "auto"), ("G.room.create#title-required", "auto")])   # 코드가 없어도 auto (§16.6-2)
         self.assertEqual(f["scenarios"][1]["variants"], [])
+        # 수동 이유: 화면을 봐야 하는 것만 "사람이 확인"
+        def m2(d):
+            vs = d["scenarios"][0]["variants"]
+            vs.append({"key": "kick", "kind": "extra", "title": "내보내기", "mode": "manual", "manual_reason": "no_api"})
+            vs.append({"key": "restricted", "kind": "extra", "title": "이용 제한", "mode": "manual", "manual_reason": "needs_tool"})
+        ov2 = S.overview(self.feats(m2), wiki=self.wiki, catalog=self.cat, cases=cases, last=last)
+        st2 = {v["variant"].key: v["state"] for v in ov2[0]["scenarios"][0]["variants"]}
+        self.assertEqual((st2["kick"], st2["restricted"], st2["pasted"]), ("no_api", "needs_tool", "manual"))
+        self.assertEqual((ov2[0]["counts"]["manual"], ov2[0]["counts"]["no_api"]), (1, 1))
+        with self.assertRaises(S.ScenarioError):
+            self.feats(lambda d: d["scenarios"][0]["variants"].append({"key": "x", "kind": "extra", "title": "x", "manual_reason": "ui"}))   # auto 에는 이유를 적지 않는다
         # 화면
         html = ui.scenario_tree(ov, errors=["x.yaml: 틀림"])
         for frag in ("룸 생성", "케이스 없음", "아직 테스트가 없는 거절 조건 2", "/features/%EB%A3%B8-%EC%83%9D%EC%84%B1/S1/happy", "시나리오 파일 오류"):
             self.assertIn(frag, html)
         chk = S.check(feats, wiki=self.wiki, catalog=self.cat, cases=cases)
         page = ui.feature_page(f, check=chk, gate_names={"G.room.create": "룸 생성 가능"}, prd_url="https://w/raw/product/룸-생성/")
-        for frag in ("G.room.create#title-required", "사람이 확인으로 시작", "룸 생성 가능", "분기: 목록에 공고가 없으면"):
+        for frag in ("G.room.create#title-required", "코드 없음 · 거절됨만 확인", "룸 생성 가능", "분기: 목록에 공고가 없으면"):
             self.assertIn(frag, page)
         v = f["scenarios"][0]["variants"][2]
         vp = ui.variant_page(f, f["scenarios"][0], v, check=chk, tc_records=self.cat.records, history=[], step={"text": "입력 내용을 확인하고 룸을 생성한다."})

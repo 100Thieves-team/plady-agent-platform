@@ -2449,7 +2449,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise BadRequest("모르는 지우기")
             elif action == "variant":
                 op["original_key"] = fv("original_key").strip() or None
-                op["variant"] = {k: fv(k) for k in ("key", "kind", "at", "title", "given", "then", "checks", "mode")}
+                op["variant"] = {k: fv(k) for k in ("key", "kind", "at", "title", "given", "then", "checks", "mode", "manual_reason")}
+                if op["variant"].get("mode") != "manual":
+                    op["variant"]["manual_reason"] = ""
             elif action == "basis":
                 pass                                             # PRD·규칙표 변경을 확인만 했다 — 저장이 지문을 새로 적는다
             elif action == "scenario":
@@ -2486,7 +2488,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._error(404, "그 케이스가 없다")
                 body = ui.variant_form(fx, sx, dict(v["variant"].raw), mode="edit", operator=self._operator(), tc_options=app.tc_options())
             elif m.group(3) == "new":
-                raw = {k: g(k) for k in ("key", "kind", "at", "title", "given", "then", "mode") if g(k)}
+                raw = {k: g(k) for k in ("key", "kind", "at", "title", "given", "then", "mode", "manual_reason") if g(k)}
                 raw["checks"] = [x.strip() for x in g("checks").split(",") if x.strip()]
                 body = ui.variant_form(fx, sx, raw, mode="new", operator=self._operator(), tc_options=app.tc_options())
             else:

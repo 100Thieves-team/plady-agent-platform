@@ -28,11 +28,14 @@ FILL_SYSTEM = (
     "   - happy: 시나리오마다 하나, key 는 happy. checks 에는 그 흐름이 끝났을 때 확인할 명령 성공 테스트 조건(C.x)을 쓴다.\n"
     "   - branch: PRD 의 `분기:` 줄마다 하나. at 은 그 분기 줄의 요구 id.\n"
     "   - reject: 아직 테스트가 없는 거절 조건 하나에 케이스 하나. key 는 검사 key 그대로(시나리오 안에서 겹치면 `게이트끝이름.key`). "
-    "at 은 그 게이트를 gates 에 적은 단계의 요구 id, checks 는 [그 검사 테스트 조건 id] 하나. ErrorCode 가 없는 검사는 `mode: manual`.\n"
+    "at 은 그 게이트를 gates 에 적은 단계의 요구 id, checks 는 [그 검사 테스트 조건 id] 하나. ErrorCode 가 없는 검사도 스크립트로 확인한다(거절됨만 본다).\n"
     "5. title 은 한국어 한 문장. given(전제)·then(기대 결과)은 검사의 ref·message·error·note 와 PRD 문장에서만 가져오고, 모르면 비운다.\n"
     "6. checks 에는 주어진 테스트 조건 id 만 쓴다.\n"
     "7. 이미 있는 케이스 key 는 다시 쓰지 않아도 된다. 써도 플랫폼이 무시한다. 새로 더할 것에 집중한다.\n"
-    "8. 케이스 key 는 소문자·숫자·점·하이픈. new·edit·delete 는 쓰지 않는다."
+    "8. 케이스 key 는 소문자·숫자·점·하이픈. new·edit·delete 는 쓰지 않는다.\n"
+    "9. 기본은 스크립트로 확인(mode 를 적지 않는다)이다. 데이터는 테스트 데이터 만들기 카드와 API 로 만들 수 있다. `mode: manual` 은 스크립트로 못 할 때만 쓰고 "
+    "`manual_reason` 을 꼭 적는다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작의 API 가 OpenAPI 에 없음) · needs_tool(회원 상태 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 함) · "
+    "structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것을 고치기)."
 )
 
 

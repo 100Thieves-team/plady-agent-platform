@@ -24,15 +24,20 @@ from .wiki import doc_slug
 KINDS = ("happy", "branch", "reject", "extra")
 KIND_KO = {"happy": "정상 흐름", "branch": "분기", "reject": "거절", "extra": "추가"}
 MODES = ("auto", "manual")
-STATES = ("auto", "manual", "excluded", "untested")
-STATE_KO = {"auto": "자동화됨", "manual": "사람이 확인", "excluded": "제외", "untested": "테스트 없음"}
+# 수동인 이유 (docs/qa-platform-v2.md §16). "사람이 확인" 으로 세는 것은 ui(화면을 봐야 함)와 이유를 안 적은 것뿐이다
+MANUAL_REASONS = ("ui", "no_api", "needs_tool", "structural")
+MANUAL_REASON_KO = {"ui": "화면을 봐야 함", "no_api": "백엔드에 API 가 없음", "needs_tool": "dev 도구가 있어야 함", "structural": "구조상 일어날 수 없음"}
+STATES = ("auto", "manual", "no_api", "needs_tool", "na", "excluded", "untested")
+STATE_KO = {"auto": "자동화됨", "manual": "사람이 확인", "no_api": "백엔드 미구현", "needs_tool": "dev 도구 필요", "na": "해당 없음",
+            "excluded": "제외", "untested": "테스트 없음"}
+WAITING = ("no_api", "needs_tool", "na")      # 사람이 확인하지 않는다 — API·도구가 생기면 자동 대상이 된다
 _SCN_ID = re.compile(r"^S\d+$")
 _REQ = re.compile(r"^R\d+$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 _GATE = re.compile(r"^G\.[a-z_]+\.[a-z_]+$")
 VARIANT_ID = _VARIANT      # 룸-생성/S1/headcount-range
 RESERVED_KEYS = ("new", "edit", "delete")       # /features/<기능>/<Sn>/new 같은 주소와 겹친다
-VARIANT_KEYS = ("key", "kind", "at", "title", "given", "then", "checks", "mode", "written_by")
+VARIANT_KEYS = ("key", "kind", "at", "title", "given", "then", "checks", "mode", "manual_reason", "written_by")
 
 
 class ScenarioError(ValueError):
@@ -49,6 +54,7 @@ class Variant:
     then: str = ""
     checks: list = field(default_factory=list)
     mode: str = "auto"
+    manual_reason: str = ""          # mode manual 일 때만: MANUAL_REASONS
     raw: dict = field(default_factory=dict)
 
 
@@ -161,12 +167,17 @@ def parse_feature(d, file: str) -> Feature:
             mode = v.get("mode") or "auto"
             if mode not in MODES:
                 raise ScenarioError(f"{vw}: mode 는 auto 또는 manual: {mode!r}")
+            reason = str(v.get("manual_reason") or "").strip()
+            if reason and reason not in MANUAL_REASONS:
+                raise ScenarioError(f"{vw}: manual_reason 은 {MANUAL_REASONS} 중 하나: {reason!r}")
+            if reason and mode != "manual":
+                raise ScenarioError(f"{vw}: manual_reason 은 mode manual 일 때만 쓴다")
             checks = _str_list(v.get("checks"), f"{vw}: checks")
             bad = [t for t in checks if not _TC.match(t)]
             if bad:
                 raise ScenarioError(f"{vw}: checks 의 테스트 조건 id 형식이 틀렸다: {bad}")
             variants.append(Variant(key=key, kind=kind, title=title.strip(), at=at, given=str(v.get("given") or "").strip(),
-                                    then=str(v.get("then") or "").strip(), checks=checks, mode=mode, raw=v))
+                                    then=str(v.get("then") or "").strip(), checks=checks, mode=mode, manual_reason=reason, raw=v))
         actor = s.get("actor")
         scns.append(Scenario(id=sid, actor=str(actor) if actor else None, gates=gates, variants=variants,
                              basis={str(k): str(v) for k, v in (s.get("basis") or {}).items()} if isinstance(s.get("basis"), dict) else {}, raw=s))
@@ -287,13 +298,13 @@ def variant_state(v: Variant, scripts: list, catalog) -> str:
     if v.checks and all((recs.get(_canon(catalog, t)) or {}).get("excluded") for t in v.checks):
         return "excluded"
     if v.mode == "manual":
-        return "manual"
+        return {"no_api": "no_api", "needs_tool": "needs_tool", "structural": "na"}.get(v.manual_reason, "manual")
     return "untested"
 
 
 def untested_rejects(s: Scenario, catalog) -> list[dict]:
     """§2.2 — 시나리오 단계에 걸린 게이트의 거절 검사 중 어느 케이스도 확인하지 않고 자동화 제외도 아닌 것.
-    ErrorCode 가 없는 검사는 manual 로 시작한다(§16 3차)."""
+    ErrorCode 가 없는 검사도 auto 다 — 스크립트가 거절됨(4xx)까지만 확인한다(docs/qa-platform-v2.md §16.6-2)."""
     if catalog is None:
         return []
     done = {_canon(catalog, t) for v in s.variants for t in v.checks}
@@ -307,7 +318,7 @@ def untested_rejects(s: Scenario, catalog) -> list[dict]:
                 seen.add(rec["id"])
                 code = (rec.get("binding") or {}).get("error_code")
                 rows.append({"id": rec["id"], "at": req, "gate": gid, "title": rec.get("title") or "", "error_code": code,
-                             "mode": "auto" if code else "manual", "key": rec["id"].split("#", 1)[-1]})
+                             "mode": "auto", "key": rec["id"].split("#", 1)[-1]})
             out += sorted(rows, key=lambda x: ((x["error_code"] is None), (x.get("position") or 0), x["id"]))
     return out
 

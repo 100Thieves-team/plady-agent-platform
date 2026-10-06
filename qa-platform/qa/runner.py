@@ -91,7 +91,12 @@ def evaluate(expect: dict, status: int, body) -> list[dict]:
     """기대 5종을 평가한다. 각 항목: {check, path?, expected, actual, ok}."""
     out = []
     if "status" in expect:
-        out.append({"check": "status", "expected": expect["status"], "actual": status, "ok": status == int(expect["status"])})
+        want = str(expect["status"]).strip().lower()
+        if len(want) == 3 and want.endswith("xx") and want[0].isdigit():      # 4xx — 거절됨까지만 확인 (에러 코드를 모를 때, §16.6-2)
+            ok = status is not None and status // 100 == int(want[0])
+        else:
+            ok = status == int(want)
+        out.append({"check": "status", "expected": expect["status"], "actual": status, "ok": ok})
     if "result" in expect:
         a = get_path(body, "result") if isinstance(body, dict) else None
         out.append({"check": "result", "expected": expect["result"], "actual": a, "ok": a == expect["result"]})
