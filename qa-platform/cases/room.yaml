@@ -361,3 +361,64 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.complete-host-only
+    title: 방장이 아닌 참여자가 진행 완료를 누르면 E1406 으로 거절된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/host-only
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - G.room.complete#host-only
+    - op.completeRoomProgress:E1406
+    source:
+    - PRD/룸 진행 마무리 및 출석 R62
+    - PRD/룸 진행 마무리 및 출석 R63
+    - PRD/룸 진행 마무리 및 출석 R67
+    - PRD/룸 진행 마무리 및 출석 R68
+    - PRD/룸 진행 마무리 및 출석 R71
+    - PRD/룸 진행 마무리 및 출석 R76
+    - OpenAPI POST /v1/rooms/{roomId}/complete
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-06'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 진행 완료 방장 권한 거절 {{rand}}'
+    steps:
+    - name: 비방장이 진행 완료를 요청하면 거절된다
+      covers:
+      - G.room.complete#host-only
+      - op.completeRoomProgress:E1406
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E1406
+        json:
+          error.code: E1406
+          error.message: 방장만 접근할 수 있습니다.
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
