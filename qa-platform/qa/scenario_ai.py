@@ -127,6 +127,7 @@ REALIGN_SYSTEM = (
     "1. 출력은 ```yaml 코드 블록 하나. 시나리오 하나를 `id`, `gates`, `variants`(케이스 목록) 로 쓴다.\n"
     "2. 고쳐도 되는 케이스 key 목록이 주어진다. 그 밖의 케이스는 쓰지 않는다. 써도 플랫폼이 무시한다.\n"
     "3. 없어진 테스트 조건은 checks 에서 뺀다. 바뀐 문장에 맞게 title·given·then·at·checks 를 고친다. 바뀌지 않은 칸은 그대로 둔다.\n"
+    "   checks 의 id 는 '쓸 수 있는 테스트 조건' 목록에서만 고른다. '지금 목록에 없는 옛 id' 는 같은 뜻의 지금 id 로 바꾸거나 뺀다(API 이름이 바뀐 경우가 많다).\n"
     "4. gates 는 바뀐 요구 id 의 것만 적는다.\n"
     "5. 새로 필요한 케이스가 있으면 새 key 로 더해도 된다. 케이스 kind·key 규칙은 지금 파일과 같다."
 )
@@ -140,7 +141,8 @@ def affected(s, drift: dict) -> tuple[list[str], list[str]]:
     return keys, reqs
 
 
-def assemble_realign(*, doc: str, wiki, ssot: dict, feature, sid: str, drift: dict, keys: list[str], reqs: list[str]) -> tuple[str, str]:
+def assemble_realign(*, doc: str, wiki, ssot: dict, feature, sid: str, drift: dict, keys: list[str], reqs: list[str],
+                     valid: list[str] | None = None, stale: dict | None = None) -> tuple[str, str]:
     s = feature.scenario(sid)
     gates, _ = feature_rules(ssot, doc, {g for gl in s.gates.values() for g in gl})
     parts = [f"# 기능: {doc} · 시나리오 {sid}", "# PRD 2장 (지금 문장)\n" + (wiki.prd_section(doc, "2", max_lines=200) or "(본문 없음)")]
@@ -152,6 +154,10 @@ def assemble_realign(*, doc: str, wiki, ssot: dict, feature, sid: str, drift: di
     parts.append("# 게이트와 검사 (지금)\n```json\n" + json.dumps(g_out, ensure_ascii=False, indent=1) + "\n```")
     raw = {k: v for k, v in s.raw.items() if k != "basis"}
     parts.append("# 지금 시나리오 (파일)\n```yaml\n" + yaml.safe_dump(raw, allow_unicode=True, sort_keys=False).strip() + "\n```")
+    if stale:
+        parts.append("# 지금 목록에 없는 옛 id (케이스 key → id)\n" + "\n".join(f"- {k}: {', '.join(v)}" for k, v in stale.items()))
+    if valid:
+        parts.append("# 쓸 수 있는 테스트 조건 (checks 에는 이 id 만)\n" + ", ".join(valid))
     parts.append(f"# 고쳐도 되는 케이스 key\n{', '.join(keys) or '(없음 — 새 케이스만 더할 수 있다)'}\n\n# gates 를 고쳐도 되는 요구 id\n{', '.join(reqs) or '(없음)'}")
     parts.append("# 출력\n시나리오 하나(id, gates, variants)를 ```yaml 블록 하나로.")
     text = "\n\n".join(parts)

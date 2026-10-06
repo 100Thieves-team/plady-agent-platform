@@ -37,6 +37,7 @@ DRAFT_SYSTEM = (
     "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} {{time:rand}} 만. 룸 생성의 startTime 은 `{{time:rand}}` 로 쓴다 — 같은 방장·공고·직무·시작 시각의 활성 룸이 있으면 백엔드가 새로 만들지 않고 그 룸을 돌려준다.\n"
     "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
     "9. 테스트 데이터 만들기 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
+    "uses 는 id·title·steps 와 같은 스크립트 최상위 키다. steps 안의 단계로 쓰지 않는다. "
     "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다.\n"
     "10. 확인하는 동작이 알림을 보내면(참가 신청 접수·수락·반려, 진행 확정, 완료, 취소, 방장 위임, 후기 공개, 댓글) 그 API 단계 바로 뒤에 알림 기다리기 단계를 둘 수 있다: "
     "`- name: …\n    notify: {to: 테스트 계정, type: 알림 종류, channels: [web_push, email], within: 60s, expect: {link: /rooms/{{roomId}}}}`. "
@@ -111,13 +112,16 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
 # ---------------------------------------------------------------------------------------------
 # 출력 파싱 · 검증
 # ---------------------------------------------------------------------------------------------
-def parse_output(text: str) -> list[dict]:
+def parse_output(text: str, errors: list | None = None) -> list[dict]:
+    """Hermes 출력의 yaml 블록 → 스크립트 맵 목록. 읽지 못한 블록의 이유는 errors 에 담는다(다시 물을 때 알려 준다)."""
     blocks = re.findall(r"```(?:ya?ml)?\s*\n(.*?)```", text, re.S) or [text]
     out: list[dict] = []
     for b in blocks:
         try:
             doc = yaml.safe_load(b)
-        except yaml.YAMLError:
+        except yaml.YAMLError as ex:
+            if errors is not None:
+                errors.append("YAML 문법 오류 — " + " ".join(str(ex).split())[:200] + ". 콜론(:)이 든 문자열은 따옴표로 감싼다")
             continue
         if isinstance(doc, dict) and isinstance(doc.get("cases"), list):
             out.extend(x for x in doc["cases"] if isinstance(x, dict))
@@ -125,7 +129,32 @@ def parse_output(text: str) -> list[dict]:
             out.extend(x for x in doc if isinstance(x, dict))
         elif isinstance(doc, dict) and doc.get("id"):
             out.append(doc)
-    return out
+    return [_repair(x) for x in out]
+
+
+def _repair(raw: dict) -> dict:
+    """Hermes 가 자주 하는 모양 실수를 결정론으로 바로잡는다 (운영 기록 2026-09-26~10-06, 형식 오류 12건 중 11건).
+    1. 테스트 데이터 만들기 카드를 첫 단계로 씀(`- name: …\n  uses: {setup: …}`) → 스크립트 최상위 uses 로 올린다. 첫 단계일 때만(순서가 같다).
+    2. 요청 없이 확인 대상(covers)만 적은 단계 → 그 covers 를 바로 앞 요청 단계에 합치고 단계를 뺀다."""
+    steps = raw.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return raw
+    steps = [s for s in steps]
+    if not raw.get("uses") and isinstance(steps[0], dict) and steps[0].get("uses") and not steps[0].get("request") and not steps[0].get("notify"):
+        raw = {**raw, "uses": steps[0]["uses"]}
+        steps = steps[1:]
+    out: list = []
+    for s in steps:
+        if isinstance(s, dict) and not s.get("request") and not s.get("notify") and not s.get("uses") and not s.get("TODO") and out \
+                and isinstance(out[-1], dict) and out[-1].get("request") and set(s) <= {"name", "covers", "save", "actor"}:
+            prev = dict(out[-1])
+            prev["covers"] = list(dict.fromkeys([*(prev.get("covers") or []), *(s.get("covers") or [])]))
+            if isinstance(s.get("save"), dict):
+                prev["save"] = {**(prev.get("save") or {}), **s["save"]}
+            out[-1] = prev
+            continue
+        out.append(s)
+    return {**raw, "steps": out}
 
 
 def confirmed_cancel_warning(case: Case) -> str | None:
@@ -240,18 +269,29 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
     if extra:
         prompt = prompt.replace("\n\n# 출력\n", "\n\n" + extra.strip() + "\n\n# 출력\n", 1)
         phash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
-    raw = _asker(cfg, ask)(DRAFT_SYSTEM, prompt, "qa-draft")
-    accepted, rejected = [], []
-    for d in parse_output(raw):
-        if variant:
-            d = {k: v for k, v in d.items() if k != "variant"}
-            d = {**{k: d[k] for k in ("id", "title", "suite") if k in d}, "variant": variant, **{k: v for k, v in d.items() if k not in ("id", "title", "suite")}}
-        case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
-        if case:
-            accepted.append((case, warnings))
-        else:
-            rejected.append((str(d.get("id") or "?"), errors))
-    return {"prompt_hash": phash, "prompt_chars": len(prompt), "raw": raw, "accepted": accepted, "rejected": rejected, "model": cfg.hermes_model}
+    asker = _asker(cfg, ask)
+    raw = asker(DRAFT_SYSTEM, prompt, "qa-draft")
+    attempts = 1
+    while True:
+        accepted, rejected, parse_errors = [], [], []
+        for d in parse_output(raw, parse_errors):
+            if variant:
+                d = {k: v for k, v in d.items() if k != "variant"}
+                d = {**{k: d[k] for k in ("id", "title", "suite") if k in d}, "variant": variant, **{k: v for k, v in d.items() if k not in ("id", "title", "suite")}}
+            case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
+            if case:
+                accepted.append((case, warnings))
+            else:
+                rejected.append((str(d.get("id") or "?"), errors))
+        if accepted or attempts == 2:
+            break
+        # 하나도 못 건졌으면 오류를 알려 주고 한 번 다시 묻는다 (케이스 채우기·다시 맞추기와 같은 방식)
+        why = parse_errors + [f"{rid}: {e}" for rid, errs in rejected for e in errs] or ["yaml 블록에서 스크립트를 찾지 못했다"]
+        raw = asker(DRAFT_SYSTEM, prompt + "\n\n# 앞 출력이 검증에서 막혔다. 아래 오류를 고쳐 다시 낸다\n" + "\n".join(f"- {x}" for x in why[:12])
+                    + "\n\n# 앞 출력\n" + raw[:20000], "qa-draft")
+        attempts = 2
+    return {"prompt_hash": phash, "prompt_chars": len(prompt), "raw": raw, "accepted": accepted, "rejected": rejected, "model": cfg.hermes_model,
+            "attempts": attempts}
 
 
 # ---------------------------------------------------------------------------------------------

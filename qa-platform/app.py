@@ -640,6 +640,8 @@ class App:
         for attempt in (0, 1):
             try:
                 op = scenario_ai.merge_op(f["feature"], scenario_ai.parse_fill(text), ft)
+                if attempt == 1:       # 두 번째에도 목록에 없는 테스트 조건 id 가 남으면 플랫폼이 뺀다 (운영 기록: 케이스 채우기 실패의 대부분)
+                    op = {**op, "scenarios": [self._drop_unknown_checks(s) for s in op["scenarios"]]}
                 new, errors, _ = self.scenario_check(op)
             except scenariosmod.ScenarioError as ex:
                 errors = [str(ex)]
@@ -674,14 +676,19 @@ class App:
             raise BadRequest("지난 저장 뒤 PRD·규칙표에서 바뀐 것이 없다")
         ft = self.features[slug]
         keys, reqs = scenario_ai.affected(ft.scenario(sid), dr)
+        valid, stale = self._realign_checks(f["feature"], ft.scenario(sid))
+        keys += [k for k in stale if k not in keys]          # 옛 id 를 가리키는 케이스도 고친다 (API 이름이 바뀌었을 때)
         if not keys and not reqs:
             raise BadRequest("바뀐 것에 걸린 케이스가 없다 — [변경 확인만 하기] 를 누르면 된다")
-        prompt, phash = scenario_ai.assemble_realign(doc=f["feature"], wiki=self.wiki, ssot=self.ssot() or {}, feature=ft, sid=sid, drift=dr, keys=keys, reqs=reqs)
+        prompt, phash = scenario_ai.assemble_realign(doc=f["feature"], wiki=self.wiki, ssot=self.ssot() or {}, feature=ft, sid=sid, drift=dr, keys=keys, reqs=reqs,
+                                                     valid=valid, stale=stale)
         asker = draftsmod._asker(self.cfg, ask)
         text, errors, op = asker(scenario_ai.REALIGN_SYSTEM, prompt, "qa-realign"), [], None
         for attempt in (0, 1):
             try:
                 op = scenario_ai.revise_op(f["feature"], sid, scenario_ai.parse_realign(text, sid), ft, keys, reqs)
+                if attempt == 1:
+                    op = self._drop_unknown_checks(op)      # 두 번째에도 옛 id 가 남으면 플랫폼이 뺀다
                 _, errors, _ = self.scenario_check(op)
             except scenariosmod.ScenarioError as ex:
                 errors = [str(ex)]
@@ -698,6 +705,35 @@ class App:
         self.store.add_event(operator=operator, action="hermes.generate", target=f"{slug}/{sid}", session_hash=session_hash, ip=ip,
                              detail={"source": "hermes-realign", "prompt_hash": phash, "keys": keys, "reqs": reqs, "change": out.get("id")})
         return {**out, "keys": keys}
+
+    def _realign_checks(self, doc: str, scenario) -> tuple[list[str], dict]:
+        """다시 맞추기에 쓸 수 있는 테스트 조건 id(이 기능의 명령·게이트 검사와 그 API 계약)와, 케이스가 가리키는 옛 id {key: [id]}."""
+        from qa import scenario_ai
+        cat = self.current_catalog()
+        if cat is None:
+            return [], {}
+        gates, cmds = scenario_ai.feature_rules(self.ssot() or {}, doc, {g for gl in scenario.gates.values() for g in gl})
+        ids = [c["id"] for c in cmds] + [f"{g['id']}#{k.get('key')}" for g in gates for k in g.get("checks") or []]
+        ops = {o for i in ids for o in ((cat.records.get(i) or {}).get("binding") or {}).get("operations") or []}
+        ids += sorted(r for r, rec in cat.records.items() if rec.get("layer") == "contract" and rec.get("operation") in ops)
+        valid = [i for i in dict.fromkeys(ids) if i in cat.records]
+        stale = {v.key: [c for c in v.checks if c not in cat.records] for v in scenario.variants}
+        return valid, {k: v for k, v in stale.items() if v}
+
+    def _drop_unknown_checks(self, op: dict) -> dict:
+        """케이스 checks 에서 테스트 조건 목록에 없는 id 를 뺀다. 하나도 안 남으면 사람이 확인(manual)으로 둔다."""
+        cat = self.current_catalog()
+        if cat is None:
+            return op
+        vs = []
+        for v in op.get("variants") or []:
+            checks = [c for c in v.get("checks") or [] if c in cat.records]
+            if len(checks) != len(v.get("checks") or []):
+                v = {**v, "checks": checks}
+                if not checks:
+                    v["mode"] = "manual"
+            vs.append(v)
+        return {**op, "variants": vs}
 
     def job_realign(self, slug: str, sid: str, operator: str, session_hash=None, ip=None, sync=False):
         from qa.ui_scn import feature_url

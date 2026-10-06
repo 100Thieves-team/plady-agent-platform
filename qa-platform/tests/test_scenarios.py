@@ -265,8 +265,9 @@ class SeedTest(unittest.TestCase):
         self.assertTrue({"룸-생성", "룸-참여-및-참여자-관리"} <= set(self.app.features))
         vmap = {c.id: c.variant for c in self.app.cases.values() if c.variant}
         vmap.pop("guestbook.post-happy", None)                                               # 2026-09-25 Hermes 가 만든 것
-        self.assertEqual(vmap, {"room.create": "룸-생성/S1/happy", "room.creation-limit": "룸-생성/S1/creation-limit", "room.cancel": "룸-생성/S2/cancel",
-                                "room.cancel-not-recruiting": "룸-생성/S2/room-recruiting", "room.apply-and-withdraw": "룸-참여-및-참여자-관리/S1/withdraw"})
+        expected = {"room.create": "룸-생성/S1/happy", "room.creation-limit": "룸-생성/S1/creation-limit", "room.cancel": "룸-생성/S2/cancel",
+                                "room.cancel-not-recruiting": "룸-생성/S2/room-recruiting", "room.apply-and-withdraw": "룸-참여-및-참여자-관리/S1/withdraw"}
+        self.assertEqual({k: vmap.get(k) for k in expected}, expected)                 # 처음 묶은 스크립트는 그대로 (Hermes 가 더한 것은 늘 수 있다)
         self.assertNotIn("room.create-and-cancel", self.app.cases)
         self.assertEqual(self.app.cases["room.cancel-not-recruiting"].covers, ["G.room.cancel#room-recruiting", "op.cancelRoom:E1410"])   # E1419 검사와 어긋나던 것을 바로잡았다
         f = next(x for x in ov if x["slug"] == "룸-생성")

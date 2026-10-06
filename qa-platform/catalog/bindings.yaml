@@ -8,7 +8,7 @@ commands:
   C.room.create: createRoom
   C.room.create_batch: createRoom            # 일괄 생성은 같은 op 를 일정 수만큼 부른다
   C.room.confirm: confirmRoom
-  C.room.complete: [completeRoomProgress, recordRoomAttendances]   # MVP 진행 완료 — 백엔드는 완료와 출석 기록을 나눴다 (MOI-541 DR-003)
+  C.room.complete: [completeRoomProgress]   # MVP 진행 완료와 출석 입력은 한 API (recordRoomAttendances 는 dev 에서 없어졌다, 2026-10-06 확인)
   C.room.start: startRoomProgress
   C.room.change_block: getProgressRail       # 레일 블록 이동은 조회 op 로만 드러난다 (쓰기 op 미문서화)
   # 참여

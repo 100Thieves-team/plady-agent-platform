@@ -115,8 +115,9 @@ class CasesTest(unittest.TestCase):
     def test_select(self):
         cases, _ = load_dir(ROOT / "cases")
         self.assertTrue(all(c.suite == "smoke" for c in select(cases, suite="smoke")))
-        ids = {c.id for c in select(cases, suite="sanity", domains=["application"])}
-        self.assertEqual(ids, {"room.apply-and-withdraw"})
+        picked = select(cases, suite="sanity", domains=["application"])          # 스크립트는 Hermes 가 계속 더하므로 포함 여부만 본다
+        self.assertIn("room.apply-and-withdraw", {c.id for c in picked})
+        self.assertTrue(all(c.suite == "sanity" and "application" in c.domains for c in picked))
         self.assertEqual(select(cases, suite="sanity", domains=["nothing"]), [])
         ids = {c.id for c in select(cases, operations=["memberMe"])}
         self.assertEqual(ids, {"auth.me-without-token", "member.me"})
@@ -470,6 +471,48 @@ cases:
         # 기존 id 와 겹치면 -2 접미
         case, errors, warnings = self.drafts.validate(items[0], requested=["G.room.create#duplicate-slot-left"], catalog=self.cat, cfg=self.cfg, existing_ids={"room.create-limit-reject"})
         self.assertEqual(case.id, "room.create-limit-reject-2")
+
+    def test_repair_common_hermes_mistakes(self):
+        """운영 기록(2026-09-26~10-06): 형식 오류 12건 중 11건이 이 두 모양이었다."""
+        text = """```yaml
+cases:
+  - id: room.x
+    title: t
+    suite: sanity
+    covers: ["G.room.create#duplicate-slot-left"]
+    steps:
+      - name: 준비 카드
+        uses: {setup: setup.room-open, with: {title: "[QA] x"}}
+        covers: []
+      - name: 생성
+        request: {method: POST, path: /v1/rooms}
+        expect: {status: 409}
+      - name: 거절 확인
+        covers: ["G.room.create#duplicate-slot-left"]
+        save: {code: error.code}
+```"""
+        d = self.drafts.parse_output(text)[0]
+        self.assertEqual(d["uses"], {"setup": "setup.room-open", "with": {"title": "[QA] x"}})            # 카드 단계 → 최상위 uses
+        self.assertEqual([s["name"] for s in d["steps"]], ["생성"])                                          # 확인만 하는 단계 → 앞 단계에 합침
+        self.assertEqual((d["steps"][0]["covers"], d["steps"][0]["save"]), (["G.room.create#duplicate-slot-left"], {"code": "error.code"}))
+        errs = []
+        self.assertEqual(self.drafts.parse_output("```yaml\ncases:\n  - id: a\n    title: 확인: 거절\n```", errs), [])
+        self.assertIn("콜론", errs[0])                                                                     # 다시 물을 때 이유를 알려 준다
+
+    def test_generate_retries_once_with_errors(self):
+        calls = []
+
+        def fake(method, url, headers=None, body=None, timeout=30):
+            calls.append(body["messages"][1]["content"])
+            content = "```yaml\ncases:\n  - id: a\n    title: 확인: 거절\n```" if len(calls) == 1 else self.GOOD
+            return httpx.HttpResult(200, {}, json.dumps({"choices": [{"message": {"content": content}}]}), 1)
+
+        httpx.request = fake
+        res = self.drafts.generate(cfg=self.cfg, catalog=self.cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=["G.room.create#duplicate-slot-left"], example=None, existing_ids=set())
+        self.assertEqual((len(calls), res["attempts"]), (2, 2))
+        self.assertIn("앞 출력이 검증에서 막혔다", calls[1])
+        self.assertIn("YAML 문법 오류", calls[1])
+        self.assertEqual([c.id for c, _ in res["accepted"]], ["room.create-limit-reject"])
 
     def test_generate_flow_with_fake_hermes(self):
         seen = {}
