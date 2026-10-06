@@ -303,3 +303,61 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.complete-attendance-roster-matches
+    title: 출석 명단이 확정 참여자와 다르면 E1706 으로 거절된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/attendance-roster-matches
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - G.room.complete#attendance-roster-matches
+    - op.completeRoomProgress:E1706
+    source:
+    - PRD/룸 진행 마무리 및 출석 R62
+    - PRD/룸 진행 마무리 및 출석 R63
+    - PRD/룸 진행 마무리 및 출석 R67
+    - PRD/룸 진행 마무리 및 출석 R68
+    - PRD/룸 진행 마무리 및 출석 R71
+    - PRD/룸 진행 마무리 및 출석 R76
+    - OpenAPI POST /v1/rooms/{roomId}/complete
+    actor: qa-host
+    reviewed:
+      at: '2026-10-06'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 출석 명단 불일치 완료 거절 {{rand}}'
+    steps:
+    - name: 확정 참여자 중 일부만 출석 명단에 넣어 완료 요청하면 거절된다
+      covers:
+      - G.room.complete#attendance-roster-matches
+      - op.completeRoomProgress:E1706
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E1706
+        json:
+          error.message: 출석 대상이 확정 참여자와 일치하지 않습니다.
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
