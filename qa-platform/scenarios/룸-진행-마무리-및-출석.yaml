@@ -16,9 +16,11 @@ scenarios:
       - key: autocomplete
         kind: branch
         at: R70
-        title: 방장이 진행 완료를 누르지 않으면 예정 시각 8시간 뒤 자동 완료되고 확정 참여자 모두 후기를 쓸 수 있다
+        title: 방장이 진행 완료를 누르지 않으면 예정 시각 8시간 뒤 자동 완료되고 전원이 출석으로 기록되어 서로 후기를 쓸 수 있다
+        then: 룸 상태 COMPLETED, 확정 참여자 전원 출석 기록, 출석 기록자는 자동 완료 시점의 현재 방장, 참여자 간 후기 작성 가능
         checks: [C.room.autocomplete]
         mode: manual
+        written_by: hermes
       - key: notify
         kind: extra
         title: 완료되면 전체 참여자에게 완료 알림과 후기 요청 알림이 함께 간다
@@ -36,31 +38,35 @@ scenarios:
         kind: reject
         at: R63
         title: 출석 명단이 확정 참여자와 다르면 E1706 으로 거절된다
-        checks: [G.room.complete#attendance-roster-matches]
         then: E1706
+        checks: [G.room.complete#attendance-roster-matches]
+        written_by: hermes
       - key: host-only
         kind: reject
         at: R63
         title: 방장이 아닌 참여자가 진행 완료를 누르면 E1406 으로 거절된다
-        checks: [G.room.complete#host-only]
         then: E1406
+        checks: [G.room.complete#host-only]
+        written_by: hermes
       - key: room-confirmed
         kind: reject
         at: R63
-        title: 진행 확정되지 않은 룸을 완료하면 E1707 로 거절된다
-        checks: [G.room.complete#room-confirmed-or-idempotent-retry]
+        title: 진행 확정된 룸이 아니고 완료된 룸의 같은 출석 재시도도 아니면 E1707 로 거절된다
         then: E1707
+        checks: [G.room.complete#room-confirmed-or-idempotent-retry]
+        written_by: hermes
     basis:
       R61: d1166481
       R62: 71bd5340
-      R63: b3b57f01
-      R70: 99e07197
-      R64: f078241f
+      R63: 136f17aa
+      R70: a2b789a6
+      R64: 82333b98
       R65: a902851e
       C.room.autocomplete: 5ef4d9f0
       C.room.complete: 61176fc7
       G.room.autocomplete#room-confirmed: c61eb116
       G.room.autocomplete#schedule-plus-8h-passed: bac4a811
-      G.room.complete#attendance-roster-matches: cf6da01d
+      G.room.complete#attendance-roster-matches: bd4202a9
       G.room.complete#host-only: b30e36d5
-      G.room.complete#room-confirmed: 81e2571d
+      G.room.complete#idempotent-retry: ed00214d
+      G.room.complete#room-confirmed-or-idempotent-retry: 5b1675a1
