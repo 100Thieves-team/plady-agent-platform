@@ -51,3 +51,60 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: participation.cancel-participation-joined
+    title: 이미 끝난 참여를 다시 취소하면 E1419로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/participation-joined
+    domains:
+    - participation
+    operations:
+    - roomLeave
+    covers:
+    - G.participation.cancel#participation-joined
+    - op.roomLeave:E1419
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.6
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 이미 끝난 참여 재취소 거절 {{rand}}'
+    steps:
+    - name: 방장이 먼저 룸을 나가 참여를 끝낸다
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/participants/me
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 같은 방장이 이미 끝난 참여를 다시 취소하면 거절된다
+      covers:
+      - G.participation.cancel#participation-joined
+      - op.roomLeave:E1419
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/participants/me
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E1419
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
