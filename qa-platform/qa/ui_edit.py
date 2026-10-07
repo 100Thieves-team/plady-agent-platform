@@ -309,6 +309,11 @@ JOBS_JS = r"""
       if(S.stage==='Hermes 에게 보냄'&&inf.prompt_chars)o.push('프롬프트 '+fmt(inf.prompt_chars)+'자');
       if(S.stage==='Hermes 가 쓰는 중'){o.push(fmt(inf.received_chars)+'자 받음');if(S.since_recv!=null)o.push('마지막 수신 '+(S.since_recv+Math.floor((Date.now()-at)/1000))+'초 전')}
       if(S.stage==='근거 모으기')o.push('테스트 조건·OpenAPI·PRD 절을 모은다');return o.join(' · ')}
+    function batchLine(b,term){var pct=b.total?Math.round(100*b.done/b.total):0;
+      return '<div style="margin:10px 0"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><b>'+b.done+' / '+b.total+'</b>'
+        +'<span class="small">저장 '+b.saved+' · 검증에서 버림 '+b.rejected+' · 실패 '+b.failed+(b.skipped?' · 건너뜀 '+b.skipped:'')+'</span>'
+        +(!term&&b.current?'<span class="small mut">지금 '+esc(b.current)+'</span>':'')+'</div>'
+        +'<div style="height:6px;background:var(--line,#e5e7eb);border-radius:3px;margin-top:6px"><div style="height:6px;width:'+pct+'%;background:var(--accent,#2563eb);border-radius:3px"></div></div></div>'}
     function elapsed(){if(S.elapsed==null)return '';var t=S.elapsed+(TERM.indexOf(S.status)<0&&S.status!=='queued'?Math.floor((Date.now()-at)/1000):0);return Math.floor(t/60)+':'+('0'+t%60).slice(-2)}
     function render(){if(!S)return;var term=TERM.indexOf(S.status)>=0,idx=S.stages.indexOf(S.stage);
       var st=S.stages.map(function(n,i){var ic=(S.status==='done'||i<idx)?'✅':(i===idx?(term?'❌':'⏳'):'○');var d=(i===idx&&!term)?detail():'';
@@ -316,8 +321,9 @@ JOBS_JS = r"""
       var tools=(S.info&&S.info.tools||[]).map(function(t){return '<span class="tc">'+esc(t)+'</span>'}).join('');
       var res=S.result||{},links=(res.links||[]).map(function(x){return '<a class="btn" href="'+esc(x.href)+'">'+esc(x.label)+'</a>'}).join(' ');
       root.innerHTML='<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>'+esc(S.kind_ko)+'</b><span>'+esc(S.label||'')+'</span><span class="small mut">'+esc(S.operator)+'</span>'
-        +'<span class="b '+(S.status==='done'?'pass':(term?'fail':'running'))+'">'+esc(S.status_ko)+'</span><span class="small mut" data-el>'+elapsed()+(term?'':' / 한도 '+Math.floor(S.timeout/60)+'분')+'</span>'
+        +'<span class="b '+(S.status==='done'?'pass':(term?'fail':'running'))+'">'+esc(S.status_ko)+'</span><span class="small mut" data-el>'+elapsed()+(term?'':(S.info&&S.info.batch?' / 건마다 한도 ':' / 한도 ')+Math.floor(S.timeout/60)+'분')+'</span>'
         +(term?'':'<button type="button" data-cancel style="margin-left:auto">그만두기</button>')+'</div>'
+        +(S.info&&S.info.batch?batchLine(S.info.batch,term):'')
         +'<ul class="stages">'+st+'</ul>'+(tools?'<div class="small mut">Hermes 가 부른 도구 '+tools+'</div>':'')
         +(S.status==='done'?'<p><b>'+esc(res.summary||'끝')+'</b></p><div class="actions">'+links+'</div>':'')
         +(S.error?'<div class="flash err">'+esc(S.error)+'</div>':'')

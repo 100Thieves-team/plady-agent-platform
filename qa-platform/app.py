@@ -953,6 +953,69 @@ class App:
         return self.start_job("rejudge", operator=operator, label="수동 케이스 전부", fn=fn, back={"href": "/features", "label": "시나리오"},
                               session_hash=session_hash, ip=ip, sync=sync)
 
+    def untested_variants(self, slug: str | None = None) -> list[str]:
+        """스크립트로 확인하기로 했는데 스크립트가 없는 케이스 id (화면의 '테스트 없음'). slug 를 주면 그 기능만."""
+        ov, _ = self.scenario_view()
+        return [v["id"] for f in ov if not slug or f["slug"] == slug for s in f["scenarios"] for v in s["variants"]
+                if v["state"] == "untested" and v["variant"].checks]
+
+    def job_batch_scripts(self, operator: str, slug: str | None = None, session_hash=None, ip=None, sync=False):
+        """[스크립트 한꺼번에 만들기] — 스크립트 없는 케이스마다 [Hermes 로 스크립트 만들기] 를 차례로 한다.
+        건마다 Hermes 를 한 번 부르고 검증을 통과한 것은 바로 저장한다. 그만둬도 그때까지 저장한 것은 남는다."""
+        from qa import hermes
+        from qa.jobs import BATCH_KINDS, TERMINAL
+        vids = self.untested_variants(slug or None)
+        if not vids:
+            raise BadRequest("스크립트가 없는 케이스가 없다")
+        if any(j.kind in BATCH_KINDS and j.status not in TERMINAL for j in self.jobs.jobs.values()):
+            raise BadRequest("스크립트 한꺼번에 만들기가 이미 돌고 있다 — 끝나거나 그만둔 뒤에 다시 누른다")
+
+        def fn(job):
+            saved, rejected, failed, skipped, files = [], [], [], [], []
+
+            def progress(done, current=None):
+                job.info["batch"] = {"done": done, "total": len(vids), "saved": len(saved), "rejected": len(rejected), "failed": len(failed),
+                                     "skipped": len(skipped), "current": current}
+                job._bump(persist=True)
+            for n, vid in enumerate(vids, 1):
+                if job.cancel.is_set():
+                    break
+                progress(n - 1, vid)
+                job.note(f"\n\n===== {n}/{len(vids)} {vid} =====\n")
+                hit = scenariosmod.variant_index(self.features).get(vid)
+                if not hit or not hit[2].checks or any(c.variant == vid for c in self.cases.values()):
+                    skipped.append(vid)              # 그사이 누가 만들었거나 케이스가 바뀌었다
+                    continue
+                try:
+                    res = self.generate_cases(tc_ids=list(hit[2].checks), operator=operator, session_hash=session_hash, ip=ip, ask=job.ask, variant=vid)
+                except hermes.Canceled:
+                    break
+                except Exception as ex:          # 한 건이 실패해도 다음 건으로 간다
+                    failed.append(vid)
+                    job.note(f"\n(실패: {str(ex)[:300]})\n")
+                    continue
+                if res["saved"]:
+                    saved.append(vid)
+                    files += [s.get("id") for s in res["saved"]]
+                else:
+                    rejected.append(vid)
+                    job.note("\n(검증에서 버림: " + "; ".join(f"{rid}: {', '.join(errs[:2])}" for rid, errs in res["rejected"][:2]) + ")\n")
+            progress(len(saved) + len(rejected) + len(failed) + len(skipped))
+            self.store.add_event(operator=operator, action="hermes.batch_draft", target=slug or "all", session_hash=session_hash, ip=ip,
+                                 detail={"total": len(vids), "saved": saved[:200], "rejected": rejected[:200], "failed": failed[:200], "skipped": skipped[:200]})
+            parts = [f"케이스 {len(vids)}개 중 스크립트 저장 {len(saved)}개"]
+            if rejected:
+                parts.append(f"검증에서 버림 {len(rejected)}개")
+            if failed:
+                parts.append(f"실패 {len(failed)}개")
+            if skipped:
+                parts.append(f"건너뜀 {len(skipped)}개")
+            return {"summary": " · ".join(parts) + ". 버리거나 실패한 케이스는 다시 누르면 그것만 다시 만든다",
+                    "links": [{"href": "/features", "label": "시나리오 목록"}, {"href": "/drafts", "label": "변경 기록"}]}
+        label = (f"{slug} " if slug else "") + f"스크립트 없는 케이스 {len(vids)}개"
+        return self.start_job("batch_draft", operator=operator, label=label, fn=fn, back={"href": "/features", "label": "시나리오"},
+                              session_hash=session_hash, ip=ip, sync=sync)
+
     def job_variant_script(self, vid: str, operator: str, session_hash=None, ip=None, sync=False):
         """[Hermes 로 스크립트 만들기] — 케이스의 checks 로 스크립트를 쓰게 한다. checks 가 없으면 근거가 없어 막는다."""
         from qa.ui_scn import variant_url
@@ -2633,9 +2696,20 @@ class Handler(BaseHTTPRequestHandler):
                    f'<div class="small mut">Hermes 가 규칙표와 API 문서를 이어 API 연결·에러 코드를 채우고, 스크립트로 못 함 케이스를 다시 판정해요. 스크립트로 바꾼 케이스는 Sanity 나 케이스 화면에서 스크립트를 만들어요.</div></div>'
                    f'<form method="post" action="/features/rejudge" data-job-form><input type="hidden" name="operator" value="{ui.e(op)}">'
                    f'<button class="primary" {dis}>수동 케이스 다시 판정</button></form></div>')
+            untested = {f["slug"]: f["counts"].get("untested", 0) for f in ov if f["counts"].get("untested", 0)}
+            n_all = sum(untested.values())
+            if n_all:
+                opts = f'<option value="">모든 기능 ({n_all}개)</option>' + "".join(f'<option value="{ui.e(s)}">{ui.e(s)} ({n}개)</option>' for s, n in untested.items())
+                bar += (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>스크립트 없음 {n_all}</b>'
+                        f'{ui.h("features.batch")}'
+                        f'<div class="small mut">스크립트로 확인하기로 했는데 스크립트가 없는 케이스예요. 케이스마다 Hermes 가 한 번씩 써서 검증을 통과하면 바로 저장해요. '
+                        f'한 건에 30초~1분이라 {n_all}개면 {max(1, n_all // 2)}~{n_all}분쯤 걸려요. 도중에 그만둬도 그때까지 만든 것은 남아요.</div></div>'
+                        f'<form method="post" action="/features/batch-script" data-job-form style="display:flex;gap:8px;align-items:center">'
+                        f'<input type="hidden" name="operator" value="{ui.e(op)}"><select name="slug">{opts}</select>'
+                        f'<button class="primary" {dis}>스크립트 한꺼번에 만들기</button></form></div>')
             return self._page("시나리오", bar + ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
         # Hermes (§7): 변형 채우기 · 변형에서 스크립트 만들기 — 사람이 누른 것만 작업이 된다
-        if path in ("/features/fill", "/features/script", "/features/realign", "/features/rejudge") and method == "POST":
+        if path in ("/features/fill", "/features/script", "/features/realign", "/features/rejudge", "/features/batch-script") and method == "POST":
             f = self._form()
             fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
             operator = fv("operator").strip() or self._operator()
@@ -2643,6 +2717,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not operator or operator not in app.cfg.operators:
                     return self._redirect("/features?err=" + _urlq("담당자를 목록에서 골라야 한다"))
                 job = app.job_rejudge(operator, self._session_hash(), self._ip())
+            elif path == "/features/batch-script":
+                if not operator or operator not in app.cfg.operators:
+                    return self._redirect("/features?err=" + _urlq("담당자를 목록에서 골라야 한다"))
+                try:
+                    job = app.job_batch_scripts(operator, fv("slug").strip() or None, self._session_hash(), self._ip())
+                except BadRequest as ex:
+                    return self._redirect("/features?err=" + _urlq(str(ex)))
             elif path == "/features/fill":
                 job = app.job_fill(fv("slug"), operator, self._session_hash(), self._ip())
             elif path == "/features/realign":

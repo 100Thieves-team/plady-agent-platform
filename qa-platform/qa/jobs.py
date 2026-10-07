@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 from . import hermes
 from .config import Config
 
-KINDS = {"draft": "Hermes 가 스크립트 쓰기", "scenario": "Hermes 가 케이스 채우기", "realign": "Hermes 로 다시 맞추기", "propose": "수동 작성 테스트 조건 제안", "revise": "바뀐 테스트 조건에 맞게 고치기", "triage": "Hermes 실패 분석", "sanity": "Sanity 테스트", "specfix": "PRD·규칙표 수정안 만들기", "rejudge": "수동 케이스 다시 판정"}
+KINDS = {"draft": "Hermes 가 스크립트 쓰기", "scenario": "Hermes 가 케이스 채우기", "realign": "Hermes 로 다시 맞추기", "propose": "수동 작성 테스트 조건 제안", "revise": "바뀐 테스트 조건에 맞게 고치기", "triage": "Hermes 실패 분석", "sanity": "Sanity 테스트", "specfix": "PRD·규칙표 수정안 만들기", "rejudge": "수동 케이스 다시 판정", "batch_draft": "스크립트 한꺼번에 만들기"}
+BATCH_KINDS = ("batch_draft",)      # 여러 건을 차례로 묻는 작업 — 시간 한도는 Hermes 호출마다 새로 센다, 그만둬도 저장한 것은 남는다
 STAGES_FULL = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "검증하고 저장", "끝"]
 STAGES_SHORT = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "끝"]
 TERMINAL = ("done", "failed", "canceled", "interrupted")
@@ -76,6 +77,10 @@ class Job:
             self.info["tools"] = (self.info.get("tools") or []) + [str((data or {}).get("name") or "?")]
         self._bump()
 
+    def note(self, line: str):
+        """Hermes 가 쓰는 글 칸에 구분 줄을 넣는다 (묶음 작업에서 몇 번째 건인지)."""
+        self._on_event("delta", line)
+
     def ask(self, system: str, prompt: str, session_prefix: str) -> str:
         """drafts.generate 등에 넘기는 ask. 단계: Hermes 에게 보냄 → 쓰는 중 → (검증)."""
         if self.cancel.is_set():
@@ -83,7 +88,8 @@ class Job:
         self.set_stage("Hermes 에게 보냄", prompt_chars=len(prompt))
         cfg = self.mgr.cfg
         text = self.mgr.asker(cfg, system, prompt, session_prefix=session_prefix, on_event=self._on_event, cancel=self.cancel,
-                              deadline=(self.started or time.time()) - time.time() + time.monotonic() + cfg.job_timeout, stall=cfg.job_stall)
+                              deadline=((self.started or time.time()) - time.time() if self.kind not in BATCH_KINDS else 0) + time.monotonic() + cfg.job_timeout,
+                              stall=cfg.job_stall)
         if len(self.text) < len(text):       # 스트리밍이 조각을 안 준 경우에도 받은 글은 보인다
             self.text = text[:TEXT_LIMIT]
         self.info["received_chars"] = len(text)
@@ -151,7 +157,11 @@ class Jobs:
             job.set_stage("근거 모으기")
             result = fn(job) or {}
             if job.cancel.is_set():
-                self._end(job, "canceled", error="그만뒀다 — 결과를 저장하지 않았다")
+                if job.kind in BATCH_KINDS:
+                    job.result = result
+                    self._end(job, "canceled", error="그만뒀다 — 그때까지 저장한 것은 남는다. " + (result.get("summary") or ""))
+                else:
+                    self._end(job, "canceled", error="그만뒀다 — 결과를 저장하지 않았다")
                 return
             job.result = result
             self._end(job, "done")
