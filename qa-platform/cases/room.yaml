@@ -478,3 +478,65 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.pasted-posting
+    title: 목록에 없는 공고는 링크를 붙여 그 자리에서 만들 수 있다
+    suite: sanity
+    variant: 룸-생성/S1/pasted-posting
+    domains:
+    - room
+    - catalog
+    operations:
+    - roomFormOptions
+    - createJobPosting
+    covers:
+    - PRD.룸-생성.4.1#1
+    - op.roomFormOptions:200
+    - op.createJobPosting:200
+    source:
+    - PRD/룸 생성 §4.1
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 룸 생성 폼 선택지 조회
+      covers:
+      - PRD.룸-생성.4.1#1
+      - op.roomFormOptions:200
+      request:
+        method: GET
+        path: /v1/rooms/form-options
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.rounds
+        - data.types
+        - data.methods
+        - data.durations
+        - data.participantConstraints
+      save: {}
+    - name: 붙여넣은 링크로 채용 공고 즉시 생성
+      covers:
+      - op.createJobPosting:200
+      request:
+        method: POST
+        path: /v1/job-postings
+        body:
+          companyId: 43429
+          url: https://company.example.com/careers/qa-{{uuid}}
+          postingName: '[QA] 붙여넣은 공고 {{rand}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.companyId: 43429
+          data.verified: false
+        exists:
+        - data.jobPostingId
+        - data.postingName
+        - data.sourceUrl
+      save:
+        jobPostingId: data.jobPostingId
