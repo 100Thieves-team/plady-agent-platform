@@ -265,7 +265,7 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
                     outside = [t for t in gchecks if _gate_of(t) not in allowed]
                     if outside:
                         add(slug, "warnings", f"{vid}: checks {', '.join(outside)} 가 {v.at} 단계의 gates 밖이다")
-                if len(gchecks) > 1:
+                if v.kind == "reject" and len(gchecks) > 1:          # 성공 흐름은 검사 여러 개를 함께 통과하는 게 정상이다
                     add(slug, "warnings", f"{vid}: 검사 {len(gchecks)}개를 한 케이스가 확인한다 — 검사 하나에 케이스 하나가 기본이다")
                 full = variant_id(slug, s.id, v.key)
                 ids = impl.get(full) or []

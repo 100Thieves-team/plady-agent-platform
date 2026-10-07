@@ -1170,6 +1170,15 @@ paths:
                   value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E1707\",\n    \"message\" : \"진행을 완료할 수 없는 룸입니다.\",\n    \"data\" : null\n  }\n}"
                 completeRoomProgress-e1708:
                   value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E1708\",\n    \"message\" : \"이미 다른 출석으로 완료된 룸입니다.\",\n    \"data\" : null\n  }\n}"
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/v1-closing-questions-me910352763'
+              examples:
+                completeRoomProgress-e1706:
+                  value: "{\n  \"result\" : \"ERROR\",\n  \"data\" : null,\n  \"error\" : {\n    \"code\" : \"E1706\",\n    \"message\" : \"출석 대상이 확정 참여자와 일치하지 않습니다.\",\n    \"data\" : null\n  }\n}"
         '404':
           description: '404'
           content:

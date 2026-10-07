@@ -344,6 +344,10 @@ class CatalogTest(unittest.TestCase):
         self.assertIn("G.room.create#8", cat_old.records)
         self.assertEqual(cat_old.canonical("G.room.create#duplicate-slot-left"), "G.room.create#8")
         cases, _ = load_dir(ROOT / "cases")
+        # 별칭 파일은 이관(2026-09-23) 때의 key 만 안다. 그 뒤 새로 생긴 key 를 쓰는 스크립트는 번호 판에서 풀 수 없으니 뺀다
+        known = set(inputs.aliases)
+        cases = {cid: c for cid, c in cases.items() if all("#" not in t or t in known for t in c.covers)}
+        self.assertGreaterEqual(len(cases), 10)
         audit(cases, cat_old)
         self.assertEqual({cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}, {})
         # 바인딩(key 로 옮김)도 번호 카탈로그에서 찾는다
