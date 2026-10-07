@@ -30,7 +30,6 @@ scenarios:
         at: R3
         title: 이용이 제한된 계정이 방명록에 글을 쓰면 거절된다
         checks: [G.guestbook.post_write#account-active]
-        mode: manual
     basis:
       R1: aa9021e5
       R2: 848a5963
