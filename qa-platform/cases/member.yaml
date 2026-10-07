@@ -238,3 +238,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: member.restore-withdrawn-google-account
+    title: 탈퇴했던 회원이 같은 Google 계정으로 복구 확인을 거치면 계정이 복구된다
+    suite: sanity
+    variant: 회원-및-프로필/S1/restore-withdrawn-google-account
+    domains:
+    - member
+    - auth
+    operations:
+    - authRestore
+    covers:
+    - C.member.restore
+    - op.authRestore:200
+    source:
+    - PRD/회원 및 프로필 §2
+    - PRD/회원 및 프로필 §4.8
+    - OpenAPI POST /v1/auth/restoration
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.member-withdrawn
+    steps:
+    - name: 같은 Google 계정으로 다시 로그인해 복구 확인 쿠키를 받는다
+      cookie_jar: restoreFlow
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/dev/members/{{memberId}}/social-login
+      expect:
+        status: 200
+        result: SUCCESS
+        cookies:
+          RESTORE_TOKEN: set
+      save: {}
+      covers: []
+    - name: 탈퇴 계정 복구 확인
+      cookie_jar: restoreFlow
+      actor: null
+      covers:
+      - C.member.restore
+      - op.authRestore:200
+      request:
+        method: POST
+        path: /v1/auth/restoration
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data: null
+      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      actor: qa-guest
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
