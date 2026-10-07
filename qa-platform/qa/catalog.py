@@ -98,7 +98,8 @@ def load_inputs(catalog_dir: Path) -> Inputs:
         if key == "bindings":
             cmds = doc.get("commands") or {}
             inp.bindings = {"commands": {k: (v if isinstance(v, list) else [v]) for k, v in cmds.items() if v},
-                            "checks": {str(k): str(v) for k, v in (doc.get("checks") or {}).items() if v}}
+                            "checks": {str(k): str(v) for k, v in (doc.get("checks") or {}).items() if v},
+                            "no_api": {str(k): str(v) for k, v in (doc.get("no_api") or {}).items() if v}}      # §16 — API 없음은 경고 대상이 아니다
         elif key == "exclusions":
             inp.exclusions = [x for x in (doc.get("exclusions") or []) if isinstance(x, dict) and x.get("reason")]
         else:

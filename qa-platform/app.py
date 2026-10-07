@@ -43,6 +43,7 @@ from qa import report as reportmod  # noqa: E402
 from qa import sanity as sanitymod  # noqa: E402
 from qa import targets as targetsmod  # noqa: E402
 from qa import specfix as specfixmod  # noqa: E402
+from qa import binding_ai  # noqa: E402
 from qa import httpx  # noqa: E402
 from qa import inbox as inboxmod  # noqa: E402,F401
 from qa import ui_inbox  # noqa: E402
@@ -753,6 +754,186 @@ class App:
                 return {"summary": "새로 더할 케이스나 gates 가 없었다", "links": [{"href": feature_url(slug), "label": slug}]}
             return {"summary": f"케이스 {out['added']}개와 빈 단계의 gates 를 채워 저장했다 (Hermes 작성 표시)", "links": [self.change_link(out)]}
         return self.start_job("scenario", operator=operator, label=slug, fn=fn, back={"href": feature_url(slug), "label": slug},
+                              session_hash=session_hash, ip=ip, sync=sync)
+
+    # ---- "사람이 확인" 줄이기 (docs/qa-platform-v2.md §16) -------------------------------------
+    def no_api_commands(self) -> dict:
+        """bindings.yaml 의 no_api — 규칙표 명령인데 dev API 문서에 끝점이 없는 것 {명령: 이유}."""
+        p = self.catalog.catalog_dir / "bindings.yaml"
+        try:
+            return {str(k): str(v) for k, v in ((draftsmod.yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("no_api") or {}).items()}
+        except (OSError, draftsmod.yaml.YAMLError):
+            return {}
+
+    def binding_targets(self) -> tuple[list[dict], list[dict]]:
+        """시나리오 케이스가 가리키는데 API 가 묶이지 않은 명령, 에러 코드가 없는 거절 검사."""
+        cat = self.current_catalog()
+        if cat is None:
+            return [], []
+        ssot = self.ssot() or {}
+        cmd_info = {c.get("id"): c for c in ssot.get("commands") or [] if isinstance(c, dict)}
+        no_api = self.no_api_commands()
+        cmds, checks, seen = [], [], set()
+        for ft in self.features.values():
+            for s in ft.scenarios:
+                for v in s.variants:
+                    for t in v.checks:
+                        rec = cat.records.get(t)
+                        if not rec or rec.get("layer") != "policy" or t in seen:
+                            continue
+                        seen.add(t)
+                        cmd = rec.get("command")
+                        b = rec.get("binding") or {}
+                        if cmd and not b.get("operations") and cmd not in no_api and cmd not in {c["id"] for c in cmds} \
+                                and (cmd_info.get(cmd) or {}).get("actor") != "system":
+                            ci = cmd_info.get(cmd) or {}
+                            cmds.append({"id": cmd, "name": ci.get("name"), "actor": ci.get("performer") or ci.get("actor"),
+                                         "source_text": "; ".join(f"{p.get('doc')} {p.get('text') or p.get('section') or ''}"[:120] for p in (rec.get("prd") or [])[:2])})
+                        if rec.get("kind") == "reject" and not b.get("error_code"):
+                            h = rec.get("expect_hint") or {}
+                            checks.append({"id": t, "command": cmd, "cond": h.get("cond"), "message": h.get("message")})
+        return cmds, checks
+
+    def fill_bindings(self, *, operator: str, ask=None, session_hash=None, ip=None) -> dict:
+        """Hermes 가 API 연결·에러 코드·API 없음을 찾고, 검증을 통과한 것을 bindings.yaml 에 저장한다."""
+        cmds, checks = self.binding_targets()
+        if not cmds and not checks:
+            return {"saved": False, "commands": 0, "checks": 0, "no_api": 0, "rejected": []}
+        prompt, phash = binding_ai.assemble(commands=cmds, checks=checks, spec=self.spec.get())
+        text = draftsmod._asker(self.cfg, ask)(binding_ai.SYSTEM, prompt, "qa-binding")
+        try:
+            out = binding_ai.parse(text)
+        except ValueError as ex:
+            raise BadRequest(str(ex))
+        cur = {"commands": {}}
+        cat = self.current_catalog()
+        if cat is not None:
+            for rec in cat.records.values():
+                if rec.get("command") and (rec.get("binding") or {}).get("operations"):
+                    cur["commands"][rec["command"]] = rec["binding"]["operations"]
+        acc, why = binding_ai.validate(out, spec=self.spec.get(), commands=cmds, checks=checks, current=cur)
+        if why:
+            self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target="catalog/bindings.yaml", session_hash=session_hash, ip=ip,
+                                 detail={"source": "hermes-binding", "errors": why[:12], "prompt_hash": phash})
+        n = {k: len(acc[k]) for k in ("commands", "checks", "no_api")}
+        if not any(n.values()):
+            return {"saved": False, **n, "rejected": why}
+        out = self.save_change(kind="binding", source="hermes-binding", yaml_text=draftsmod.yaml.safe_dump(acc, allow_unicode=True, sort_keys=False),
+                               operator=operator, tc_ids=list(acc["checks"]), note=f"API 연결 {n['commands']} · 에러 코드 {n['checks']} · API 없음 {n['no_api']}",
+                               validation={"status": "ok", "warnings": why[:12]}, prompt_hash=phash, session_hash=session_hash, ip=ip)
+        return {"saved": True, **n, "rejected": why, "change": out}
+
+    REJUDGE_SYSTEM = (
+        "너는 Spring 백엔드 팀의 QA 엔지니어다. 지금 '스크립트로 못 함(manual)' 으로 표시된 케이스마다, API 를 불러 확인하는 스크립트로 만들 수 있는지 판정한다. "
+        "데이터는 테스트 데이터 만들기 카드와 API 로 만들 수 있다. 기본은 스크립트로 할 수 있다고 본다. 한국어로 쓴다.\n\n"
+        "출력 규칙(어기면 버려진다):\n"
+        "1. 출력은 ```json 코드 블록 하나: {\"케이스 id\": {\"mode\": \"auto\"|\"manual\", \"manual_reason\": \"ui\"|\"no_api\"|\"needs_tool\"|\"structural\", \"checks\": [테스트 조건 id], \"why\": 한 문장}}\n"
+        "2. auto 는 주어진 API 로 그 결과를 확인할 수 있을 때. checks 는 주어진 '쓸 수 있는 테스트 조건' 에서만 고른다(비우면 지금 checks 그대로).\n"
+        "3. manual 이면 이유를 고른다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작을 일으키는 API 가 목록에 없음) · "
+        "needs_tool(회원을 이용 제한 상태로 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 함) · structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것 고치기).\n"
+        "4. 주어진 케이스 id 만 쓴다."
+    )
+
+    def rejudge_manual(self, *, operator: str, ask=None, session_hash=None, ip=None) -> dict:
+        """[수동 케이스 다시 판정] (§16.2-4). API 연결을 먼저 채우고, 수동 케이스를 결정론 → Hermes 순으로 다시 판정해 저장한다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        try:
+            bind = self.fill_bindings(operator=operator, ask=ask, session_hash=session_hash, ip=ip)
+        except BadRequest as ex:
+            bind = {"saved": False, "error": str(ex)}
+        cat = self.current_catalog()
+        if cat is None:
+            raise BadRequest("테스트 조건 목록이 없다")
+        no_api = self.no_api_commands()
+
+        def bound(t):
+            r = cat.records.get(t) or {}
+            return r.get("layer") == "contract" or bool((r.get("binding") or {}).get("operations"))
+        decided: dict[tuple, dict] = {}          # (slug, sid) → {key: 새 케이스}
+        pending = []
+        for slug, ft in self.features.items():
+            for s in ft.scenarios:
+                for v in s.variants:
+                    if v.mode != "manual":
+                        continue
+                    vid = f"{slug}/{s.id}/{v.key}"
+                    raw = scenariosmod.variant_raw(v.raw)
+                    # 결정론으로는 'API 없음' 만 정한다. API 가 묶여 있어도 일어날 수 없는 경우(/me 만 받는 API 로 남의 것 고치기)가 있어 auto 는 Hermes 판정을 거친다
+                    if v.checks and any((cat.records.get(t) or {}).get("command") in no_api for t in v.checks):
+                        new = {**raw, "mode": "manual", "manual_reason": "no_api"}
+                    else:
+                        pending.append((slug, s, v, raw))
+                        continue
+                    if new != raw:
+                        decided.setdefault((slug, s.id), {})[v.key] = new
+        if pending:
+            lines = []
+            for slug, s, v, raw in pending:
+                ops = sorted({o for t in v.checks for o in ((cat.records.get(t) or {}).get("binding") or {}).get("operations") or []})
+                lines.append(f"- {slug}/{s.id}/{v.key} · {v.title} · 전제 {v.given or '-'} · 기대 {v.then or '-'} · 지금 checks {v.checks or '-'} · 묶인 API {ops or '-'}")
+            spec = self.spec.get()
+            api = [f"- {o} {op.method} {op.path} {(op.summary or '')[:60]}" for o, op in sorted((spec.ops if spec else {}).items(), key=lambda x: x[1].path) if "/v1/dev/" not in op.path]
+            setups = [f"- {c.id} {c.title}" for c in self.cases.values() if c.suite == "setup"]
+            valid = sorted(t for t in cat.records if bound(t))
+            prompt = "\n".join(["# 다시 판정할 케이스", *lines, "# 테스트 데이터 만들기 카드", *setups, "# dev API 목록", *api,
+                                 "# 쓸 수 있는 테스트 조건 (API 가 묶인 것)", ", ".join(valid), "# 출력\n```json 블록 하나."])
+            text = draftsmod._asker(self.cfg, ask)(self.REJUDGE_SYSTEM, prompt, "qa-rejudge")
+            try:
+                out = binding_ai.parse(text)
+            except ValueError:
+                out = {}
+            for slug, s, v, raw in pending:
+                d = out.get(f"{slug}/{s.id}/{v.key}")
+                if not isinstance(d, dict):
+                    continue
+                if d.get("mode") == "auto":
+                    checks = [t for t in (d.get("checks") or v.checks) if t in cat.records and bound(t)]
+                    if not checks:
+                        continue                                   # 확인할 조건이 없으면 auto 로 바꾸지 않는다
+                    new = {k: x for k, x in raw.items() if k not in ("mode", "manual_reason")} | {"checks": checks}
+                elif d.get("manual_reason") in scenariosmod.MANUAL_REASONS:
+                    new = {**raw, "mode": "manual", "manual_reason": d["manual_reason"]}
+                else:
+                    continue
+                if new != raw:
+                    decided.setdefault((slug, s.id), {})[v.key] = scenariosmod.variant_raw(new)
+        saved, failed = [], []
+        for (slug, sid), vs in decided.items():
+            op = {"feature": self.features[slug].feature, "scenario": sid, "action": "revise", "variants": list(vs.values()), "allowed": list(vs), "allowed_reqs": [], "gates": {}}
+            _, errors, _ = self.scenario_check(op)
+            if errors:
+                op = {**op, "variants": [self._drop_unknown_checks({"variants": [x]})["variants"][0] for x in op["variants"]]}
+                _, errors, _ = self.scenario_check(op)
+            if errors:
+                failed.append(f"{slug}/{sid}: {errors[0]}")
+                continue
+            self.save_scenario(op, operator=operator, source="hermes-rejudge", session_hash=session_hash, ip=ip)
+            saved += [f"{slug}/{sid}/{k}" for k in vs]
+        states = {}
+        for slug, ft in self.features.items():
+            for s in ft.scenarios:
+                for v in s.variants:
+                    if f"{slug}/{s.id}/{v.key}" in saved:
+                        states[v.mode + ("/" + v.manual_reason if v.manual_reason else "")] = states.get(v.mode + ("/" + v.manual_reason if v.manual_reason else ""), 0) + 1
+        self.store.add_event(operator=operator, action="scenario.rejudge", target="scenarios", session_hash=session_hash, ip=ip,
+                             detail={"binding": {k: bind.get(k) for k in ("commands", "checks", "no_api", "error")}, "changed": len(saved), "states": states, "failed": failed[:6]})
+        return {"binding": bind, "changed": saved, "states": states, "failed": failed}
+
+    def job_rejudge(self, operator: str, session_hash=None, ip=None, sync=False):
+        def fn(job):
+            out = self.rejudge_manual(operator=operator, ask=job.ask, session_hash=session_hash, ip=ip)
+            b = out["binding"]
+            st = out["states"]
+            auto = st.get("auto", 0)
+            parts = [f"API 연결 {b.get('commands', 0)} · 에러 코드 {b.get('checks', 0)} · API 없음 {b.get('no_api', 0)} 저장",
+                     f"케이스 {len(out['changed'])}개 다시 판정 — 스크립트로 {auto}개"]
+            parts += [f"{scenariosmod.MANUAL_REASON_KO.get(k.split('/')[1], k)} {n}개" for k, n in st.items() if "/" in k]
+            if out["failed"]:
+                parts.append(f"{len(out['failed'])}개 시나리오는 저장하지 못했다")
+            return {"summary": " · ".join(parts) + ". 스크립트는 Sanity 나 케이스 화면의 [Hermes 로 스크립트 만들기] 로 만든다",
+                    "links": [{"href": "/features", "label": "시나리오 목록"}]}
+        return self.start_job("rejudge", operator=operator, label="수동 케이스 전부", fn=fn, back={"href": "/features", "label": "시나리오"},
                               session_hash=session_hash, ip=ip, sync=sync)
 
     def job_variant_script(self, vid: str, operator: str, session_hash=None, ip=None, sync=False):
@@ -1629,10 +1810,15 @@ class App:
         if kind in ("tc", "tc-delete"):
             cat = self.current_catalog()
             return editormod.plan_tc(d, covered_by=self.coverage(cat)["by_tc"] if cat else {})
+        if kind == "binding":            # API 연결·에러 코드 (§16.2-1) — catalog/bindings.yaml 각 묶음 끝에 더한다
+            acc = draftsmod.yaml.safe_load(d["yaml"]) or {}
+            n = {k: len(acc.get(k) or {}) for k in ("commands", "checks", "no_api")}
+            return ("catalog/bindings.yaml", lambda text: binding_ai.apply(text, acc),
+                    f"API 연결 {n['commands']} · 에러 코드 {n['checks']} · API 없음 {n['no_api']} (Hermes)", list(acc.get("commands") or {}) + list(acc.get("checks") or {}))
         return editormod.plan_case(d, cases=self.cases, operator=operator)
 
     SAVE_ACTIONS = {"case": "case.save", "case-delete": "case.delete", "case-unlink": "case.save", "tc": "manual_tc.save", "tc-delete": "manual_tc.delete",
-                    "scenario": "scenario.save", "scenario-delete": "scenario.delete"}
+                    "scenario": "scenario.save", "scenario-delete": "scenario.delete", "binding": "binding.save"}
 
     # ---- 시나리오 폼 (docs/qa-platform-scenarios.md §9, §14 5단계) ----------------------------------
     def scenario_check(self, op: dict) -> tuple[str | None, list[str], list[str]]:
@@ -1728,7 +1914,7 @@ class App:
                 raise BadRequest(f"main 에 저장하지 못했다 — {ex}")
             if self.cases_dir != self.repo.local / "cases":      # 시작 때 main 받기에 실패해 이미지 파일을 읽고 있었다 — 지금 받는다
                 self.resync_repo()
-            elif kind in ("tc", "tc-delete"):
+            elif kind in ("tc", "tc-delete", "binding"):
                 self.catalog.get(force=True)
             self.reload_cases()
         fields = {"status": "approved", "decided_by": operator, "decided_at": now_iso(), "note": (note or "").strip() or d.get("note")}
@@ -2422,13 +2608,25 @@ class Handler(BaseHTTPRequestHandler):
         # ---------- 시나리오 (docs/qa-platform-scenarios.md §12) ----------
         if path == "/features" and method == "GET":
             ov, chk = app.scenario_view()
-            return self._page("시나리오", ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
+            op = self._operator()
+            tot = {k: sum(f["counts"].get(k, 0) for f in ov) for k in ("manual", "no_api", "needs_tool", "na")}
+            dis = "" if (op and app.cfg.hermes_key) else ('disabled title="담당자를 먼저 고르세요"' if not op else 'disabled title="HERMES_API_KEY 가 없다"')
+            bar = (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>사람이 확인 {tot["manual"]}</b>'
+                   f' <span class="small mut">· 백엔드 미구현 {tot["no_api"]} · dev 도구 필요 {tot["needs_tool"]} · 해당 없음 {tot["na"]}</span>'
+                   f'<div class="small mut">Hermes 가 규칙표와 API 문서를 이어 API 연결·에러 코드를 채우고, 스크립트로 못 함 케이스를 다시 판정해요. 스크립트로 바꾼 케이스는 Sanity 나 케이스 화면에서 스크립트를 만들어요.</div></div>'
+                   f'<form method="post" action="/features/rejudge" data-job-form><input type="hidden" name="operator" value="{ui.e(op)}">'
+                   f'<button class="primary" {dis}>수동 케이스 다시 판정</button></form></div>')
+            return self._page("시나리오", bar + ui.scenario_tree(ov, errors=chk["errors"], title="시나리오"), "features")
         # Hermes (§7): 변형 채우기 · 변형에서 스크립트 만들기 — 사람이 누른 것만 작업이 된다
-        if path in ("/features/fill", "/features/script", "/features/realign") and method == "POST":
+        if path in ("/features/fill", "/features/script", "/features/realign", "/features/rejudge") and method == "POST":
             f = self._form()
             fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
             operator = fv("operator").strip() or self._operator()
-            if path == "/features/fill":
+            if path == "/features/rejudge":
+                if not operator or operator not in app.cfg.operators:
+                    return self._redirect("/features?err=" + _urlq("담당자를 목록에서 골라야 한다"))
+                job = app.job_rejudge(operator, self._session_hash(), self._ip())
+            elif path == "/features/fill":
                 job = app.job_fill(fv("slug"), operator, self._session_hash(), self._ip())
             elif path == "/features/realign":
                 job = app.job_realign(fv("slug"), fv("scenario"), operator, self._session_hash(), self._ip())

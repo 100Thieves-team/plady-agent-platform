@@ -663,3 +663,11 @@ PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticip
 2. 에러 코드를 못 찾은 거절 케이스는 "거절됨(4xx·result ERROR)"만 확인하는 자동 스크립트로. 결과에 "코드까지는 확인하지 않음" 표시.
 3. AI 가 찾은 API 연결·에러 코드는 검증 통과 시 바로 `catalog/bindings.yaml` 에 저장(Hermes 작성 표시).
 4. 백엔드에 API 가 없는 케이스는 "사람이 확인" 에서 빼고 "백엔드 미구현" 으로 따로 보인다.
+
+### 16.7 1단계 구현 (2026-10-07)
+
+- `qa/binding_ai.py`: Hermes 가 API 연결·에러 코드·API 없음을 제안하면 플랫폼이 검증한다. operationId 는 API 문서에 있고 `/v1/dev/` 가 아니어야 한다. 에러 코드는 그 명령에 묶인 API 의 에러 예시에 있거나 공통 코드(E400·E1102)여야 한다. E1402 같은 검증 코드는 그 API 예시에 있을 때만 받는다. 통과한 것만 `catalog/bindings.yaml` 의 각 묶음 끝에 `# Hermes 날짜` 표시와 함께 더한다.
+- `bindings.yaml` 에 `no_api` 묶음을 새로 둔다. 규칙표 명령인데 dev API 문서에 끝점이 없는 것을 이유와 함께 적는다. API 가 생기면 `commands` 로 옮긴다.
+- 시나리오 목록 위 카드에 사람이 확인 · 백엔드 미구현 · dev 도구 필요 · 해당 없음 수를 따로 보인다. [수동 케이스 다시 판정] 버튼이 작업(`rejudge`)을 시작한다.
+- 다시 판정 순서: API 연결 채우기 → `no_api` 명령을 가리키는 케이스는 바로 `no_api` → 나머지는 Hermes 가 auto 또는 수동 이유를 고른다. auto 는 API 가 묶인 테스트 조건이 있어야만 받는다. 저장은 시나리오마다 `revise` 로 하고 감사 로그 `scenario.rejudge` 를 남긴다.
+- 설계 16.2-4 와 다른 점: 다시 판정은 스크립트까지 만들지 않는다. auto 가 된 케이스는 Sanity 나 케이스 화면의 [Hermes 로 스크립트 만들기] 로 만든다. 한 작업에서 케이스 수십 개의 스크립트를 한꺼번에 쓰면 실패 원인을 보기 어렵기 때문이다.
