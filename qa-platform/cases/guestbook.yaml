@@ -147,3 +147,97 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: guestbook.account-active
+    title: 이용이 제한된 계정이 방명록에 글을 쓰면 거절된다
+    suite: sanity
+    variant: 룸-방명록/S1/account-active
+    domains:
+    - guestbook
+    operations:
+    - createRoomComment
+    covers:
+    - G.guestbook.post_write#account-active
+    - op.createRoomComment:200
+    source:
+    - PRD/룸 방명록 §3
+    - PRD/룸 방명록 §4.3
+    - PRD/룸 방명록 §4.4
+    - PRD/룸 방명록 §4.6
+    - OpenAPI POST /v1/rooms/{roomId}/comments
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 방명록 account-active sanity {{rand}}'
+    steps:
+    - name: 활성 계정인 방장이 방명록 글을 작성할 수 있다
+      actor: qa-host
+      covers:
+      - op.createRoomComment:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/comments
+        body:
+          content: '[QA] 방명록 정상 작성 확인 {{rand}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.commentId
+        - data.createdAt
+      save:
+        hostCommentId: data.commentId
+    - name: 참여자인 qa-guest 계정을 이용 제한 상태로 바꾼다
+      actor: qa-host
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
+        body:
+          status: RESTRICTED
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 이용 제한된 참여자가 방명록 글을 작성하면 거절된다
+      actor: qa-guest
+      covers:
+      - G.guestbook.post_write#account-active
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/comments
+        body:
+          content: '[QA] 이용 제한 계정 방명록 작성 시도 {{rand}}'
+      expect:
+        status: 4xx
+        result: ERROR
+      save: {}
+    - name: 정리(qa-guest 계정 상태 복구)
+      always: true
+      actor: qa-host
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
+        body:
+          status: ACTIVE
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      actor: qa-host
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
