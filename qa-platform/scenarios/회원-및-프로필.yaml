@@ -60,6 +60,7 @@ scenarios:
       G.member.signup#terms-agreed: baa5bf6f
 
   - id: S2
+    actor: qa-guest
     gates:
       R6: [G.member.edit_profile]
       R129: [G.member.edit_profile, G.member.set_nickname]
@@ -93,7 +94,6 @@ scenarios:
         then: 탈퇴 전에 안내를 확인한다.
         checks: [C.member.withdraw]
         written_by: hermes
-        mode: manual
       - key: nickname-check
         kind: extra
         title: 닉네임을 바꾸기 전에 쓸 수 있는지 확인한다
@@ -104,6 +104,7 @@ scenarios:
         title: 다른 사람의 프로필을 고치면 거절된다
         checks: [G.member.edit_profile#own-profile-only]
         mode: manual
+        manual_reason: structural
       - key: length-limit
         kind: reject
         at: R129
@@ -139,21 +140,22 @@ scenarios:
         at: R131
         title: 이용이 제한된 계정이 이력서를 올리면 거절된다
         checks: [G.resume.create#account-active]
-        mode: manual
       - key: rename.resume-not-deleted
         kind: reject
         at: R132
         title: 지운 이력서의 이름을 고치면 E1010 으로 거절된다
-        checks: [G.resume.rename#resume-not-deleted]
         then: E1010
+        checks: [G.resume.rename#resume-not-deleted]
         mode: manual
+        manual_reason: no_api
       - key: rename.resume-owner-only
         kind: reject
         at: R132
         title: 다른 사람의 이력서 이름을 고치면 E1010 으로 거절된다
-        checks: [G.resume.rename#resume-owner-only]
         then: E1010
+        checks: [G.resume.rename#resume-owner-only]
         mode: manual
+        manual_reason: no_api
       - key: set-default.resume-not-deleted
         kind: reject
         at: R133
@@ -184,7 +186,6 @@ scenarios:
         title: 다른 사람의 이력서를 지우면 E1010 으로 거절된다
         checks: [G.resume.delete#resume-owner-only]
         then: E1010
-    actor: qa-guest
     basis:
       R6: fecd2b7e
       R129: c955de6f
@@ -195,6 +196,9 @@ scenarios:
       R134: 8489c2b0
       R135: 072cd5ca
       R136: f07ab610
+      R137: 2dffef7b
+      R138: 3f656750
+      R139: 0cc3e0d9
       C.member.update_profile: c195458c
       C.member.withdraw: 791650b8
       C.resume.create: 6c357246
@@ -206,7 +210,7 @@ scenarios:
       G.member.set_nickname#nickname-not-taken: f8de23d6
       G.member.set_nickname#no-forbidden-chars: 2eb22aae
       G.member.set_nickname#not-policy-violating: a1a24691
-      G.member.withdraw#not-already-withdrawn: 8413fb88
+      G.member.withdraw#not-already-withdrawn: 58f6000c
       G.member.withdraw#own-account-only: c040bb0f
       G.resume.create#account-active: 57f45b0d
       G.resume.create#resume-slot-left: '75043423'
