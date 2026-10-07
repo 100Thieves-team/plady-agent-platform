@@ -46,7 +46,7 @@ def editor_page(st: dict, *, mode: str, original_id: str | None, draft_id: str |
             f'<div class="actions"><button class="primary" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장</button>'
             f'<button type="button" id="ed-try" {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>저장 전에 한 번 실행해 보기 (dev)</button>{h("editor.try")} {back}</div>'
             f'<p id="ed-try-msg" class="small mut"></p></form>'
-            f'<datalist id="dl-ops"></datalist><datalist id="dl-tcs"></datalist><datalist id="dl-vars"></datalist><datalist id="dl-variants"></datalist>'
+            f'<datalist id="dl-ops"></datalist><datalist id="dl-tcs"></datalist><datalist id="dl-vars"></datalist><datalist id="dl-variants"></datalist><datalist id="dl-ck"><option value="set">심었다</option><option value="cleared">만료시켰다</option><option value="absent">건드리지 않았다</option></datalist>'
             f'<script id="ed-state" type="application/json">{json.dumps(st, ensure_ascii=False).replace("</", "<\\/")}</script>'
             f'<script>window.ED={json.dumps(ed, ensure_ascii=False)}</script><script src="/static/editor.js?v={EDITOR_JS_VERSION}" defer></script>')
 
@@ -58,7 +58,7 @@ EDITOR_JS = r"""
   var root=document.getElementById('ed-root');
   S.steps=S.steps&&S.steps.length?S.steps:[blankStep()];
   S.uses=S.uses||{setup:'',with:{}};S.uses.with=S.uses.with||{};
-  function blankStep(){return {name:'',actor:'',always:false,covers:[],method:'GET',path:'',query:[],body:'',expect:{status:'',result:'',error_code:'',json:[],exists:[]},save:[]}}
+  function blankStep(){return {name:'',actor:'',cookie_jar:'',always:false,covers:[],method:'GET',path:'',query:[],headers:[],body:'',expect:{status:'',result:'',error_code:'',json:[],exists:[],cookies:[]},save:[]}}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function getP(p){var o=S;p.split('.').forEach(function(k){o=(o==null)?undefined:o[k]});return o}
   function setP(p,v){var ks=p.split('.'),o=S;for(var i=0;i<ks.length-1;i++){o=o[ks[i]]}o[ks[ks.length-1]]=v}
@@ -121,18 +121,19 @@ EDITOR_JS = r"""
     var h='<div class="card step"><div class="callhead"><b>단계 '+(i+1)+(s.name?' — '+esc(s.name):'')+'</b><span>'
       +(i>0?'<button type="button" data-act="up" data-i="'+i+'">↑</button> ':'')+(i<n-1?'<button type="button" data-act="down" data-i="'+i+'">↓</button> ':'')
       +'<button type="button" data-act="dup" data-i="'+i+'">복제</button> '+(n>1?'<button type="button" class="danger" data-act="del" data-i="'+i+'">삭제</button>':'')+'</span></div>';
-    h+='<div class="g2">'+fld('이름',inp('steps.'+i+'.name','예: 룸 생성'))+fld('테스트 계정',sel('steps.'+i+'.actor',CTX.actors,'기본 계정'+(S.actor?' ('+S.actor+')':' (없음)')),'비우면 위의 기본 테스트 계정으로 부른다')+'</div>';
+    h+='<div class="g2">'+fld('이름',inp('steps.'+i+'.name','예: 룸 생성'))+fld('테스트 계정',sel('steps.'+i+'.actor',CTX.actors.concat([['-','로그인 안 함 (쿠키 저장소만)']]),'기본 계정'+(S.actor?' ('+S.actor+')':' (없음)')),'비우면 위의 기본 테스트 계정으로 부른다')+'</div>'+'<div class="g2">'+fld('쿠키 저장소'+help('editor.cookie_jar'),inp('steps.'+i+'.cookie_jar','예: member'),'같은 이름을 쓴 단계끼리 응답 쿠키를 이어 받는다. 로그인 쿠키로 부를 때 쓴다')+'<div></div></div>';
     h+='<p style="margin:0 0 10px"><label class="small"><input type="checkbox" data-k="steps.'+i+'.always"'+(s.always?' checked':'')+'> 앞 단계가 실패해도 이 단계는 실행한다 (정리 단계)</label>'+help('editor.always')+'</p>';
     h+=fld('API'+help('editor.api'),'<input list="dl-ops" data-op="'+i+'" placeholder="operationId 나 경로로 검색" value="'+esc(opOf(s))+'">',info?esc(info.method+' '+info.path+' — '+(info.summary||'')):'고르면 메서드·경로·본문 필드가 채워진다');
     h+='<div class="g2">'+fld('메서드',sel('steps.'+i+'.method',['GET','POST','PUT','PATCH','DELETE']))+fld('경로',inp('steps.'+i+'.path','/v1/rooms/{{roomId}}','class="mono" list="dl-vars"'),'앞 단계에서 저장한 값은 {{이름}} 으로 쓴다',true)+'</div>';
     h+='<h4>쿼리</h4>'+rows('steps.'+i+'.query',[['k','이름'],['v','값','dl-vars']]);
+    if((s.headers||[]).length||s.actor==='-')h+='<h4>헤더</h4><div class="small mut">새로 만든 QA 회원으로 부를 때 Authorization 에 Bearer {{memberToken}} 을 넣는다. 기록에는 가려진다</div>'+rows('steps.'+i+'.headers',[['k','이름 (Authorization)'],['v','값','dl-vars']]);
     if(s.method!=='GET'||s.body)h+=bodyHtml(s,i,info);
     h+='<h4>기대 결과'+help('editor.expect')+'</h4><div class="g3">'+fld('상태 코드',inp('steps.'+i+'.expect.status','200','list="dl-st-'+i+'"'))
       +fld('result',sel('steps.'+i+'.expect.result',['SUCCESS','ERROR'],'검사 안 함'))+fld('오류 코드',inp('steps.'+i+'.expect.error_code','E1402','list="dl-er-'+i+'"'),info&&info.errors.length?'스펙에 나온 코드: '+info.errors.map(function(x){return x.code}).join(' '):'')+'</div>'
       +'<datalist id="dl-st-'+i+'">'+(info?info.statuses:[]).map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist>'
       +'<datalist id="dl-er-'+i+'">'+(info?info.errors:[]).map(function(x){return '<option value="'+esc(x.code)+'">'+esc(x.status+' '+(x.message||''))+'</option>'}).join('')+'</datalist>'
       +'<div class="small mut">응답 값 검사 — 경로(data.status)와 기대값. 문자열은 그대로, 숫자·true·null 은 그 값으로 읽는다</div>'+rows('steps.'+i+'.expect.json',[['path','경로'],['value','기대값','dl-vars']])
-      +fld('존재 검사',lst('steps.'+i+'.expect.exists','data.rooms, data.totalCount'),'쉼표로 여러 개 — 값이 있기만 하면 통과');
+      +fld('존재 검사',lst('steps.'+i+'.expect.exists','data.rooms, data.totalCount'),'쉼표로 여러 개 — 값이 있기만 하면 통과')+'<div class="small mut">쿠키 검사 — 이 응답의 Set-Cookie. set 은 심었다, cleared 는 만료시켰다, absent 는 건드리지 않았다</div>'+rows('steps.'+i+'.expect.cookies',[['name','쿠키 이름 (ACCESS_TOKEN)'],['state','set · cleared · absent','dl-ck']]);
     h+='<h4>저장할 값'+help('editor.save')+'</h4>'+rows('steps.'+i+'.save',[['name','변수 이름 (roomId)'],['path','응답 경로 (data.roomId)']]);
     if(S.suite!=='setup')h+='<h4>이 단계가 검증하는 테스트 조건'+help('editor.covers')+'</h4>'+chips('steps.'+i+'.covers');
     return h+'<p class="small" style="margin:10px 0 0"><a href="'+esc(tryUrl(s))+'" target="_blank">이 단계만 API 호출 화면에서 보내 보기 ↗</a> <span class="mut">앞 단계 변수는 치환되지 않으니 값을 직접 넣는다</span></p></div>'}

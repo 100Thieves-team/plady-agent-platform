@@ -671,3 +671,12 @@ PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticip
 - 시나리오 목록 위 카드에 사람이 확인 · 백엔드 미구현 · dev 도구 필요 · 해당 없음 수를 따로 보인다. [수동 케이스 다시 판정] 버튼이 작업(`rejudge`)을 시작한다.
 - 다시 판정 순서: API 연결 채우기 → `no_api` 명령을 가리키는 케이스는 바로 `no_api` → 나머지는 Hermes 가 auto 또는 수동 이유를 고른다. auto 는 API 가 묶인 테스트 조건이 있어야만 받는다. 저장은 시나리오마다 `revise` 로 하고 감사 로그 `scenario.rejudge` 를 남긴다.
 - 설계 16.2-4 와 다른 점: 다시 판정은 스크립트까지 만들지 않는다. auto 가 된 케이스는 Sanity 나 케이스 화면의 [Hermes 로 스크립트 만들기] 로 만든다. 한 작업에서 케이스 수십 개의 스크립트를 한꺼번에 쓰면 실패 원인을 보기 어렵기 때문이다.
+
+### 16.8 2단계 구현 (2026-10-07)
+
+- 백엔드 PR moimyeon-backend#164: `POST /v1/dev/members/{memberId}/social-login`, `POST /v1/dev/members/social-signup`, `POST /v1/dev/members/{memberId}/status`, `POST /v1/dev/rooms/{roomId}/auto-complete`. 로그인 도구는 OAuth2 성공 처리에서 떼어 낸 `SocialLoginLander` 를 그대로 탄다. 탈퇴한 QA 회원이면 복구 확인 쿠키만 심는다.
+- 실행기: 단계에 `cookie_jar: 이름` 을 달면 응답 Set-Cookie 를 그 이름의 저장소에 담고, 같은 이름의 다음 단계에 붙여 보낸다. 쿠키 경로가 요청 경로의 앞부분일 때만 붙인다. 만료된 쿠키는 저장소에서 뺀다. 쿠키로만 부를 단계는 `actor: null`. 쿠키 값은 기록하지 않고 이름·경로만 남긴다.
+- `expect.cookies: {이름: set | cleared | absent}`: 그 응답이 쿠키를 심었나, 만료시켰나, 건드리지 않았나.
+- 준비 카드: `setup.member-withdrawn`(새 QA 회원을 만들고 그 회원으로 탈퇴), `setup.member-restricted`(새 QA 회원을 만들고 이용 제한). 새 회원으로 부를 때는 `request.headers` 에 `Authorization: Bearer {{memberToken}}`.
+- Hermes: 스크립트 만들기·케이스 채우기·다시 판정 프롬프트에 API 문서의 `/v1/dev/` 도구 목록을 넘긴다. 목록에 있는 일은 needs_tool 이 아니다. 백엔드 PR 이 배포되기 전에는 목록에 나오지 않으므로 판정이 바뀌지 않는다.
+- 폼 편집기가 `cookie_jar` · `actor: null` · `request.headers` · `expect.cookies` · 상태 코드 `4xx` 를 지우지 않고 저장한다.

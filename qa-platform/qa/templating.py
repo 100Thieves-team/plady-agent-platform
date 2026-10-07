@@ -43,6 +43,7 @@ class Context:
         self.fixtures = fixtures or {}
         self.vars = dict(variables or {})
         self.today = today
+        self.jars: dict[str, dict] = {}         # 쿠키 저장소 이름 → {쿠키 이름: {value, path}} (단계의 cookie_jar)
 
     def resolve(self, expr: str):
         expr = expr.strip()

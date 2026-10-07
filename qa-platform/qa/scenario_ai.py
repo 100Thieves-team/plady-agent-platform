@@ -34,7 +34,7 @@ FILL_SYSTEM = (
     "7. 이미 있는 케이스 key 는 다시 쓰지 않아도 된다. 써도 플랫폼이 무시한다. 새로 더할 것에 집중한다.\n"
     "8. 케이스 key 는 소문자·숫자·점·하이픈. new·edit·delete 는 쓰지 않는다.\n"
     "9. 기본은 스크립트로 확인(mode 를 적지 않는다)이다. 데이터는 테스트 데이터 만들기 카드와 API 로 만들 수 있다. `mode: manual` 은 스크립트로 못 할 때만 쓰고 "
-    "`manual_reason` 을 꼭 적는다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작의 API 가 OpenAPI 에 없음) · needs_tool(회원 상태 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 함) · "
+    "`manual_reason` 을 꼭 적는다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작의 API 가 OpenAPI 에 없음) · needs_tool(회원 상태 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 하는데 'dev 도구' 목록에 없음) · "
     "structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것을 고치기)."
 )
 
@@ -89,6 +89,9 @@ def assemble_fill(*, doc: str, wiki, ssot: dict, catalog, spec, feature, ov_feat
     parts.append("# 지금 시나리오 파일 (이미 있는 케이스는 그대로 둔다)\n```yaml\n" + cur.strip() + "\n```")
     rej = [f"- {s['id']} at {r['at']}: {r['id']} {r['error_code'] or 'ErrorCode 없음'} — {r['title']}" for s in ov_feature["scenarios"] for r in s["untested_rejects"]]
     parts.append("# 아직 테스트가 없는 거절 조건 (gates 를 새로 적으면 거기 걸린 거절 검사도 더한다)\n" + ("\n".join(rej) or "(없음)"))
+    tools = sorted((o for o in (spec.ops if spec else {}).values() if "/v1/dev/" in o.path), key=lambda o: o.path)
+    parts.append("# dev 도구 (스크립트가 데이터·상태를 만들 때 쓴다. 여기 있는 일은 needs_tool 이 아니다)\n" +
+                 ("\n".join(f"- {o.method} {o.path} · {(o.summary or '').strip()}" for o in tools) or "(없음)"))
     parts.append(f"# 출력\n`feature: {doc}` 와 scenarios 를 ```yaml 블록 하나로.")
     text = "\n\n".join(parts)
     return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]

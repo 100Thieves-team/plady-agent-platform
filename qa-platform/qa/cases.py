@@ -22,7 +22,8 @@ SUITES = ("smoke", "sanity", "manual", "setup")   # setup = 준비 작업(버튼
 _INPUT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INPUT_EXPR = re.compile(r"\{\{\s*input\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
-EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
+EXPECT_KEYS = ("status", "result", "error_code", "json", "exists", "cookies")
+COOKIE_STATES = ("set", "cleared", "absent")      # expect.cookies 값: 심었다 · 만료시켰다 · 건드리지 않았다
 _ID = re.compile(r"^[a-z0-9][a-z0-9.\-]*$")
 # 이 스크립트가 구현하는 변형 — 기능/시나리오/변형 (docs/qa-platform-scenarios.md §5). 예: 룸-생성/S1/headcount-range
 _VARIANT = re.compile(r"^([^/\s]+)/(S\d+)/([a-z0-9][a-z0-9.\-]*)$")
@@ -183,6 +184,11 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
             raise CaseError(f"{file}:{cid}: step {i} expect.json 은 경로→값 맵")
         if "exists" in exp and not isinstance(exp["exists"], list):
             raise CaseError(f"{file}:{cid}: step {i} expect.exists 는 경로 목록")
+        if "cookies" in exp:
+            if not isinstance(exp["cookies"], dict) or any(v not in COOKIE_STATES for v in exp["cookies"].values()):
+                raise CaseError(f"{file}:{cid}: step {i} expect.cookies 는 쿠키 이름→{'·'.join(COOKIE_STATES)} 맵")
+        if "cookie_jar" in s and not (isinstance(s["cookie_jar"], str) and _INPUT_NAME.match(s["cookie_jar"])):
+            raise CaseError(f"{file}:{cid}: step {i} cookie_jar 는 영문 이름 (같은 이름 단계끼리 쿠키를 주고받는다)")
         s["expect"] = exp
         save = s.get("save") or {}
         if not isinstance(save, dict):

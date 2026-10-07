@@ -87,8 +87,30 @@ class ActorPool:
                 self._tokens.pop(k, None)
 
 
-def evaluate(expect: dict, status: int, body) -> list[dict]:
-    """기대 5종을 평가한다. 각 항목: {check, path?, expected, actual, ok}."""
+COOKIE_STATES = ("set", "cleared", "absent")
+
+
+def parse_set_cookie(line: str) -> dict:
+    """Set-Cookie 한 줄 → {name, value, path, cleared}. 값이 비었거나 Max-Age=0 이면 지우는 쿠키다."""
+    parts = [x.strip() for x in str(line).split(";")]
+    name, _, value = parts[0].partition("=")
+    attrs = {}
+    for a in parts[1:]:
+        k, _, v = a.partition("=")
+        attrs[k.strip().lower()] = v.strip()
+    cleared = value == "" or attrs.get("max-age") == "0"
+    return {"name": name.strip(), "value": value, "path": attrs.get("path") or "/", "cleared": cleared}
+
+
+def cookie_state(set_cookies: list, name: str) -> str:
+    hit = [c for c in (parse_set_cookie(x) for x in set_cookies or []) if c["name"] == name]
+    if not hit:
+        return "absent"
+    return "cleared" if hit[-1]["cleared"] else "set"
+
+
+def evaluate(expect: dict, status: int, body, set_cookies: list | None = None) -> list[dict]:
+    """기대 6종을 평가한다. 각 항목: {check, path?, expected, actual, ok}."""
     out = []
     if "status" in expect:
         want = str(expect["status"]).strip().lower()
@@ -110,7 +132,19 @@ def evaluate(expect: dict, status: int, body) -> list[dict]:
     for path in expect.get("exists") or []:
         a = get_path(body, path)
         out.append({"check": "exists", "path": path, "expected": "존재", "actual": _brief(a), "ok": a is not None})
+    for name, want in (expect.get("cookies") or {}).items():
+        # 응답 Set-Cookie 로 판정한다: set 은 값을 심었다, cleared 는 만료시켰다, absent 는 건드리지 않았다
+        a = cookie_state(set_cookies or [], name)
+        out.append({"check": "cookie", "path": name, "expected": want, "actual": a, "ok": a == want})
     return out
+
+
+def _mask_header(k: str, v: str) -> str:
+    if k == "Authorization":
+        return "Bearer ***"
+    if k == "Cookie":
+        return "; ".join(x.split("=", 1)[0].strip() + "=***" for x in v.split(";"))
+    return v
 
 
 def _brief(v, limit: int = 120):
@@ -335,12 +369,20 @@ class Runner:
             headers.update({str(k): str(v) for k, v in (req.get("headers") or {}).items()})
             if actor:
                 headers["Authorization"] = "Bearer " + self.actors.token(actor, base_url)
+            jar_name = step.get("cookie_jar")
+            if jar_name:
+                # 그 이름의 쿠키 저장소에 든 쿠키를 붙인다. 쿠키 경로가 요청 경로의 앞부분일 때만 (브라우저와 같게)
+                jar = ctx.jars.setdefault(jar_name, {})
+                sent = [(n, c["value"]) for n, c in jar.items() if req["path"].split("?")[0].startswith(c["path"])]
+                if sent:
+                    headers["Cookie"] = "; ".join(f"{n}={v}" for n, v in sent)
+                record["cookie_jar"] = jar_name
             url = base_url + req["path"]
             if req.get("query"):
                 from urllib.parse import urlencode
                 url += ("&" if "?" in url else "?") + urlencode({k: v for k, v in req["query"].items() if v is not None})
             record.update({"url": url, "query": req.get("query"), "body": req.get("body"),
-                           "headers": {k: ("Bearer ***" if k == "Authorization" else v) for k, v in headers.items()}})
+                           "headers": {k: _mask_header(k, v) for k, v in headers.items()}})
         except TemplateError as e:
             verdict = "skipped" if (e.kind in ("actor", "fixture", "webpush") or after_failure) else "error"
             msg = (f"{ {'actor': '테스트 계정', 'fixture': '픽스처', 'webpush': '웹 푸시 수신기'}[e.kind]} 미설정: {e}" if e.kind in ("actor", "fixture", "webpush") else
@@ -359,10 +401,21 @@ class Runner:
         if r.json is not None and len(r.text) > BODY_LIMIT:
             response["json"] = None
             response["text"] = _truncate_text(r.text)
+        set_cookies = getattr(r, "set_cookies", None) or []
+        if set_cookies:
+            # 쿠키 값은 기록하지 않는다. 이름·경로·만료 여부만
+            response["set_cookies"] = [{k: c[k] for k in ("name", "path", "cleared")} for c in map(parse_set_cookie, set_cookies)]
+        if step.get("cookie_jar"):
+            jar = ctx.jars.setdefault(step["cookie_jar"], {})
+            for c in map(parse_set_cookie, set_cookies):
+                if c["cleared"]:
+                    jar.pop(c["name"], None)
+                else:
+                    jar[c["name"]] = {"value": c["value"], "path": c["path"]}
         if r.error:
             self.store.add_step(rcid, i, name, record, response, [], "error", r.elapsed_ms, r.error, op_id=op_id)
             return "error", r.elapsed_ms, f"{name}: {r.error}"
-        checks = evaluate(expect, r.status, r.json)
+        checks = evaluate(expect, r.status, r.json, set_cookies)
         ok = all(c["ok"] for c in checks)
         err = None
         if not ok:

@@ -16,9 +16,10 @@ from .cases import _TC, CaseError, _validate, audit
 from .drafts import CLEANUP_HINT, WRITE, _ACTOR, _FIXTURE, confirmed_cancel_warning
 
 CASE_KEYS = ("id", "title", "suite", "variant", "description", "domains", "operations", "covers", "source", "actor", "reviewed", "written_by", "uses", "inputs", "outputs", "steps")
-STEP_KEYS = ("name", "actor", "always", "covers", "request", "expect", "save")
-REQ_KEYS = ("method", "path", "query", "body")
-EXPECT_KEYS = ("status", "result", "error_code", "json", "exists")
+STEP_KEYS = ("name", "actor", "cookie_jar", "always", "covers", "request", "expect", "save")
+REQ_KEYS = ("method", "path", "query", "headers", "body")
+EXPECT_KEYS = ("status", "result", "error_code", "json", "exists", "cookies")
+NO_ACTOR = "-"          # 단계 테스트 계정 칸의 '로그인 안 함' — 기본 계정도 쓰지 않는다 (actor: null, 쿠키 저장소로만 부를 때)
 _SLUG = re.compile(r"[^a-z0-9]+")
 _WHEN = re.compile(r"\b([A-Z][A-Z0-9_]+)\s*일 때")
 
@@ -91,14 +92,17 @@ def to_state(raw: dict) -> dict:
         exp = s.get("expect") or {}
         body = req.get("body")
         st["steps"].append({
-            "name": s.get("name") or "", "actor": s.get("actor") or "", "always": bool(s.get("always")), "covers": list(s.get("covers") or []),
+            "name": s.get("name") or "", "actor": NO_ACTOR if ("actor" in s and s["actor"] is None) else (s.get("actor") or ""),
+            "cookie_jar": s.get("cookie_jar") or "", "always": bool(s.get("always")), "covers": list(s.get("covers") or []),
             "method": str(req.get("method") or "GET").upper(), "path": req.get("path") or "",
             "query": [{"k": k, "v": value_to_cell(v)} for k, v in (req.get("query") or {}).items()],
+            "headers": [{"k": k, "v": str(v)} for k, v in (req.get("headers") or {}).items()],
             "body": "" if body is None else json.dumps(body, ensure_ascii=False, indent=2, default=str),
             "expect": {"status": str(exp.get("status", "")) if exp.get("status") is not None else "", "result": exp.get("result") or "",
                        "error_code": exp.get("error_code") or "",
                        "json": [{"path": k, "value": value_to_cell(v)} for k, v in (exp.get("json") or {}).items()],
-                       "exists": list(exp.get("exists") or [])},
+                       "exists": list(exp.get("exists") or []),
+                       "cookies": [{"name": k, "state": v} for k, v in (exp.get("cookies") or {}).items()]},
             "save": [{"name": k, "path": v} for k, v in (s.get("save") or {}).items()],
         })
     return st
@@ -137,6 +141,9 @@ def from_state(st: dict, *, op_of=None) -> dict:
         q = {str(r.get("k")).strip(): cell_to_value(r.get("v")) for r in s.get("query") or [] if str(r.get("k") or "").strip()}
         if q:
             req["query"] = q
+        hd = {str(r.get("k")).strip(): str(r.get("v") or "").strip() for r in s.get("headers") or [] if str(r.get("k") or "").strip()}
+        if hd:
+            req["headers"] = hd
         body_text = str(s.get("body") or "").strip()
         if body_text:
             try:
@@ -146,10 +153,14 @@ def from_state(st: dict, *, op_of=None) -> dict:
         e = s.get("expect") or {}
         exp: dict = {}
         if str(e.get("status") or "").strip():
-            try:
-                exp["status"] = int(str(e["status"]).strip())
-            except ValueError:
-                raise FormError(f"단계 {i} 상태 코드는 숫자: {e['status']!r}") from None
+            sv = str(e["status"]).strip().lower()
+            if re.fullmatch(r"[1-5]xx", sv):
+                exp["status"] = sv                  # 4xx — 거절됨까지만 확인 (에러 코드를 모를 때)
+            else:
+                try:
+                    exp["status"] = int(sv)
+                except ValueError:
+                    raise FormError(f"단계 {i} 상태 코드는 숫자 또는 4xx: {e['status']!r}") from None
         if str(e.get("result") or "").strip():
             exp["result"] = str(e["result"]).strip()
         if str(e.get("error_code") or "").strip():
@@ -160,9 +171,24 @@ def from_state(st: dict, *, op_of=None) -> dict:
         ex = _strs(e.get("exists"))
         if ex:
             exp["exists"] = ex
+        ck = {}
+        for r in e.get("cookies") or []:
+            n, stv = str(r.get("name") or "").strip(), str(r.get("state") or "").strip()
+            if not n:
+                continue
+            if stv not in ("set", "cleared", "absent"):
+                raise FormError(f"단계 {i} 쿠키 {n} 의 기대는 set · cleared · absent 중 하나: {stv!r}")
+            ck[n] = stv
+        if ck:
+            exp["cookies"] = ck
         step: dict = {"name": str(s.get("name") or "").strip() or f"step {i}"}
-        if str(s.get("actor") or "").strip():
-            step["actor"] = str(s["actor"]).strip()
+        a = str(s.get("actor") or "").strip()
+        if a == NO_ACTOR:
+            step["actor"] = None
+        elif a:
+            step["actor"] = a
+        if str(s.get("cookie_jar") or "").strip():
+            step["cookie_jar"] = str(s["cookie_jar"]).strip()
         if s.get("always"):
             step["always"] = True          # 앞 단계가 실패해도 도는 정리 단계
         cov = _strs(s.get("covers"))

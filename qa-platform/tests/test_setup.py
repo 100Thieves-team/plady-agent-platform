@@ -69,9 +69,11 @@ class LoaderTest(unittest.TestCase):
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
         setups = [c for c in cases.values() if c.suite == "setup"]
-        self.assertEqual({c.id for c in setups}, {"setup.room-open", "setup.room-with-application", "setup.room-confirmed", "setup.room-reschedule", "setup.room-ready-to-start", "setup.resume-list", "setup.resume-summary"})
+        self.assertEqual({c.id for c in setups}, {"setup.room-open", "setup.room-with-application", "setup.room-confirmed", "setup.room-reschedule", "setup.room-ready-to-start", "setup.resume-list", "setup.resume-summary",
+                                                  "setup.member-withdrawn", "setup.member-restricted"})
         for c in setups:
-            self.assertTrue(c.inputs and c.outputs and c.description)
+            self.assertTrue(c.outputs and c.description)
+            self.assertTrue(c.inputs or c.id.startswith("setup.member-"))      # QA 회원 카드는 새 회원을 만들 뿐이라 입력이 없다
             self.assertEqual(c.covers, [])
 
 

@@ -830,7 +830,8 @@ class App:
         "1. 출력은 ```json 코드 블록 하나: {\"케이스 id\": {\"mode\": \"auto\"|\"manual\", \"manual_reason\": \"ui\"|\"no_api\"|\"needs_tool\"|\"structural\", \"checks\": [테스트 조건 id], \"why\": 한 문장}}\n"
         "2. auto 는 주어진 API 로 그 결과를 확인할 수 있을 때. checks 는 주어진 '쓸 수 있는 테스트 조건' 에서만 고른다(비우면 지금 checks 그대로).\n"
         "3. manual 이면 이유를 고른다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작을 일으키는 API 가 목록에 없음) · "
-        "needs_tool(회원을 이용 제한 상태로 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 함) · structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것 고치기).\n"
+        "needs_tool(회원을 이용 제한 상태로 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 하는데 'dev 도구' 목록에 없음) · structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것 고치기). "
+        "'dev 도구' 목록에 그 일을 하는 도구가 있으면 needs_tool 이 아니라 auto 다. 로그인 쿠키(Set-Cookie)도 스크립트가 확인할 수 있다.\n"
         "4. 주어진 케이스 id 만 쓴다."
     )
 
@@ -874,9 +875,10 @@ class App:
                 lines.append(f"- {slug}/{s.id}/{v.key} · {v.title} · 전제 {v.given or '-'} · 기대 {v.then or '-'} · 지금 checks {v.checks or '-'} · 묶인 API {ops or '-'}")
             spec = self.spec.get()
             api = [f"- {o} {op.method} {op.path} {(op.summary or '')[:60]}" for o, op in sorted((spec.ops if spec else {}).items(), key=lambda x: x[1].path) if "/v1/dev/" not in op.path]
+            tools = [f"- {o} {op.method} {op.path} {(op.summary or '')[:60]}" for o, op in sorted((spec.ops if spec else {}).items(), key=lambda x: x[1].path) if "/v1/dev/" in op.path]
             setups = [f"- {c.id} {c.title}" for c in self.cases.values() if c.suite == "setup"]
             valid = sorted(t for t in cat.records if bound(t))
-            prompt = "\n".join(["# 다시 판정할 케이스", *lines, "# 테스트 데이터 만들기 카드", *setups, "# dev API 목록", *api,
+            prompt = "\n".join(["# 다시 판정할 케이스", *lines, "# 테스트 데이터 만들기 카드", *setups, "# dev API 목록", *api, "# dev 도구", *(tools or ["(없음)"]),
                                  "# 쓸 수 있는 테스트 조건 (API 가 묶인 것)", ", ".join(valid), "# 출력\n```json 블록 하나."])
             text = draftsmod._asker(self.cfg, ask)(self.REJUDGE_SYSTEM, prompt, "qa-rejudge")
             try:

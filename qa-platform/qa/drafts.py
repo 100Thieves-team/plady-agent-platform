@@ -35,7 +35,7 @@ DRAFT_SYSTEM = (
     "그 조건에 에러 코드(binding.error_code)가 없고 OpenAPI 발췌에서도 그 거절의 코드를 찾을 수 없으면 `expect: {status: 4xx, result: ERROR}` 만 쓴다(코드는 지어내지 않는다).\n"
     "5. 쓰기 스크립트(POST/PUT/PATCH/DELETE)는 자기가 만든 데이터를 자기가 닫는 정리 단계(취소·철회·삭제)로 끝난다. 만든 데이터의 title 은 `[QA]` 로 시작한다. 룸은 언제나 `DELETE /v1/dev/rooms/{{roomId}}`(dev 전용 QA 룸 삭제, 제목이 [QA] 인 룸만)로 정리한다. 룸 취소 API(`POST /v1/rooms/{roomId}/cancellation`)는 백엔드에서 없어졌다(MOI-541, PR #138). 정리 단계에는 `always: true` 를 달아 앞 단계가 실패해도 돌게 한다.\n"
     "6. 로그인이 필요하면 `actor:` 에 주어진 테스트 계정 이름만 쓴다. 픽스처는 주어진 키만 `{{fixture.키}}` 로 쓴다.\n"
-    "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) 5종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} {{time:rand}} 만. 룸 생성의 startTime 은 `{{time:rand}}` 로 쓴다 — 같은 방장·공고·직무·시작 시각의 활성 룸이 있으면 백엔드가 새로 만들지 않고 그 룸을 돌려준다.\n"
+    "7. expect 는 status · result · error_code · json(경로→값) · exists(경로 목록) · cookies(쿠키 이름→set|cleared|absent, 응답 Set-Cookie 판정) 6종만. 치환은 {{var}} {{actor.X.memberId}} {{fixture.키}} {{date:+N}} {{uuid}} {{rand}} {{time:rand}} 만. 룸 생성의 startTime 은 `{{time:rand}}` 로 쓴다 — 같은 방장·공고·직무·시작 시각의 활성 룸이 있으면 백엔드가 새로 만들지 않고 그 룸을 돌려준다.\n"
     "8. id 는 `<도메인>.<kebab-case>`, suite 는 sanity(쓰기) 또는 smoke(읽기 전용). title 은 한국어 한 문장.\n"
     "9. 테스트 데이터 만들기 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
     "uses 는 id·title·steps 와 같은 스크립트 최상위 키다. steps 안의 단계로 쓰지 않는다. "
@@ -50,7 +50,11 @@ DRAFT_SYSTEM = (
     "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 PUSH_ELSE_EMAIL 은 메일로, PUSH_ONLY 는 오지 않음을 확인할 수 있다. "
     "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰).\n"
     "11. API 요청·응답의 필드·상태 코드·에러 코드는 OpenAPI 발췌가 정본이다. PRD·규칙표에 없는 API 세부라도 OpenAPI 에 있으면 그대로 쓰고, "
-    "케이스가 확인하는 결과에 해당하는 응답 필드(새로 생긴 필드 포함)는 expect.json · expect.exists 로 확인한다."
+    "케이스가 확인하는 결과에 해당하는 응답 필드(새로 생긴 필드 포함)는 expect.json · expect.exists 로 확인한다.\n"
+    "12. 'dev 도구' 목록이 주어지면 Google 로그인·회원 상태·시간이 걸리는 작업은 그 도구로 만든다. 도구 단계는 covers 가 없다. "
+    "로그인 쿠키로 확인하는 흐름(로그인·로그아웃·토큰 갱신·탈퇴·복구)은 단계에 `cookie_jar: 이름` 을 달아 응답 쿠키를 같은 이름의 다음 단계로 넘기고, "
+    "쿠키로만 부를 단계는 `actor: null` 로 기본 계정 토큰을 뺀다. dev 소셜 로그인 단계 자체는 기본 계정으로 부른다. "
+    "새로 만든 QA 회원으로 부를 때는 `actor: null` 과 `request.headers: {Authorization: \"Bearer {{memberToken}}\"}`(카드나 회원 생성 응답의 accessToken)를 쓴다."
 )
 
 
@@ -99,6 +103,10 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
     if prd_parts:
         parts.append("# PRD 절 본문 (기획 정본)\n" + "\n\n".join(prd_parts))
 
+    dev_ops = sorted((o for o in (spec.ops if spec else {}).values() if "/v1/dev/" in o.path), key=lambda o: o.path)
+    if dev_ops:
+        parts.append("# dev 도구 (QA 데이터만 받는 dev 전용 API, 검증 대상 아님)\n" +
+                     "\n".join(f"- {o.id} · {o.method} {o.path} · {(o.summary or '').strip()}" for o in dev_ops))
     parts.append("# 사용할 수 있는 것\n"
                  f"- 테스트 계정(actor) 이름: {', '.join(sorted(cfg.actors)) or '(없음 — 로그인 스크립트는 actor 를 비워 두고 TODO 로 표시)'}\n"
                  f"- 픽스처 키: {', '.join(sorted(cfg.fixtures)) or '(없음)'}\n"

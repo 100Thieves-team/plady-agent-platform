@@ -1673,7 +1673,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li><b>사람이 버튼을 누른다.</b> 홈의 [검증](배포 1건) · [스모크 실행] · [릴리스 검증] · [수동 실행]. 크론·webhook·자동 실행은 설계상 두지 않았다. 배포 목록은 GitHub Actions 를 <i>읽어서</i> 보여 줄 뿐이다.</li>
 <li><b>확인 화면</b>에서는 플랫폼이 범위를 <i>제안</i>한다. 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 스크립트, 스프린트면 smoke 전체다. 담당자(자기 신고)를 고르고 스크립트를 조정한 뒤 [실행].</li>
 <li><b>테스트 실행이 만들어지면서</b> 그 시점의 스크립트 본문(스냅샷)·테스트 조건 소스 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 실행 기록에 고정된다. 나중에 스크립트나 테스트 조건이 바뀌어도 과거 기록은 그대로다.</li>
-<li><b>러너가 순서대로 보낸다.</b> 한 번에 실행 하나, 스크립트는 순차, 단계는 요청 → 응답 → 검증 항목(assertion)(expect 5종: status · result · error_code · json · exists). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
+<li><b>러너가 순서대로 보낸다.</b> 한 번에 실행 하나, 스크립트는 순차, 단계는 요청 → 응답 → 검증 항목(assertion)(expect 6종: status · result · error_code · json · exists · cookies). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
 <li><b>판정.</b> 검증 항목(assertion) 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정 = <b>skipped</b>(설정 문제, 실패 아님). 실행 전체의 결과는 스크립트 결과의 합. Slack 에 시작·종료가 간다.</li>
 <li><b>실패하면</b> 실행 상세에서 단계별 요청·응답·검증 항목(assertion)을 본다. [Hermes 실패 분석] 을 누르면 AI 가 <i>버그 / 스크립트 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
 </ol>
