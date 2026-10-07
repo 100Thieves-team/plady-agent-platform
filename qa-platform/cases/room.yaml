@@ -989,3 +989,160 @@ cases:
         result: ERROR
         error_code: E1102
       save: {}
+
+  - id: room.participation-slot-left
+    title: 참여 중인 룸이 이미 3개이면 룸 생성이 E1425로 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/participation-slot-left
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create#participation-slot-left
+    source:
+    - PRD/룸 생성 R9
+    - PRD/룸 생성 R10
+    - PRD/룸 생성 R13
+    - PRD/룸 생성 R14
+    - PRD/룸 생성 R38
+    - PRD/룸 생성 R39
+    - PRD/룸 생성 R42
+    - PRD/룸 생성 R45
+    - PRD/룸 생성 R48
+    - PRD/룸 생성 R53
+    - PRD/룸 생성 R54
+    - PRD/룸 생성 R55
+    - PRD/룸 생성 R60
+    - PRD/룸 생성 R64
+    - PRD/룸 생성 R93
+    - PRD/룸 생성 R94
+    - PRD/룸 생성 R95
+    - PRD/룸 생성 R116
+    - PRD/룸 생성 R117
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 참여 슬롯 채우기 1 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 참여 슬롯 채우기 2
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 채우기 2 {{rand}}'
+          description: QA 플랫폼이 참여 슬롯 초과 거절 전제 상태를 만들기 위해 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        slotRoomId2: data.roomId
+    - name: 참여 슬롯 채우기 3
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+9}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 채우기 3 {{rand}}'
+          description: QA 플랫폼이 참여 슬롯 초과 거절 전제 상태를 만들기 위해 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        slotRoomId3: data.roomId
+    - name: 참여 슬롯이 가득 찬 상태에서 룸 생성 시도
+      covers:
+      - G.room.create#participation-slot-left
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+10}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 초과 거절 {{rand}}'
+          description: QA 플랫폼이 참여 슬롯 초과 거절을 확인하기 위해 만든 요청이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E1425
+      save: {}
+    - name: 정리(QA 룸 삭제 1)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 룸 삭제 2)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{slotRoomId2}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 룸 삭제 3)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{slotRoomId3}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
