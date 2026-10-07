@@ -1745,3 +1745,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.confirm
+    title: 최소 진행 인원이 모인 모집 중 룸을 방장이 확정하면 진행 확정 상태가 된다
+    suite: sanity
+    variant: 룸-진행-확정/S1/happy
+    domains:
+    - room
+    operations:
+    - confirmRoom
+    covers:
+    - C.room.confirm
+    - op.confirmRoom:200
+    source:
+    - PRD/룸 진행 확정 §2
+    - PRD/룸 진행 확정 §4.2
+    - PRD/룸 진행 확정 §4.4
+    - PRD/룸 진행 확정 §6
+    - PRD/룸 진행 확정 §8
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 진행 확정 sanity {{rand}}'
+        minParticipants: 1
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 방장이 모집 중 룸을 진행 확정한다
+      covers:
+      - C.room.confirm
+      - op.confirmRoom:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/confirmation
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 참여자에게 진행 확정 알림을 보낸다
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_CONFIRMED
+        expect:
+          link: /rooms/{{roomId}}
+      covers: []
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
