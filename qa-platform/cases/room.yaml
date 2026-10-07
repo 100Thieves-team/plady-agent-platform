@@ -1676,3 +1676,72 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.complete-attendance-twice
+    title: 완료된 룸에 다른 출석으로 다시 제출하면 E1708로 거절된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/attendance-twice
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - op.completeRoomProgress:E1708
+    source:
+    - OpenAPI POST /v1/rooms/{roomId}/complete
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 출석 중복 제출 거절 룸 {{rand}}'
+    steps:
+    - name: 첫 번째 룸 완료로 출석을 기록한다
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ABSENT
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: COMPLETED
+        exists:
+        - data.attendances
+      save: {}
+    - name: 같은 룸에 다른 출석으로 다시 완료 제출하면 E1708로 거절된다
+      covers:
+      - op.completeRoomProgress:E1708
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ABSENT
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1708
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
