@@ -706,3 +706,81 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: review.report
+    title: 대상자가 부적절한 후기를 신고하면 관리자 검토 대상으로 표시된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S2/happy
+    domains:
+    - review
+    operations:
+    - '{''TODO'': ''유저 후기 신고 operationId''}'
+    covers:
+    - C.review.report
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §4.7
+    - PRD/유저 후기 및 신뢰 관리 §6
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 유저 후기 신고 sanity {{rand}}'
+    steps:
+    - name: TODO 받은 후기 데이터 준비
+      request:
+        method: GET
+        path: /TODO
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        reviewId: TODO
+      covers: []
+    - name: 받은 후기 목록에서 신고 전 상태 확인
+      request:
+        method: GET
+        path: /TODO
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          TODO_review_reported_at_path: null
+      save: {}
+      covers: []
+    - name: 대상자가 부적절한 유저 후기를 신고한다
+      covers:
+      - C.review.report
+      request:
+        method: POST
+        path: /TODO
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - TODO_reported_at_path
+      save: {}
+    - name: 받은 후기 목록에서 신고 시각이 표시되는지 확인
+      request:
+        method: GET
+        path: /TODO
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - TODO_review_reported_at_path
+      save: {}
+      covers: []
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
