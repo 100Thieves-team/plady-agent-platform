@@ -209,3 +209,52 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: resume.account-active
+    title: 이용이 제한된 계정이 이력서를 올리면 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/account-active
+    domains:
+    - resume
+    operations:
+    - createResume
+    covers:
+    - G.resume.create#account-active
+    source:
+    - PRD/회원 및 프로필 R50
+    - PRD/회원 및 프로필 R58
+    - PRD/회원 및 프로필 R59
+    - PRD/회원 및 프로필 §8
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.member-restricted
+    steps:
+    - name: 이용 제한 회원이 이력서 등록을 시도하면 거절된다
+      covers:
+      - G.resume.create#account-active
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        body:
+          TODO: OpenAPI 발췌에 이력서 등록 요청 형식이 없어 multipart/form-data 필드와 파일 fixture를 확정해야 한다
+      expect:
+        status: 4xx
+        result: ERROR
+      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
