@@ -1916,3 +1916,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.confirm-schedule-not-passed
+    title: 진행 일정이 지난 모집 중 룸을 방장이 확정하면 E1422로 거절된다
+    suite: sanity
+    variant: 룸-진행-확정/S1/schedule-not-passed
+    domains:
+    - room
+    operations:
+    - confirmRoom
+    covers:
+    - G.room.confirm#schedule-not-passed
+    source:
+    - PRD/룸 진행 확정 §2
+    - PRD/룸 진행 확정 §4.1
+    - PRD/룸 진행 확정 §4.4
+    - PRD/룸 진행 확정 §8
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 진행 일정 지난 확정 거절 {{rand}}'
+        minParticipants: 1
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 시작 시각을 과거로 변경
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/schedule
+        body:
+          daysFromNow: -1
+          time: 09:00:00
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        startAt: data.startAt
+    - name: 진행 일정이 지난 모집 중 룸 확정 시도
+      covers:
+      - G.room.confirm#schedule-not-passed
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/confirmation
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1422
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
