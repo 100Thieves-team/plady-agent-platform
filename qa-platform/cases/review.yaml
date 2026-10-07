@@ -463,3 +463,62 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: review.submit-before-room-completed
+    title: 완료되지 않은 룸에서 후기를 쓰면 E2001로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/room-completed
+    domains:
+    - review
+    operations:
+    - submitReview
+    covers:
+    - G.review.write#room-completed
+    - op.submitReview:E2001
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §4.1
+    - PRD/유저 후기 및 신뢰 관리 §4.3
+    - PRD/유저 후기 및 신뢰 관리 §4.8
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 후기 제출 E2001 확인 룸 {{rand}}'
+    steps:
+    - name: 완료되지 않은 룸에서 후기 제출 시도
+      covers:
+      - G.review.write#room-completed
+      - op.submitReview:E2001
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+          tags:
+          - 시간을 잘 지켜요
+          - 준비가 성실해요
+          - 질문이 날카로워요
+          - 피드백이 구체적이에요
+          - 소통이 원활해요
+          content: 완료되지 않은 룸에서는 저장되면 안 되는 QA 후기입니다.
+          anonymous: false
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E2001
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
