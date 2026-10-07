@@ -650,3 +650,63 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.headcount-range
+    title: 최대 모집 인원이 최소 진행 인원보다 작으면 룸 생성이 E1402로 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/headcount-range
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create#headcount-range
+    - op.createRoom:E1402
+    source:
+    - PRD/룸 생성 §3
+    - PRD/룸 생성 §4.1
+    - PRD/룸 생성 §4.2
+    - PRD/룸 생성 §4.3
+    - PRD/룸 생성 §4.4
+    - PRD/룸 생성 §4.7
+    - PRD/룸 생성 §4.11
+    - OpenAPI POST /v1/rooms
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 최소 진행 인원보다 작은 최대 모집 인원으로 룸 생성을 시도한다
+      covers:
+      - G.room.create#headcount-range
+      - op.createRoom:E1402
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 4
+          maxParticipants: 2
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 인원 범위 거절 sanity {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 인원 범위 거절을 확인하기 위해 만든 요청이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E1402
+        json:
+          data: null
+          error.data.min: 4
+          error.data.max: 2
+      save: {}
