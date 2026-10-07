@@ -563,3 +563,36 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: member.no-forbidden-chars
+    title: 닉네임에 사용할 수 없는 문자를 넣으면 E1005로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/no-forbidden-chars
+    domains:
+    - member
+    operations: []
+    covers:
+    - G.member.set_nickname#no-forbidden-chars
+    source:
+    - PRD/회원 및 프로필 §4.1
+    - PRD/회원 및 프로필 §4.3
+    - PRD/회원 및 프로필 §4.5
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 사용할 수 없는 문자가 들어간 닉네임으로 변경 시도
+      covers:
+      - G.member.set_nickname#no-forbidden-chars
+      request:
+        method: PATCH
+        path: /TODO/OpenAPI-발췌에-닉네임-변경-API-path가-주어지지-않음
+        body:
+          nickname: 'TODO: 정책 정본 또는 OpenAPI에 정의된 사용할 수 없는 문자 포함 닉네임'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1005
+      save: {}
