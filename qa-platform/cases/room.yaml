@@ -1533,3 +1533,62 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.autocomplete
+    title: 방장이 진행 완료를 누르지 않으면 QA 자동 완료 실행으로 확정 룸이 완료된다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/autocomplete
+    domains:
+    - room
+    operations:
+    - autoCompleteQaRoom
+    covers:
+    - C.room.autocomplete
+    source:
+    - PRD/룸 진행 마무리 및 출석 §2
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 자동 완료 sanity {{rand}}'
+    steps:
+    - name: QA 룸 자동 완료 지금 실행
+      covers:
+      - C.room.autocomplete
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.roomId: '{{roomId}}'
+          data.completed: true
+          data.status: COMPLETED
+      save: {}
+    - name: 완료 알림 수신 확인
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_COMPLETED
+        expect:
+          link: /rooms/{{roomId}}
+      covers: []
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
