@@ -1146,3 +1146,55 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.interview-stage-required
+    title: 면접 차수를 고르지 않고 룸을 만들면 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/interview-stage-required
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create#interview-stage-required
+    source:
+    - PRD/룸 생성 §3
+    - PRD/룸 생성 §4.1
+    - PRD/룸 생성 §4.2
+    - PRD/룸 생성 §4.3
+    - PRD/룸 생성 §4.4
+    - PRD/룸 생성 §4.7
+    - PRD/룸 생성 §4.11
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 면접 차수 없이 룸 생성 요청
+      covers:
+      - G.room.create#interview-stage-required
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 3
+          maxParticipants: 6
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 면접 차수 누락 거절 {{rand}}'
+          description: QA 플랫폼이 면접 차수 필수 검증을 확인하기 위해 보내는 요청이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E1402
+      save: {}
