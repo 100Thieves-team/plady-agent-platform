@@ -69,3 +69,59 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: review.skip-participant
+    title: 참여자가 완료된 룸에서 방장에 대한 후기 작성을 건너뛴다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/skip-participant
+    domains:
+    - review
+    operations:
+    - skipReview
+    covers:
+    - op.skipReview:200
+    source:
+    - OpenAPI POST /v1/rooms/{roomId}/review-skips
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 건너뛰기 sanity {{rand}}'
+    steps:
+    - name: 완료 상태 만들기(dev 전용 자동 완료)
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 참여자가 방장에 대한 후기 작성을 건너뛴다
+      covers:
+      - op.skipReview:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/review-skips
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data: null
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
