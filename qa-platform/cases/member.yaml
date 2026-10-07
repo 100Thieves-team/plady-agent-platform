@@ -91,3 +91,87 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: member.login-required
+    title: 로그인하지 않고 룸 생성과 참가 신청을 하려 하면 E1102로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S1/login-required
+    domains:
+    - member
+    operations:
+    - createRoom
+    - submitRoomApplication
+    covers:
+    - G.member.mutate#login-required
+    source:
+    - PRD/회원 및 프로필 §1
+    - PRD/회원 및 프로필 §3
+    - PRD/회원 및 프로필 §4.6
+    - PRD/회원 및 프로필 §4.9
+    actor: null
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 로그인 필요 검증 룸 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 비로그인 사용자는 룸 생성을 할 수 없다
+      covers:
+      - G.member.mutate#login-required
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 3
+          maxParticipants: 6
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 비로그인 룸 생성 거절 {{rand}}'
+          description: QA 플랫폼이 비로그인 룸 생성 거절을 확인한다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1102
+      save: {}
+    - name: 비로그인 사용자는 룸 참가 신청을 할 수 없다
+      covers:
+      - G.member.mutate#login-required
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: QA 플랫폼이 비로그인 참가 신청 거절을 확인한다.
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1102
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
