@@ -463,3 +463,38 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: member.nickname-check
+    title: 닉네임을 바꾸기 전에 쓸 수 있는지 확인한다
+    suite: smoke
+    variant: 회원-및-프로필/S2/nickname-check
+    domains:
+    - member
+    operations:
+    - nicknameAvailability
+    covers:
+    - op.nicknameAvailability:200
+    source:
+    - OpenAPI GET /v1/nicknames/availability
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 닉네임 사용 가능 여부 조회
+      covers:
+      - op.nicknameAvailability:200
+      request:
+        method: GET
+        path: /v1/nicknames/availability
+        query:
+          nickname: qa{{rand}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.available: true
+        exists:
+        - data.available
+      save: {}
