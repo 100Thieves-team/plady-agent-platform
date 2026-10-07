@@ -219,3 +219,54 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.not-already-engaged
+    title: 이미 참여 중이거나 대기 중인 신청이 있는데 또 신청하면 E1413으로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/not-already-engaged
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#not-already-engaged
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 중복 신청 거절 sanity {{rand}}'
+        note: '[QA] 중복 신청 거절 준비 신청'
+    steps:
+    - name: 이미 대기 중인 룸에 다시 참가 신청을 제출한다
+      covers:
+      - G.application.submit#not-already-engaged
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 이미 신청 대기 중인 룸에 다시 신청합니다.'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1413
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
