@@ -1484,3 +1484,52 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.cancel-host-only
+    title: 방장이 아닌 사람이 모집 중인 룸을 취소하면 E1406으로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/cancel.host-only
+    domains:
+    - room
+    operations: []
+    covers:
+    - G.room.cancel#host-only
+    source:
+    - PRD/룸 생성 §4.10
+    - PRD/룸 생성 R112
+    - DEC-012
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 취소 권한 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 방장이 아닌 참가자가 모집 중 룸 취소 시도
+      actor: qa-guest
+      covers:
+      - G.room.cancel#host-only
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1406
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
