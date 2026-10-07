@@ -1,0 +1,58 @@
+# attendance — QA 플랫폼 폼으로 만든 파일.
+cases:
+  - id: attendance.my-attendance
+    title: 완료된 룸의 참여자는 자신의 출석 결과를 확인한다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/my-attendance
+    domains:
+    - attendance
+    operations:
+    - getMyAttendance
+    covers:
+    - op.getMyAttendance:200
+    source:
+    - OpenAPI GET /v1/attendances/me
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 출석 결과 조회 sanity {{rand}}'
+    steps:
+    - name: 룸 자동 완료 처리(dev 전용)
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+      save: {}
+      covers: []
+    - name: 참여자의 내 출석 결과 조회
+      actor: qa-guest
+      covers:
+      - op.getMyAttendance:200
+      request:
+        method: GET
+        path: /v1/attendances/me
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.memberId: '{{actor.qa-guest.memberId}}'
+          data.status: ATTENDED
+        exists:
+        - data.nickname
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
