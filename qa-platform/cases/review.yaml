@@ -522,3 +522,75 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: review.author-only
+    title: 다른 사람이 쓴 후기를 수정하면 E2007로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/author-only
+    domains:
+    - review
+    operations:
+    - updateReview
+    covers:
+    - G.review.edit#author-only
+    - op.updateReview:E2007
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §4.3 R32
+    - PRD/유저 후기 및 신뢰 관리 §4.3 R36
+    - OpenAPI PUT /v1/reviews/{reviewId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 작성자 전용 수정 거절 {{rand}}'
+    steps:
+    - name: 룸 자동 완료 처리(dev 전용)
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: TODO 후기 작성자가 qa-host인 비공개 유저 후기의 reviewId 확보
+      actor: qa-host
+      request:
+        method: GET
+        path: /v1/dev/qa-data
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        reviewId: TODO
+      covers: []
+    - name: 다른 사람이 작성한 후기 수정 시도
+      covers:
+      - G.review.edit#author-only
+      - op.updateReview:E2007
+      request:
+        method: PUT
+        path: /v1/reviews/{{reviewId}}
+        body:
+          tags:
+          - 소통이 원활해요
+          content: 긴장을 풀어주는 진행이 좋았어요.
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E2007
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
