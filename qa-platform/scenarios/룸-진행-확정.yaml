@@ -19,6 +19,7 @@ scenarios:
         at: R47
         title: 진행 확정 뒤 일정을 바꿔야 하면 서비스가 아니라 CS 문의로 처리한다
         mode: manual
+        manual_reason: no_api
       - key: leave-after-confirm
         kind: branch
         at: R48
@@ -60,6 +61,7 @@ scenarios:
         title: 진행 확정 뒤 서비스에서 일정을 바꾸려 하면 거절된다
         checks: [G.room.change_schedule#room-recruiting]
         mode: manual
+        manual_reason: no_api
       - key: own-participation
         kind: reject
         at: R48
