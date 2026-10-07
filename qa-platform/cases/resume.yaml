@@ -409,3 +409,37 @@ cases:
         result: ERROR
         error_code: E1010
       save: {}
+
+  - id: resume.delete-owner-only
+    title: 다른 사람의 이력서를 지우면 E1010으로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/delete.resume-owner-only
+    domains:
+    - resume
+    operations:
+    - deleteResume
+    covers:
+    - G.resume.delete#resume-owner-only
+    - op.deleteResume:E1010
+    source:
+    - PRD/회원 및 프로필 R56
+    - PRD/회원 및 프로필 R57
+    - OpenAPI DELETE /v1/members/me/resumes/{resumeId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 다른 회원의 보관 이력서 삭제 시도
+      covers:
+      - G.resume.delete#resume-owner-only
+      - op.deleteResume:E1010
+      request:
+        method: DELETE
+        path: /v1/members/me/resumes/{{fixture.qa-host.resumeId}}
+      expect:
+        status: 404
+        result: ERROR
+        error_code: E1010
+      save: {}
