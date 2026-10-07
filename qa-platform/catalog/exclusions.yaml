@@ -6,22 +6,17 @@
 
 exclusions:
   - match: { actor: system }
+    except: [C.room.autocomplete]     # dev 도구(autoCompleteQaRoom)가 자동 완료 작업을 지금 돌린다 (2026-10-07)
     reason: 시스템 전이(자동 종료·자동 취소·마스킹)는 API 로 트리거되지 않는다. 백엔드 단위·통합 테스트 영역
 
-  - prefix: G.member.signup
-    reason: Google OAuth 가입 흐름. dev 는 dev-sessions 로 우회하므로 API 케이스로 재현할 수 없다
-  - prefix: G.member.login
-    reason: Google OAuth 로그인 흐름. 위와 같다
+  # G.member.signup · G.member.login 은 dev 소셜 로그인·가입 도구로 재현한다 (2026-10-07 제외 해제, §16.3)
   - prefix: G.member.read_admin
     reason: 운영자 전용. 테스트 계정에 ADMIN 권한이 없다
   - prefix: G.member.restrict
     reason: 운영자 전용. 위와 같다
   - prefix: C.member.restrict
     reason: 운영자 전용. 위와 같다
-  - prefix: G.member.withdraw
-    reason: 탈퇴는 되돌릴 수 없어 전용 QA 회원 2명으로는 반복 실행이 안 된다
-  - prefix: C.member.withdraw
-    reason: 위와 같다
+  # G.member.withdraw · C.member.withdraw 는 실행마다 새 QA 회원(setup.member-withdrawn)으로 재현한다 (2026-10-07 제외 해제)
   - prefix: G.review.hide
     reason: 운영자 전용
   - prefix: C.review.hide

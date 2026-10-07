@@ -3,6 +3,100 @@ info:
   title: moimyeon dev (seed 케이스용 발췌, 2026-09-21)
   version: fixture
 paths:
+  /v1/job-postings:
+    post:
+      tags:
+      - v1
+      summary: 채용 공고 즉시 생성
+      description: "링크로 공고를 즉시 생성한다(§4.1). 승인 대기 없이 verified=false 로 만들어져 바로 룸 생성에\
+        \ 사용할 수 있다. 회사는 기존 카탈로그 회사 id 로 받고, 공고명은 사용자가 확정한 값을 쓰며, 생성자는 인증 회원으로 기록된다\
+        . 같은 URL 재요청은 새로 만들지 않고 기존 공고를 돌려준다(멱등). companyId·url·postingName 누락·형식 오\
+        류는 400(E400), 존재하지 않는 회사는 400(E1303), 미인증은 401(E1102)."
+      operationId: createJobPosting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/v1-closing-questions-me910352763"
+            examples:
+              createJobPosting:
+                value: |-
+                  {
+                    "companyId" : 43429,
+                    "url" : "https://company.example.com/careers/12345",
+                    "postingName" : "프론트엔드 개발자 (결제플랫폼)"
+                  }
+              createJobPosting-e400:
+                value: |-
+                  {
+                    "companyId" : 43429,
+                    "url" : "https://company.example.com/careers/12345",
+                    "postingName" : "   "
+                  }
+              createJobPosting-e1102:
+                value: |-
+                  {
+                    "companyId" : 43429,
+                    "url" : "https://company.example.com/careers/12345",
+                    "postingName" : "프론트엔드 개발자 (결제플랫폼)"
+                  }
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/v1-closing-questions-me910352763"
+              examples:
+                createJobPosting:
+                  value: |-
+                    {
+                      "result" : "SUCCESS",
+                      "data" : {
+                        "jobPostingId" : 90101,
+                        "companyId" : 43429,
+                        "postingName" : "프론트엔드 개발자 (결제플랫폼)",
+                        "sourceUrl" : "https://company.example.com/careers/12345",
+                        "verified" : false
+                      },
+                      "error" : null
+                    }
+        "400":
+          description: "400"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/v1-closing-questions-me910352763"
+              examples:
+                createJobPosting-e400:
+                  value: |-
+                    {
+                      "result" : "ERROR",
+                      "data" : null,
+                      "error" : {
+                        "code" : "E400",
+                        "message" : "요청 형식이 올바르지 않습니다.",
+                        "data" : null
+                      }
+                    }
+        "401":
+          description: "401"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/v1-closing-questions-me910352763"
+              examples:
+                createJobPosting-e1102:
+                  value: |-
+                    {
+                      "result" : "ERROR",
+                      "data" : null,
+                      "error" : {
+                        "code" : "E1102",
+                        "message" : "인증이 필요합니다.",
+                        "data" : null
+                      }
+                    }
   /v1/job-roles:
     get:
       tags:

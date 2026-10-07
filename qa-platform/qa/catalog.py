@@ -99,7 +99,9 @@ def load_inputs(catalog_dir: Path) -> Inputs:
             cmds = doc.get("commands") or {}
             inp.bindings = {"commands": {k: (v if isinstance(v, list) else [v]) for k, v in cmds.items() if v},
                             "checks": {str(k): str(v) for k, v in (doc.get("checks") or {}).items() if v},
-                            "no_api": {str(k): str(v) for k, v in (doc.get("no_api") or {}).items() if v}}      # §16 — API 없음은 경고 대상이 아니다
+                            "no_api": {str(k): str(v) for k, v in (doc.get("no_api") or {}).items() if v},      # §16 — API 없음은 경고 대상이 아니다
+                            "client_side": {str(k): str(v) for k, v in (doc.get("client_side") or {}).items() if v},   # §16.9 — 앱이 조회 응답으로 판정
+                            "gates": {str(k): (v if isinstance(v, list) else [v]) for k, v in (doc.get("gates") or {}).items() if v}}   # 명령 없는 게이트의 API
         elif key == "exclusions":
             inp.exclusions = [x for x in (doc.get("exclusions") or []) if isinstance(x, dict) and x.get("reason")]
         else:
@@ -178,7 +180,7 @@ def _exclusion_for(rec: dict, exclusions: list) -> str | None:
         if x.get("prefix") and rec["id"].startswith(x["prefix"]):
             return x["reason"]
         m = x.get("match")
-        if isinstance(m, dict) and m and all(rec.get(k) == v for k, v in m.items()):
+        if isinstance(m, dict) and m and all(rec.get(k) == v for k, v in m.items()) and rec["id"] not in (x.get("except") or []):
             return x["reason"]
     return None
 
@@ -193,6 +195,8 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
         owner_slug.update(rt_mod.OWNER_PKG)
     bind_cmds: dict[str, list[str]] = inputs.bindings.get("commands") or {}
     bind_checks: dict[str, str] = inputs.bindings.get("checks") or {}
+    client_side: dict[str, str] = inputs.bindings.get("client_side") or {}
+    bind_gates: dict[str, list[str]] = inputs.bindings.get("gates") or {}
     key_of_legacy = {v: k for k, v in inputs.aliases.items()}     # 옛 번호 id → key id (위키가 아직 번호일 때 bindings·exclusions 를 key 로 찾는다)
 
     def prd_refs(sources: list) -> list[dict]:
@@ -216,7 +220,8 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
             owner = c.get("owner") or ""
             domain = owner_slug.get(owner) or (c["gate"].split(".")[1] if c.get("gate", "").count(".") >= 2 else "other")
             cmd = c.get("command")
-            ops = bind_cmds.get(cmd, []) if cmd else []
+            ops = (bind_cmds.get(cmd, []) if cmd else []) or bind_gates.get(c.get("gate") or "", [])
+            cs = client_side.get(cmd or "") or client_side.get(c.get("gate") or "")
             if c["kind"] == "거절":
                 rid = f'{c["gate"]}#{c["check"]}'
                 # 에러 코드: SSOT `error` 가 채워져 있으면 그것이 정본, 비어 있는 동안만 bindings.checks (§4.4)
@@ -234,7 +239,8 @@ def build(*, ssot: dict | None, ssot_hash: str | None, rt_mod, spec: SpecData | 
                     "command": cmd, "actor": cmd_actor.get(cmd),
                     "expect_hint": {"cond": c.get("cond"), "message": c.get("message"), "must_pass_first": c.get("must_pass_first") or [],
                                     "check": c["check"], "position": c.get("position"), "of": c.get("of")},
-                    "binding": ({"operations": ops, "error_code": code, "error_source": ("ssot" if ssot_code else "bindings") if code else None}
+                    "binding": ({"operations": ops, "error_code": code, "error_source": ("ssot" if ssot_code else "bindings") if code else None,
+                                 **({"client_side": cs} if cs else {})}
                                 if (ops or code) else None),
                     "source": c.get("source") or [],
                 }

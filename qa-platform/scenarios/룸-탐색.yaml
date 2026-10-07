@@ -44,32 +44,32 @@ scenarios:
         kind: reject
         at: R5
         title: 로그인하지 않고 참가 신청을 시작하면 거절된다
-        checks: [G.application.submit#login-required]
+        checks: [G.application.enter#login-required]
       - key: no-pending-application
         kind: reject
         at: R5
         title: 결과를 기다리는 신청이 있는 룸에서 다시 신청을 시작하면 거절된다
-        checks: [G.application.submit#pending-limit-left]
+        checks: [G.application.enter#no-pending-application]
       - key: not-already-joined
         kind: reject
         at: R5
         title: 이미 참여 중인 룸에서 참가 신청을 시작하면 거절된다
-        checks: [G.application.submit#not-already-engaged]
+        checks: [G.application.enter#not-already-joined]
       - key: room-recruiting
         kind: reject
         at: R5
         title: 진행 확정·취소된 룸에서 참가 신청을 시작하면 거절된다
-        checks: [G.application.submit#room-recruiting]
+        checks: [G.application.enter#room-recruiting]
       - key: schedule-not-passed
         kind: reject
         at: R5
         title: 진행 일정이 지난 룸에서 참가 신청을 시작하면 거절된다
-        checks: [G.application.submit#schedule-not-passed]
+        checks: [G.application.enter#schedule-not-passed]
       - key: my-interviews.login-required
         kind: reject
         at: R87
         title: 로그인하지 않고 내 면접을 열면 거절된다
-        checks: ['op.getInterviewOverview:E1102']
+        checks: [G.member.my_interviews#login-required]
       - key: own-entries-only
         kind: reject
         at: R87
@@ -90,10 +90,5 @@ scenarios:
       G.application.enter#not-already-joined: 1f0e4146
       G.application.enter#room-recruiting: de0062a4
       G.application.enter#schedule-not-passed: 1b97942f
-      G.application.submit#login-required: 84fc3a27
-      G.application.submit#not-already-engaged: 5f7d086d
-      G.application.submit#pending-limit-left: f41c23c7
-      G.application.submit#room-recruiting: cf91be64
-      G.application.submit#schedule-not-passed: 4d51592f
       G.member.my_interviews#login-required: ca17006e
       G.member.my_interviews#own-entries-only: 968ad00a

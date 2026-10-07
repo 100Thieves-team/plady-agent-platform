@@ -74,6 +74,15 @@ class BadRequest(Exception):
     pass
 
 
+def _tc_owner(tc: str) -> str:
+    """테스트 조건이 속한 규칙. G.x.y#key → G.x.y, op.X:E1102 → op.X, 명령·PRD 조건은 그 자체."""
+    if tc.startswith("G.") and "#" in tc:
+        return tc.split("#", 1)[0]
+    if tc.startswith("op.") and ":" in tc:
+        return tc.split(":", 1)[0]
+    return tc
+
+
 class App:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -789,7 +798,7 @@ class App:
                             ci = cmd_info.get(cmd) or {}
                             cmds.append({"id": cmd, "name": ci.get("name"), "actor": ci.get("performer") or ci.get("actor"),
                                          "source_text": "; ".join(f"{p.get('doc')} {p.get('text') or p.get('section') or ''}"[:120] for p in (rec.get("prd") or [])[:2])})
-                        if rec.get("kind") == "reject" and not b.get("error_code"):
+                        if rec.get("kind") == "reject" and not b.get("error_code") and not b.get("client_side"):     # 앱이 판정하는 검사는 코드가 없다
                             h = rec.get("expect_hint") or {}
                             checks.append({"id": t, "command": cmd, "cond": h.get("cond"), "message": h.get("message")})
         return cmds, checks
@@ -831,8 +840,10 @@ class App:
         "2. auto 는 주어진 API 로 그 결과를 확인할 수 있을 때. checks 는 주어진 '쓸 수 있는 테스트 조건' 에서만 고른다(비우면 지금 checks 그대로).\n"
         "3. manual 이면 이유를 고른다: ui(화면을 눈으로 봐야만 확인됨) · no_api(그 동작을 일으키는 API 가 목록에 없음) · "
         "needs_tool(회원을 이용 제한 상태로 바꾸기·시간 당기기·Google 로그인처럼 dev 도구가 있어야 하는데 'dev 도구' 목록에 없음) · structural(API 구조상 일어날 수 없음, 예: 본인 것만 받는 /me API 로 남의 것 고치기). "
-        "'dev 도구' 목록에 그 일을 하는 도구가 있으면 needs_tool 이 아니라 auto 다. 로그인 쿠키(Set-Cookie)도 스크립트가 확인할 수 있다.\n"
-        "4. 주어진 케이스 id 만 쓴다."
+        "'dev 도구' 목록에 그 일을 하는 도구가 있으면 needs_tool 이 아니라 auto 다. 로그인 쿠키(Set-Cookie)도 스크립트가 확인할 수 있다. "
+        "알림(웹 푸시·메일)도 플랫폼이 받아 확인하므로 알림 케이스는 auto 다. 알림 종류가 따로 없으면 알림 본문에 함께 들어가는지 본다 — 없다고 단정하지 않는다.\n"
+        "4. 주어진 케이스 id 만 쓴다.\n"
+        "5. checks 를 다른 게이트·명령의 테스트 조건으로 바꾸지 않는다. 케이스가 확인하려는 규칙이 바뀌기 때문이다. 같은 게이트·명령 안에서만 고르고, 그 조건으로 확인할 수 없으면 manual 로 둔다."
     )
 
     def rejudge_manual(self, *, operator: str, ask=None, session_hash=None, ip=None) -> dict:
@@ -891,6 +902,10 @@ class App:
                     continue
                 if d.get("mode") == "auto":
                     checks = [t for t in (d.get("checks") or v.checks) if t in cat.records and bound(t)]
+                    if v.checks:
+                        # 확인 대상을 다른 게이트·명령으로 바꾸지 않는다 (2026-10-07: 신청 화면 진입 검사를 신청 제출 검사로 바꾼 일)
+                        owners = {_tc_owner(t) for t in v.checks}
+                        checks = [t for t in checks if _tc_owner(t) in owners]
                     if not checks:
                         continue                                   # 확인할 조건이 없으면 auto 로 바꾸지 않는다
                     new = {k: x for k, x in raw.items() if k not in ("mode", "manual_reason")} | {"checks": checks}

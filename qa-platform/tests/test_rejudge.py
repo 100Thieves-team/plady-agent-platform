@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -45,7 +46,8 @@ class UnitTest(unittest.TestCase):
         self.assertTrue(any("E9999" in w for w in why))
 
     def test_apply_appends_and_keeps_comments(self):
-        src = (ROOT / "catalog" / "bindings.yaml").read_text(encoding="utf-8")
+        src = ("# SSOT ↔ API 바인딩. 테스트용 고정 본문\n\ncommands:\n  # 룸\n  C.room.create: createRoom\n\n"
+               "# 게이트 검사 → 에러 코드\nchecks:\n  \"G.room.create#login-required\": E1102\n")
         out = binding_ai.apply(src, {"commands": {"C.member.withdraw": ["memberWithdraw"]}, "checks": {"G.member.withdraw#a": "E1014"},
                                      "no_api": {"C.participation.kick": "끝점이 없다"}})
         self.assertTrue(out.startswith(src.split("\n", 1)[0]))
@@ -72,7 +74,12 @@ class FlowTest(unittest.TestCase):
         self.orig = httpx.request
         self.gh = FakeGitHub()
         for p in (ROOT / "scenarios").glob("*.yaml"):
-            self.gh.files[f"qa-platform/scenarios/{p.name}"] = p.read_text(encoding="utf-8")
+            text = p.read_text(encoding="utf-8")
+            # 운영 데이터는 이미 다시 판정됐다. 판정 전 모양(수동 이유 없음)으로 되돌려 흐름을 본다
+            text = re.sub(r"\n +manual_reason: [a-z_]+", "", text)
+            if p.stem == "룸-탐색":
+                text = text.replace("checks: [G.application.enter#login-required]\n", "checks: [G.application.enter#login-required]\n        mode: manual\n")
+            self.gh.files[f"qa-platform/scenarios/{p.name}"] = text
         httpx.request = self.gh
         self.app = make_app(self.tmp.name)
         self.app.cfg.operators = ["bebe"]
@@ -101,12 +108,16 @@ class FlowTest(unittest.TestCase):
                     out[vid] = {"mode": "manual", "manual_reason": "structural", "why": "/me 만 받는다"}
                 elif vid.endswith("/pasted-posting"):
                     out[vid] = {"mode": "manual", "manual_reason": "ui"}
+                elif vid == "룸-탐색/S1/login-required":
+                    out[vid] = {"mode": "auto", "checks": ["G.application.submit#login-required"]}   # 다른 게이트로 바꾸려 한다
             return "```json\n" + json.dumps(out) + "\n```"
         with self.assertRaises(BadRequest):
             self.app.rejudge_manual(operator="", ask=ask)
         res = self.app.rejudge_manual(operator="bebe", ask=ask)
         after = self.manual()
         self.assertEqual(after["회원-및-프로필/S2/own-profile-only"].manual_reason, "structural")
+        self.assertIn("룸-탐색/S1/login-required", after)                                       # 확인 대상을 다른 규칙으로 바꾸는 판정은 버린다
+        self.assertEqual(after["룸-탐색/S1/login-required"].checks, ["G.application.enter#login-required"])
         kicks = [k for k in after if "/kick." in k or k.endswith("/target-joined") or k.endswith("/target-not-host")]
         if any("kick" in c["id"] for c in cmds):
             self.assertTrue(kicks and all(after[k].manual_reason == "no_api" for k in kicks))     # API 없음은 결정론으로
