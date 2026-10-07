@@ -784,3 +784,33 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: review.received-reviews-unauth
+    title: 로그인하지 않고 받은 후기를 열면 E1102로 거절된다
+    suite: smoke
+    variant: 유저-후기-및-신뢰-관리/S2/received-login
+    domains:
+    - review
+    operations:
+    - getReceivedReviews
+    covers:
+    - op.getReceivedReviews:E1102
+    source:
+    - OpenAPI GET /v1/members/me/received-reviews
+    actor: null
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 비로그인 상태로 내가 받은 후기 조회
+      covers:
+      - op.getReceivedReviews:E1102
+      request:
+        method: GET
+        path: /v1/members/me/received-reviews
+      expect:
+        status: 401
+        result: ERROR
+        error_code: E1102
+      save: {}
