@@ -156,24 +156,28 @@ scenarios:
         title: 방장이 아닌 사람이 참여자를 내보내면 거절된다
         checks: [G.participation.kick#host-only]
         mode: manual
+        manual_reason: no_api
       - key: kick.room-recruiting
         kind: reject
         at: R10
         title: 진행 확정 뒤에 참여자를 내보내면 거절된다
         checks: [G.participation.kick#room-recruiting]
         mode: manual
+        manual_reason: no_api
       - key: target-joined
         kind: reject
         at: R10
         title: 이미 참여가 끝난 사람을 내보내면 거절된다
         checks: [G.participation.kick#target-joined]
         mode: manual
+        manual_reason: no_api
       - key: target-not-host
         kind: reject
         at: R10
         title: 방장이 자기 자신을 내보내면 거절된다
         checks: [G.participation.kick#target-not-host]
         mode: manual
+        manual_reason: no_api
     basis:
       R1: 16f87808
       R2: f3ab5523
