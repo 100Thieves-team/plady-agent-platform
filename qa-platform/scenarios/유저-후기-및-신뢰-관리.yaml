@@ -131,6 +131,7 @@ scenarios:
       G.review.write#target-attended: '19357609'
 
   - id: S2
+    actor: qa-guest
     gates:
       R101: [G.review.report]
     variants:
@@ -146,6 +147,7 @@ scenarios:
         title: 부적절한 후기를 신고하면 관리자 검토 대상으로 표시된다
         checks: [C.review.report]
         mode: manual
+        manual_reason: no_api
       - key: received-login
         kind: extra
         title: 로그인하지 않고 받은 후기를 열면 E1102 로 거절된다
@@ -157,19 +159,21 @@ scenarios:
         title: 지워졌거나 숨겨진 후기를 신고하면 거절된다
         checks: [G.review.report#review-effective]
         mode: manual
+        manual_reason: no_api
       - key: review-reflected
         kind: reject
         at: R101
         title: 아직 반영되지 않은(제출 3시간 전) 후기를 신고하면 거절된다
         checks: [G.review.report#review-reflected]
         mode: manual
+        manual_reason: no_api
       - key: review-target-only
         kind: reject
         at: R101
         title: 후기를 받은 사람이 아닌데 신고하면 거절된다
         checks: [G.review.report#review-target-only]
         mode: manual
-    actor: qa-guest
+        manual_reason: no_api
     basis:
       R99: ef3a364d
       R100: 6196cea8
