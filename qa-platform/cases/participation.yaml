@@ -108,3 +108,58 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: participation.leave-after-confirm
+    title: 진행 확정 뒤에도 참여자가 직접 참여를 취소할 수 있다
+    suite: sanity
+    variant: 룸-진행-확정/S1/leave-after-confirm
+    domains:
+    - participation
+    operations:
+    - roomLeave
+    covers:
+    - C.participation.cancel
+    - op.roomLeave:200
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3 R23
+    - PRD/룸 참여 및 참여자 관리 §4.6 R114
+    - PRD/룸 참여 및 참여자 관리 §4.6 R119
+    - PRD/룸 참여 및 참여자 관리 §4.6 R120
+    - PRD/룸 참여 및 참여자 관리 §6 R156
+    - PRD/룸 참여 및 참여자 관리 §6 R158
+    - PRD/룸 참여 및 참여자 관리 §6 R159
+    - OpenAPI DELETE /v1/rooms/{roomId}/participants/me
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 진행 확정 뒤 참여 취소 sanity {{rand}}'
+    steps:
+    - name: 진행 확정된 룸에서 참여자가 직접 나간다
+      actor: qa-guest
+      covers:
+      - C.participation.cancel
+      - op.roomLeave:200
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/participants/me
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data: null
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
