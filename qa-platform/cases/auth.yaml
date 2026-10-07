@@ -58,3 +58,47 @@ cases:
           result: SUCCESS
           json: { "data.status": ACTIVE, "data.memberId": "{{actor.qa-host.memberId}}" }
           exists: [data.nickname, data.profile]
+
+  - id: auth.logout-current-device
+    title: 사용자가 현재 기기에서 로그아웃하면 성공 응답을 받는다
+    suite: sanity
+    variant: 회원-및-프로필/S2/logout
+    domains:
+    - auth
+    operations:
+    - authLogout
+    covers:
+    - op.authLogout:200
+    source:
+    - OpenAPI POST /v1/auth/logout
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: dev 소셜 로그인으로 현재 기기 세션 준비
+      cookie_jar: logoutCurrentDevice
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/social-login
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 현재 기기에서 로그아웃
+      cookie_jar: logoutCurrentDevice
+      actor: null
+      covers:
+      - op.authLogout:200
+      request:
+        method: POST
+        path: /v1/auth/logout
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data: null
+          error: null
+      save: {}
