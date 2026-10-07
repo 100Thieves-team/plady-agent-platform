@@ -82,3 +82,88 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.account-active
+    title: 이용이 제한된 계정이 참가 신청을 하면 E1002로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/account-active
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#account-active
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 이용 제한 신청 거절 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 신청자 테스트 계정 초기화
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 신청자 계정을 이용 제한 상태로 변경
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
+        body:
+          status: RESTRICTED
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 이용 제한 계정으로 참가 신청 제출
+      covers:
+      - G.application.submit#account-active
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 이용 제한 계정 신청 거절 확인'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1002
+      save: {}
+    - name: 정리(신청자 계정 상태 복구)
+      always: true
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
+        body:
+          status: ACTIVE
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
