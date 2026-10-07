@@ -18,13 +18,13 @@ scenarios:
         at: R70
         title: 방장이 진행 완료를 누르지 않으면 예정 시각 8시간 뒤 자동 완료되고 전원이 출석으로 기록되어 서로 후기를 쓸 수 있다
         then: 룸 상태 COMPLETED, 확정 참여자 전원 출석 기록, 출석 기록자는 자동 완료 시점의 현재 방장, 참여자 간 후기 작성 가능
-        checks: [C.room.autocomplete]
-        mode: manual
+        checks: [G.room.complete#attendance-roster-matches, G.review.write#room-completed, G.review.write#author-attended, G.review.write#target-attended]
         written_by: hermes
       - key: notify
         kind: extra
         title: 완료되면 전체 참여자에게 완료 알림과 후기 요청 알림이 함께 간다
         mode: manual
+        manual_reason: no_api
       - key: my-attendance
         kind: extra
         title: 완료된 룸의 참여자는 자신의 출석 결과를 확인한다
@@ -62,8 +62,10 @@ scenarios:
       R70: a2b789a6
       R64: 82333b98
       R65: a902851e
-      C.room.autocomplete: 5ef4d9f0
       C.room.complete: 61176fc7
+      G.review.write#author-attended: 92a4a48a
+      G.review.write#room-completed: 0c7ed98b
+      G.review.write#target-attended: '19357609'
       G.room.autocomplete#room-confirmed: c61eb116
       G.room.autocomplete#schedule-plus-8h-passed: bac4a811
       G.room.complete#attendance-roster-matches: bd4202a9
