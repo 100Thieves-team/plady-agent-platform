@@ -1592,3 +1592,87 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.complete-notify
+    title: 방장이 룸을 완료하면 확정 참여자 전원에게 완료 알림이 간다
+    suite: sanity
+    variant: 룸-진행-마무리-및-출석/S2/notify
+    domains:
+    - room
+    operations:
+    - completeRoomProgress
+    covers:
+    - C.room.complete
+    - op.completeRoomProgress:200
+    source:
+    - PRD/룸 진행 마무리 및 출석 §2
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 진행 완료 알림 sanity {{rand}}'
+    steps:
+    - name: 방장이 확정 참여자 출석을 입력하고 룸을 완료한다
+      covers:
+      - C.room.complete
+      - op.completeRoomProgress:200
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: COMPLETED
+          data.attendances[0].memberId: '{{actor.qa-host.memberId}}'
+          data.attendances[0].status: ATTENDED
+          data.attendances[1].memberId: '{{actor.qa-guest.memberId}}'
+          data.attendances[1].status: ATTENDED
+        exists:
+        - data.attendances
+      save: {}
+    - name: 방장이 완료 알림을 받는다
+      covers:
+      - C.room.complete
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_COMPLETED
+        expect:
+          link: /rooms/{{roomId}}
+    - name: 참여자가 완료 알림을 받는다
+      covers:
+      - C.room.complete
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_COMPLETED
+        expect:
+          link: /rooms/{{roomId}}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
