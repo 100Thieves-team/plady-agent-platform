@@ -392,3 +392,74 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: review.not-self
+    title: 자기 자신에게 후기를 쓰면 E2004로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/not-self
+    domains:
+    - review
+    operations:
+    - submitReview
+    covers:
+    - G.review.write#not-self
+    - op.submitReview:E2004
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §3
+    - PRD/유저 후기 및 신뢰 관리 §4.1
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    - PRD/유저 후기 및 신뢰 관리 §4.3
+    - PRD/유저 후기 및 신뢰 관리 §4.8
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 자기 자신 후기 거절 sanity {{rand}}'
+    steps:
+    - name: QA 룸 자동 완료로 확정 참여자 전원 출석 처리
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 자기 자신에게 후기 제출 시도
+      covers:
+      - G.review.write#not-self
+      - op.submitReview:E2004
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-guest.memberId}}'
+          tags:
+          - 시간을 잘 지켜요
+          - 준비가 성실해요
+          - 질문이 날카로워요
+          - 피드백이 구체적이에요
+          - 소통이 원활해요
+          content: 자기 자신에게 후기를 작성할 수 없는지 확인하는 QA 요청입니다.
+          anonymous: false
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E2004
+        json:
+          error.message: 자기 자신에게 후기를 작성할 수 없습니다.
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
