@@ -418,3 +418,48 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: member.withdraw
+    title: 사용자가 회원 탈퇴를 요청하면 탈퇴 처리가 성공한다
+    suite: sanity
+    variant: 회원-및-프로필/S2/withdraw
+    domains:
+    - member
+    operations:
+    - memberWithdraw
+    covers:
+    - C.member.withdraw
+    - op.memberWithdraw:200
+    source:
+    - PRD/회원 및 프로필 §4.8
+    - PRD/회원 및 프로필 §2
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 회원 탈퇴
+      covers:
+      - C.member.withdraw
+      - op.memberWithdraw:200
+      request:
+        method: DELETE
+        path: /v1/members/me
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data: null
+      save: {}
+    - name: 정리(QA 회원 초기화)
+      always: true
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
