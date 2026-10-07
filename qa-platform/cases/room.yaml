@@ -540,3 +540,113 @@ cases:
         - data.sourceUrl
       save:
         jobPostingId: data.jobPostingId
+
+  - id: room.create-batch
+    title: 진행 일정을 여러 개 고르면 같은 설정의 룸이 일정 수만큼 만들어진다
+    suite: sanity
+    variant: 룸-생성/S1/batch
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - C.room.create_batch
+    - op.createRoom:200
+    source:
+    - PRD/룸 생성 §4.4
+    - PRD/룸 생성 §4.1
+    - PRD/룸 생성 §4.2
+    - PRD/룸 생성 §4.3
+    - PRD/룸 생성 §4.5
+    - PRD/룸 생성 §4.8
+    - PRD/룸 생성 §6
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 첫 번째 일정 룸 생성
+      covers:
+      - C.room.create_batch
+      - op.createRoom:200
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 일정 일괄 생성 첫 번째 {{rand}}'
+          description: QA 플랫폼이 진행 일정 다중 선택 일괄 생성 검증을 위해 만든 첫 번째 룸. 곧 삭제된다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+        exists:
+        - data.roomId
+      save:
+        firstRoomId: data.roomId
+    - name: 두 번째 일정 룸 생성
+      covers:
+      - C.room.create_batch
+      - op.createRoom:200
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 일정 일괄 생성 두 번째 {{rand}}'
+          description: QA 플랫폼이 진행 일정 다중 선택 일괄 생성 검증을 위해 만든 두 번째 룸. 곧 삭제된다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+        exists:
+        - data.roomId
+      save:
+        secondRoomId: data.roomId
+    - name: 정리(QA 첫 번째 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{firstRoomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 두 번째 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{secondRoomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
