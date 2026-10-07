@@ -366,3 +366,46 @@ cases:
         error_code: E1012
       save: {}
     TODO: setup.resume-list 의 firstSummaryStatus 가 DONE 이 아닌 이력서를 돌려줘야 한다. 주어진 근거에는 요약 미완료 이력서를 새로 만들거나 강제로 미완료 상태로 바꾸는 dev 도구가 없다.
+
+  - id: resume.delete-resume-not-deleted
+    title: 이미 지운 이력서를 또 지우면 E1010 으로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/delete.resume-not-deleted
+    domains:
+    - resume
+    operations:
+    - deleteResume
+    covers:
+    - G.resume.delete#resume-not-deleted
+    - op.deleteResume:E1010
+    source:
+    - PRD/회원 및 프로필 R56
+    - PRD/회원 및 프로필 R57
+    - OpenAPI DELETE /v1/members/me/resumes/{resumeId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 전제 만들기 — 소유한 보관 이력서를 먼저 삭제한다
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/members/me/resumes/{{fixture.qa-guest.resumeId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 이미 삭제된 이력서를 다시 삭제하면 E1010 으로 거절된다
+      covers:
+      - G.resume.delete#resume-not-deleted
+      - op.deleteResume:E1010
+      request:
+        method: DELETE
+        path: /v1/members/me/resumes/{{fixture.qa-guest.resumeId}}
+      expect:
+        status: 404
+        result: ERROR
+        error_code: E1010
+      save: {}
