@@ -777,3 +777,169 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.duplicate-slot-left
+    title: 같은 회사·공고·직무의 활성 룸이 이미 3개이면 네 번째 룸 생성은 E1427로 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/duplicate-slot-left
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create#duplicate-slot-left
+    source:
+    - PRD/룸 생성 §3
+    - PRD/룸 생성 §4.1
+    - PRD/룸 생성 §4.2
+    - PRD/룸 생성 §4.3
+    - PRD/룸 생성 §4.4
+    - PRD/룸 생성 §4.7
+    - PRD/룸 생성 §4.11
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 전제 1 — 같은 공고·직무의 첫 번째 활성 룸을 만든다
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 중복 생성 제한 전제 1 {{rand}}'
+          description: QA 플랫폼이 중복 생성 제한 검증을 위해 만든 첫 번째 활성 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        roomId1: data.roomId
+    - name: 전제 2 — 같은 공고·직무의 두 번째 활성 룸을 만든다
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 중복 생성 제한 전제 2 {{rand}}'
+          description: QA 플랫폼이 중복 생성 제한 검증을 위해 만든 두 번째 활성 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        roomId2: data.roomId
+    - name: 전제 3 — 같은 공고·직무의 세 번째 활성 룸을 만든다
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+9}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 중복 생성 제한 전제 3 {{rand}}'
+          description: QA 플랫폼이 중복 생성 제한 검증을 위해 만든 세 번째 활성 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+      save:
+        roomId3: data.roomId
+    - name: 같은 공고·직무의 네 번째 활성 룸 생성을 시도하면 거절된다
+      covers:
+      - G.room.create#duplicate-slot-left
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+10}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 중복 생성 제한 거절 대상 {{rand}}'
+          description: QA 플랫폼이 중복 생성 제한 E1427 검증을 위해 만든 네 번째 룸 생성 요청이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1427
+      save: {}
+    - name: 정리 — 첫 번째 QA 룸 삭제
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId1}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리 — 두 번째 QA 룸 삭제
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId2}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리 — 세 번째 QA 룸 삭제
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId3}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
