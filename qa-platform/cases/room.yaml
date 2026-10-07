@@ -1397,3 +1397,90 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.schedule-count-within-limit
+    title: 고를 수 있는 일정 개수를 넘기면 룸 일괄 생성이 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/schedule-count-within-limit
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create_batch#schedule-count-within-limit
+    - op.createRoom:200
+    source:
+    - PRD/룸 생성 §4.4
+    - OpenAPI POST /v1/rooms
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 정상 룸 생성으로 기본 요청 형식이 유효함을 확인
+      covers:
+      - op.createRoom:200
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 3
+          maxParticipants: 6
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 일정 개수 제한 정상 생성 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 만든 정상 룸. 곧 삭제된다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+        exists:
+        - data.roomId
+      save:
+        validRoomId: data.roomId
+    - name: 일정 선택 가능 개수를 초과한 일괄 생성은 거절된다
+      covers:
+      - G.room.create_batch#schedule-count-within-limit
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 3
+          maxParticipants: 6
+          schedule: 'TODO: OpenAPI 발췌에는 일괄 생성을 위한 다중 일정 요청 필드가 없음'
+          title: '[QA] 일정 개수 제한 초과 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 일정 개수 제한 초과를 확인하기 위한 요청.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 4xx
+        result: ERROR
+      save: {}
+    - name: 정리(QA 정상 생성 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{validRoomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
