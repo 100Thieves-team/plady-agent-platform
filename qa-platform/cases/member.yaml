@@ -175,3 +175,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: member.account-active
+    title: 이용이 제한된 계정이 룸 생성을 하려 하면 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S1/account-active
+    domains:
+    - member
+    operations:
+    - createRoom
+    covers:
+    - G.member.mutate#account-active
+    source:
+    - PRD/회원 및 프로필 §1
+    - PRD/회원 및 프로필 §3
+    - PRD/회원 및 프로필 §4.6
+    - PRD/회원 및 프로필 §4.9
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.member-restricted
+    steps:
+    - name: 이용 제한 계정으로 룸 생성 시도
+      covers:
+      - G.member.mutate#account-active
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms
+        headers:
+          Authorization: Bearer {{memberToken}}
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 이용 제한 계정 룸 생성 거절 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 이용 제한 계정의 상태 변경 행동 거절을 확인한다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1002
+      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
