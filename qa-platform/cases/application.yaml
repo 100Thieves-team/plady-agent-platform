@@ -270,3 +270,56 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.submit-not-host
+    title: 방장이 자기 룸에 신청하면 E1414로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/not-host
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#not-host
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 방장 자기 룸 신청 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 방장이 자기 룸에 참가 신청 제출
+      covers:
+      - G.application.submit#not-host
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          note: '[QA] 방장이 자기 룸에 신청할 수 없는지 확인합니다.'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1414
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
