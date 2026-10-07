@@ -1861,3 +1861,58 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.confirm-room-recruiting
+    title: 이미 확정되었거나 모집 중이 아닌 룸을 확정하면 E1410으로 거절된다
+    suite: sanity
+    variant: 룸-진행-확정/S1/confirm.room-recruiting
+    domains:
+    - room
+    operations:
+    - confirmRoom
+    covers:
+    - G.room.confirm#room-recruiting
+    - op.confirmRoom:E1410
+    source:
+    - PRD/룸 진행 확정 R2
+    - PRD/룸 진행 확정 R8
+    - PRD/룸 진행 확정 R10
+    - PRD/룸 진행 확정 R11
+    - PRD/룸 진행 확정 R12
+    - PRD/룸 진행 확정 R13
+    - PRD/룸 진행 확정 R34
+    - PRD/룸 진행 확정 R35
+    - PRD/룸 진행 확정 R36
+    - PRD/룸 진행 확정 §8
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 이미 확정된 룸 재확정 거절 {{rand}}'
+    steps:
+    - name: 이미 확정된 룸을 방장이 다시 진행 확정하면 E1410으로 거절된다
+      covers:
+      - G.room.confirm#room-recruiting
+      - op.confirmRoom:E1410
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/confirmation
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1410
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
