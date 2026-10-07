@@ -943,3 +943,49 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.login-required
+    title: 로그인하지 않고 룸을 만들면 E1102로 거절된다
+    suite: sanity
+    variant: 룸-생성/S1/login-required
+    domains:
+    - room
+    operations:
+    - createRoom
+    covers:
+    - G.room.create#login-required
+    source:
+    - PRD/룸 생성 §3
+    actor: null
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 비로그인 상태로 룸 생성 시도
+      covers:
+      - G.room.create#login-required
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 비로그인 룸 생성 거절 {{rand}}'
+          description: QA 플랫폼이 비로그인 룸 생성 거절을 확인하는 요청이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1102
+      save: {}
