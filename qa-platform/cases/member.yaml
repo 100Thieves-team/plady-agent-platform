@@ -498,3 +498,68 @@ cases:
         exists:
         - data.available
       save: {}
+
+  - id: member.nickname-not-taken
+    title: 다른 회원이 쓰는 닉네임으로 바꾸면 E1007로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/nickname-not-taken
+    domains:
+    - member
+    operations:
+    - updateProfile
+    covers:
+    - G.member.set_nickname#nickname-not-taken
+    source:
+    - PRD/회원 및 프로필 §4.1
+    - PRD/회원 및 프로필 §4.3
+    - PRD/회원 및 프로필 §4.5
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 중복 기준이 될 QA 회원 생성
+      request:
+        method: POST
+        path: /v1/dev/members
+        body:
+          nickname: 중복닉네임{{rand}}
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.memberId
+        - data.nickname
+      save:
+        otherMemberId: data.memberId
+        takenNickname: data.nickname
+      covers: []
+    - name: 이미 다른 회원이 쓰는 닉네임으로 변경 시도
+      covers:
+      - G.member.set_nickname#nickname-not-taken
+      request:
+        method: PUT
+        path: /v1/members/me/profile
+        body:
+          nickname: '{{takenNickname}}'
+          interestJobRoleIds:
+          - '{{fixture.jobRoleId}}'
+          bio: QA 닉네임 중복 거절 확인
+          interestCompanyIds:
+          - 1
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1007
+      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{otherMemberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
