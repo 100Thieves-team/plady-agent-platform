@@ -1808,3 +1808,56 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: room.confirm-min-headcount-met
+    title: 최소 진행 인원이 모이지 않은 룸을 확정하면 E1421 로 거절된다
+    suite: sanity
+    variant: 룸-진행-확정/S1/min-headcount-met
+    domains:
+    - room
+    operations:
+    - confirmRoom
+    covers:
+    - G.room.confirm#min-headcount-met
+    - op.confirmRoom:E1421
+    source:
+    - PRD/룸 진행 확정 §2
+    - PRD/룸 진행 확정 §3
+    - PRD/룸 진행 확정 §4.1
+    - PRD/룸 진행 확정 §4.4
+    - PRD/룸 진행 확정 §8
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 최소 진행 인원 미달 확정 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 최소 진행 인원 미달 상태의 모집 중 룸 진행 확정 시도
+      covers:
+      - G.room.confirm#min-headcount-met
+      - op.confirmRoom:E1421
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/confirmation
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1421
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
