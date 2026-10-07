@@ -642,3 +642,67 @@ cases:
         error_code: E2006
       save: {}
     TODO: qa-guest가 작성했고 이미 삭제되었거나 숨김 처리된 후기 reviewId를 만드는 카드 또는 API 근거가 필요하다.
+
+  - id: review.edit-within-edit-window
+    title: 제출한 지 3시간이 지난 후기를 고치면 E2008로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/within-edit-window
+    domains:
+    - review
+    operations:
+    - updateReview
+    covers:
+    - G.review.edit#within-edit-window
+    - op.updateReview:E2008
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §4.3 R32
+    - PRD/유저 후기 및 신뢰 관리 §4.3 R36
+    - OpenAPI PUT /v1/reviews/{reviewId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 수정 3시간 경과 거절 {{rand}}'
+    steps:
+    - name: TODO 공개 기준 시각이 지난 qa-guest 작성 후기 reviewId를 준비한다
+      covers: []
+      request:
+        method: GET
+        path: /v1/dev/qa-data
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        reviewId: TODO
+    - name: 작성자가 공개 기준 시각이 지난 후기를 수정한다
+      covers:
+      - G.review.edit#within-edit-window
+      - op.updateReview:E2008
+      request:
+        method: PUT
+        path: /v1/reviews/{{reviewId}}
+        body:
+          tags:
+          - 소통이 원활해요
+          content: 긴장을 풀어주는 진행이 좋았어요.
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E2008
+        json:
+          error.message: 공개 기준 시각이 지난 후기는 수정하거나 삭제할 수 없습니다.
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
