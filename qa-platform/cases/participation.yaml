@@ -1,0 +1,53 @@
+# participation — QA 플랫폼 폼으로 만든 파일.
+cases:
+  - id: participation.cancel-own-participation
+    title: 다른 사람의 참여를 대신 취소하려고 하면 E1419로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/own-participation
+    domains:
+    - participation
+    operations:
+    - roomLeave
+    covers:
+    - G.participation.cancel#own-participation
+    - op.roomLeave:E1419
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.6
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 참여 취소 권한 거절 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 비참여자인 qa-guest가 이 룸에서 본인 참여 나가기를 호출하면 거절된다
+      actor: qa-guest
+      covers:
+      - G.participation.cancel#own-participation
+      - op.roomLeave:E1419
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/participants/me
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E1419
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
