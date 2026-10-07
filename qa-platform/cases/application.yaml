@@ -167,3 +167,55 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.login-required
+    title: 로그인하지 않고 참가 신청을 하면 E1102로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/login-required
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#login-required
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 비로그인 신청 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 비로그인 상태로 참가 신청을 제출하면 거절된다
+      actor: null
+      covers:
+      - G.application.submit#login-required
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 비로그인 신청 거절 확인'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1102
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
