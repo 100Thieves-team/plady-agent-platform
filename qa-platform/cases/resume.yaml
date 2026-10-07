@@ -258,3 +258,37 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: resume.set-default-deleted
+    title: 지운 이력서를 기본으로 지정하면 E1010으로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/set-default.resume-not-deleted
+    domains:
+    - resume
+    operations:
+    - makeResumeDefault
+    covers:
+    - G.resume.set_default#resume-not-deleted
+    - op.makeResumeDefault:E1010
+    source:
+    - PRD/회원 및 프로필 §4.4-1 R60-R62
+    - OpenAPI POST /v1/members/me/resumes/{resumeId}/make-default
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 삭제된 이력서를 기본 이력서로 지정하면 E1010으로 거절된다
+      covers:
+      - G.resume.set_default#resume-not-deleted
+      - op.makeResumeDefault:E1010
+      request:
+        method: POST
+        path: /v1/members/me/resumes/{{deletedResumeId}}/make-default
+      expect:
+        status: 404
+        result: ERROR
+        error_code: E1010
+      save: {}
+    TODO: 삭제된 qa-guest 소유 이력서 id를 만드는 dev 카드나 이력서 삭제 API 계약이 근거에 없어서 deletedResumeId 입력이 필요하다. subject 가 F.resume.owner 인가 조건을 먼저 통과한 뒤 resume-not-deleted 검사만 걸리게 해야 한다.
