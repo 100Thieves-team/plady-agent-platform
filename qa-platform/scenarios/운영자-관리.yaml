@@ -7,6 +7,7 @@ scenarios:
         kind: happy
         title: 운영자가 신고를 확인하고 조치와 사유를 기록한다
         mode: manual
+        manual_reason: no_api
     basis:
       R1: 1529cab1
       R2: 2a508f29
