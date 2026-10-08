@@ -2061,3 +2061,62 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: room.update-host-only
+    title: 방장이 아닌 사람이 모집 중인 룸 정보를 고치면 E1406으로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/update.host-only
+    domains:
+    - room
+    operations:
+    - '{''TODO'': ''룸 수정 operationId 확인''}'
+    covers:
+    - G.room.update#host-only
+    source:
+    - PRD/룸 생성 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 방장 전용 수정 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 방장이 아닌 참가자가 모집 중 룸 정보 수정을 시도한다
+      actor: qa-guest
+      covers:
+      - G.room.update#host-only
+      request:
+        method: PATCH
+        path: /v1/rooms/{{roomId}}
+        body:
+          round: SECOND
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '15:30:00'
+            durationMinutes: 90
+          title: '[QA] 방장이 아닌 사람이 수정 시도 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 방장이 아닌 계정으로 수정 시도한 설명입니다.
+      expect:
+        result: ERROR
+        error_code: E1406
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
