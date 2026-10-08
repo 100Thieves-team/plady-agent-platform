@@ -1265,14 +1265,13 @@ cases:
     source:
     - PRD/룸 생성 §3
     - PRD/룸 생성 §4.1
-    - OpenAPI POST /v1/rooms
     actor: qa-host
     reviewed:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
     steps:
-    - name: 질의응답형이 아닌 면접 유형으로 룸 생성 시도
+    - name: 질의응답형이 아닌 PT 면접 유형으로 룸 생성 시도
       covers:
       - G.room.create#qna-type-only
       request:
@@ -1282,7 +1281,7 @@ cases:
           postingId: '{{fixture.postingId}}'
           jobRoleId: '{{fixture.jobRoleId}}'
           round: FIRST
-          type: 'TODO: 질의응답형이 아닌 면접 유형 enum 값(OpenAPI 발췌에 enum 없음)'
+          type: PT
           method: ONLINE
           minParticipants: 2
           maxParticipants: 4
@@ -1290,8 +1289,8 @@ cases:
             date: '{{date:+7}}'
             startTime: '{{time:rand}}'
             durationMinutes: 90
-          title: '[QA] 질의응답형 아닌 면접 유형 거절 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 만든 룸 생성 거절 확인용 요청.
+          title: '[QA] 질의응답형 외 면접 유형 거절 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 질의응답형 외 면접 유형 거절을 확인한다.
           resumeId: '{{fixture.qa-host.resumeId}}'
           resumePublic: true
       expect:
