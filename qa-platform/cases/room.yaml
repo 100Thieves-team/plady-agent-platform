@@ -1979,3 +1979,85 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.update-recruiting
+    title: 방장이 모집 중인 룸의 정보를 고친다
+    suite: sanity
+    variant: 룸-생성/S2/happy
+    domains:
+    - room
+    operations:
+    - '{''TODO'': ''룸 수정 operationId 확인''}'
+    - roomDetail
+    covers:
+    - C.room.update
+    source:
+    - PRD/룸 생성 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 룸 수정 전 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 모집 중 룸 정보 수정
+      covers:
+      - C.room.update
+      request:
+        method: PATCH
+        path: /v1/rooms/{{roomId}}
+        body:
+          round: SECOND
+          type: JOB
+          method: OFFLINE
+          sigunguId: 1
+          minParticipants: 2
+          maxParticipants: 5
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '15:30:00'
+            durationMinutes: 120
+          title: '[QA] 수정된 룸 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 수정한 룸 설명입니다.
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 상세 조회로 수정된 값 확인
+      covers:
+      - C.room.update
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+          data.title: '[QA] 수정된 룸 {{rand}}'
+          data.description: QA 플랫폼 sanity 케이스가 수정한 룸 설명입니다.
+          data.round: SECOND
+          data.type: JOB
+          data.method: OFFLINE
+          data.region.sigunguId: 1
+          data.recruit.min: 2
+          data.recruit.max: 5
+          data.schedule.startAt: '{{date:+8}}T15:30:00'
+          data.schedule.durationMinutes: 120
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
