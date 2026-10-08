@@ -2120,3 +2120,59 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.update-room-recruiting
+    title: 모집 중이 아닌 룸을 고치면 E1418 로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/update.room-recruiting
+    domains:
+    - room
+    operations:
+    - '{''TODO'': ''룸 수정 operationId 확인''}'
+    covers:
+    - G.room.update#room-recruiting
+    source:
+    - PRD/룸 생성 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 수정 거절 확인용 확정 룸 {{rand}}'
+    steps:
+    - name: 진행 확정된 룸 정보 수정 시도
+      covers:
+      - G.room.update#room-recruiting
+      request:
+        method: PATCH
+        path: /v1/rooms/{{roomId}}
+        body:
+          round: SECOND
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '15:30:00'
+            durationMinutes: 120
+          title: '[QA] 모집 중 아님 수정 시도 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 모집 중이 아닌 룸 수정을 시도합니다.
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1418
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
