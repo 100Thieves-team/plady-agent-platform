@@ -978,3 +978,80 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: review.author-attended
+    title: 룸에 출석하지 않은 참여자가 후기를 쓰면 E2002 로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/author-attended
+    domains:
+    - review
+    operations:
+    - submitReview
+    covers:
+    - G.review.write#author-attended
+    - op.submitReview:E2002
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §3
+    - PRD/유저 후기 및 신뢰 관리 §4.1
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    - PRD/유저 후기 및 신뢰 관리 §4.3
+    - PRD/유저 후기 및 신뢰 관리 §4.8
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 후기 작성자 불참 거절 {{rand}}'
+    steps:
+    - name: TODO 룸 완료 처리 — qa-host 는 출석, qa-guest 는 불참으로 기록
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /TODO
+        body:
+          roomId: '{{roomId}}'
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            attended: true
+          - memberId: '{{actor.qa-guest.memberId}}'
+            attended: false
+      expect:
+        status: 2xx
+        result: SUCCESS
+        json:
+          data.status: COMPLETED
+      save: {}
+    - name: 불참한 참여자가 참석한 방장에게 후기 제출 시도
+      covers:
+      - G.review.write#author-attended
+      - op.submitReview:E2002
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+          tags:
+          - 시간을 잘 지켜요
+          - 준비가 성실해요
+          content: 출석하지 않은 참여자의 후기 제출은 거절되어야 한다.
+          anonymous: false
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E2002
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
