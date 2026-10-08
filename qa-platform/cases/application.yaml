@@ -1009,3 +1009,54 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.reject-host-only
+    title: 방장이 아닌 사람이 신청을 반려하면 E1406으로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/reject.host-only
+    domains:
+    - application
+    operations:
+    - rejectApplication
+    covers:
+    - G.application.reject#host-only
+    source:
+    - PRD/룸 참여 및 참여자 관리 R27
+    - PRD/룸 참여 및 참여자 관리 R84
+    - PRD/룸 참여 및 참여자 관리 R93
+    - PRD/룸 참여 및 참여자 관리 R95
+    - PRD/룸 참여 및 참여자 관리 R144
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 신청 반려 권한 거절 sanity {{rand}}'
+        note: '[QA] 방장이 아닌 사용자의 신청 반려 거절 확인'
+    steps:
+    - name: 방장이 아닌 신청자가 참가 신청 반려 시도
+      covers:
+      - G.application.reject#host-only
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/reject
+        body:
+          reason: ROLE_MISMATCH
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1406
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
