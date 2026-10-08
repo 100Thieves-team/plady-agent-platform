@@ -297,7 +297,7 @@ cases:
       covers: []
 
   - id: member.profile-resume-happy
-    title: 사용자가 마이페이지에서 프로필을 수정하고 이력서를 보관·기본 지정·삭제한다
+    title: 사용자가 마이페이지에서 프로필을 수정하고 이력서를 등록·기본 지정·삭제한다
     suite: sanity
     variant: 회원-및-프로필/S2/happy
     domains:
@@ -323,6 +323,7 @@ cases:
     - PRD/회원 및 프로필 §4.5
     - PRD/회원 및 프로필 §4.4-1
     - PRD/회원 및 프로필 §6
+    - PRD/회원 및 프로필 §8
     actor: qa-guest
     reviewed:
       at: '2026-10-08'
@@ -337,10 +338,10 @@ cases:
         method: PUT
         path: /v1/members/me/profile
         body:
-          nickname: 명랑한해달{{rand}}
+          nickname: '[QA] 명랑한 해달 {{rand}}'
           interestJobRoleIds:
           - '{{fixture.jobRoleId}}'
-          bio: QA 프로필 수정 sanity
+          bio: '[QA] 실전처럼 압박 질문을 주고받는 것을 좋아합니다.'
           interestCompanyIds:
           - 1
       expect:
@@ -349,7 +350,7 @@ cases:
         json:
           data.memberId: '{{actor.qa-guest.memberId}}'
           data.interestJobRoleIds[0]: '{{fixture.jobRoleId}}'
-          data.bio: QA 프로필 수정 sanity
+          data.bio: '[QA] 실전처럼 압박 질문을 주고받는 것을 좋아합니다.'
         exists:
         - data.interestCompanies
       save: {}
@@ -361,34 +362,26 @@ cases:
         method: POST
         path: /v1/members/me/resumes
         multipart:
-          file: 'TODO: OpenAPI 발췌에 이력서 업로드 요청 파트명과 파일 fixture가 없음'
+          file:
+            sample: pdf
+            filename: '[QA] 이력서 {{rand}}.pdf'
       expect:
         status: 201
         result: SUCCESS
         json:
-          data.name: TODO
-          data.file.originalName: TODO
           data.file.contentType: application/pdf
           data.aiSummary.status: DONE
           data.isDefault: false
         exists:
         - data.resumeId
+        - data.name
+        - data.file.originalName
         - data.file.sizeBytes
         - data.aiSummary.text
         - data.registeredAt
       save:
         resumeId: data.resumeId
-    - name: 이력서 AI 요약 완료 강제
-      request:
-        method: POST
-        path: /v1/dev/resumes/{{resumeId}}/summary
-        body:
-          summary: '[QA] 테스트용 이력서 요약입니다. 백엔드 3년차, Kotlin·Spring 기반 API 개발 경험이 있습니다.'
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
-      covers: []
+        resumeName: data.name
     - name: 기본 이력서 지정
       covers:
       - C.resume.set_default
@@ -400,7 +393,7 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-    - name: 이력서 삭제
+    - name: 정리 겸 이력서 삭제
       always: true
       covers:
       - C.resume.delete
@@ -408,6 +401,16 @@ cases:
       request:
         method: DELETE
         path: /v1/members/me/resumes/{{resumeId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 회원 초기화)
+      always: true
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
       expect:
         status: 200
         result: SUCCESS
