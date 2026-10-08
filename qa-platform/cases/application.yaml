@@ -1060,3 +1060,51 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.withdraw-processed
+    title: 방장이 이미 처리한 신청을 신청자가 철회하면 E1409로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/withdraw.application-pending
+    domains:
+    - application
+    operations:
+    - withdrawRoomApplication
+    covers:
+    - G.application.withdraw#application-pending
+    source:
+    - PRD/룸 참여 및 참여자 관리 R18
+    - PRD/룸 참여 및 참여자 관리 R98
+    - PRD/룸 참여 및 참여자 관리 R99
+    - PRD/룸 참여 및 참여자 관리 R100
+    - PRD/룸 참여 및 참여자 관리 R143
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 이미 처리된 신청 철회 거절 {{rand}}'
+    steps:
+    - name: 이미 수락 처리된 내 신청 철회 시도
+      covers:
+      - G.application.withdraw#application-pending
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/applications/me
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1409
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
