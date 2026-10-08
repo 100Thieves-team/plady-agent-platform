@@ -2397,3 +2397,73 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.search-empty-nearest-room
+    title: 검색 결과가 없으면 사용자가 같은 회사·같은 직무에서 가장 가까운 시간대의 룸을 확인한다
+    suite: sanity
+    variant: 룸-탐색/S1/r89
+    domains:
+    - room
+    operations:
+    - rooms
+    covers:
+    - PRD.룸-탐색.4.1#1
+    - op.rooms:200
+    source:
+    - PRD/룸 탐색 §4.1
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 룸 탐색 목록 조회 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 비로그인으로 모집 중인 룸 목록 조회
+      actor: null
+      covers:
+      - PRD.룸-탐색.4.1#1
+      - op.rooms:200
+      request:
+        method: GET
+        path: /v1/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.rooms
+        - data.totalCount
+        - data.sort
+        - data.rooms[0].roomId
+        - data.rooms[0].title
+        - data.rooms[0].company
+        - data.rooms[0].jobPosting
+        - data.rooms[0].jobRole
+        - data.rooms[0].round
+        - data.rooms[0].roundLabel
+        - data.rooms[0].type
+        - data.rooms[0].typeLabel
+        - data.rooms[0].method
+        - data.rooms[0].methodLabel
+        - data.rooms[0].schedule
+        - data.rooms[0].recruit
+        - data.rooms[0].recruit.current
+        - data.rooms[0].recruit.max
+        - data.rooms[0].recruit.pending
+        - data.rooms[0].recruit.recruitStatus
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
