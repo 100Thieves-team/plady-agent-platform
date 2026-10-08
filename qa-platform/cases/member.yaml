@@ -705,14 +705,14 @@ cases:
       by: bebe
     written_by: hermes
     steps:
-    - name: 운영 정책 위반 닉네임으로 프로필을 수정하면 거절된다
+    - name: 운영 정책 위반 닉네임으로 프로필 수정 시 거절된다
       covers:
       - G.member.set_nickname#not-policy-violating
       request:
         method: PUT
         path: /v1/members/me/profile
         body:
-          nickname: 'TODO: 사용할 수 없는 문자와 길이 제한은 통과하지만 운영 정책에 위반되는 닉네임'
+          nickname: 욕설시발
           interestJobRoleIds:
           - '{{fixture.jobRoleId}}'
           bio: '[QA] 닉네임 운영 정책 거절 확인용 자기소개'
@@ -721,14 +721,4 @@ cases:
         status: 400
         result: ERROR
         error_code: E1005
-      save: {}
-    - name: 정리(QA 회원 초기화)
-      always: true
-      covers: []
-      request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
-      expect:
-        status: 200
-        result: SUCCESS
       save: {}
