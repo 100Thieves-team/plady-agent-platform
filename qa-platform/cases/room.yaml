@@ -2311,3 +2311,36 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.interview-overview
+    title: 사용자가 내 면접 목록에서 신청한 면접, 참여 중인 면접, 완료된 면접 구역을 조회한다
+    suite: smoke
+    variant: 룸-탐색/S1/r87
+    domains:
+    - room
+    operations:
+    - getInterviewOverview
+    covers:
+    - op.getInterviewOverview:200
+    source:
+    - OpenAPI GET /v1/members/me/rooms
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 내 면접 목록 조회
+      covers:
+      - op.getInterviewOverview:200
+      request:
+        method: GET
+        path: /v1/members/me/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.pendingApplications
+        - data.participatingRooms
+        - data.completedRooms
+      save: {}
