@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 
 from qa import httpx  # noqa: E402
 from qa.cases import CaseError, audit, load_dir, parse_one, select  # noqa: E402
@@ -298,7 +299,9 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(errors, [])
         audit(cases, cat)
         # 오류(스위트에서 빠짐)는 없어야 한다. 경고는 위키 판에 따라 생길 수 있다
-        bad = {cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}
+        from repo_data import hermes_case_ids
+        hid = hermes_case_ids()          # Hermes 가 쓴 것은 운영에서 계속 바뀐다 — 시드만 본다 (Hermes 스크립트의 오류는 스위트에서 빠질 뿐이다)
+        bad = {cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"] and cid not in hid}
         self.assertEqual(bad, {})
         self.assertTrue(all(c.covers for c in cases.values() if c.suite != "setup"))   # 준비 작업(setup)은 covers 가 없다
         # 캐시가 남고 같은 입력이면 재계산하지 않는다
@@ -346,7 +349,9 @@ class CatalogTest(unittest.TestCase):
         cases, _ = load_dir(ROOT / "cases")
         # 별칭 파일은 이관(2026-09-23) 때의 key 만 안다. 그 뒤 새로 생긴 key 를 쓰는 스크립트는 번호 판에서 풀 수 없으니 뺀다
         known = set(inputs.aliases)
-        cases = {cid: c for cid, c in cases.items() if all("#" not in t or t in known for t in c.covers)}
+        from repo_data import hermes_case_ids
+        hid = hermes_case_ids()
+        cases = {cid: c for cid, c in cases.items() if cid not in hid and all("#" not in t or t in known for t in c.covers)}
         self.assertGreaterEqual(len(cases), 10)
         audit(cases, cat_old)
         self.assertEqual({cid: c.audit["errors"] for cid, c in cases.items() if c.audit["errors"]}, {})

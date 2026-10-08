@@ -30,7 +30,15 @@ class HttpResult:
             self.json = None
 
 
-def request(method: str, url: str, headers: dict | None = None, body=None, timeout: int = 30) -> HttpResult:
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None           # 3xx 를 그대로 돌려준다 (HTTPError 로 온다)
+
+
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
+def request(method: str, url: str, headers: dict | None = None, body=None, timeout: int = 30, follow_redirects: bool = True) -> HttpResult:
     """네트워크 오류는 status 0 + error 로 돌려준다 (예외를 던지지 않는다)."""
     data = None
     hdrs = dict(headers or {})
@@ -46,7 +54,7 @@ def request(method: str, url: str, headers: dict | None = None, body=None, timeo
     req = urllib.request.Request(url, data=data, method=method.upper(), headers=hdrs)
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with (urllib.request.urlopen(req, timeout=timeout) if follow_redirects else _NO_REDIRECT.open(req, timeout=timeout)) as resp:
             text = resp.read().decode("utf-8", "replace")
             return HttpResult(resp.status, dict(resp.headers), text, int((time.monotonic() - t0) * 1000),
                               set_cookies=resp.headers.get_all("Set-Cookie") or [])

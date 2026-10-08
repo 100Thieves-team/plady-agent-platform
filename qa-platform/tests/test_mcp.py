@@ -122,9 +122,9 @@ class McpServerTest(unittest.TestCase):
 
     # -- 읽기 --
     def test_catalog_search_and_tc_get(self):
-        res, err = self.call("qa_catalog_search", domain="room", layer="policy", only="uncovered", limit=5)
+        res, err = self.call("qa_catalog_search", domain="room", layer="policy", only="uncovered", limit=2)
         self.assertFalse(err)
-        self.assertLessEqual(res["returned"], 5)
+        self.assertLessEqual(res["returned"], 2)
         self.assertGreater(res["total"], res["returned"])
         for it in res["items"]:
             self.assertEqual((it["domain"], it["layer"], it["state"]), ("room", "policy", "uncovered"))

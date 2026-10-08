@@ -1196,7 +1196,7 @@ cases:
       expect:
         status: 400
         result: ERROR
-        error_code: E1402
+        error_code: E400
       save: {}
 
   - id: room.offline-region-required
@@ -1209,7 +1209,6 @@ cases:
     - createRoom
     covers:
     - G.room.create#offline-region-required
-    - op.createRoom:E1402
     source:
     - PRD/룸 생성 §3
     - PRD/룸 생성 §4.1
@@ -1228,7 +1227,6 @@ cases:
     - name: 오프라인 룸 생성 시 지역 없이 요청하면 거절된다
       covers:
       - G.room.create#offline-region-required
-      - op.createRoom:E1402
       request:
         method: POST
         path: /v1/rooms
@@ -1251,7 +1249,7 @@ cases:
       expect:
         status: 400
         result: ERROR
-        error_code: E1402
+        error_code: E400
       save: {}
 
   - id: room.qna-type-only
@@ -1264,7 +1262,6 @@ cases:
     - createRoom
     covers:
     - G.room.create#qna-type-only
-    - op.createRoom:E1402
     source:
     - PRD/룸 생성 §3
     - PRD/룸 생성 §4.1
@@ -1278,7 +1275,6 @@ cases:
     - name: 질의응답형이 아닌 면접 유형으로 룸 생성 시도
       covers:
       - G.room.create#qna-type-only
-      - op.createRoom:E1402
       request:
         method: POST
         path: /v1/rooms
@@ -1301,7 +1297,7 @@ cases:
       expect:
         status: 400
         result: ERROR
-        error_code: E1402
+        error_code: E400
       save: {}
 
   - id: room.each-schedule-passes-create

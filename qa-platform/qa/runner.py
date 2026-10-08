@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import inspect
 import queue
 import threading
 import time
@@ -15,7 +16,9 @@ from datetime import datetime, timedelta, timezone
 
 from . import httpx
 from . import inbox as inboxmod
-from .cases import Case
+from urllib.parse import quote
+
+from .cases import Case, withdraws_shared_account
 from .config import Config
 from .store import Store, now_iso
 from .templating import Context, TemplateError, get_path
@@ -137,6 +140,18 @@ def evaluate(expect: dict, status: int, body, set_cookies: list | None = None) -
         a = cookie_state(set_cookies or [], name)
         out.append({"check": "cookie", "path": name, "expected": want, "actual": a, "ok": a == want})
     return out
+
+
+def _send(method, url, **kw):
+    """스크립트 요청은 리다이렉트를 따라가지 않는다 — 3xx 와 그 응답의 Set-Cookie 를 그대로 확인하려고 (OAuth 시작 등).
+    테스트가 httpx.request 를 바꿔 끼우면 그 함수가 follow_redirects 를 모를 수 있어 시그니처를 본다."""
+    fn = httpx.request
+    try:
+        params = inspect.signature(fn).parameters
+        ok = "follow_redirects" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+    except (TypeError, ValueError):
+        ok = False
+    return fn(method, url, **kw, **({"follow_redirects": False} if ok else {}))
 
 
 def _mask_header(k: str, v: str) -> str:
@@ -356,7 +371,15 @@ class Runner:
         """런에 기록된 base_url 로 요청한다 — 런은 생성 시점의 대상을 고정한다."""
         name = step.get("name") or f"step {i + 1}"
         actor = step.get("actor", case.actor)
+        path0 = str(step["request"].get("path") or "")
+        has_auth = any(str(k).lower() == "authorization" for k in (step["request"].get("headers") or {}))
+        if not actor and path0.startswith("/v1/dev/") and not has_auth and not step.get("cookie_jar") and self.cfg.actors:
+            actor = next(iter(self.cfg.actors))     # dev 도구는 검증 대상이 아니다 — 인증이 없으면 기본 테스트 계정으로 (정리 단계 401 방지)
         record = {"method": step["request"]["method"], "path": step["request"].get("path"), "actor": actor}
+        if withdraws_shared_account(step, case.actor):
+            msg = "공용 테스트 계정으로 회원 탈퇴를 부르는 단계라 보내지 않았다 — 새 QA 회원의 토큰으로만 부른다"
+            self.store.add_step(rcid, i, name, record, None, [], "error", 0, msg)
+            return "error", 0, msg
         if step.get("given"):
             record["given"] = step["given"]        # 결과 화면이 전제 단계를 접어 보인다
         if after_failure:
@@ -377,7 +400,7 @@ class Runner:
                 if sent:
                     headers["Cookie"] = "; ".join(f"{n}={v}" for n, v in sent)
                 record["cookie_jar"] = jar_name
-            url = base_url + req["path"]
+            url = base_url + quote(req["path"], safe="/:@!$&'()*+,;=%-._~")     # 경로에 한글 등이 섞여도 요청이 깨지지 않게
             if req.get("query"):
                 from urllib.parse import urlencode
                 url += ("&" if "?" in url else "?") + urlencode({k: v for k, v in req["query"].items() if v is not None})
@@ -395,7 +418,7 @@ class Runner:
             return "error", 0, msg
         op_id = self._op_of(req["method"], req.get("path")) or op_id   # 치환된 경로가 더 정확하다
 
-        r = httpx.request(req["method"], url, headers=headers, body=req.get("body"), timeout=self.cfg.request_timeout)
+        r = _send(req["method"], url, headers=headers, body=req.get("body"), timeout=self.cfg.request_timeout)
         response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": _mask_secrets(r.json) if r.json is not None else None,
                     "text": None if r.json is not None else _truncate_text(r.text), "error": r.error}
         if r.json is not None and len(r.text) > BODY_LIMIT:

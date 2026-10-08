@@ -543,6 +543,9 @@ class App:
         if not operator or operator not in self.cfg.operators:
             raise BadRequest("담당자를 목록에서 골라야 한다")
         chosen = list(cases_override) if cases_override else [self.cases[c] for c in case_ids if c in self.cases]
+        held = []
+        if trigger in ("sprint-smoke", "release", "deploy-sanity"):
+            chosen, held = self.split_manual_variant_cases(chosen)
         if not chosen:
             raise BadRequest("스크립트를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
@@ -551,6 +554,8 @@ class App:
                 "catalog": (cat.versions if cat else None),   # 이 런의 TC 소스 버전 (§6.3). 과거 런은 다시 해석하지 않는다
                 "covers": sorted({t for c in chosen for t in c.covers})}
         meta.update({k: v for k, v in extra.items() if v not in (None, "")})
+        if held:
+            meta["held_manual"] = [c.id for c in held]     # 케이스가 백엔드 미구현·해당 없음·사람이 확인이라 돌리지 않은 스크립트
         rid = self.store.create_run(trigger=trigger, operator=operator, suite=suite, env=self.cfg.target_env,
                                     base_url=self.target_for(operator)["base_url"], ref=ref or self.cfg.backend_branch, sha=sha,
                                     pr_number=pr_number, meta=meta, cases=chosen)
@@ -952,6 +957,16 @@ class App:
                     "links": [{"href": "/features", "label": "시나리오 목록"}]}
         return self.start_job("rejudge", operator=operator, label="수동 케이스 전부", fn=fn, back={"href": "/features", "label": "시나리오"},
                               session_hash=session_hash, ip=ip, sync=sync)
+
+    def split_manual_variant_cases(self, cases: list) -> tuple[list, list]:
+        """(돌릴 스크립트, 뺄 스크립트). 스크립트가 구현하는 케이스가 수동(백엔드 미구현·해당 없음·dev 도구 필요·사람이 확인)이면 뺀다.
+        예전에 만든 스크립트가 없어진 API 를 불러 늘 404·405 로 실패하던 것 (2026-10-08 룸 취소·수정)."""
+        idx = scenariosmod.variant_index(self.features)
+        keep, held = [], []
+        for c in cases:
+            hit = idx.get(c.variant) if c.variant else None
+            (held if hit and hit[2].mode == "manual" else keep).append(c)
+        return keep, held
 
     def untested_variants(self, slug: str | None = None) -> list[str]:
         """스크립트로 확인하기로 했는데 스크립트가 없는 케이스 id (화면의 '테스트 없음'). slug 를 주면 그 기능만."""

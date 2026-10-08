@@ -13,7 +13,7 @@ cases:
     actor: qa-host
     inputs:
       title: { label: 룸 제목, default: "[QA] 준비 작업 룸", required: true, hint: "[QA] 로 시작해야 나중에 찾아 지울 수 있다" }
-      minParticipants: { label: 최소 진행 인원, default: 2 }
+      minParticipants: { label: 최소 진행 인원, default: 2, hint: "2 이상 (1 이면 E1402)" }
       maxParticipants: { label: 최대 모집 인원, default: 4 }
       daysFromNow: { label: 며칠 뒤 일정인가, default: 7, hint: "오늘 기준 N 일 뒤. 시각은 실행마다 09:00~20:50 사이에서 고른다 — 남은 룸과 겹치면 백엔드가 그 룸을 돌려주기 때문" }
     outputs: [roomId]
@@ -179,7 +179,7 @@ cases:
       - name: 그 회원으로 탈퇴
         actor: null
         request: { method: DELETE, path: /v1/members/me, headers: { Authorization: "Bearer {{memberToken}}" } }
-        expect: { status: 200, result: SUCCESS, cookies: { ACCESS_TOKEN: cleared, REFRESH_TOKEN: cleared } }
+        expect: { status: 200, result: SUCCESS, cookies: { DEV_ACCESS_TOKEN: cleared, DEV_REFRESH_TOKEN: cleared } }
 
   - id: setup.member-restricted
     title: 이용 제한 QA 회원 만들기

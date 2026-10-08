@@ -77,9 +77,9 @@ checks:
   "G.review.edit#review-effective": E2007
   "G.review.edit#within-edit-window": E2008
   "G.member.mutate#login-required": E1102
-  "G.room.create#interview-stage-required": E1402   # Hermes 2026-10-07
-  "G.room.create#offline-region-required": E1402   # Hermes 2026-10-07
-  "G.room.create#qna-type-only": E1402   # Hermes 2026-10-07
+  "G.room.create#interview-stage-required": E400    # 필수값 누락은 dev 가 E400 을 준다 (2026-10-08 실행에서 확인, Hermes 가 E1402 로 잘못 짐작)
+  "G.room.create#offline-region-required": E400    # 필수값 누락은 dev 가 E400 을 준다 (2026-10-08 실행에서 확인, Hermes 가 E1402 로 잘못 짐작)
+  "G.room.create#qna-type-only": E400    # 필수값 누락은 dev 가 E400 을 준다 (2026-10-08 실행에서 확인, Hermes 가 E1402 로 잘못 짐작)
   "G.member.mutate#account-active": E1002    # 회원 쓰기 공통 규칙. 각 쓰기 게이트의 account-active 와 같은 코드 (SSOT G.room.create#account-active)
   "G.member.my_interviews#login-required": E1102   # Hermes 2026-10-07
 

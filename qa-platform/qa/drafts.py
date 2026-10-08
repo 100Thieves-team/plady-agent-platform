@@ -55,7 +55,12 @@ DRAFT_SYSTEM = (
     "12. 'dev 도구' 목록이 주어지면 Google 로그인·회원 상태·시간이 걸리는 작업은 그 도구로 만든다. 도구 단계는 covers 가 없다. "
     "로그인 쿠키로 확인하는 흐름(로그인·로그아웃·토큰 갱신·탈퇴·복구)은 단계에 `cookie_jar: 이름` 을 달아 응답 쿠키를 같은 이름의 다음 단계로 넘기고, "
     "쿠키로만 부를 단계는 `actor: null` 로 기본 계정 토큰을 뺀다. dev 소셜 로그인 단계 자체는 기본 계정으로 부른다. "
-    "새로 만든 QA 회원으로 부를 때는 `actor: null` 과 `request.headers: {Authorization: \"Bearer {{memberToken}}\"}`(카드나 회원 생성 응답의 accessToken)를 쓴다."
+    "새로 만든 QA 회원으로 부를 때는 `actor: null` 과 `request.headers: {Authorization: \"Bearer {{memberToken}}\"}`(카드나 회원 생성 응답의 accessToken)를 쓴다.\n"
+    "13. 공용 테스트 계정(actor)은 절대 탈퇴시키지 않는다. 탈퇴(`DELETE /v1/members/me`)·dev 회원 상태 변경·dev 소셜 로그인은 새 QA 회원(setup.member-withdrawn · setup.member-restricted · `POST /v1/dev/members`)에게만 쓴다. "
+    "공용 테스트 계정에 쓰면 플랫폼이 막고, 그 계정은 QA 회원이 아니라 dev 도구가 E2201 로 거절한다.\n"
+    "14. dev 서버의 로그인 쿠키 이름은 DEV_ACCESS_TOKEN · DEV_REFRESH_TOKEN · DEV_RESTORE_TOKEN 이다.\n"
+    "15. expect 에 {{rand}} · {{uuid}} · {{time:rand}} 를 쓰지 않는다(실행마다 바뀌어 늘 틀린다). 앞 단계에서 save 한 변수로 비교한다. "
+    "카드의 inputs 는 `uses.with` 로만 넘긴다 — 요청 본문에 넣지 않는다. 룸의 최소 진행 인원은 2 이상이다."
 )
 
 
@@ -163,6 +168,29 @@ def _repair(raw: dict) -> dict:
                 prev["save"] = {**(prev.get("save") or {}), **s["save"]}
             out[-1] = prev
             continue
+        out.append(s)
+    return {**raw, "steps": out}
+
+
+def fit_status(raw: dict, spec: SpecData | None) -> dict:
+    """expect.error_code 가 있는 단계의 status 를 API 문서에 맞춘다. 문서에 그 코드가 있으면 그 status, 없으면 4xx.
+    (2026-10-08: E1425 를 400 으로 짐작해 409 와 어긋났다 — 코드가 맞으면 status 는 짐작할 일이 아니다)"""
+    steps = raw.get("steps")
+    if not isinstance(steps, list):
+        return raw
+    out = []
+    for s in steps:
+        exp = (s.get("expect") or {}) if isinstance(s, dict) else {}
+        req = (s.get("request") or {}) if isinstance(s, dict) else {}
+        code = str(exp.get("error_code") or "").strip()
+        if code and isinstance(req, dict) and req.get("method") and req.get("path"):
+            op = spec.op_for(str(req["method"]).upper(), str(req["path"])) if spec else None
+            known = (op.errors.get(code) or {}).get("status") if op else None
+            if not known and spec:
+                known = next((e.get("status") for o in spec.ops.values() for c, e in o.errors.items() if c == code and e.get("status")), None)
+            want = int(known) if str(known or "").isdigit() else "4xx"
+            if exp.get("status") != want:
+                s = {**s, "expect": {**exp, "status": want}}
         out.append(s)
     return {**raw, "steps": out}
 
@@ -288,6 +316,7 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
             if variant:
                 d = {k: v for k, v in d.items() if k != "variant"}
                 d = {**{k: d[k] for k in ("id", "title", "suite") if k in d}, "variant": variant, **{k: v for k, v in d.items() if k not in ("id", "title", "suite")}}
+            d = fit_status(d, spec)
             case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
             if case:
                 accepted.append((case, warnings))

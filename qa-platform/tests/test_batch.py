@@ -27,6 +27,7 @@ class BatchTest(unittest.TestCase):
         self.app = make_app(self.tmp.name)
         self.app.cfg.operators = ["bebe"]
         self.app.cfg.hermes_key = "test"
+        self.app.cases = {k: v for k, v in self.app.cases.items() if not v.variant}      # 모든 케이스가 '스크립트 없음' 이 되게
 
     def tearDown(self):
         httpx.request = self.orig
@@ -78,6 +79,14 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(job.status, "canceled")
         self.assertIn("그때까지 저장한 것은 남는다", job.error)
         self.assertEqual(job.info["batch"]["saved"], 2)
+
+    def test_manual_variant_scripts_held(self):
+        from types import SimpleNamespace
+        manual = next(f"{slug}/{s.id}/{v.key}" for slug, ft in self.app.features.items() for s in ft.scenarios for v in s.variants if v.mode == "manual")
+        auto = next(f"{slug}/{s.id}/{v.key}" for slug, ft in self.app.features.items() for s in ft.scenarios for v in s.variants if v.mode != "manual")
+        a, b, c = SimpleNamespace(id="a", variant=auto), SimpleNamespace(id="b", variant=manual), SimpleNamespace(id="c", variant=None)
+        keep, held = self.app.split_manual_variant_cases([a, b, c])
+        self.assertEqual(([x.id for x in keep], [x.id for x in held]), (["a", "c"], ["b"]))     # 백엔드 미구현 등 수동 케이스의 스크립트는 스위트에서 뺀다
 
 
 if __name__ == "__main__":

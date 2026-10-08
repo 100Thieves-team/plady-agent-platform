@@ -471,6 +471,45 @@ def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
     return True, problems
 
 
+_VOLATILE = re.compile(r"\{\{\s*(rand|uuid|time:rand)\s*\}\}")
+WITHDRAW_PATH = "/v1/members/me"
+REQUEST_KEYS = ("method", "path", "query", "headers", "body")
+
+
+def withdraws_shared_account(step: dict, case_actor: str | None) -> bool:
+    """공용 테스트 계정으로 회원 탈퇴를 부르는 단계 (2026-10-08: Hermes 스크립트가 qa-guest 를 탈퇴시켜 그 뒤 실행이 모두 깨졌다).
+    새로 만든 QA 회원의 토큰을 Authorization 헤더로 넣어 부르는 것만 된다."""
+    req = step.get("request") or {}
+    if str(req.get("method") or "").upper() != "DELETE" or str(req.get("path") or "").split("?")[0].rstrip("/") != WITHDRAW_PATH:
+        return False
+    actor = step["actor"] if "actor" in step else case_actor
+    return bool(actor)          # 테스트 계정 토큰이 헤더의 토큰보다 우선해 붙는다 — 테스트 계정이 있으면 그 계정이 탈퇴한다
+
+
+def safety_errors(c: "Case") -> list[str]:
+    """돌리면 안 되거나 반드시 틀리는 스크립트. 오류면 스위트에서 빠진다."""
+    out = []
+    if not any("TODO" in str(s.get("request") or "") for s in c.steps) and re.search(r"(?m)^\s*-?\s*TODO\s*:", c.to_yaml()):
+        out.append("스크립트에 TODO 가 남아 있다 — 근거가 없어 Hermes 가 비워 둔 곳이다")
+    for i, s in enumerate(c.steps, 1):
+        req = s.get("request")
+        if not req:
+            continue
+        if withdraws_shared_account(s, c.actor):
+            out.append(f"step {i}: 공용 테스트 계정으로 회원 탈퇴를 부른다 — 새 QA 회원(setup.member-withdrawn)의 토큰으로만 부른다")
+        path = str(req.get("path") or "")
+        if "TODO" in path or not path.isascii():
+            out.append(f"step {i}: 경로가 완성되지 않았다 ({path[:40]})")
+        elif "TODO" in json.dumps(req, ensure_ascii=False):
+            out.append(f"step {i}: 요청에 TODO 가 남아 있다 — 근거가 없어 Hermes 가 비워 둔 값이다")
+        bad = [k for k in req if k not in REQUEST_KEYS]
+        if bad:
+            out.append(f"step {i}: 실행기가 보낼 수 없는 request 키 {bad} (보낼 수 있는 것: {', '.join(REQUEST_KEYS)})")
+        if _VOLATILE.search(json.dumps(s.get("expect") or {}, ensure_ascii=False)):
+            out.append(f"step {i}: 기대값에 실행마다 바뀌는 값({{{{rand}}}}·{{{{uuid}}}})이 있어 늘 틀린다 — 앞 단계에서 저장한 변수로 비교한다")
+    return out
+
+
 def audit(cases: dict[str, Case], catalog) -> None:
     """각 스크립트의 covers 를 카탈로그와 대조해 case.audit 를 채운다. catalog 가 None 이면 unchecked."""
     for c in cases.values():
@@ -528,4 +567,5 @@ def audit(cases: dict[str, Case], catalog) -> None:
                         warnings.append(f"covers {tid}: 바인딩된 op {', '.join(ops)} 를 부르는 단계가 없다")
                     elif code and not any((s.get("expect") or {}).get("error_code") == code for s in own):
                         warnings.append(f"covers {tid}: 바인딩 코드 {code} 를 기대하는 단계가 없다")
+        errors.extend(safety_errors(c))
         c.audit = {"status": "error" if errors else ("warn" if warnings else "ok"), "errors": errors, "warnings": warnings}

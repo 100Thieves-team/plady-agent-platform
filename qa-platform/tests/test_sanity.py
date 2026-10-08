@@ -20,6 +20,7 @@ import app as appmod  # noqa: E402
 from app import BadRequest  # noqa: E402
 from qa import httpx, sanity as S, ui  # noqa: E402
 from test_editor import HAS_WIKI, FakeGitHub, make_app  # noqa: E402
+from repo_data import drop_hermes  # noqa: E402
 
 REPO = "https://api.github.com/repos/100Thieves-team/moimyeon-backend"
 PATCH = ('@@ -51,18 +51,6 @@ class RoomController(\n-    @PostMapping("/v1/rooms/{roomId}/cancellation")\n-    fun cancel(\n'
@@ -136,6 +137,7 @@ class FlowTest(unittest.TestCase):
         self.backend = Backend(self.gh)
         httpx.request = self.backend
         self.app = make_app(self.tmp.name)
+        drop_hermes(self.app)
         self.seen: list = []
         self.app.jobs.asker = hermes({"find": FIND, "check": CHECK}, self.seen)
         self.cancel_op = self.app.spec.get().ops.pop("cancelRoom")        # dev API 문서에서 없어진 것처럼 (백엔드 #138)
@@ -232,6 +234,7 @@ class RouteTest(unittest.TestCase):
             gh.files[f"qa-platform/scenarios/{p.name}"] = p.read_text(encoding="utf-8")
         httpx.request = Backend(gh)
         cls.app = make_app(cls.tmp.name)
+        drop_hermes(cls.app)
         cls.app.jobs.asker = hermes({"find": FIND, "check": CHECK}, [])
         appmod.Handler.app = cls.app
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)

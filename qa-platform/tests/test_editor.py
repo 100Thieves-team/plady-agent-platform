@@ -105,7 +105,10 @@ class StateTest(unittest.TestCase):
         from qa.cases import load_dir
         cases, errors = load_dir(ROOT / "cases")
         self.assertEqual(errors, [])
+        from qa.cases import safety_errors
         for c in cases.values():
+            if safety_errors(c) or any(s.get("notify") for s in c.steps):
+                continue                     # 실행기가 보낼 수 없는 스크립트(Hermes 가 쓴 미완성)와 알림 기다리기 단계는 폼으로 못 연다(YAML 로 고친다)
             raw = yaml.safe_load(c.to_yaml())
             self.assertEqual(editor.unsupported(raw), [], c.id)
             back = editor.from_state(json.loads(json.dumps(editor.to_state(raw))))

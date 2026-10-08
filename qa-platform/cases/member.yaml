@@ -423,6 +423,7 @@ cases:
     title: 사용자가 회원 탈퇴를 요청하면 탈퇴 처리가 성공한다
     suite: sanity
     variant: 회원-및-프로필/S2/withdraw
+    description: 새로 만든 QA 회원으로 탈퇴한다. 공용 테스트 계정은 탈퇴시키지 않는다(2026-10-08 qa-guest 탈퇴 사고 뒤 고침).
     domains:
     - member
     operations:
@@ -433,36 +434,44 @@ cases:
     source:
     - PRD/회원 및 프로필 §4.8
     - PRD/회원 및 프로필 §2
-    actor: qa-guest
-    reviewed:
-      at: '2026-10-08'
-      by: bebe
-    written_by: hermes
+    actor: qa-host
     steps:
+    - name: 탈퇴할 QA 회원 만들기 (dev 전용 API)
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
     - name: 회원 탈퇴
       covers:
       - C.member.withdraw
       - op.memberWithdraw:200
+      actor: null
       request:
         method: DELETE
         path: /v1/members/me
+        headers:
+          Authorization: Bearer {{memberToken}}
       expect:
         status: 200
         result: SUCCESS
         json:
           data: null
-      save: {}
-    - name: 정리(QA 회원 초기화)
+        cookies:
+          DEV_ACCESS_TOKEN: cleared
+          DEV_REFRESH_TOKEN: cleared
+    - name: 정리(QA 회원 삭제)
       always: true
-      covers: []
-      actor: qa-host
       request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
       expect:
         status: 200
         result: SUCCESS
-      save: {}
 
   - id: member.nickname-check
     title: 닉네임을 바꾸기 전에 쓸 수 있는지 확인한다
