@@ -467,6 +467,7 @@ P0·P1 이 이 이슈(estimate 16pt). P2 이후는 후속 이슈로 쪼갠다.
 2. **SSM** (`/plady/agent-platform/dev/`) — **2026-09-21 주입 완료** (`qa-actors` v3, `qa-fixtures` v2). 테스트 계정 = dev 에 새로 가입한 **전용 QA 회원 2명**(`영리한 라쿤 95` = qa-host, `차분한 라쿤 69` = qa-guest), 픽스처 = 공고 2889 / 직무 1 / 각자의 이력서. 값은 SSM 에만 있다.
    - 처음엔 목데이터 회원(`고래 05`·`곰 04`)을 썼는데 목데이터 5명 전원이 참여 슬롯 한도(3)를 넘긴 상태라 룸 생성이 **409 E1425** 로 거부됐다 — 스크립트가 아니라 dev 데이터 전제 조건 문제였고, 전용 회원으로 바꾸자 해소됐다.
    - 이 값으로 dev 에 돌린 결과: `member.me`·`room.creation-limit`·`room.create-and-cancel`·`room.apply-and-withdraw` **4/4 통과**. 쓰기 스크립트는 `[QA]` 룸을 만들고 스스로 취소했다.
+   - **2026-10-08 qa-guest 교체**: Hermes 스크립트 `member.withdraw` 가 qa-guest(`차분한 라쿤 69`, Google 가입 회원)로 탈퇴를 불러 그 뒤 qa-guest 요청이 모두 E1006 이 됐다. 가입한 Google 계정을 몰라 복구하지 못하고, dev 도구로 만든 QA 회원(`영리한 라쿤 63`, `POST /v1/dev/members`)으로 바꿨다. 이력서는 curl 로 올렸다(`[QA] qa-guest resume.pdf`, 요약 DONE·기본). SSM `qa-actors` v4 · `qa-fixtures` v3. QA 회원이라 앞으로는 dev 도구로 상태 변경·로그인·복구를 할 수 있다. 공용 계정 탈퇴는 플랫폼이 막는다(fcc26bf).
    - 테스트 계정 회원을 바꾸면 `aws ssm put-parameter --overwrite` 로 두 값을 갱신하고 재배포한다. 목데이터 회원의 룸을 정리해 슬롯을 비우는 방법은 다른 용도의 데이터를 건드리므로 쓰지 않는다.
 3. **머지 → main** — 워크플로가 이미지를 빌드·배포하고 `https://qa.agent.plady.io/health` 를 smoke 한다.
 4. 배포 후 `https://qa.agent.plady.io` 에서 팀 비밀번호 로그인 → 스크립트 화면에서 13건 보이는지 → 스프린트 smoke 1회 실행 → 테스트 계정 스크립트가 pass 로 바뀌는지 확인. 쓰기 sanity 3건은 대시보드의 미검증 배포 [검증] 또는 임의 실행으로 1회 돌려 dev 에 `[QA]` 룸이 만들어졌다 취소되는지 본다.
