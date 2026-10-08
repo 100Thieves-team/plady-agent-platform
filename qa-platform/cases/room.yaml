@@ -1995,7 +1995,6 @@ cases:
     domains:
     - room
     operations:
-    - '{''TODO'': ''룸 수정 operationId 확인''}'
     - roomDetail
     covers:
     - C.room.update
@@ -2018,9 +2017,11 @@ cases:
       covers:
       - C.room.update
       request:
-        method: PATCH
+        method: PUT
         path: /v1/rooms/{{roomId}}
         body:
+          title: '[QA] 수정된 모집 중 룸'
+          description: QA 플랫폼 sanity 케이스가 수정한 룸 설명입니다.
           round: SECOND
           type: JOB
           method: OFFLINE
@@ -2031,8 +2032,6 @@ cases:
             date: '{{date:+8}}'
             startTime: '15:30:00'
             durationMinutes: 120
-          title: '[QA] 수정된 룸 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 수정한 룸 설명입니다.
       expect:
         status: 200
         result: SUCCESS
@@ -2048,7 +2047,7 @@ cases:
         result: SUCCESS
         json:
           data.status: RECRUITING
-          data.title: '[QA] 수정된 룸 {{rand}}'
+          data.title: '[QA] 수정된 모집 중 룸'
           data.description: QA 플랫폼 sanity 케이스가 수정한 룸 설명입니다.
           data.round: SECOND
           data.type: JOB
@@ -2061,6 +2060,7 @@ cases:
       save: {}
     - name: 정리(QA 룸 삭제)
       always: true
+      covers: []
       request:
         method: DELETE
         path: /v1/dev/rooms/{{roomId}}
@@ -2068,7 +2068,6 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-      covers: []
 
   - id: room.update-host-only
     title: 방장이 아닌 사람이 모집 중인 룸 정보를 고치면 E1406으로 거절된다
