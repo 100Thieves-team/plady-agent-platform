@@ -638,3 +638,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.schedule-not-passed
+    title: 진행 일정이 지난 룸에 신청하면 E1412로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/schedule-not-passed
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#schedule-not-passed
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 진행 일정 지난 신청 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 시작 시각을 어제로 변경
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/schedule
+        body:
+          daysFromNow: -1
+          time: 09:00:00
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 진행 일정이 지난 모집 중 룸에 참가 신청 제출
+      covers:
+      - G.application.submit#schedule-not-passed
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 진행 일정이 지난 룸 신청 거절 확인'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1412
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
