@@ -1323,3 +1323,80 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.schedule-not-passed-2
+    title: 진행 일정이 지난 룸에서 참가 신청을 시작하면 거절된다
+    suite: sanity
+    variant: 룸-탐색/S1/schedule-not-passed
+    domains:
+    - application
+    - room
+    operations:
+    - roomDetail
+    covers:
+    - G.application.enter#schedule-not-passed
+    - op.roomDetail:200
+    source:
+    - PRD/룸 탐색 §3
+    - PRD/룸 탐색 §4.5
+    - PRD/룸 탐색 §4.7
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 진행 일정 지난 룸 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 시작 시각을 과거로 변경
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/schedule
+        body:
+          daysFromNow: -1
+          time: 09:00:00
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.roomId: '{{roomId}}'
+          data.roomStatus: RECRUITING
+        exists:
+        - data.startAt
+      save:
+        startAt: data.startAt
+    - name: 룸 상세 조회 — 모집 중이지만 시작 시각이 지난 룸이다
+      covers:
+      - G.application.enter#schedule-not-passed
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.roomId: '{{roomId}}'
+          data.status: RECRUITING
+          data.schedule.startAt: '{{startAt}}'
+          data.viewer.isParticipating: false
+          data.viewer.latestApplicationStatus: null
+        exists:
+        - data.viewer.member
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
