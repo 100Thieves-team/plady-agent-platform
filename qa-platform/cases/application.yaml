@@ -525,3 +525,66 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.not-rejected-or-removed
+    title: 반려되거나 내보내진 룸에 다시 신청하면 E1415로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/not-rejected-or-removed
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#not-rejected-or-removed
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 재신청 차단 검증 룸 {{rand}}'
+        note: '[QA] 최초 신청 후 반려 이력을 만들기 위한 신청'
+    steps:
+    - name: TODO 방장이 기존 신청을 반려해 반려 이력을 만든다
+      actor: qa-host
+      request:
+        method: POST
+        path: /TODO
+        body:
+          applicationId: '{{applicationId}}'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 반려 이력이 있는 룸에 다시 참가 신청을 제출한다
+      covers:
+      - G.application.submit#not-rejected-or-removed
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 반려 이력이 있는 룸에 다시 신청합니다.'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1415
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
