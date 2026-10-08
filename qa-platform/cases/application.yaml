@@ -837,3 +837,57 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.accept-host-only
+    title: 방장이 아닌 사람이 참가 신청을 수락하면 E1406으로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/accept.host-only
+    domains:
+    - application
+    operations:
+    - acceptApplication
+    covers:
+    - G.application.accept#host-only
+    source:
+    - PRD/룸 참여 및 참여자 관리 R27
+    - PRD/룸 참여 및 참여자 관리 R84
+    - PRD/룸 참여 및 참여자 관리 R85
+    - PRD/룸 참여 및 참여자 관리 R86
+    - PRD/룸 참여 및 참여자 관리 R87
+    - PRD/룸 참여 및 참여자 관리 R138
+    - PRD/룸 참여 및 참여자 관리 R139
+    - PRD/룸 참여 및 참여자 관리 R142
+    - PRD/룸 참여 및 참여자 관리 R143
+    - PRD/룸 참여 및 참여자 관리 R144
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 방장 권한 수락 거절 sanity {{rand}}'
+        note: '[QA] 방장이 아닌 계정의 수락 거절 확인'
+    steps:
+    - name: 방장이 아닌 신청자가 참가 신청 수락을 시도하면 거절된다
+      covers:
+      - G.application.accept#host-only
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1406
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
