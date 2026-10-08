@@ -2237,3 +2237,77 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: room.search-detail
+    title: 사용자가 룸 목록에서 모집 중인 룸을 찾고 상세를 조회한다
+    suite: sanity
+    variant: 룸-탐색/S1/happy
+    domains:
+    - room
+    operations:
+    - rooms
+    - roomDetail
+    covers:
+    - op.rooms:200
+    - op.roomDetail:200
+    source:
+    - OpenAPI GET /v1/rooms
+    - OpenAPI GET /v1/rooms/{roomId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 룸 탐색 상세 sanity {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 룸 탐색 목록 조회
+      covers:
+      - op.rooms:200
+      request:
+        method: GET
+        path: /v1/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.rooms
+        - data.sort
+        - data.totalCount
+      save: {}
+    - name: 준비된 룸 상세 조회
+      covers:
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.roomId: '{{roomId}}'
+          data.title: '[QA] 룸 탐색 상세 sanity {{rand}}'
+          data.status: RECRUITING
+        exists:
+        - data.company
+        - data.jobPosting
+        - data.jobRole
+        - data.schedule
+        - data.recruit
+        - data.viewer
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
