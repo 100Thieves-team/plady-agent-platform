@@ -1434,3 +1434,65 @@ cases:
         result: SUCCESS
       covers: []
       save: {}
+
+  - id: application.participation-slot-left
+    title: 참여 중인 룸이 이미 3개이면 참가 신청이 E1425로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/participation-slot-left
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#participation-slot-left
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 참여 슬롯 거절 대상 룸 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 전제 확인 — qa-guest가 이미 활성 룸 3개에 참여 중이어야 한다
+      covers: []
+      request:
+        method: GET
+        path: /v1/dev/qa-data
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 참가 신청 제출 — 이미 3개 룸에 참여 중이면 거절된다
+      covers:
+      - G.application.submit#participation-slot-left
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 참여 슬롯 초과 거절 확인 신청입니다.'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1425
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
