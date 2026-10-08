@@ -588,3 +588,53 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.submit-room-recruiting
+    title: 모집 중이 아닌 룸에 신청하면 E1410으로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/submit.room-recruiting
+    domains:
+    - application
+    operations:
+    - submitRoomApplication
+    covers:
+    - G.application.submit#room-recruiting
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.1
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 모집 중 아님 신청 거절 {{rand}}'
+    steps:
+    - name: 모집 중이 아닌 룸에 참가 신청 제출
+      covers:
+      - G.application.submit#room-recruiting
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 모집 중이 아닌 룸 신청 거절 확인'
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1410
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
