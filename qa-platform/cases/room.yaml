@@ -2344,3 +2344,56 @@ cases:
         - data.participatingRooms
         - data.completedRooms
       save: {}
+
+  - id: room.rooms-sort-compare
+    title: 사용자가 룸 탐색 결과를 정렬 기준별로 조회해 비교한다
+    suite: smoke
+    variant: 룸-탐색/S1/r88
+    domains:
+    - room
+    operations:
+    - rooms
+    covers:
+    - op.rooms:200
+    source:
+    - OpenAPI GET /v1/rooms
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 룸 탐색 목록 조회 — 일정 빠른 순
+      covers:
+      - op.rooms:200
+      request:
+        method: GET
+        path: /v1/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.sort: SCHEDULE
+        exists:
+        - data.rooms
+        - data.totalCount
+        - data.nextCursor
+      save: {}
+    - name: TODO 정렬 기준 최근 생성순 조회 — OpenAPI 발췌에 요청 파라미터가 없어 보류
+      covers: []
+      request:
+        method: GET
+        path: /v1/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: TODO 정렬 기준 모집 마감 임박순 조회 — OpenAPI 발췌에 요청 파라미터가 없어 보류
+      covers: []
+      request:
+        method: GET
+        path: /v1/rooms
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
