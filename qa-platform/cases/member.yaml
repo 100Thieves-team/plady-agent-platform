@@ -596,3 +596,36 @@ cases:
         result: ERROR
         error_code: E1005
       save: {}
+
+  - id: member.my-interviews-login-required
+    title: 로그인하지 않고 내 면접을 열면 거절된다
+    suite: smoke
+    variant: 룸-탐색/S1/my-interviews.login-required
+    domains:
+    - member
+    operations:
+    - getInterviewOverview
+    covers:
+    - G.member.my_interviews#login-required
+    - op.getInterviewOverview:E1102
+    source:
+    - PRD/룸 탐색 §4.8
+    - OpenAPI GET /v1/members/me/rooms
+    actor: null
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 비로그인 상태로 내 면접 목록 조회
+      covers:
+      - G.member.my_interviews#login-required
+      - op.getInterviewOverview:E1102
+      request:
+        method: GET
+        path: /v1/members/me/rooms
+      expect:
+        status: 401
+        result: ERROR
+        error_code: E1102
+      save: {}
