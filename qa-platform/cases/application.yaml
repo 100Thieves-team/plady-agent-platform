@@ -701,3 +701,69 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.accept-application-pending
+    title: 이미 처리된 신청을 다시 수락하면 이미 처리된 신청으로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/accept.application-pending
+    domains:
+    - application
+    operations:
+    - acceptApplication
+    covers:
+    - G.application.accept#application-pending
+    source:
+    - PRD/룸 참여 및 참여자 관리 R27
+    - PRD/룸 참여 및 참여자 관리 R84
+    - PRD/룸 참여 및 참여자 관리 R85
+    - PRD/룸 참여 및 참여자 관리 R86
+    - PRD/룸 참여 및 참여자 관리 R87
+    - PRD/룸 참여 및 참여자 관리 R138
+    - PRD/룸 참여 및 참여자 관리 R139
+    - PRD/룸 참여 및 참여자 관리 R142
+    - PRD/룸 참여 및 참여자 관리 R143
+    - PRD/룸 참여 및 참여자 관리 R144
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 이미 처리된 신청 수락 거절 {{rand}}'
+        note: '[QA] 이미 처리된 신청 수락 거절 준비 신청'
+    steps:
+    - name: 전제 — 방장이 처리 대기 신청을 먼저 수락한다
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.applicationId: '{{applicationId}}'
+          data.status: ACCEPTED
+      save: {}
+      covers: []
+    - name: 이미 수락된 신청을 다시 수락하면 거절된다
+      covers:
+      - G.application.accept#application-pending
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1409
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
