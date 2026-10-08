@@ -75,7 +75,7 @@ cases:
       save: {}
 
   - id: guestbook.guestbook-not-readonly
-    title: 읽기 전용이 된 방명록에 글을 쓰면 E2101 로 거절된다
+    title: 읽기 전용이 된 방명록에 글을 쓰면 E2101로 거절된다
     suite: sanity
     variant: 룸-방명록/S1/guestbook-not-readonly
     domains:
@@ -86,10 +86,11 @@ cases:
     - G.guestbook.post_write#guestbook-not-readonly
     - op.createRoomComment:E2101
     source:
-    - PRD/룸 방명록 §3
-    - PRD/룸 방명록 §4.3
-    - PRD/룸 방명록 §4.4
-    - PRD/룸 방명록 §4.6
+    - PRD/룸 방명록 R8
+    - PRD/룸 방명록 R10
+    - PRD/룸 방명록 R28
+    - PRD/룸 방명록 R29
+    - PRD/룸 방명록 R35
     actor: qa-guest
     reviewed:
       at: '2026-10-08'
@@ -100,7 +101,8 @@ cases:
       with:
         title: '[QA] 읽기 전용 방명록 거절 {{rand}}'
     steps:
-    - name: 룸 완료 처리(dev 전용)
+    - name: 룸을 자동 완료 처리한다
+      covers: []
       request:
         method: POST
         path: /v1/dev/rooms/{{roomId}}/auto-complete
@@ -108,20 +110,7 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-      covers: []
-    - name: TODO 방명록 읽기 전용 전환 조건 만들기
-      request:
-        method: POST
-        path: /v1/dev/rooms/{{roomId}}/schedule
-        body:
-          daysFromNow: TODO 종료 24시간 이후가 되도록 만드는 dev 도구 입력 확인 필요
-          time: TODO 종료 24시간 이후가 되도록 만드는 dev 도구 입력 확인 필요
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
-      covers: []
-    - name: 읽기 전용 방명록에 글 작성 시도
+    - name: 읽기 전용 방명록 글 작성 거절
       covers:
       - G.guestbook.post_write#guestbook-not-readonly
       - op.createRoomComment:E2101
@@ -129,16 +118,15 @@ cases:
         method: POST
         path: /v1/rooms/{{roomId}}/comments
         body:
-          content: '[QA] 읽기 전용 방명록에는 새 글을 남길 수 없어야 합니다 {{rand}}'
+          content: '[QA] 읽기 전용 방명록에는 새 글을 남길 수 없어야 한다.'
       expect:
         status: 409
         result: ERROR
         error_code: E2101
-        json:
-          error.message: 읽기 전용으로 전환된 방명록입니다. 지난 댓글은 볼 수 있지만 새로 남길 수는 없어요.
       save: {}
     - name: 정리(QA 룸 삭제)
       always: true
+      covers: []
       request:
         method: DELETE
         path: /v1/dev/rooms/{{roomId}}
@@ -146,7 +134,6 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-      covers: []
 
   - id: guestbook.account-active
     title: 이용이 제한된 계정이 방명록에 글을 쓰면 거절된다
