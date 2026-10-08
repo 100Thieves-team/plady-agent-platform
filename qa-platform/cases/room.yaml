@@ -1301,7 +1301,7 @@ cases:
       save: {}
 
   - id: room.each-schedule-passes-create
-    title: 여러 일정 중 하나라도 생성 조건에 맞지 않으면 일괄 생성이 거절된다
+    title: 여러 일정 중 하나라도 생성 조건에 맞지 않으면 룸 일괄 생성이 거절된다
     suite: sanity
     variant: 룸-생성/S1/each-schedule-passes-create
     domains:
@@ -1309,24 +1309,18 @@ cases:
     operations:
     - createRoom
     covers:
-    - G.room.create_batch#each-schedule-passes-create
     - op.createRoom:200
+    - G.room.create_batch#each-schedule-passes-create
     source:
-    - PRD/룸 생성 §4.4 R62
-    - PRD/룸 생성 §4.4 R64
+    - PRD/룸 생성 §4.4
     - OpenAPI POST /v1/rooms
     actor: qa-host
     reviewed:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
-    uses:
-      setup: setup.resume-summary
-      with:
-        resumeId: '{{fixture.qa-host.resumeId}}'
-        summary: '[QA] 테스트용 이력서 요약입니다. 백엔드 3년차, Kotlin·Spring 기반 API 개발 경험이 있습니다.'
     steps:
-    - name: 단일 일정 룸 생성은 성공한다
+    - name: 단일 일정 룸 생성이 성공하는 기본 조건 확인
       covers:
       - op.createRoom:200
       request:
@@ -1339,13 +1333,13 @@ cases:
           type: JOB
           method: OFFLINE
           sigunguId: 1
-          minParticipants: 3
-          maxParticipants: 6
+          minParticipants: 2
+          maxParticipants: 4
           schedule:
             date: '{{date:+7}}'
             startTime: '{{time:rand}}'
             durationMinutes: 90
-          title: '[QA] 단일 일정 생성 확인 {{rand}}'
+          title: '[QA] 일괄 생성 조건 확인용 단일 룸 {{rand}}'
           description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 삭제된다.
           resumeId: '{{fixture.qa-host.resumeId}}'
           resumePublic: true
@@ -1357,8 +1351,8 @@ cases:
         exists:
         - data.roomId
       save:
-        validRoomId: data.roomId
-    - name: 일정 개수 제한 안에서 하나가 생성 조건에 맞지 않는 일괄 생성은 거절된다
+        roomId: data.roomId
+    - name: 일정 2개 중 하나가 지난 일정이면 일괄 생성이 거절된다
       covers:
       - G.room.create_batch#each-schedule-passes-create
       request:
@@ -1371,12 +1365,17 @@ cases:
           type: JOB
           method: OFFLINE
           sigunguId: 1
-          minParticipants: 3
-          maxParticipants: 6
-          schedule:
-            TODO: OpenAPI 발췌에는 일괄 생성용 다중 일정 요청 필드가 없어, 실제 필드명과 배열 구조를 계약에서 확인해야 한다.
-          title: '[QA] 일괄 생성 거절 확인 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 만든 일괄 생성 거절 확인 요청이다.
+          minParticipants: 2
+          maxParticipants: 4
+          schedules:
+          - date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          - date: '{{date:-1}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 일괄 생성 일정별 검증 거절 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 만든 거절 검증용 룸이다.
           resumeId: '{{fixture.qa-host.resumeId}}'
           resumePublic: true
       expect:
@@ -1385,14 +1384,14 @@ cases:
       save: {}
     - name: 정리(QA 룸 삭제)
       always: true
-      covers: []
       request:
         method: DELETE
-        path: /v1/dev/rooms/{{validRoomId}}
+        path: /v1/dev/rooms/{{roomId}}
       expect:
         status: 200
         result: SUCCESS
       save: {}
+      covers: []
 
   - id: room.schedule-count-within-limit
     title: 고를 수 있는 일정 개수를 넘기면 룸 일괄 생성이 거절된다
