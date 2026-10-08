@@ -814,3 +814,74 @@ cases:
         result: ERROR
         error_code: E1102
       save: {}
+
+  - id: review.submit
+    title: 룸이 완료되면 참여자는 함께 출석한 참여자에게 유저 후기를 작성한다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/happy
+    domains:
+    - review
+    operations:
+    - submitReview
+    covers:
+    - C.review.submit
+    - op.submitReview:201
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §4.2
+    - PRD/유저 후기 및 신뢰 관리 §4.3
+    - PRD/유저 후기 및 신뢰 관리 §4.8
+    - PRD/유저 후기 및 신뢰 관리 §6
+    - OpenAPI POST /v1/rooms/{roomId}/reviews
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 제출 sanity {{rand}}'
+    steps:
+    - name: 룸 자동 완료 처리
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 함께 출석한 참여자에게 유저 후기 제출
+      covers:
+      - C.review.submit
+      - op.submitReview:201
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+          tags:
+          - 시간을 잘 지켜요
+          - 준비가 성실해요
+          - 질문이 날카로워요
+          - 피드백이 구체적이에요
+          - 소통이 원활해요
+          content: 꼬리질문이 날카로워서 실전 같았어요.
+          anonymous: false
+      expect:
+        status: 201
+        result: SUCCESS
+        exists:
+        - data.reviewId
+      save:
+        reviewId: data.reviewId
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
