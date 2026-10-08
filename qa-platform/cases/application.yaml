@@ -767,3 +767,73 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: application.accept-capacity-left
+    title: 최대 모집 인원이 찬 룸에서 신청을 수락하면 E1411로 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/capacity-left
+    domains:
+    - application
+    operations:
+    - acceptApplication
+    covers:
+    - G.application.accept#capacity-left
+    source:
+    - PRD/룸 참여 및 참여자 관리 §3
+    - PRD/룸 참여 및 참여자 관리 §4.4
+    - PRD/룸 참여 및 참여자 관리 §4.9
+    - PRD/룸 참여 및 참여자 관리 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 정원 초과 수락 거절 sanity {{rand}}'
+        note: '[QA] 정원이 찬 상태에서 수락 거절 확인'
+    steps:
+    - name: 전제 확인 — 신청이 걸린 룸과 대기 신청이 준비되어 있다
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.roomId
+        - data.status
+      save: {}
+      covers: []
+    - name: TODO 정원 포화 상태 만들기 — must_pass_first는 유지하고 capacity-left만 실패하게 만든다
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        TODO: setup.room-with-application 카드 결과만으로는 정원을 꽉 채우는 공개 API·dev API 계약이 근거에 없다. 룸은 RECRUITING, 신청은 PENDING, actor qa-host는 HOST인 상태를 유지한 채 현재 참여 인원을 maxParticipants까지 채워야 한다.
+      covers: []
+    - name: 방장이 정원이 찬 룸의 대기 신청을 수락하면 거절된다
+      covers:
+      - G.application.accept#capacity-left
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1411
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
