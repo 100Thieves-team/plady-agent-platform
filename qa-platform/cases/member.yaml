@@ -642,44 +642,39 @@ cases:
     variant: 회원-및-프로필/S2/length-limit
     domains:
     - member
-    operations: []
+    operations:
+    - updateProfile
     covers:
     - G.member.set_nickname#length-limit
+    - op.updateProfile:E1005
     source:
-    - PRD/회원 및 프로필 R24
-    - PRD/회원 및 프로필 R35
-    - PRD/회원 및 프로필 R36
-    - PRD/회원 및 프로필 R37
-    - PRD/회원 및 프로필 R38
-    - PRD/회원 및 프로필 R70
+    - PRD/회원 및 프로필 §4.1
+    - PRD/회원 및 프로필 §4.3
+    - PRD/회원 및 프로필 §4.5
+    - OpenAPI PUT /v1/members/me/profile
     actor: qa-guest
     reviewed:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
     steps:
-    - name: 닉네임 변경 거절 — 사용할 수 없는 문자는 없지만 길이 제한을 넘는다
+    - name: 닉네임 길이 제한 초과로 프로필 수정 거절
       covers:
       - G.member.set_nickname#length-limit
+      - op.updateProfile:E1005
       request:
-        method: PATCH
-        path: /TODO/OpenAPI-발췌에-닉네임-변경-API-path가-주어지지-않음
+        method: PUT
+        path: /v1/members/me/profile
         body:
-          nickname: 길이제한을넘는닉네임길이제한을넘는닉네임길이제한을넘는닉네임{{rand}}
+          nickname: 명랑한해달명랑한해달명랑한해달명랑한해달명랑한해달
+          interestJobRoleIds:
+          - '{{fixture.jobRoleId}}'
+          bio: '[QA] 닉네임 길이 제한 거절 확인용 자기소개'
+          interestCompanyIds: []
       expect:
-        status: 4xx
+        status: 400
         result: ERROR
         error_code: E1005
-      save: {}
-    - name: 정리(QA 회원 초기화)
-      always: true
-      covers: []
-      request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
-      expect:
-        status: 200
-        result: SUCCESS
       save: {}
 
   - id: member.nickname-not-policy-violating
