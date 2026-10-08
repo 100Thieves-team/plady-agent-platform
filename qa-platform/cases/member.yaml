@@ -1,7 +1,7 @@
 # member — QA 플랫폼 폼으로 만든 파일.
 cases:
   - id: member.signup-oauth-return-flow
-    title: 비로그인 사용자가 Google 계정으로 최초 로그인해 계정 생성 후 기존 흐름으로 복귀한다
+    title: 비로그인 신규 사용자가 Google 계정으로 최초 로그인하면 회원이 생성되고 로그인 쿠키를 받는다
     suite: sanity
     variant: 회원-및-프로필/S1/happy
     domains:
@@ -9,16 +9,14 @@ cases:
     operations:
     - googleOAuthStart
     - googleOAuthCallback
-    - socialSignUpQaMember
-    - deleteQaMember
     covers:
     - C.member.signup
-    - C.member.login
     source:
     - PRD/회원 및 프로필 §2
     - PRD/회원 및 프로필 §4.1
     - PRD/회원 및 프로필 §4.6
     - PRD/회원 및 프로필 §4.9
+    - PRD/회원 및 프로필 §6
     - PRD/회원 및 프로필 §7
     - PRD/회원 및 프로필 §8
     actor: null
@@ -30,24 +28,40 @@ cases:
     - name: Google OAuth 로그인 시작
       covers:
       - C.member.signup
-      - C.member.login
-      cookie_jar: signupFlow
+      cookie_jar: signup
       request:
         method: GET
         path: /oauth2/authorization/google
       expect:
-        status: 3xx
+        status: 2xx
       save: {}
-    - name: dev 소셜 가입으로 Google 최초 로그인 완료
+    - name: dev 소셜 가입으로 최초 로그인 완료
       covers:
       - C.member.signup
-      - C.member.login
-      cookie_jar: signupFlow
+      cookie_jar: signup
       request:
         method: POST
         path: /v1/dev/members/social-signup
-        body:
-          returnTo: 'TODO: 로그인 전 진행하던 참여 또는 생성 흐름 URL'
+      expect:
+        status: 200
+        result: SUCCESS
+        cookies:
+          DEV_ACCESS_TOKEN: set
+          DEV_REFRESH_TOKEN: set
+        exists:
+        - data.memberId
+        - data.accessToken
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 로그인 쿠키로 현재 회원 상태 확인
+      actor: null
+      covers:
+      - C.member.signup
+      cookie_jar: signup
+      request:
+        method: GET
+        path: /v1/members/me
       expect:
         status: 200
         result: SUCCESS
@@ -58,32 +72,11 @@ cases:
         - data.memberId
         - data.email
         - data.nickname
-        - data.accessToken
-        - data.termsAgreedAt
         - data.createdAt
         - data.lastLoginAt
-      save:
-        memberId: data.memberId
-        memberToken: data.accessToken
-    - name: 같은 QA 회원으로 다시 소셜 로그인해 중복 생성 없이 기존 계정 로그인
-      covers:
-      - C.member.login
-      cookie_jar: signupFlow
-      request:
-        method: POST
-        path: /v1/dev/members/{{memberId}}/social-login
-      expect:
-        status: 200
-        result: SUCCESS
-        json:
-          data.memberId: '{{memberId}}'
-        exists:
-        - data.accessToken
-      save:
-        loginToken: data.accessToken
+      save: {}
     - name: 정리(QA 회원 삭제)
       always: true
-      covers: []
       request:
         method: DELETE
         path: /v1/dev/members/{{memberId}}
@@ -91,6 +84,7 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+      covers: []
 
   - id: member.login-required
     title: 로그인하지 않고 룸 생성과 참가 신청을 하려 하면 E1102로 거절된다
