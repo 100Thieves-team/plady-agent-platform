@@ -2176,3 +2176,64 @@ cases:
         result: SUCCESS
       save: {}
       covers: []
+
+  - id: room.cancel-no-other-joined-members
+    title: 일반 참여자가 있는 모집 중 룸을 취소하면 E1420으로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/no-other-joined-members
+    domains:
+    - room
+    operations: []
+    covers:
+    - G.room.cancel#no-other-joined-members
+    source:
+    - PRD/룸 생성 §4.10
+    - PRD/룸 생성 R112
+    - DEC-012
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 일반 참여자 있는 취소 거절 {{rand}}'
+        note: '[QA] 취소 거절 준비 신청'
+    steps:
+    - name: 방장이 참가 신청을 수락해 일반 참여자를 JOINED 상태로 만든다
+      actor: qa-host
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.applicationId: '{{applicationId}}'
+          data.status: ACCEPTED
+      save: {}
+    - name: 모집 중 룸 취소 시도 — 일반 참여자가 있어 거절된다
+      actor: qa-host
+      covers:
+      - G.room.cancel#no-other-joined-members
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1420
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      actor: qa-host
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
