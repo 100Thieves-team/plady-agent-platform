@@ -1400,3 +1400,59 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.enter-not-already-joined
+    title: 이미 참여 중인 룸 상세에서 참가 신청 대신 참여 중 상태를 확인한다
+    suite: smoke
+    variant: 룸-탐색/S1/not-already-joined
+    domains:
+    - application
+    - room
+    operations:
+    - roomDetail
+    covers:
+    - G.application.enter#not-already-joined
+    - op.roomDetail:200
+    source:
+    - PRD/룸 탐색 §3
+    - PRD/룸 탐색 §4.5
+    - PRD/룸 탐색 §4.7
+    - OpenAPI GET /v1/rooms/{roomId}
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 이미 참여 중 상세 조회 {{rand}}'
+    steps:
+    - name: 상세 조회 — 이미 참여 중이면 viewer.isParticipating 이 true 다
+      covers:
+      - G.application.enter#not-already-joined
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.viewer.isParticipating: true
+        exists:
+        - data.roomId
+        - data.status
+        - data.schedule.startAt
+        - data.viewer.member
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      covers: []
+      save: {}
