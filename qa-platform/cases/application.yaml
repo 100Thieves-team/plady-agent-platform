@@ -1158,3 +1158,58 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.login-required-2
+    title: 로그인하지 않고 참가 신청을 시작하면 상세 응답으로 로그인 필요 상태를 판정한다
+    suite: sanity
+    variant: 룸-탐색/S1/login-required
+    domains:
+    - application
+    - room
+    operations:
+    - roomDetail
+    covers:
+    - G.application.enter#login-required
+    - op.roomDetail:200
+    source:
+    - PRD/룸 탐색 §3
+    - PRD/룸 탐색 §4.5
+    - PRD/룸 탐색 §4.7
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 로그인 필요 판정 룸 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 비로그인 룸 상세 조회 — 참가 신청 진입은 로그인 필요로 판정한다
+      actor: null
+      covers:
+      - G.application.enter#login-required
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+          data.viewer: null
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
