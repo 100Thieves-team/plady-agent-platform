@@ -300,7 +300,8 @@ def _asker(cfg: Config, ask):
 
 
 def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None,
-             existing_ids: set[str], ask=None, library: dict | None = None, extra: str | None = None, variant: str | None = None) -> dict:
+             existing_ids: set[str], ask=None, library: dict | None = None, extra: str | None = None, variant: str | None = None,
+             force_id: str | None = None) -> dict:
     """반환 {prompt_hash, raw, accepted: [(Case, warnings)], rejected: [(raw_id, errors)], model}.
     extra 는 근거 뒤에 붙일 절(케이스 설명·테스트 데이터 만들기 카드), variant 가 있으면 나온 스크립트에 `variant:` 를 박는다."""
     prompt, phash = assemble(cfg=cfg, catalog=catalog, spec=spec, wiki=wiki, tc_ids=tc_ids, example=example)
@@ -317,7 +318,11 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
                 d = {k: v for k, v in d.items() if k != "variant"}
                 d = {**{k: d[k] for k in ("id", "title", "suite") if k in d}, "variant": variant, **{k: v for k, v in d.items() if k not in ("id", "title", "suite")}}
             d = fit_status(d, spec)
-            case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=existing_ids, library=library)
+            ids = existing_ids
+            if force_id and not accepted:      # 막힌 스크립트를 같은 id 로 다시 쓴다 — 첫 스크립트만
+                d = {**d, "id": force_id}
+                ids = set(existing_ids) - {force_id}
+            case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=ids, library=library)
             if case:
                 accepted.append((case, warnings))
             else:

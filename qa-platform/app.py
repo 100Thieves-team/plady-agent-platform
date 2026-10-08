@@ -569,7 +569,8 @@ class App:
         return rid
 
     # ---- Hermes 가 만들고 바로 저장 (docs/qa-platform-scenarios.md §9) --------------------------------
-    def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None, variant: str | None = None) -> dict:
+    def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None, variant: str | None = None,
+                       replace: str | None = None) -> dict:
         """고른 테스트 조건으로 Hermes 가 스크립트를 쓰고, 검증을 통과한 것은 바로 저장한다(Hermes 작성 표시).
         variant 가 있으면 케이스 화면의 [Hermes 로 스크립트 만들기] — 케이스의 제목·전제·기대 결과·분기·거절이 일어나는 단계와 테스트 데이터 만들기 카드를 근거에 더하고 variant: 를 박는다."""
         cat = self.current_catalog()
@@ -591,7 +592,7 @@ class App:
         try:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
                                      example=example, existing_ids=set(self.cases), ask=ask, library=self.cases,
-                                     extra=self.variant_context(variant) if variant else None, variant=variant)
+                                     extra=self.variant_context(variant) if variant else None, variant=variant, force_id=replace)
         except Exception as ex:
             self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
@@ -974,14 +975,33 @@ class App:
         return [v["id"] for f in ov if not slug or f["slug"] == slug for s in f["scenarios"] for v in s["variants"]
                 if v["state"] == "untested" and v["variant"].checks]
 
+    def batch_targets(self, slug: str | None = None) -> list[tuple[str, str | None]]:
+        """[스크립트 한꺼번에 만들기] 대상 (케이스 id, 덮어쓸 스크립트 id). 스크립트가 없거나, 있는 스크립트가 모두 검사에 걸려
+        실행에서 빠지는 케이스(TODO·{{rand}} 등). 막힌 스크립트는 같은 id 로 다시 써서 바꾼다."""
+        out = [(vid, None) for vid in self.untested_variants(slug)]
+        by_variant: dict[str, list] = {}
+        for c in self.cases.values():
+            if c.variant and c.suite != "setup":
+                by_variant.setdefault(c.variant, []).append(c)
+        idx = scenariosmod.variant_index(self.features)
+        for vid, cs in sorted(by_variant.items()):
+            hit = idx.get(vid)
+            if not hit or hit[2].mode == "manual" or not hit[2].checks or (slug and not vid.startswith(slug + "/")):
+                continue
+            if all(c.blocked for c in cs):
+                out.append((vid, sorted(c.id for c in cs)[0]))
+        return out
+
     def job_batch_scripts(self, operator: str, slug: str | None = None, session_hash=None, ip=None, sync=False):
         """[스크립트 한꺼번에 만들기] — 스크립트 없는 케이스마다 [Hermes 로 스크립트 만들기] 를 차례로 한다.
         건마다 Hermes 를 한 번 부르고 검증을 통과한 것은 바로 저장한다. 그만둬도 그때까지 저장한 것은 남는다."""
         from qa import hermes
         from qa.jobs import BATCH_KINDS, TERMINAL
-        vids = self.untested_variants(slug or None)
+        targets = self.batch_targets(slug or None)
+        vids = [v for v, _ in targets]
+        replace_of = {v: r for v, r in targets if r}
         if not vids:
-            raise BadRequest("스크립트가 없는 케이스가 없다")
+            raise BadRequest("스크립트가 없거나 막힌 케이스가 없다")
         if any(j.kind in BATCH_KINDS and j.status not in TERMINAL for j in self.jobs.jobs.values()):
             raise BadRequest("스크립트 한꺼번에 만들기가 이미 돌고 있다 — 끝나거나 그만둔 뒤에 다시 누른다")
 
@@ -998,11 +1018,14 @@ class App:
                 progress(n - 1, vid)
                 job.note(f"\n\n===== {n}/{len(vids)} {vid} =====\n")
                 hit = scenariosmod.variant_index(self.features).get(vid)
-                if not hit or not hit[2].checks or any(c.variant == vid for c in self.cases.values()):
+                if not hit or not hit[2].checks or any(c.variant == vid and not c.blocked for c in self.cases.values()):
                     skipped.append(vid)              # 그사이 누가 만들었거나 케이스가 바뀌었다
                     continue
+                if replace_of.get(vid):
+                    job.note(f"(검사에 걸린 {replace_of[vid]} 를 다시 쓴다)\n")
                 try:
-                    res = self.generate_cases(tc_ids=list(hit[2].checks), operator=operator, session_hash=session_hash, ip=ip, ask=job.ask, variant=vid)
+                    res = self.generate_cases(tc_ids=list(hit[2].checks), operator=operator, session_hash=session_hash, ip=ip, ask=job.ask, variant=vid,
+                                              replace=replace_of.get(vid))
                 except hermes.Canceled:
                     break
                 except Exception as ex:          # 한 건이 실패해도 다음 건으로 간다
@@ -1027,7 +1050,7 @@ class App:
                 parts.append(f"건너뜀 {len(skipped)}개")
             return {"summary": " · ".join(parts) + ". 버리거나 실패한 케이스는 다시 누르면 그것만 다시 만든다",
                     "links": [{"href": "/features", "label": "시나리오 목록"}, {"href": "/drafts", "label": "변경 기록"}]}
-        label = (f"{slug} " if slug else "") + f"스크립트 없는 케이스 {len(vids)}개"
+        label = (f"{slug} " if slug else "") + f"스크립트 없음·막힘 케이스 {len(vids)}개"
         return self.start_job("batch_draft", operator=operator, label=label, fn=fn, back={"href": "/features", "label": "시나리오"},
                               session_hash=session_hash, ip=ip, sync=sync)
 
@@ -2711,13 +2734,17 @@ class Handler(BaseHTTPRequestHandler):
                    f'<div class="small mut">Hermes 가 규칙표와 API 문서를 이어 API 연결·에러 코드를 채우고, 스크립트로 못 함 케이스를 다시 판정해요. 스크립트로 바꾼 케이스는 Sanity 나 케이스 화면에서 스크립트를 만들어요.</div></div>'
                    f'<form method="post" action="/features/rejudge" data-job-form><input type="hidden" name="operator" value="{ui.e(op)}">'
                    f'<button class="primary" {dis}>수동 케이스 다시 판정</button></form></div>')
-            untested = {f["slug"]: f["counts"].get("untested", 0) for f in ov if f["counts"].get("untested", 0)}
+            untested: dict = {}
+            for vid, _r in app.batch_targets():
+                s = vid.split("/")[0]
+                untested[s] = untested.get(s, 0) + 1
+            n_blocked = sum(1 for _v, r in app.batch_targets() if r)
             n_all = sum(untested.values())
             if n_all:
                 opts = f'<option value="">모든 기능 ({n_all}개)</option>' + "".join(f'<option value="{ui.e(s)}">{ui.e(s)} ({n}개)</option>' for s, n in untested.items())
-                bar += (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>스크립트 없음 {n_all}</b>'
-                        f'{ui.h("features.batch")}'
-                        f'<div class="small mut">스크립트로 확인하기로 했는데 스크립트가 없는 케이스예요. 케이스마다 Hermes 가 한 번씩 써서 검증을 통과하면 바로 저장해요. '
+                bar += (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>스크립트 없음 {n_all - n_blocked}</b>'
+                        f'{f" <b>· 막힘 {n_blocked}</b>" if n_blocked else ""}{ui.h("features.batch")}'
+                        f'<div class="small mut">스크립트로 확인하기로 했는데 스크립트가 없거나, 있는 스크립트가 검사에 걸려 실행에서 빠지는 케이스예요. 막힌 스크립트는 같은 id 로 다시 써요. 케이스마다 Hermes 가 한 번씩 써서 검증을 통과하면 바로 저장해요. '
                         f'한 건에 30초~1분이라 {n_all}개면 {max(1, n_all // 2)}~{n_all}분쯤 걸려요. 도중에 그만둬도 그때까지 만든 것은 남아요.</div></div>'
                         f'<form method="post" action="/features/batch-script" data-job-form style="display:flex;gap:8px;align-items:center">'
                         f'<input type="hidden" name="operator" value="{ui.e(op)}"><select name="slug">{opts}</select>'
