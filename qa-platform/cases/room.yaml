@@ -2530,3 +2530,85 @@ cases:
         result: ERROR
         error_code: E400
       save: {}
+
+  - id: room.max-headcount-not-below-joined
+    title: 최대 모집 인원을 현재 참여 인원보다 작게 줄이면 E1417로 거절된다
+    suite: sanity
+    variant: 룸-생성/S2/max-headcount-not-below-joined
+    domains:
+    - room
+    operations:
+    - acceptApplication
+    - '{''TODO'': ''룸 수정 operationId 확인''}'
+    covers:
+    - G.room.update#max-headcount-not-below-joined
+    source:
+    - PRD/룸 생성 §4.10
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 최대 모집 인원 수정 거절 {{rand}}'
+        note: '[QA] 최대 모집 인원 수정 거절 준비 신청'
+    steps:
+    - name: 전제 준비 — 신청자를 수락해 현재 참여 인원을 방장 포함 2명으로 만든다
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: ACCEPTED
+          data.recruit.current: 2
+          data.recruit.recruitStatus: RECRUITING
+      save: {}
+      covers: []
+    - name: 신청 수락 알림 확인
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_APPLICATION_ACCEPTED
+        expect:
+          link: /rooms/{{roomId}}
+      covers: []
+    - name: 최대 모집 인원을 현재 참여 인원보다 작게 수정하면 거절된다
+      covers:
+      - G.room.update#max-headcount-not-below-joined
+      request:
+        method: PATCH
+        path: /v1/rooms/{{roomId}}
+        body:
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 1
+          maxParticipants: 1
+          schedule:
+            date: '{{date:+7}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 최대 모집 인원 수정 거절 {{rand}}'
+          description: QA 플랫폼 sanity 케이스가 최대 모집 인원 수정 거절을 확인한다.
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1417
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
