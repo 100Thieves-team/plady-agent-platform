@@ -2524,14 +2524,14 @@ cases:
       by: bebe
     written_by: hermes
     steps:
-    - name: 형식에 맞지 않는 목록 조건으로 룸 탐색 목록 조회
+    - name: 형식에 맞지 않는 정렬 조건으로 룸 탐색 목록 조회
       covers:
       - op.rooms:E400
       request:
         method: GET
         path: /v1/rooms
         query:
-          TODO_bad_filter_param: 'TODO: OpenAPI 발췌에 목록 조건 파라미터명과 형식 제약이 없어, E400 을 내는 실제 파라미터와 값을 채운다.'
+          sort: INVALID_SORT
       expect:
         status: 400
         result: ERROR
