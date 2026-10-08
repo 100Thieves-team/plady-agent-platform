@@ -629,3 +629,49 @@ cases:
         result: ERROR
         error_code: E1102
       save: {}
+
+  - id: member.nickname-length-limit
+    title: 닉네임이 길이 제한을 넘으면 E1005로 거절된다
+    suite: sanity
+    variant: 회원-및-프로필/S2/length-limit
+    domains:
+    - member
+    operations: []
+    covers:
+    - G.member.set_nickname#length-limit
+    source:
+    - PRD/회원 및 프로필 R24
+    - PRD/회원 및 프로필 R35
+    - PRD/회원 및 프로필 R36
+    - PRD/회원 및 프로필 R37
+    - PRD/회원 및 프로필 R38
+    - PRD/회원 및 프로필 R70
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    steps:
+    - name: 닉네임 변경 거절 — 사용할 수 없는 문자는 없지만 길이 제한을 넘는다
+      covers:
+      - G.member.set_nickname#length-limit
+      request:
+        method: PATCH
+        path: /TODO/OpenAPI-발췌에-닉네임-변경-API-path가-주어지지-않음
+        body:
+          nickname: 길이제한을넘는닉네임길이제한을넘는닉네임길이제한을넘는닉네임{{rand}}
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1005
+      save: {}
+    - name: 정리(QA 회원 초기화)
+      always: true
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
