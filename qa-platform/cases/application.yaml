@@ -1213,3 +1213,60 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.no-pending-application
+    title: 결과를 기다리는 신청이 있는 룸에서 다시 신청을 시작하면 거절된다
+    suite: sanity
+    variant: 룸-탐색/S1/no-pending-application
+    domains:
+    - application
+    - room
+    operations:
+    - roomDetail
+    covers:
+    - G.application.enter#no-pending-application
+    - op.roomDetail:200
+    source:
+    - PRD/룸 탐색 §3
+    - PRD/룸 탐색 §4.5
+    - PRD/룸 탐색 §4.7
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 결과 대기 신청 진입 거절 {{rand}}'
+        note: '[QA] 참가 신청 진입 거절 확인용 신청'
+    steps:
+    - name: 룸 상세 조회 — 결과 대기 신청 상태라 신청 진입 불가로 판정된다
+      covers:
+      - G.application.enter#no-pending-application
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: RECRUITING
+          data.viewer.isParticipating: false
+          data.viewer.latestApplicationStatus: PENDING
+        exists:
+        - data.roomId
+        - data.schedule.startAt
+        - data.viewer.member
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
