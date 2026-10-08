@@ -1270,3 +1270,56 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.enter-room-recruiting
+    title: 진행 확정된 룸 상세에서는 참가 신청 진입이 막히도록 판정한다
+    suite: sanity
+    variant: 룸-탐색/S1/room-recruiting
+    domains:
+    - application
+    - room
+    operations:
+    - roomDetail
+    covers:
+    - G.application.enter#room-recruiting
+    - op.roomDetail:200
+    source:
+    - PRD/룸 탐색 §3
+    - PRD/룸 탐색 §4.5
+    - PRD/룸 탐색 §4.7
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-confirmed
+      with:
+        title: '[QA] 진행 확정 신청 진입 거절 {{rand}}'
+    steps:
+    - name: 확정된 룸 상세 조회 — 신청 진입은 상태로 차단된다
+      covers:
+      - G.application.enter#room-recruiting
+      - op.roomDetail:200
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: CONFIRMED
+        exists:
+        - data.roomId
+        - data.viewer
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
