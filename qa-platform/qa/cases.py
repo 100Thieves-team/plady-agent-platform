@@ -174,6 +174,13 @@ def _validate(d: dict, file: str, library: dict | None = None) -> Case:
         p = req.get("path")
         if not isinstance(p, str) or not p.startswith("/"):
             raise CaseError(f"{file}:{cid}: step {i} path 는 '/' 로 시작: {p!r}")
+        if "multipart" in req:
+            from .multipart import validate as mp_validate
+            err = mp_validate(req["multipart"])
+            if err:
+                raise CaseError(f"{file}:{cid}: step {i} {err}")
+            if req.get("body") is not None:
+                raise CaseError(f"{file}:{cid}: step {i} body 와 multipart 는 같이 쓰지 않는다")
         exp = s.get("expect") or {}
         if not isinstance(exp, dict):
             raise CaseError(f"{file}:{cid}: step {i} expect 는 맵")
@@ -473,7 +480,7 @@ def _step_hits(step: dict, hint: dict) -> tuple[bool, list[str]]:
 
 _VOLATILE = re.compile(r"\{\{\s*(rand|uuid|time:rand)\s*\}\}")
 WITHDRAW_PATH = "/v1/members/me"
-REQUEST_KEYS = ("method", "path", "query", "headers", "body")
+REQUEST_KEYS = ("method", "path", "query", "headers", "body", "multipart")
 
 
 def withdraws_shared_account(step: dict, case_actor: str | None) -> bool:

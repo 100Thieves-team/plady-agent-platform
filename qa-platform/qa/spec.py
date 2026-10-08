@@ -36,6 +36,8 @@ class Op:
     params: list = field(default_factory=list)      # [{name, in: path|query|header, required, description}]
     # 요청 본문 스키마 필드 — 폼 편집기가 입력칸 옆에 설명·필수·선택지를 보인다 (docs/qa-platform-editor.md §4.2)
     body_fields: list = field(default_factory=list)  # [{name, type, description, required, nullable, enum?, fields?, items?}]
+    # 파일 업로드(multipart/form-data) 요청의 필드 — 스크립트의 request.multipart 로 보낸다
+    multipart: list = field(default_factory=list)    # [{name, type, format, required, description, content_type?}]
 
     @property
     def is_write(self) -> bool:
@@ -157,6 +159,14 @@ def parse(doc: dict) -> dict[str, Op]:
                 if isinstance(prm, dict) and prm.get("name"):
                     o.params.append({"name": str(prm["name"]), "in": str(prm.get("in") or "query"), "required": bool(prm.get("required")),
                                      "description": str(prm.get("description") or "")})
+            mp = ((op.get("requestBody") or {}).get("content") or {}).get("multipart/form-data")
+            if isinstance(mp, dict) and isinstance(mp.get("schema"), dict):
+                sch, enc = mp["schema"], mp.get("encoding") or {}
+                req = set(sch.get("required") or [])
+                for name, f in (sch.get("properties") or {}).items():
+                    f = f if isinstance(f, dict) else {}
+                    o.multipart.append({"name": str(name), "type": f.get("type"), "format": f.get("format"), "required": name in req,
+                                        "description": str(f.get("description") or ""), **({"content_type": enc[name].get("contentType")} if isinstance(enc.get(name), dict) else {})})
             rb = _json_content((op.get("requestBody") or {}).get("content") or {})
             exs = rb.get("examples") or {}
             # 성공 예시를 고른다 — operationId 와 같은 이름, 아니면 에러 예시(`-e1402`)가 아닌 첫 것. 에러 예시는 일부러 틀린 값이다

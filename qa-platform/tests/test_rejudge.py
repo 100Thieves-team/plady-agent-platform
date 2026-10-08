@@ -77,6 +77,8 @@ class FlowTest(unittest.TestCase):
             text = p.read_text(encoding="utf-8")
             # 운영 데이터는 이미 다시 판정됐다. 판정 전 모양(수동 이유 없음)으로 되돌려 흐름을 본다
             text = re.sub(r"\n +manual_reason: [a-z_]+", "", text)
+            if p.stem == "룸-생성":
+                text = text.replace("        checks: [C.room.cancel]\n        mode: manual\n", "        checks: [C.room.cancel]\n")
             if p.stem == "룸-탐색":
                 text = text.replace("checks: [G.application.enter#login-required]\n", "checks: [G.application.enter#login-required]\n        mode: manual\n")
             self.gh.files[f"qa-platform/scenarios/{p.name}"] = text
@@ -128,6 +130,8 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(st["회원-및-프로필/S2/own-profile-only"], "na")
         acts = [x["action"] for x in self.app.store.list_events(40)]
         self.assertIn("scenario.rejudge", acts)
+        if "C.room.cancel" in self.app.no_api_commands():
+            self.assertEqual(st["룸-생성/S2/cancel"], "no_api", (res["failed"], res["changed"][:20]))          # 자동 케이스라도 확인 대상이 모두 API 없는 명령이면 백엔드 미구현으로
 
 
 if __name__ == "__main__":

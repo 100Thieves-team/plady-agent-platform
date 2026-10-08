@@ -547,7 +547,7 @@ class App:
         if trigger in ("sprint-smoke", "release", "deploy-sanity"):
             chosen, held = self.split_manual_variant_cases(chosen)
         if not chosen:
-            raise BadRequest("스크립트를 하나 이상 골라야 한다")
+            raise BadRequest("고른 스크립트가 모두 수동 케이스(백엔드 미구현·해당 없음 등)를 구현해 돌릴 것이 없다" if held else "스크립트를 하나 이상 골라야 한다")
         suite = chosen[0].suite if len({c.suite for c in chosen}) == 1 else None
         cat = self.catalog.current
         meta = {"basis": basis, "reason": reason, "deploy_run_id": deploy_run_id, "case_ids": [c.id for c in chosen], "target": self.target_for(operator)["name"],
@@ -874,6 +874,9 @@ class App:
             for s in ft.scenarios:
                 for v in s.variants:
                     if v.mode != "manual":
+                        # 자동 케이스라도 확인 대상이 모두 API 없는 명령이면 '백엔드 미구현' 으로 옮긴다 (2026-10-08: 룸 수정·취소, 후기 신고가 자동으로 남아 스크립트가 늘 404)
+                        if v.checks and all((cat.records.get(t) or {}).get("command") in no_api for t in v.checks):
+                            decided.setdefault((slug, s.id), {})[v.key] = {**scenariosmod.variant_raw(v.raw), "mode": "manual", "manual_reason": "no_api"}
                         continue
                     vid = f"{slug}/{s.id}/{v.key}"
                     raw = scenariosmod.variant_raw(v.raw)

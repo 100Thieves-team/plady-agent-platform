@@ -60,7 +60,10 @@ DRAFT_SYSTEM = (
     "공용 테스트 계정에 쓰면 플랫폼이 막고, 그 계정은 QA 회원이 아니라 dev 도구가 E2201 로 거절한다.\n"
     "14. dev 서버의 로그인 쿠키 이름은 DEV_ACCESS_TOKEN · DEV_REFRESH_TOKEN · DEV_RESTORE_TOKEN 이다.\n"
     "15. expect 에 {{rand}} · {{uuid}} · {{time:rand}} 를 쓰지 않는다(실행마다 바뀌어 늘 틀린다). 앞 단계에서 save 한 변수로 비교한다. "
-    "카드의 inputs 는 `uses.with` 로만 넘긴다 — 요청 본문에 넣지 않는다. 룸의 최소 진행 인원은 2 이상이다."
+    "카드의 inputs 는 `uses.with` 로만 넘긴다 — 요청 본문에 넣지 않는다. 룸의 최소 진행 인원은 2 이상이다.\n"
+    "16. 파일 업로드 API(발췌에 multipart_fields 가 있는 것)는 body 대신 `request.multipart` 로 보낸다: `{필드: {sample: pdf, filename: \"[QA] 이력서 {{rand}}.pdf\"}}`. "
+    "표본은 pdf(1쪽 PDF) · pdf_oversize(10MB 초과) · text(PDF 아닌 파일) · empty(0바이트) 중 하나다. 파일 이름은 [QA] 로 시작하고, 올린 이력서는 마지막에 always 정리 단계로 지운다. "
+    "이력서를 올리면 dev 가 AI 요약을 바로 돌리므로 같은 스크립트에서 여러 번 올리는 것은 필요한 만큼만."
 )
 
 
@@ -92,6 +95,7 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
                 continue
             block = {"operationId": op.id, "method": op.method, "path": op.path, "summary": op.summary,
                      "request_example": op.request_example,
+                     **({"multipart_fields": op.multipart} if getattr(op, "multipart", None) else {}),
                      "success": {st: ex for st, ex in op.success.items()},
                      "errors": {code: {"status": i.get("status"), "message": i.get("message"), "example": i.get("example")} for code, i in op.errors.items()}}
             parts.append("```json\n" + json.dumps(block, ensure_ascii=False, indent=1)[:6000] + "\n```")

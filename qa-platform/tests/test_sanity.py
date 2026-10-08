@@ -138,6 +138,9 @@ class FlowTest(unittest.TestCase):
         httpx.request = self.backend
         self.app = make_app(self.tmp.name)
         drop_hermes(self.app)
+        # 이 시험은 없어진 룸 취소 API 를 부르는 스크립트로 Sanity 흐름을 본다. 레포 시나리오는 그 케이스를 '백엔드 미구현' 으로 옮겼으므로
+        # 실행에서 빼는 동작(split_manual_variant_cases)은 끄고 본다 — 빼는 동작은 test_batch 가 본다
+        self.app.split_manual_variant_cases = lambda cs: (list(cs), [])
         self.seen: list = []
         self.app.jobs.asker = hermes({"find": FIND, "check": CHECK}, self.seen)
         self.cancel_op = self.app.spec.get().ops.pop("cancelRoom")        # dev API 문서에서 없어진 것처럼 (백엔드 #138)
@@ -175,7 +178,7 @@ class FlowTest(unittest.TestCase):
             self.app.sanity_continue(sid, reason="", operator="bebe", sync=True)
         self.app.sanity_continue(sid, reason="기획 확인 중", operator="bebe", sync=True)
         s = self.app.store.get_sanity(sid)
-        self.assertEqual(s["status"], "failed")
+        self.assertEqual(s["status"], "failed", s.get("error"))
         self.assertEqual(missing["id"], next(f["id"] for f in s["findings"] if f.get("resolution") == "continued"))
         run = self.app.store.get_run(s["run_id"])
         self.assertEqual((run["trigger"], run["pr_number"]), ("deploy-sanity", 138))

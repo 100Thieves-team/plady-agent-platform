@@ -38,11 +38,11 @@ class SafetyTest(unittest.TestCase):
     def test_incomplete_and_volatile(self):
         c = case("  - request: {method: PATCH, path: /TODO/닉네임}\n    covers: ['op.memberWithdraw:200']\n"
                  "  - request: {method: GET, path: /v1/rooms/1}\n    expect: {json: {data.title: '[QA] t {{rand}}'}}\n"
-                 "  - request: {method: POST, path: /v1/members/me/resumes, multipart: {file: x}}\n")
+                 "  - request: {method: POST, path: /v1/members/me/resumes, form: {file: x}}\n")
         errs = " | ".join(safety_errors(c))
         self.assertIn("경로가 완성되지 않았다", errs)
         self.assertIn("실행마다 바뀌는 값", errs)
-        self.assertIn("multipart", errs)
+        self.assertIn("form", errs)
 
     def test_fit_status(self):
         class Op:

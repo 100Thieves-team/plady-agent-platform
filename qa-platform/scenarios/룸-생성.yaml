@@ -118,6 +118,8 @@ scenarios:
         kind: happy
         title: 방장이 모집 중인 룸의 정보를 고친다
         checks: [C.room.update]
+        mode: manual
+        manual_reason: no_api
       - key: cancel
         kind: branch
         at: R147
@@ -125,6 +127,8 @@ scenarios:
         given: 방장만 있는 모집 중인 룸
         then: 취소 200
         checks: [C.room.cancel]
+        mode: manual
+        manual_reason: no_api
       - key: host-leave
         kind: branch
         at: R148
@@ -136,36 +140,48 @@ scenarios:
         given: 방장이 한 번 취소한 룸
         then: 409 E1410
         checks: [G.room.cancel#room-recruiting]
+        mode: manual
+        manual_reason: no_api
       - key: update.host-only
         kind: reject
         at: R146
         title: 방장이 아닌 사람이 룸 정보를 고치면 E1406 으로 거절된다
-        checks: [G.room.update#host-only]
         then: E1406
+        checks: [G.room.update#host-only]
+        mode: manual
+        manual_reason: no_api
       - key: max-headcount-not-below-joined
         kind: reject
         at: R146
         title: 최대 모집 인원을 지금 참여 인원보다 적게 고치면 E1417 로 거절된다
-        checks: [G.room.update#max-headcount-not-below-joined]
         then: E1417
+        checks: [G.room.update#max-headcount-not-below-joined]
+        mode: manual
+        manual_reason: no_api
       - key: update.room-recruiting
         kind: reject
         at: R146
         title: 모집 중이 아닌 룸을 고치면 E1418 로 거절된다
-        checks: [G.room.update#room-recruiting]
         then: E1418
+        checks: [G.room.update#room-recruiting]
+        mode: manual
+        manual_reason: no_api
       - key: cancel.host-only
         kind: reject
         at: R147
         title: 방장이 아닌 사람이 룸을 취소하면 E1406 으로 거절된다
-        checks: [G.room.cancel#host-only]
         then: E1406
+        checks: [G.room.cancel#host-only]
+        mode: manual
+        manual_reason: no_api
       - key: no-other-joined-members
         kind: reject
         at: R147
         title: 일반 참여자가 있는 룸을 취소하면 E1420 으로 거절된다
-        checks: [G.room.cancel#no-other-joined-members]
         then: E1420
+        checks: [G.room.cancel#no-other-joined-members]
+        mode: manual
+        manual_reason: no_api
       - key: own-participation
         kind: reject
         at: R148

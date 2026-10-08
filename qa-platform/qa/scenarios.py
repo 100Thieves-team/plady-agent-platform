@@ -291,7 +291,10 @@ def check(feats: dict[str, Feature], *, wiki, catalog, cases: dict) -> dict:
 # 화면용 계산 — 변형 상태, 테스트 없는 거절 규칙, 기능별 합계
 # ---------------------------------------------------------------------------------------------
 def variant_state(v: Variant, scripts: list, catalog) -> str:
-    """자동화됨(스크립트가 있다) · 제외(확인할 테스트 조건이 모두 자동화 제외) · 사람이 확인(mode manual) · 테스트 없음."""
+    """자동화됨(스크립트가 있다) · 제외(확인할 테스트 조건이 모두 자동화 제외) · 사람이 확인(mode manual) · 테스트 없음.
+    백엔드 미구현·해당 없음은 예전 스크립트가 남아 있어도 그 상태다 — 그 스크립트는 실행에서 빠진다(App.split_manual_variant_cases)."""
+    if v.mode == "manual" and v.manual_reason in ("no_api", "structural"):
+        return {"no_api": "no_api", "structural": "na"}[v.manual_reason]
     if scripts:
         return "auto"
     recs = catalog.records if catalog is not None else {}

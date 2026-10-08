@@ -689,3 +689,9 @@ PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticip
 - 다시 판정은 확인 대상의 규칙(게이트·명령·API)이 바뀌는 checks 를 버린다(`_tc_owner`). 프롬프트에 알림도 플랫폼이 확인한다는 것과 checks 를 다른 규칙으로 바꾸지 말라는 규칙을 더했다.
 - `bindings.yaml` 에 `gates`(명령에 묶이지 않은 게이트의 API)와 `client_side`(서버가 거절하지 않고 앱이 조회 응답으로 판정하는 게이트·명령의 설명)를 더했다. 신청 화면 진입은 룸 상세 응답의 `viewer` 로 확인한다. 스크립트 만들기 규칙 4가 이 설명을 받는다.
 - 제외 규칙을 고쳤다. Google 가입·로그인은 dev 소셜 로그인·가입 도구로, 탈퇴는 실행마다 새 QA 회원으로 재현하므로 제외를 풀었다. 시스템 전이 제외에 `except: [C.room.autocomplete]` 를 두었다(자동 완료 dev 도구).
+
+### 16.10 스크립트 실패 정리 뒤 보완 (2026-10-08)
+
+- 자동 케이스라도 확인 대상이 모두 "API 없음" 명령이면 다시 판정이 "백엔드 미구현" 으로 옮긴다. 룸 수정·취소 8개, 후기 신고 정상 흐름 1개를 옮겼다. 이런 케이스는 예전 스크립트가 남아 있어도 상태가 "백엔드 미구현" 이고, 그 스크립트는 실행에서 빠진다.
+- `bindings.yaml` 의 `gates` 에 `G.member.set_nickname: [updateProfile]`. 닉네임은 프로필 수정 API 로 바꾼다.
+- 파일 업로드: 스크립트 단계의 `request.multipart` 로 보낸다. 파일 내용은 플랫폼이 만든 표본(pdf · pdf_oversize · text · empty)이고 기록에는 이름·크기만 남는다. API 문서의 multipart 필드는 Hermes 근거에 `multipart_fields` 로 들어간다(규칙 16).

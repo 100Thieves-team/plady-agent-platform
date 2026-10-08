@@ -141,6 +141,8 @@ scenarios:
         given: 대상자가 자신이 받은 유저 후기와 신뢰 정보를 확인하고 받은 후기마다 평가 태그와 텍스트 피드백을 본다.
         then: 신고된 후기는 관리자 검토 대상으로 표시된다.
         checks: [C.review.report]
+        mode: manual
+        manual_reason: no_api
         written_by: hermes
       - key: report
         kind: extra

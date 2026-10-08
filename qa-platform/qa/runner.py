@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import httpx
 from . import inbox as inboxmod
+from . import multipart as multipartmod
 from urllib.parse import quote
 
 from .cases import Case, withdraws_shared_account
@@ -404,6 +405,11 @@ class Runner:
             if req.get("query"):
                 from urllib.parse import urlencode
                 url += ("&" if "?" in url else "?") + urlencode({k: v for k, v in req["query"].items() if v is not None})
+            send_body = req.get("body")
+            if req.get("multipart"):
+                ctype, send_body, mp_summary = multipartmod.encode(req["multipart"])
+                headers["Content-Type"] = ctype
+                record["multipart"] = mp_summary          # 파일 내용은 기록하지 않는다
             record.update({"url": url, "query": req.get("query"), "body": req.get("body"),
                            "headers": {k: _mask_header(k, v) for k, v in headers.items()}})
         except TemplateError as e:
@@ -418,7 +424,7 @@ class Runner:
             return "error", 0, msg
         op_id = self._op_of(req["method"], req.get("path")) or op_id   # 치환된 경로가 더 정확하다
 
-        r = _send(req["method"], url, headers=headers, body=req.get("body"), timeout=self.cfg.request_timeout)
+        r = _send(req["method"], url, headers=headers, body=send_body, timeout=self.cfg.request_timeout)
         response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": _mask_secrets(r.json) if r.json is not None else None,
                     "text": None if r.json is not None else _truncate_text(r.text), "error": r.error}
         if r.json is not None and len(r.text) > BODY_LIMIT:

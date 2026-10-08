@@ -98,6 +98,7 @@ gates:
   G.application.enter: [roomDetail]                       # 신청 화면 진입 — 앱이 룸 상세 응답으로 판정한다 (아래 client_side)
   G.member.mutate: [createRoom, submitRoomApplication]    # 회원 쓰기 공통 규칙 — 대표 쓰기 API 로 확인한다
   G.member.my_interviews: [getInterviewOverview]
+  G.member.set_nickname: [updateProfile]                   # 닉네임은 프로필 수정으로 바꾼다 (2026-10-08 member.nickname-not-policy-violating 가 이 API 로 E1005 확인)
 
 # 서버가 거절하지 않고 앱이 조회 응답으로 판정하는 게이트·명령. 이 거절 검사는 에러 코드 대신 조회 API 응답 값을 확인한다.
 # 스크립트 만들기가 이 설명을 받는다(docs/qa-platform-v2.md §16.9).
