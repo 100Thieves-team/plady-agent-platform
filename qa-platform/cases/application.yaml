@@ -944,3 +944,68 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: application.reject-processed
+    title: 이미 처리된 참가 신청을 다시 반려하면 거절된다
+    suite: sanity
+    variant: 룸-참여-및-참여자-관리/S1/reject.application-pending
+    domains:
+    - application
+    operations:
+    - rejectApplication
+    covers:
+    - G.application.reject#application-pending
+    source:
+    - PRD/룸 참여 및 참여자 관리 R27
+    - PRD/룸 참여 및 참여자 관리 R84
+    - PRD/룸 참여 및 참여자 관리 R93
+    - PRD/룸 참여 및 참여자 관리 R95
+    - PRD/룸 참여 및 참여자 관리 R144
+    actor: qa-host
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-with-application
+      with:
+        title: '[QA] 이미 처리된 신청 반려 거절 {{rand}}'
+        note: '[QA] 반려 거절 검증용 참가 신청'
+    steps:
+    - name: 전제 — 방장이 신청을 먼저 반려해 처리 완료 상태로 만든다
+      covers: []
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/reject
+        body:
+          reason: ROLE_MISMATCH
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.applicationId: '{{applicationId}}'
+          data.status: REJECTED
+      save: {}
+    - name: 이미 처리된 신청을 다시 반려하면 E1409 로 거절된다
+      covers:
+      - G.application.reject#application-pending
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/reject
+        body:
+          reason: ROLE_MISMATCH
+      expect:
+        status: 4xx
+        result: ERROR
+        error_code: E1409
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
