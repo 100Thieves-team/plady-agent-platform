@@ -241,3 +241,62 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: guestbook.joined-member-only
+    title: 룸에 참여하지 않은 사람이 방명록에 글을 쓰면 E1419로 거절된다
+    suite: sanity
+    variant: 룸-방명록/S1/joined-member-only
+    domains:
+    - guestbook
+    operations:
+    - createRoomComment
+    covers:
+    - G.guestbook.post_write#joined-member-only
+    - op.createRoomComment:E1419
+    source:
+    - PRD/룸 방명록 R8
+    - PRD/룸 방명록 R10
+    - PRD/룸 방명록 R21
+    - PRD/룸 방명록 R25
+    - PRD/룸 방명록 R28
+    - PRD/룸 방명록 R29
+    - PRD/룸 방명록 R33
+    - PRD/룸 방명록 R35
+    - OpenAPI POST /v1/rooms/{roomId}/comments
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-08'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 방명록 비참여자 작성 거절 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
+    steps:
+    - name: 참여하지 않은 사용자가 방명록 글 작성을 시도하면 거절된다
+      covers:
+      - G.guestbook.post_write#joined-member-only
+      - op.createRoomComment:E1419
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/comments
+        body:
+          content: 비참여 사용자가 기존 화면에서 글 등록을 시도합니다.
+      expect:
+        status: 403
+        result: ERROR
+        error_code: E1419
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
