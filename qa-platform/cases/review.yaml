@@ -980,7 +980,7 @@ cases:
       covers: []
 
   - id: review.author-attended
-    title: 룸에 출석하지 않은 참여자가 후기를 쓰면 E2002 로 거절된다
+    title: 룸에 출석하지 않은 참여자가 후기를 쓰면 E2002로 거절된다
     suite: sanity
     variant: 유저-후기-및-신뢰-관리/S1/author-attended
     domains:
@@ -993,27 +993,26 @@ cases:
     source:
     - PRD/유저 후기 및 신뢰 관리 §3
     - PRD/유저 후기 및 신뢰 관리 §4.1
-    - PRD/룸 진행 마무리 및 출석 §4.6
     - PRD/유저 후기 및 신뢰 관리 §4.3
     - PRD/유저 후기 및 신뢰 관리 §4.8
+    - PRD/룸 진행 마무리 및 출석 §4.6
     actor: qa-guest
     reviewed:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
     uses:
-      setup: setup.room-confirmed
+      setup: setup.room-ready-to-start
       with:
-        title: '[QA] 후기 작성자 불참 거절 {{rand}}'
+        title: '[QA] 후기 작성자 출석 거절 sanity {{rand}}'
     steps:
-    - name: TODO 룸 완료 처리 — qa-host 는 출석, qa-guest 는 불참으로 기록
-      covers: []
+    - name: 방장이 qa-host는 출석, qa-guest는 불참으로 룸 완료
       actor: qa-host
+      covers: []
       request:
         method: POST
-        path: /TODO
+        path: /v1/rooms/{{roomId}}/completion
         body:
-          roomId: '{{roomId}}'
           attendances:
           - memberId: '{{actor.qa-host.memberId}}'
             attended: true
@@ -1022,14 +1021,11 @@ cases:
       expect:
         status: 2xx
         result: SUCCESS
-        json:
-          data.status: COMPLETED
       save: {}
-    - name: 불참한 참여자가 참석한 방장에게 후기 제출 시도
+    - name: 불참 참여자가 출석한 방장에게 후기 제출 시도
       covers:
       - G.review.write#author-attended
       - op.submitReview:E2002
-      actor: qa-guest
       request:
         method: POST
         path: /v1/rooms/{{roomId}}/reviews
@@ -1038,7 +1034,10 @@ cases:
           tags:
           - 시간을 잘 지켜요
           - 준비가 성실해요
-          content: 출석하지 않은 참여자의 후기 제출은 거절되어야 한다.
+          - 질문이 날카로워요
+          - 피드백이 구체적이에요
+          - 소통이 원활해요
+          content: '[QA] 출석하지 않은 참여자의 후기 제출 거절 확인'
           anonymous: false
       expect:
         status: 403
