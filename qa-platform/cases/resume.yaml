@@ -233,17 +233,15 @@ cases:
     uses:
       setup: setup.member-restricted
     steps:
-    - name: 이용 제한 회원이 이력서 등록을 시도하면 거절된다
+    - name: 이용 제한 계정으로 이력서 등록 시도
+      actor: null
       covers:
       - G.resume.create#account-active
-      actor: null
       request:
         method: POST
         path: /v1/members/me/resumes
         headers:
           Authorization: Bearer {{memberToken}}
-        body:
-          TODO: OpenAPI 발췌에 이력서 등록 요청 형식이 없어 multipart/form-data 필드와 파일 fixture를 확정해야 한다
       expect:
         status: 4xx
         result: ERROR
