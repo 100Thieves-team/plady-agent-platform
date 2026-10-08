@@ -165,7 +165,7 @@ cases:
       save: {}
 
   - id: resume.set-default-summary-done
-    title: AI 요약이 끝나지 않은 이력서를 기본으로 지정하면 E1012 로 거절된다
+    title: AI 요약이 끝나지 않은 이력서를 기본으로 지정하면 E1012로 거절된다
     suite: sanity
     variant: 회원-및-프로필/S2/summary-done
     domains:
@@ -176,9 +176,7 @@ cases:
     - G.resume.set_default#summary-done
     - op.makeResumeDefault:E1012
     source:
-    - PRD/회원 및 프로필 §4.4-1 R60
-    - PRD/회원 및 프로필 §4.4-1 R61
-    - PRD/회원 및 프로필 §4.4-1 R62
+    - PRD/회원 및 프로필 §4.4-1 R60-R62
     actor: qa-guest
     reviewed:
       at: '2026-10-08'
@@ -200,8 +198,9 @@ cases:
         status: 409
         result: ERROR
         error_code: E1012
+        json:
+          error.message: AI 요약이 완료된 이력서만 사용할 수 있습니다.
       save: {}
-    TODO: setup.resume-list 의 firstSummaryStatus 가 DONE 이 아닌 이력서를 돌려줘야 한다. 주어진 근거에는 요약 미완료 이력서를 새로 만들거나 강제로 미완료 상태로 바꾸는 dev 도구가 없다.
 
   - id: resume.delete-resume-not-deleted
     title: 이미 지운 이력서를 또 지우면 E1010 으로 거절된다
