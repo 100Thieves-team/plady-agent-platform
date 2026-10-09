@@ -278,7 +278,7 @@ class App:
         """스크립트와 시나리오 파일을 다시 읽는다 (둘 다 레포 main 이 원본이고 같은 저장 흐름을 탄다)."""
         self.features, self.scenario_errors = scenariosmod.load_dir(self.scenarios_dir)
         self.cases, self.case_errors = load_dir(self.cases_dir)
-        audit_cases(self.cases, self.catalog.get())
+        self._audit(self.catalog.get())
         if hasattr(self, "runner"):
             self.runner.cases = self.cases
         return len(self.cases), self.case_errors
@@ -288,8 +288,33 @@ class App:
         before = self.catalog.current
         cat = self.catalog.get()
         if cat is not None and (before is None or cat.key != before.key):
-            audit_cases(self.cases, cat)
+            self._audit(cat)
         return cat
+
+    def _audit(self, cat) -> None:
+        """스크립트 정합성 검사 + 알림 확인이 빠진 정상 흐름 스크립트 표시(경고, 실행에서 빼지는 않는다)."""
+        audit_cases(self.cases, cat)
+        if cat is None:
+            return
+        for cid, gaps in self.notify_gaps().items():
+            c = self.cases[cid]
+            c.audit["warnings"] = list(c.audit.get("warnings") or []) + [
+                f"알림 확인 빠짐: {op} 가 성공하면 {inboxmod.TYPE_KO.get(t, t)} 알림({t})이 가는데 기다리는 단계가 없다" for op, t in gaps]
+            if c.audit.get("status") == "ok":
+                c.audit["status"] = "warn"
+
+    def notify_gaps(self) -> dict[str, list[tuple[str, str]]]:
+        """스크립트 id → 빠진 알림 [(operationId, 알림 종류)]. 성공을 확인하는 단계가 늘 알림을 보내는 API 를 부르는데 알림 단계가 없는 것."""
+        if self.spec.get() is None:
+            return {}
+        out = {}
+        for c in self.cases.values():
+            if c.suite == "setup":
+                continue
+            gaps = inboxmod.missing_notify(c, self.op_of)
+            if gaps:
+                out[c.id] = gaps
+        return out
 
     def coverage(self, cat) -> dict:
         """테스트 조건 id → 검증하는 스크립트 id 목록, 도메인×층 매트릭스. 분모는 전체 테스트 조건, 제외는 따로 센다 (§6.2)."""
@@ -570,7 +595,7 @@ class App:
 
     # ---- Hermes 가 만들고 바로 저장 (docs/qa-platform-scenarios.md §9) --------------------------------
     def generate_cases(self, *, tc_ids: list[str], operator: str, session_hash: str | None, ip: str | None, ask=None, variant: str | None = None,
-                       replace: str | None = None) -> dict:
+                       replace: str | None = None, rewrite_note: str | None = None) -> dict:
         """고른 테스트 조건으로 Hermes 가 스크립트를 쓰고, 검증을 통과한 것은 바로 저장한다(Hermes 작성 표시).
         variant 가 있으면 케이스 화면의 [Hermes 로 스크립트 만들기] — 케이스의 제목·전제·기대 결과·분기·거절이 일어나는 단계와 테스트 데이터 만들기 카드를 근거에 더하고 variant: 를 박는다."""
         cat = self.current_catalog()
@@ -592,7 +617,8 @@ class App:
         try:
             res = draftsmod.generate(cfg=self.cfg, catalog=cat, spec=self.spec.get(), wiki=self.wiki, tc_ids=tc_ids,
                                      example=example, existing_ids=set(self.cases), ask=ask, library=self.cases,
-                                     extra=self.variant_context(variant) if variant else None, variant=variant, force_id=replace)
+                                     extra=((self.variant_context(variant) if variant else "") + ("\n\n" + rewrite_note if rewrite_note else "")) or None,
+                                     variant=variant, force_id=replace)
         except Exception as ex:
             self.store.add_event(operator=operator, action="hermes.generate", target=None, session_hash=session_hash, ip=ip,
                                  detail={"tc_ids": tc_ids, "error": str(ex)[:300]})
@@ -602,6 +628,9 @@ class App:
             self.store.add_event(operator=operator, action="hermes.rejected_by_validation", target=None, session_hash=session_hash, ip=ip,
                                  detail={"case_id": raw_id, "errors": errors[:6], "prompt_hash": res["prompt_hash"]})
         for case, warnings in res["accepted"]:
+            if rewrite_note and inboxmod.missing_notify(case, self.op_of):      # 알림 단계를 더하라고 했는데 그대로면 덮어쓰지 않는다
+                rejected.append((case.id, ["알림 확인 단계를 더하지 않았다: " + ", ".join(t for _o, t in inboxmod.missing_notify(case, self.op_of))]))
+                continue
             try:
                 saved.append(self.save_change(kind="case", source="hermes", yaml_text=case.to_yaml(), operator=operator,
                                               domain=(case.domains[0] if case.domains else cat.records[tc_ids[0]]["domain"]), case_id=case.id, tc_ids=case.covers,
@@ -995,6 +1024,28 @@ class App:
                 out.append((vid, sorted(c.id for c in cs)[0]))
         return out
 
+    def notify_targets(self, slug: str | None = None) -> list[tuple[str, str]]:
+        """알림 확인이 빠진 스크립트 (케이스 id, 스크립트 id). [스크립트 한꺼번에 만들기] 가 알림 단계를 더해 같은 id 로 다시 쓴다."""
+        idx = scenariosmod.variant_index(self.features)
+        out = []
+        for cid in sorted(self.notify_gaps()):
+            c = self.cases[cid]
+            hit = idx.get(c.variant) if c.variant else None
+            if not hit or hit[2].mode == "manual" or not hit[2].checks or c.blocked or (slug and not c.variant.startswith(slug + "/")):
+                continue
+            out.append((c.variant, cid))
+        return out
+
+    def notify_rewrite_note(self, cid: str) -> str | None:
+        gaps = self.notify_gaps().get(cid)
+        c = self.cases.get(cid)
+        if not gaps or not c:
+            return None
+        return ("# 다시 쓰는 스크립트\n아래 스크립트는 알림 확인 단계가 빠져 있다: "
+                + ", ".join(f"{op} 뒤 {t}" for op, t in gaps)
+                + ". 다른 단계·기대값·정리 단계는 그대로 두고, 규칙 10 과 '이 API 가 보내는 알림' 절에 따라 알림 기다리기 단계만 더해 같은 id 로 다시 쓴다.\n"
+                + "```yaml\n" + c.to_yaml().strip() + "\n```")
+
     def job_batch_scripts(self, operator: str, slug: str | None = None, session_hash=None, ip=None, sync=False):
         """[스크립트 한꺼번에 만들기] — 스크립트 없는 케이스마다 [Hermes 로 스크립트 만들기] 를 차례로 한다.
         건마다 Hermes 를 한 번 부르고 검증을 통과한 것은 바로 저장한다. 그만둬도 그때까지 저장한 것은 남는다."""
@@ -1003,8 +1054,14 @@ class App:
         targets = self.batch_targets(slug or None)
         vids = [v for v, _ in targets]
         replace_of = {v: r for v, r in targets if r}
+        notify_of = {}
+        for v, cid in self.notify_targets(slug or None):
+            if v not in replace_of and v not in vids and v not in notify_of:
+                notify_of[v] = cid
+                vids.append(v)
+                replace_of[v] = cid
         if not vids:
-            raise BadRequest("스크립트가 없거나 막힌 케이스가 없다")
+            raise BadRequest("스크립트가 없거나 막히거나 알림 확인이 빠진 케이스가 없다")
         if any(j.kind in BATCH_KINDS and j.status not in TERMINAL for j in self.jobs.jobs.values()):
             raise BadRequest("스크립트 한꺼번에 만들기가 이미 돌고 있다 — 끝나거나 그만둔 뒤에 다시 누른다")
 
@@ -1021,14 +1078,21 @@ class App:
                 progress(n - 1, vid)
                 job.note(f"\n\n===== {n}/{len(vids)} {vid} =====\n")
                 hit = scenariosmod.variant_index(self.features).get(vid)
-                if not hit or not hit[2].checks or any(c.variant == vid and not c.blocked for c in self.cases.values()):
+                note = self.notify_rewrite_note(notify_of[vid]) if vid in notify_of else None
+                if vid in notify_of:
+                    stale = not hit or not hit[2].checks or not note       # 그사이 누가 알림 단계를 더했다
+                else:
+                    stale = not hit or not hit[2].checks or any(c.variant == vid and not c.blocked for c in self.cases.values())
+                if stale:
                     skipped.append(vid)              # 그사이 누가 만들었거나 케이스가 바뀌었다
                     continue
-                if replace_of.get(vid):
+                if vid in notify_of:
+                    job.note(f"({notify_of[vid]} 에 알림 확인 단계를 더해 다시 쓴다)\n")
+                elif replace_of.get(vid):
                     job.note(f"(검사에 걸린 {replace_of[vid]} 를 다시 쓴다)\n")
                 try:
                     res = self.generate_cases(tc_ids=list(hit[2].checks), operator=operator, session_hash=session_hash, ip=ip, ask=job.ask, variant=vid,
-                                              replace=replace_of.get(vid))
+                                              replace=replace_of.get(vid), rewrite_note=note)
                 except hermes.Canceled:
                     break
                 except Exception as ex:          # 한 건이 실패해도 다음 건으로 간다
@@ -1053,7 +1117,7 @@ class App:
                 parts.append(f"건너뜀 {len(skipped)}개")
             return {"summary": " · ".join(parts) + ". 버리거나 실패한 케이스는 다시 누르면 그것만 다시 만든다",
                     "links": [{"href": "/features", "label": "시나리오 목록"}, {"href": "/drafts", "label": "변경 기록"}]}
-        label = (f"{slug} " if slug else "") + f"스크립트 없음·막힘 케이스 {len(vids)}개"
+        label = (f"{slug} " if slug else "") + f"스크립트 없음·막힘·알림 확인 빠짐 케이스 {len(vids)}개"
         return self.start_job("batch_draft", operator=operator, label=label, fn=fn, back={"href": "/features", "label": "시나리오"},
                               session_hash=session_hash, ip=ip, sync=sync)
 
@@ -2149,7 +2213,7 @@ class App:
         spec = self.spec.get(force=True)
         cat = self.catalog.get(force=True) if spec else self.catalog.current
         if cat is not None:
-            audit_cases(self.cases, cat)
+            self._audit(cat)
         after_ops = set(spec.ops) if spec else set()
         tc_after = set(cat.records) if cat else set()
         out = {"ok": bool(spec), "error": (None if spec else (self.spec.last_error or "OpenAPI 를 읽지 못했다")),
@@ -2738,16 +2802,19 @@ class Handler(BaseHTTPRequestHandler):
                    f'<form method="post" action="/features/rejudge" data-job-form><input type="hidden" name="operator" value="{ui.e(op)}">'
                    f'<button class="primary" {dis}>수동 케이스 다시 판정</button></form></div>')
             untested: dict = {}
-            for vid, _r in app.batch_targets():
+            bt = app.batch_targets()
+            nt = dict((v, c) for v, c in app.notify_targets() if v not in {x for x, _ in bt})
+            for vid in [v for v, _ in bt] + list(nt):
                 s = vid.split("/")[0]
                 untested[s] = untested.get(s, 0) + 1
-            n_blocked = sum(1 for _v, r in app.batch_targets() if r)
+            n_blocked = sum(1 for _v, r in bt if r)
+            n_notify = len(nt)
             n_all = sum(untested.values())
             if n_all:
                 opts = f'<option value="">모든 기능 ({n_all}개)</option>' + "".join(f'<option value="{ui.e(s)}">{ui.e(s)} ({n}개)</option>' for s, n in untested.items())
-                bar += (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>스크립트 없음 {n_all - n_blocked}</b>'
-                        f'{f" <b>· 막힘 {n_blocked}</b>" if n_blocked else ""}{ui.h("features.batch")}'
-                        f'<div class="small mut">스크립트로 확인하기로 했는데 스크립트가 없거나, 있는 스크립트가 검사에 걸려 실행에서 빠지는 케이스예요. 막힌 스크립트는 같은 id 로 다시 써요. 케이스마다 Hermes 가 한 번씩 써서 검증을 통과하면 바로 저장해요. '
+                bar += (f'<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:280px"><b>스크립트 없음 {n_all - n_blocked - n_notify}</b>'
+                        f'{f" <b>· 막힘 {n_blocked}</b>" if n_blocked else ""}{f" <b>· 알림 확인 빠짐 {n_notify}</b>" if n_notify else ""}{ui.h("features.batch")}'
+                        f'<div class="small mut">스크립트로 확인하기로 했는데 스크립트가 없거나, 있는 스크립트가 검사에 걸려 실행에서 빠지거나, 알림을 보내는 API 의 성공을 확인하면서 알림 도착은 확인하지 않는 케이스예요. 막히거나 알림 확인이 빠진 스크립트는 같은 id 로 다시 써요. 케이스마다 Hermes 가 한 번씩 써서 검증을 통과하면 바로 저장해요. '
                         f'한 건에 30초~1분이라 {n_all}개면 {max(1, n_all // 2)}~{n_all}분쯤 걸려요. 도중에 그만둬도 그때까지 만든 것은 남아요.</div></div>'
                         f'<form method="post" action="/features/batch-script" data-job-form style="display:flex;gap:8px;align-items:center">'
                         f'<input type="hidden" name="operator" value="{ui.e(op)}"><select name="slug">{opts}</select>'

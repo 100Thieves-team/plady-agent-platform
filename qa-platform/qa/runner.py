@@ -2,7 +2,7 @@
 
 - 런은 직렬(worker 1개): dev 데이터 충돌을 막는다.
 - 스크립트는 순차, 단계 실패 시 그 스크립트 중단.
-- 테스트 계정/픽스처 부재 → 스크립트 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
+- 테스트 계정/픽스처 부재, 알림 수신 준비 안 됨 → 스크립트 skipped (설정 문제), 그 외 예외 → error, 단언 불일치 → failed.
 - 요청 기록은 Authorization 을 마스킹하고 응답 본문은 8 KB 로 자른다.
 """
 from __future__ import annotations
@@ -304,8 +304,10 @@ class Runner:
                 continue            # 앞 단계가 실패했다 — always 표시가 있는 정리 단계만 돈다 (2026-09-25)
             base = run["base_url"] or self.cfg.target_base_url
             if step.get("notify"):
-                sv, ms, serr = self._run_notify(step, i, rcid, ctx, base, action_at, run["id"])
+                sv, ms, serr, part = self._run_notify(step, i, rcid, ctx, base, action_at, run["id"])
                 total_ms += ms
+                if part:
+                    skipped_notes.append(part)      # 일부 채널만 받을 준비가 안 됐다 — 나머지 채널은 확인했다
                 if sv == "skipped":
                     skipped_notes.append(serr)      # 받을 준비가 안 된 알림 확인은 건너뛰고 다음 단계를 이어 간다
                     continue
@@ -323,13 +325,16 @@ class Runner:
                 if step.get("given") and sv != "skipped":
                     err = f"전제 준비 실패({step['given']}): {serr}"
         if verdict == "pass" and skipped_notes:
-            err = "알림 확인을 건너뛰었다: " + "; ".join(dict.fromkeys(skipped_notes))
+            # 알림을 확인하지 못했으면 통과로 치지 않는다. API 단계는 모두 통과했다는 것과 못 본 이유를 남긴다 (2026-10-09)
+            verdict = "skipped"
+            err = "API 단계는 모두 통과, 알림 확인을 건너뛰었다: " + "; ".join(dict.fromkeys(skipped_notes))
         self.store.update_run_case(rcid, verdict=verdict, duration_ms=total_ms, error=err)
         return verdict, total_ms, err
 
-    def _run_notify(self, step: dict, i: int, rcid: int, ctx: Context, base_url: str, since: datetime, rid: str) -> tuple[str, int, str | None]:
+    def _run_notify(self, step: dict, i: int, rcid: int, ctx: Context, base_url: str, since: datetime, rid: str) -> tuple[str, int, str | None, str | None]:
         """알림 기다리기 단계 (docs/qa-platform-v2.md §15.4). 바로 앞 API 단계를 시작한 때부터 within 초 안에 그 회원에게 온 알림을 본다.
-        받을 준비가 안 됐으면(수신기 꺼짐, 메일함 없음) skipped — 스크립트의 다른 단계는 이어 간다."""
+        받을 준비가 안 됐으면(수신기 꺼짐, 메일함 없음) skipped — 스크립트의 다른 단계는 이어 간다.
+        채널 일부만 준비가 안 됐으면 준비된 채널만 확인하고, 못 본 채널은 네 번째 값으로 돌려준다(스크립트 판정이 skipped 가 된다)."""
         name = step.get("name") or f"step {i + 1}"
         t0 = time.monotonic()
         try:
@@ -337,17 +342,19 @@ class Runner:
         except TemplateError as e:
             msg = str(e)
             self.store.add_step(rcid, i, name, {"method": "NOTIFY", "path": "", "notify": step["notify"]}, None, [], "error", 0, msg)
-            return "error", 0, msg
+            return "error", 0, msg, None
         record = {"method": "NOTIFY", "path": inboxmod.describe(spec), "actor": spec["to"], "notify": spec}
-        missing = []
+        missing = {}
         for ch in spec["channels"]:
             why = self.notify.notify_ready(spec["to"], ch, base_url) if self.notify else "알림 수신이 설정되지 않았다"
             if why:
-                missing.append(f"{inboxmod.CHANNEL_KO[ch]}: {why}")
+                missing[ch] = why
+        miss_msg = f"{name}: " + "; ".join(f"{inboxmod.CHANNEL_KO[c]}: {w}" for c, w in missing.items()) if missing else None
+        if len(missing) == len(spec["channels"]):
+            self.store.add_step(rcid, i, name, record, None, [], "skipped", 0, miss_msg)
+            return "skipped", 0, miss_msg, None
         if missing:
-            msg = f"{name}: " + "; ".join(missing)
-            self.store.add_step(rcid, i, name, record, None, [], "skipped", 0, msg)
-            return "skipped", 0, msg
+            spec = {**spec, "channels": [c for c in spec["channels"] if c not in missing]}
         start = {"web_push": since, "email": since - timedelta(seconds=5)}     # 메일 Date 는 보내는 서버 시계라 조금 넉넉히
         iso = lambda d: d.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")  # noqa: E731
         deadline = since.timestamp() + spec["within"]
@@ -365,8 +372,10 @@ class Runner:
         seen = sorted({x["id"] for v in got.values() for x in v})
         ms = int((time.monotonic() - t0) * 1000)
         err = None if ok else f"{name}: " + "; ".join(f"{c['check']} 기대 {c['expected']} 실제 {c['actual']}" for c in checks if not c["ok"])
+        for ch, why in missing.items():         # 못 본 채널도 검증 항목에 남긴다. ok 가 None 이면 확인하지 못한 것
+            checks.append({"check": inboxmod.CHANNEL_KO[ch], "channel": ch, "expected": "도착", "actual": f"확인하지 못함: {why}", "ok": None})
         self.store.add_step(rcid, i, name, record, {"inbox_ids": ids, "seen_ids": seen[-10:]}, checks, "pass" if ok else "fail", ms, err)
-        return ("pass" if ok else "fail"), ms, err
+        return ("pass" if ok else "fail"), ms, err, miss_msg
 
     def _run_step(self, case: Case, step: dict, i: int, rcid: int, ctx: Context, base_url: str, after_failure: bool = False) -> tuple[str, int, str | None]:
         """런에 기록된 base_url 로 요청한다 — 런은 생성 시점의 대상을 고정한다."""

@@ -171,6 +171,27 @@ class ParseTest(unittest.TestCase):
         ok, _ = I.judge({**spec, "none": True}, {"web_push": []})
         self.assertTrue(ok)
 
+    def test_missing_notify(self):
+        ops = {"/accept": "acceptApplication", "/comments": "createRoomComment", "/leave": "roomLeave"}
+        op_for = lambda m, p: next((v for k, v in ops.items() if p.endswith(k)), None)  # noqa: E731
+        head = "id: x\ntitle: t\nsuite: sanity\ncovers: [C.room.confirm]\nactor: qa-host\nsteps:\n"
+        ok = "  - request: {method: POST, path: /r/accept}\n    expect: {status: 200}\n    covers: [C.room.confirm]\n"
+        c = parse_one(head + ok, "t")
+        self.assertEqual(I.missing_notify(c, op_for), [("acceptApplication", "ROOM_APPLICATION_ACCEPTED")])
+        c = parse_one(head + ok + "  - notify: {to: qa-guest, type: ROOM_APPLICATION_ACCEPTED, channels: [web_push, email]}\n", "t")
+        self.assertEqual(I.missing_notify(c, op_for), [])                                          # 기다리는 단계가 있다
+        c = parse_one(head + ok + "  - notify: {to: qa-guest, type: ROOM_APPLICATION_ACCEPTED, none: true, within: 10s}\n", "t")
+        self.assertEqual(len(I.missing_notify(c, op_for)), 1)                                      # 오지 않아야 하는 단계는 기다린 것이 아니다
+        rej = "  - request: {method: POST, path: /r/accept}\n    expect: {status: 409, error_code: E1}\n    covers: [C.room.confirm]\n"
+        self.assertEqual(I.missing_notify(parse_one(head + rej, "t"), op_for), [])                 # 거절을 확인하는 단계
+        pre = "  - request: {method: POST, path: /r/accept}\n    expect: {status: 200}\n    covers: []\n"
+        self.assertEqual(I.missing_notify(parse_one(head + pre, "t"), op_for), [])                 # 준비 단계(covers 없음)
+        leave = "  - request: {method: POST, path: /r/leave}\n    expect: {status: 200}\n    covers: [C.room.confirm]\n"
+        self.assertEqual(I.missing_notify(parse_one(head + leave, "t"), op_for), [])               # 나가기는 조건이 맞을 때만 알림
+        self.assertIn("channels: [web_push, email]", I.sends_text(["acceptApplication"]))
+        self.assertIn("기다릴 수 없다", I.sends_text(["submitReview"]))
+        self.assertEqual(I.type_of("참여자가 나가 모집이 다시 열렸어요"), "ROOM_RECRUITING_REOPENED")
+
     def test_case_with_notify_step(self):
         text = """
 id: room.comment-notify
@@ -315,10 +336,29 @@ steps:
     def test_not_ready_is_skipped_but_case_goes_on(self):
         self.net.on_comment = None
         rc, steps = self.run_case(self.CASE)
-        self.assertEqual(rc["verdict"], "pass")                                                     # API 단계는 통과
+        self.assertEqual(rc["verdict"], "skipped")                                                  # API 단계는 통과했지만 알림을 못 봤으니 통과가 아니다
         self.assertEqual([s["verdict"] for s in steps], ["pass", "skipped", "skipped"])
         self.assertIn("웹 푸시 받기가 꺼져 있다", rc["error"])
-        self.assertIn("알림 확인을 건너뛰었다", rc["error"])
+        self.assertIn("API 단계는 모두 통과, 알림 확인을 건너뛰었다", rc["error"])
+
+    def test_unready_channel_is_skipped_but_ready_one_is_checked(self):
+        self.net.emails["guest-1"] = "someone@gmail.com"                                         # 메일함 주소가 아니라 메일은 볼 수 없다
+        self.app.receiver_on("qa-guest", operator="bebe")
+        guest = next(c for c in FakeClient.made if c.ctx == "qa-guest")
+        self.net.on_comment = lambda: guest.push(PUSH, "p-1")
+        rc, steps = self.run_case(self.CASE.replace("expect: {link: /rooms/r-1}}", "channels: [web_push, email], expect: {link: /rooms/r-1}}")
+                                  .replace("  - name: 작성자에게는 오지 않는다\n    notify: {to: qa-host, type: ROOM_COMMENT_POSTED, none: true, within: 5s}\n", ""))
+        self.assertEqual([s["verdict"] for s in steps], ["pass", "pass"])                        # 웹 푸시는 확인했다
+        checks = json.loads(steps[1]["checks"]) if isinstance(steps[1]["checks"], str) else steps[1]["checks"]
+        self.assertEqual([(c["channel"], c["ok"]) for c in checks], [("web_push", True), ("email", None)])
+        self.assertEqual(rc["verdict"], "skipped")                                              # 메일을 못 봤으니 통과로 치지 않는다
+        self.assertIn("메일:", rc["error"])
+
+        self.net.on_comment = lambda: None                                                      # 준비된 채널에 오지 않으면 실패다
+        rc, _ = self.run_case(self.CASE.replace("expect: {link: /rooms/r-1}}", "channels: [web_push, email], expect: {link: /rooms/r-1}}")
+                              .replace("within: 10s", "within: 5s")
+                              .replace("  - name: 작성자에게는 오지 않는다\n    notify: {to: qa-host, type: ROOM_COMMENT_POSTED, none: true, within: 5s}\n", ""))
+        self.assertEqual(rc["verdict"], "fail")
 
     def test_mail_reader_and_email_step(self):
         self.boxes["INBOX"].append(mail("someone@else.com", "광고", "x", "https://x.io"))                         # QA 주소가 아니면 담지 않는다

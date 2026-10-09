@@ -28,9 +28,11 @@ TYPES = {
     "ROOM_HOST_CHANGED": ("방장 바뀜", "방장이 바뀌었어요"),                         # 웹 푸시의 eventType 은 ROOM_HOST_DELEGATED
     "REVIEW_PUBLISHED": ("후기 공개", "새 후기가 도착했어요"),
     "ROOM_COMMENT_POSTED": ("새 댓글", "새 댓글이 달렸어요"),
+    "ROOM_RECRUITING_REOPENED": ("모집 재개", "모집이 다시 열렸어요"),
 }
 TYPE_KO = {k: v[0] for k, v in TYPES.items()}
 TITLE_TYPE = {v[1]: k for k, v in TYPES.items()}
+TITLE_TYPE["참여자가 나가 모집이 다시 열렸어요"] = "ROOM_RECRUITING_REOPENED"         # 방장이 받는 문구
 # 같은 eventType 안에서 받는 사람에 따라 제목이 다른 것 — 스크립트는 둘 중 아무 이름으로 써도 된다
 SAME_EVENT = {"ROOM_APPLICATION_CLOSED": "ROOM_CONFIRMED", "ROOM_HOST_CHANGED": "ROOM_HOST_DELEGATED"}
 
@@ -96,11 +98,70 @@ def dedup_key(item: dict, extra: str = "") -> str:
 
 
 def path_of(link: str | None) -> str | None:
-    """https://dev.moimyeon.plady.io/rooms/1 → /rooms/1"""
+    """https://dev.moimyeon.plady.io/interviews/1 → /interviews/1"""
     if not link:
         return None
     m = re.match(r"^[a-z]+://[^/]+(/.*)?$", link)
     return (m.group(1) or "/") if m else link
+
+
+# ---- API 가 보내는 알림 (백엔드 NotificationComposer · NotificationPolicy, dev 2026-10-09) ---------------------
+# 채널: PUSH_AND_EMAIL 은 웹 푸시와 메일 둘 다. PUSH_ELSE_EMAIL 은 웹 푸시가 닿으면 메일을 보내지 않으니 web_push 만 기다린다. PUSH_ONLY 는 web_push.
+# 이동 주소는 /interviews/{roomId} (백엔드 0fb9127b, 2026-10-05).
+# always: 이 API 가 성공하면 늘 보내는 알림. False 면 조건이 맞을 때만 보내서 알림 단계가 없어도 빠졌다고 하지 않는다.
+SENDS: dict[str, list[dict]] = {
+    "submitRoomApplication": [{"type": "ROOM_APPLICATION_SUBMITTED", "to": "방장", "channels": ["web_push"], "always": True}],
+    "acceptApplication": [{"type": "ROOM_APPLICATION_ACCEPTED", "to": "신청자", "channels": ["web_push", "email"], "always": True}],
+    "rejectApplication": [{"type": "ROOM_APPLICATION_REJECTED", "to": "신청자", "channels": ["web_push"], "always": True}],
+    "confirmRoom": [{"type": "ROOM_CONFIRMED", "to": "방장을 포함한 참여자 전원", "channels": ["web_push", "email"], "always": True},
+                    {"type": "ROOM_APPLICATION_CLOSED", "to": "아직 대기 중이던 신청자", "channels": ["web_push"], "always": False}],
+    "completeRoomProgress": [{"type": "ROOM_COMPLETED", "to": "방장을 포함한 확정 참여자 전원", "channels": ["web_push"], "always": True}],
+    "autoCompleteQaRoom": [{"type": "ROOM_COMPLETED", "to": "방장을 포함한 확정 참여자 전원", "channels": ["web_push"], "always": True}],
+    "roomLeave": [{"type": "ROOM_HOST_DELEGATED", "to": "방장이 나가고 참여자가 남으면 남은 참여자 전원(새 방장은 '방장이 되었어요', 나머지는 '방장이 바뀌었어요')",
+                   "channels": ["web_push"], "always": False},
+                  {"type": "ROOM_CANCELED", "to": "방장이 나가고 넘겨받을 참여자가 없으면 나간 방장과 대기 중이던 신청자", "channels": ["web_push", "email"], "always": False},
+                  {"type": "ROOM_RECRUITING_REOPENED", "to": "참여자가 나가 최소 진행 인원보다 적어지면 방장과 남은 참여자", "channels": ["web_push"], "always": False}],
+    "createRoomComment": [{"type": "ROOM_COMMENT_POSTED", "to": "작성자를 뺀 참여자 전원(작성자 말고 참여자가 없으면 보내지 않는다)", "channels": ["web_push"], "always": True}],
+    # 후기는 작성 3시간 뒤 공개되고 그때 알림이 간다. 바로 공개하는 dev 도구가 없어 스크립트로는 기다릴 수 없다.
+    "submitReview": [{"type": "REVIEW_PUBLISHED", "to": "후기 대상자(작성 3시간 뒤 공개될 때)", "channels": ["web_push"], "always": False, "no_wait": True}],
+}
+
+
+def _ok_status(expect: dict) -> bool:
+    st = str((expect or {}).get("status") or "")
+    return not (expect or {}).get("error_code") and (st.startswith("2") or (not st and (expect or {}).get("result") == "SUCCESS"))
+
+
+def missing_notify(case, op_for) -> list[tuple[str, str]]:
+    """정상 흐름에서 늘 알림을 보내는 API 를 성공으로 확인하는데 그 알림을 기다리는 단계가 없는 것 [(operationId, 알림 종류)].
+    op_for(method, path) → operationId. 확인 대상(covers)이 있는 이 스크립트의 단계만 본다. 준비 단계·카드 단계는 보지 않는다."""
+    waited = {str(s["notify"].get("type") or "") for s in case.steps if s.get("notify") and not s["notify"].get("none")}
+    any_wait = any(s.get("notify") and not s["notify"].get("none") and not s["notify"].get("type") for s in case.steps)
+    out = []
+    for s in case.own_steps:
+        if not s.get("request") or not s.get("covers") or not _ok_status(s.get("expect") or {}):
+            continue
+        try:
+            op = op_for(str(s["request"].get("method") or ""), str(s["request"].get("path") or ""))
+        except Exception:
+            op = None
+        for row in SENDS.get(op or "", []):
+            if row["always"] and not any_wait and not any(same_type(row["type"], w) for w in waited):
+                out.append((op, row["type"]))
+    return list(dict.fromkeys(out))
+
+
+def sends_text(ops) -> str:
+    """Hermes 근거용: 이 API 들이 보내는 알림 표."""
+    lines = []
+    for op in dict.fromkeys(ops):
+        for r in SENDS.get(op, []):
+            if r.get("no_wait"):
+                lines.append(f"- {op} → {r['type']}: {r['to']}. 스크립트로 기다릴 수 없다. 알림 단계를 쓰지 않는다")
+                continue
+            chans = ", ".join(r["channels"])
+            lines.append(f"- {op} → {r['type']} · 받는 사람: {r['to']} · channels: [{chans}]" + ("" if r["always"] else " · 조건이 맞을 때만"))
+    return "\n".join(lines)
 
 
 # ---- 스크립트의 알림 기다리기 단계 ----------------------------------------------------------

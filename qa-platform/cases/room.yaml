@@ -1582,11 +1582,10 @@ cases:
         to: qa-host
         channels:
         - web_push
-        - email
         within: 60
         type: ROOM_COMPLETED
         expect:
-          link: /rooms/{{roomId}}
+          link: /interviews/{{roomId}}
       covers: []
     - name: 정리(QA 룸 삭제)
       always: true
@@ -1655,11 +1654,10 @@ cases:
         to: qa-host
         channels:
         - web_push
-        - email
         within: 60
         type: ROOM_COMPLETED
         expect:
-          link: /rooms/{{roomId}}
+          link: /interviews/{{roomId}}
     - name: 참여자가 완료 알림을 받는다
       covers:
       - C.room.complete
@@ -1667,11 +1665,10 @@ cases:
         to: qa-guest
         channels:
         - web_push
-        - email
         within: 60
         type: ROOM_COMPLETED
         expect:
-          link: /rooms/{{roomId}}
+          link: /interviews/{{roomId}}
     - name: 정리(QA 룸 삭제)
       always: true
       covers: []
@@ -1802,7 +1799,7 @@ cases:
         within: 60
         type: ROOM_CONFIRMED
         expect:
-          link: /rooms/{{roomId}}
+          link: /interviews/{{roomId}}
       covers: []
     - name: 정리(QA 룸 삭제)
       always: true
@@ -2581,7 +2578,7 @@ cases:
         within: 60
         type: ROOM_APPLICATION_ACCEPTED
         expect:
-          link: /rooms/{{roomId}}
+          link: /interviews/{{roomId}}
       covers: []
     - name: 최대 모집 인원을 현재 참여 인원보다 작게 수정하면 거절된다
       covers:

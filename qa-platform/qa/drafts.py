@@ -13,6 +13,7 @@ import re
 import yaml
 
 from . import hermes
+from . import inbox as inboxmod
 from .cases import _TC, Case, CaseError, _validate, audit
 from .config import Config
 from .spec import SpecData
@@ -41,14 +42,15 @@ DRAFT_SYSTEM = (
     "9. 테스트 데이터 만들기 카드가 주어지면 룸 생성·신청 같은 준비 단계를 직접 쓰지 말고 `uses: {setup: 카드 id, with: {입력: 값}}` 로 받는다. "
     "uses 는 id·title·steps 와 같은 스크립트 최상위 키다. steps 안의 단계로 쓰지 않는다. "
     "카드의 결과값(outputs)은 `{{이름}}` 으로 쓴다. 전제 단계는 covers 가 없다.\n"
-    "10. 확인하는 동작이 알림을 보내면(참가 신청 접수·수락·반려, 진행 확정, 완료, 취소, 방장 위임, 후기 공개, 댓글) 그 API 단계 바로 뒤에 알림 기다리기 단계를 둘 수 있다: "
-    "`- name: …\n    notify: {to: 테스트 계정, type: 알림 종류, channels: [web_push, email], within: 60s, expect: {link: /rooms/{{roomId}}}}`. "
-    "request·expect·save 는 쓰지 않는다. 받으면 안 되는 사람은 `none: true` 와 짧은 within(10s). 후기 공개는 1분 주기 작업이 보내니 within 90s. "
+    "10. 확인하는 API 가 성공하면 알림을 보내는 것이면('이 API 가 보내는 알림' 절) 성공을 확인하는 스크립트에는 그 API 단계 바로 뒤에 알림 기다리기 단계를 꼭 둔다: "
+    "`- name: …\n    notify: {to: 테스트 계정, type: 알림 종류, channels: [...], within: 60s, expect: {link: /interviews/{{roomId}}}}`. "
+    "request·expect·save 는 쓰지 않는다. to 는 그 절의 '받는 사람'에 해당하는 테스트 계정이다(방장은 보통 룸을 만든 계정, 신청자는 신청한 계정). 받는 사람이 둘 이상이면 계정마다 단계를 하나씩 둔다. "
+    "channels 는 그 절에 적힌 그대로 쓴다. 웹 푸시와 메일을 둘 다 보내는 것만 [web_push, email], 나머지는 [web_push] 다(웹 푸시가 닿으면 메일을 보내지 않는다). "
+    "'조건이 맞을 때만' 알림은 스크립트가 그 조건을 만들 때만 기다린다. '기다릴 수 없다' 알림은 쓰지 않는다. 받으면 안 되는 사람은 `none: true` 와 짧은 within(10s). "
     "type 은 ROOM_APPLICATION_SUBMITTED · ROOM_APPLICATION_ACCEPTED · ROOM_APPLICATION_REJECTED · ROOM_CONFIRMED · ROOM_APPLICATION_CLOSED · ROOM_COMPLETED · "
-    "ROOM_CANCELED · ROOM_HOST_DELEGATED · ROOM_HOST_CHANGED · REVIEW_PUBLISHED · ROOM_COMMENT_POSTED 중 하나. "
-    "채널은 백엔드 발송 정책을 따른다: 수락·확정(참여자)·취소는 웹 푸시와 메일 둘 다, 후기 공개·댓글은 웹 푸시만, 나머지는 웹 푸시(닿지 않으면 메일)라 web_push 만 쓴다. "
-    "알림 단계는 정리 단계보다 앞에 둔다. "
-    "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 PUSH_ELSE_EMAIL 은 메일로, PUSH_ONLY 는 오지 않음을 확인할 수 있다. "
+    "ROOM_CANCELED · ROOM_HOST_DELEGATED · ROOM_HOST_CHANGED · ROOM_RECRUITING_REOPENED · REVIEW_PUBLISHED · ROOM_COMMENT_POSTED 중 하나. 이동 주소는 언제나 /interviews/{{roomId}} 다. "
+    "알림 단계는 정리 단계보다 앞에 둔다. 거절(4xx)을 확인하는 스크립트에는 알림 단계를 두지 않는다. "
+    "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 웹 푸시만 보내던 알림 중 메일 대체가 있는 것(신청 접수·반려·완료·방장 위임)은 메일로, 댓글은 오지 않음을 확인할 수 있다. "
     "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰).\n"
     "11. API 요청·응답의 필드·상태 코드·에러 코드는 OpenAPI 발췌가 정본이다. PRD·규칙표에 없는 API 세부라도 OpenAPI 에 있으면 그대로 쓰고, "
     "케이스가 확인하는 결과에 해당하는 응답 필드(새로 생긴 필드 포함)는 expect.json · expect.exists 로 확인한다.\n"
@@ -113,6 +115,9 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
     if prd_parts:
         parts.append("# PRD 절 본문 (기획 정본)\n" + "\n\n".join(prd_parts))
 
+    sends = inboxmod.sends_text(ops)
+    if sends:
+        parts.append("# 이 API 가 보내는 알림 (백엔드 발송 정책, 규칙 10)\n" + sends)
     dev_ops = sorted((o for o in (spec.ops if spec else {}).values() if "/v1/dev/" in o.path), key=lambda o: o.path)
     if dev_ops:
         parts.append("# dev 도구 (QA 데이터만 받는 dev 전용 API, 검증 대상 아님)\n" +

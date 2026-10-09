@@ -38,7 +38,7 @@ class BatchTest(unittest.TestCase):
         self.assertGreaterEqual(len(vids), 4)
         seen = []
 
-        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None):
+        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None, rewrite_note=None):
             seen.append(variant)
             n = len(seen)
             if n == 2:
@@ -62,7 +62,7 @@ class BatchTest(unittest.TestCase):
         vids = self.app.untested_variants()
         holder = {}
 
-        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None):
+        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None, rewrite_note=None):
             if variant == vids[1]:
                 holder["job"].cancel.set()                            # 두 번째 건을 쓰는 중에 사람이 그만둔다
             return {"saved": [{"id": "d-1"}], "rejected": []}
@@ -90,12 +90,36 @@ class BatchTest(unittest.TestCase):
         self.assertIn((vid, "x.blocked"), self.app.batch_targets())
         got = {}
 
-        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None):
+        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None, rewrite_note=None):
             got[variant] = replace
             return {"saved": [{"id": "d-1"}], "rejected": []}
         self.app.generate_cases = fake
         self.app.job_batch_scripts("bebe", slug=vid.split("/")[0], sync=True)
         self.assertEqual(got[vid], "x.blocked")                                       # 같은 id 로 다시 쓰게 넘긴다
+
+    def test_notify_missing_scripts_are_rewritten_with_note(self):
+        from qa.cases import parse_one
+        vid = next(v for v, r in self.app.batch_targets())
+        c = parse_one(f"id: x.no-notify\ntitle: t\nsuite: sanity\nvariant: {vid}\ncovers: ['op.createRoomComment:200']\nactor: qa-host\nsteps:\n"
+                      "  - request: {method: POST, path: '/v1/rooms/{{roomId}}/comments', body: {content: hi}}\n    covers: ['op.createRoomComment:200']\n"
+                      "    expect: {status: 200}\n")
+        c.audit = {"status": "ok", "errors": [], "warnings": []}
+        self.app.cases["x.no-notify"] = c
+        self.app.op_of = lambda m, p: "createRoomComment" if p.endswith("/comments") else None
+        self.assertEqual(self.app.notify_gaps(), {"x.no-notify": [("createRoomComment", "ROOM_COMMENT_POSTED")]})
+        self.assertIn((vid, "x.no-notify"), self.app.notify_targets())
+        self.assertNotIn(vid, [v for v, _ in self.app.batch_targets()])                # 스크립트가 있으니 '없음' 은 아니다
+        got = {}
+
+        def fake(*, tc_ids, operator, session_hash, ip, ask=None, variant=None, replace=None, rewrite_note=None):
+            got[variant] = (replace, rewrite_note)
+            return {"saved": [{"id": "d-1"}], "rejected": []}
+        self.app.generate_cases = fake
+        self.app.job_batch_scripts("bebe", slug=vid.split("/")[0], sync=True)
+        replace, note = got[vid]
+        self.assertEqual(replace, "x.no-notify")                                      # 같은 id 로 다시 쓴다
+        self.assertIn("ROOM_COMMENT_POSTED", note)                                    # 빠진 알림과
+        self.assertIn("id: x.no-notify", note)                                        # 지금 스크립트를 보여 준다
 
     def test_manual_variant_scripts_held(self):
         from types import SimpleNamespace

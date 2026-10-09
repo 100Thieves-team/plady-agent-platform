@@ -475,7 +475,7 @@ def _checks_html(checks: list[dict]) -> str:
     if not checks:
         return ""
     return f'<div class="small mut">검증 항목{h("run.checks")}</div>' + "".join(
-        f'<div class="small">{"✅" if c["ok"] else "❌"} {e(c["check"])}{(" <span class=\"mono\">" + e(c["path"]) + "</span>") if c.get("path") else ""}'
+        f'<div class="small">{"⏭" if c["ok"] is None else ("✅" if c["ok"] else "❌")} {e(c["check"])}{(" <span class=\"mono\">" + e(c["path"]) + "</span>") if c.get("path") else ""}'
         f' 기대 <span class="mono">{e(json.dumps(c["expected"], ensure_ascii=False))}</span> 실제 <span class="mono">{e(json.dumps(c["actual"], ensure_ascii=False))}</span></div>'
         for c in checks)
 
@@ -1387,7 +1387,7 @@ def api_detail(d: dict, *, operators: list[str], operator: str, hermes: bool) ->
             again["body"] = _fmt_json(c["body"])
         from urllib.parse import urlencode
         who = "API 호출" if c["trigger"] == "explorer" else f'<a href="/cases/{e(c["case_id"])}" class="mono">{e(c["case_id"])}</a> <span class="small mut">{e(c["name"])}</span>'
-        bad = [x for x in (c.get("checks") or []) if not x.get("ok")]
+        bad = [x for x in (c.get("checks") or []) if x.get("ok") is False]
         note = (f' <span class="small" style="color:var(--bad)">{e(c["error"][:100])}</span>' if c.get("error") else "") if (c["verdict"] != "pass") else ""
         crows += (f'<tr><td class="small">{kst(c["created_at"])}</td><td><a href="/runs/{e(c["run_id"])}" class="mono small">{e(c["run_id"])}</a><br><span class="small mut">{e(TRIGGER_KO.get(c["trigger"], c["trigger"]))} · {e(c["operator"])}</span></td>'
                   f'<td>{who}{(" <span class=\"small mut\">" + e(c["actor"]) + "</span>") if c.get("actor") else ""}</td><td>{_call_verdict(c)}{note}</td><td class="small">{c.get("duration_ms") or 0} ms</td>'
@@ -1674,7 +1674,7 @@ def guide(*, public_url: str, target: str, wiki_url: str, sprint_days: int) -> s
 <li><b>확인 화면</b>에서는 플랫폼이 범위를 <i>제안</i>한다. 배포 검증이면 PR 변경 파일 → 도메인 → 그 도메인의 sanity 스크립트, 스프린트면 smoke 전체다. 담당자(자기 신고)를 고르고 스크립트를 조정한 뒤 [실행].</li>
 <li><b>테스트 실행이 만들어지면서</b> 그 시점의 스크립트 본문(스냅샷)·테스트 조건 소스 버전(SSOT·OpenAPI 해시)·대상(<span class="mono">{e(target)}</span>)이 실행 기록에 고정된다. 나중에 스크립트나 테스트 조건이 바뀌어도 과거 기록은 그대로다.</li>
 <li><b>러너가 순서대로 보낸다.</b> 한 번에 실행 하나, 스크립트는 순차, 단계는 요청 → 응답 → 검증 항목(assertion)(expect 6종: status · result · error_code · json · exists · cookies). 테스트 계정이 필요하면 <span class="mono">POST /v1/auth/dev-sessions</span> 로 토큰을 받아 Bearer 로 보낸다(기록에는 마스킹).</li>
-<li><b>판정.</b> 검증 항목(assertion) 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정 = <b>skipped</b>(설정 문제, 실패 아님). 실행 전체의 결과는 스크립트 결과의 합. Slack 에 시작·종료가 간다.</li>
+<li><b>판정.</b> 검증 항목(assertion) 불일치 = <b>fail</b>, 예외·네트워크 = <b>error</b>, 테스트 계정·픽스처 미설정, 알림을 받을 준비가 안 된 알림 확인 = <b>skipped</b>(설정 문제, 실패 아님). 실행 전체의 결과는 스크립트 결과의 합. Slack 에 시작·종료가 간다.</li>
 <li><b>실패하면</b> 실행 상세에서 단계별 요청·응답·검증 항목(assertion)을 본다. [Hermes 실패 분석] 을 누르면 AI 가 <i>버그 / 스크립트 노후 / 환경</i> 중 하나로 분류하고 다음 행동을 제안한다. 진단도 사람이 누를 때만 돈다.</li>
 </ol>
 <p class="small mut">모든 버튼은 감사 로그 화면(감사 로그)에 담당자·세션 해시·IP 와 함께 남는다. 세션은 팀 공용이라 담당자는 자기 신고다.</p>"""
