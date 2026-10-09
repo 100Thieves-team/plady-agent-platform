@@ -607,25 +607,15 @@ cases:
     - G.review.edit#review-effective
     - op.updateReview:E2006
     source:
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R32
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R36
+    - PRD/유저 후기 및 신뢰 관리 §4.3
     - OpenAPI PUT /v1/reviews/{reviewId}
     actor: qa-guest
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-09'
       by: bebe
     written_by: hermes
     steps:
-    - name: TODO 삭제되었거나 숨김 처리된 qa-guest 작성 후기 ID 확보
-      covers: []
-      request:
-        method: GET
-        path: /v1/dev/qa-data
-      expect:
-        status: 200
-      save:
-        reviewId: TODO:deleted-or-hidden-review-id-authored-by-qa-guest
-    - name: 작성자가 삭제되었거나 숨김 처리된 후기를 수정하면 E2006으로 거절된다
+    - name: 삭제되었거나 숨김 처리된 본인 후기 수정 시도
       covers:
       - G.review.edit#review-effective
       - op.updateReview:E2006
@@ -635,13 +625,14 @@ cases:
         body:
           tags:
           - 소통이 원활해요
-          content: 긴장을 풀어주는 진행이 좋았어요.
+          content: '[QA] 삭제되었거나 숨김 처리된 후기 수정 거절 확인 {{rand}}'
       expect:
         status: 404
         result: ERROR
         error_code: E2006
       save: {}
-    TODO: qa-guest가 작성했고 이미 삭제되었거나 숨김 처리된 후기 reviewId를 만드는 카드 또는 API 근거가 필요하다.
+    todo:
+    - 'TODO: qa-guest가 작성했고 이미 삭제되었거나 숨김 처리된 후기의 reviewId를 준비하는 setup 카드 또는 픽스처가 필요하다.'
 
   - id: review.edit-within-edit-window
     title: 제출한 지 3시간이 지난 후기를 고치면 E2008로 거절된다
