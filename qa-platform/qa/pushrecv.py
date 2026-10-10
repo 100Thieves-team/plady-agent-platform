@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import sys
 import threading
@@ -52,6 +53,28 @@ def _pad_decrypt(fm) -> None:
         return orig(credentials, _b64pad(crypto_key_str), _b64pad(salt_str), raw_data)
     padded._qa_padded = True
     C._decrypt_raw_data = staticmethod(padded)
+
+    handle = getattr(C, "_handle_data_message", None)
+    if handle is None:
+        return
+
+    def safe_handle(self, msg):
+        """crypto-key · encryption 헤더를 'dh=…' · 'salt=…' 하나만 남게 고친 뒤 넘긴다(여러 값이 ; 로 이어 오면 라이브러리가 앞 3·5 글자만 잘라 키가 깨진다).
+        한 메시지를 못 풀어도 수신기 전체를 끝내지 않고 그 메시지만 건너뛴다(2026-10-10 'Invalid EC key' 로 다시 멈춤)."""
+        try:
+            for x in getattr(msg, "app_data", []):
+                if x.key in ("crypto-key", "encryption"):
+                    want = "dh=" if x.key == "crypto-key" else "salt="
+                    parts = [p.strip() for p in re.split(r"[;,]", x.value or "") if p.strip()]
+                    hit = next((p for p in parts if p.startswith(want)), None)
+                    if hit and (len(parts) > 1 or hit != x.value):
+                        print(f"[push] {x.key} 헤더에 값이 {len(parts)}개: {[p.split('=')[0] for p in parts]}", file=sys.stderr, flush=True)
+                        x.value = hit
+            return handle(self, msg)
+        except Exception as ex:
+            keys = sorted(x.key for x in getattr(msg, "app_data", []))
+            print(f"[push] 메시지 {getattr(msg, 'persistent_id', '?')} 를 풀지 못해 건너뛴다: {type(ex).__name__}: {ex} · app_data {keys}", file=sys.stderr, flush=True)
+    C._handle_data_message = safe_handle
 
 
 class PushReceivers:

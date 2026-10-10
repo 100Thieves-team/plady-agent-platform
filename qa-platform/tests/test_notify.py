@@ -345,6 +345,25 @@ steps:
         self.assertEqual(C._decrypt_raw_data({}, "abcde", "xy", b""), b"ok")
         self.assertEqual(seen, [("abcde===", "xy==")])
 
+    def test_crypto_headers_normalized_and_bad_message_skipped(self):
+        got = []
+
+        class C:
+            @staticmethod
+            def _decrypt_raw_data(credentials, crypto_key_str, salt_str, raw_data):
+                return b"{}"
+
+            def _handle_data_message(self, msg):
+                v = {x.key: x.value for x in msg.app_data}
+                if v.get("crypto-key") == "boom":
+                    raise ValueError("Invalid EC key.")
+                got.append((v["crypto-key"][3:], v["encryption"][5:]))
+        pushrecv._pad_decrypt(types.SimpleNamespace(FcmPushClient=C))
+        kv = lambda k, v: types.SimpleNamespace(key=k, value=v)  # noqa: E731
+        C()._handle_data_message(types.SimpleNamespace(app_data=[kv("crypto-key", "p256ecdsa=AAA;dh=BBB"), kv("encryption", "salt=CCC")]))
+        self.assertEqual(got, [("BBB", "CCC")])                                                     # dh 가 뒤에 와도 그 값만
+        C()._handle_data_message(types.SimpleNamespace(app_data=[kv("crypto-key", "boom")], persistent_id="p"))  # 예외가 밖으로 나가지 않는다
+
     def test_old_backend_falls_back(self):
         self.net.old = True
         self.app.receiver_on("qa-guest", operator="bebe")
