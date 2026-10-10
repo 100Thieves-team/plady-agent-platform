@@ -165,92 +165,145 @@ cases:
     - createRoomComment
     covers:
     - G.guestbook.post_write#account-active
-    - op.createRoomComment:200
     source:
     - PRD/룸 방명록 §3
     - PRD/룸 방명록 §4.3
-    - PRD/룸 방명록 §4.4
     - PRD/룸 방명록 §4.6
-    - OpenAPI POST /v1/rooms/{roomId}/comments
     actor: qa-host
     reviewed:
       at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
-      setup: setup.room-confirmed
+      setup: setup.room-open
       with:
-        title: '[QA] 방명록 account-active sanity {{rand}}'
+        title: '[QA] 방명록 이용 제한 검증 룸 {{rand}}'
+        minParticipants: 2
+        maxParticipants: 4
+        daysFromNow: 7
     steps:
-    - name: 활성 계정인 방장이 방명록 글을 작성할 수 있다
-      actor: qa-host
-      covers:
-      - op.createRoomComment:200
+    - name: 참여시킬 QA 회원 생성
       request:
         method: POST
-        path: /v1/rooms/{{roomId}}/comments
-        body:
-          content: '[QA] 방명록 정상 작성 확인 {{rand}}'
+        path: /v1/dev/members
       expect:
         status: 200
         result: SUCCESS
         exists:
-        - data.commentId
-        - data.createdAt
+        - data.memberId
+        - data.accessToken
       save:
-        hostCommentId: data.commentId
-    - name: 방장을 뺀 참여자에게 방명록 글 작성 알림이 도착한다
-      notify:
-        to: qa-guest
-        channels:
-        - web_push
-        within: 60
-        type: ROOM_COMMENT_POSTED
-        expect:
-          link: /interviews/{{roomId}}
+        memberId: data.memberId
+        memberToken: data.accessToken
       covers: []
-    - name: 참여자인 qa-guest 계정을 이용 제한 상태로 바꾼다
-      actor: qa-host
-      covers: []
+    - name: 참여시킬 회원의 기본 이력서 업로드
+      actor: null
       request:
         method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 방명록 참여자 이력서 {{rand}}.pdf'
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.resumeId
+      save:
+        resumeId: data.resumeId
+      covers: []
+    - name: 이력서 AI 요약 완료 강제
+      request:
+        method: POST
+        path: /v1/dev/resumes/{{resumeId}}/summary
+        body:
+          summary: '[QA] 방명록 이용 제한 검증용 이력서 요약입니다.'
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: DONE
+      save: {}
+      covers: []
+    - name: 참여시킬 회원이 룸에 신청
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        headers:
+          Authorization: Bearer {{memberToken}}
+        body:
+          resumeId: '{{resumeId}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.applicationId
+      save:
+        applicationId: data.applicationId
+      covers: []
+    - name: 방장이 신청을 수락해 참여 상태를 만든다
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.applicationId
+      save: {}
+      covers: []
+    - name: 참여 상태 확인
+      actor: null
+      request:
+        method: GET
+        path: /v1/attendances/me
+        headers:
+          Authorization: Bearer {{memberToken}}
+        query:
+          roomId: '{{roomId}}'
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.memberId: '{{memberId}}'
+          data.status: JOINED
+      save: {}
+      covers: []
+    - name: 참여 회원을 이용 제한 상태로 변경
+      request:
+        method: POST
+        path: /v1/dev/members/{{memberId}}/status
         body:
           status: RESTRICTED
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.status: RESTRICTED
       save: {}
-    - name: 이용 제한된 참여자가 방명록 글을 작성하면 거절된다
-      actor: qa-guest
+      covers: []
+    - name: 이용 제한 참여자가 방명록 글 작성을 시도하면 거절된다
+      actor: null
       covers:
       - G.guestbook.post_write#account-active
       request:
         method: POST
         path: /v1/rooms/{{roomId}}/comments
+        headers:
+          Authorization: Bearer {{memberToken}}
         body:
-          content: '[QA] 이용 제한 계정 방명록 작성 시도 {{rand}}'
+          content: '[QA] 이용 제한 참여자의 방명록 글 작성 시도 {{rand}}'
       expect:
         status: 4xx
         result: ERROR
       save: {}
-    - name: 정리(qa-guest 계정 상태 복구)
-      always: true
-      actor: qa-host
-      covers: []
-      request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/status
-        body:
-          status: ACTIVE
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
     - name: 정리(QA 룸 삭제)
       always: true
-      actor: qa-host
-      covers: []
       request:
         method: DELETE
         path: /v1/dev/rooms/{{roomId}}
@@ -258,6 +311,17 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+      covers: []
+    - name: 정리(QA 회원 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
 
   - id: guestbook.joined-member-only
     title: 룸에 참여하지 않은 사람이 방명록에 글을 쓰면 E1419로 거절된다
