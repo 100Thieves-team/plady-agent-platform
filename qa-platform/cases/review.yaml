@@ -989,3 +989,99 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+
+  - id: review.target-attended
+    title: 완료된 룸에서 출석하지 않은 대상자에게 후기를 쓰면 E2003으로 거절된다
+    suite: sanity
+    variant: 유저-후기-및-신뢰-관리/S1/target-attended
+    domains:
+    - review
+    operations:
+    - submitReview
+    covers:
+    - G.review.write#target-attended
+    - op.submitReview:E2003
+    source:
+    - PRD/유저 후기 및 신뢰 관리 §3
+    - PRD/유저 후기 및 신뢰 관리 §4.1
+    - PRD/유저 후기 및 신뢰 관리 §4.3
+    - PRD/유저 후기 및 신뢰 관리 §4.8
+    - PRD/룸 진행 마무리 및 출석 §4.6
+    actor: qa-guest
+    reviewed:
+      at: '2026-10-10'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 대상 미출석 거절 sanity {{rand}}'
+    steps:
+    - name: 후기 대상자로 쓸 QA 회원을 따로 만든다
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.memberId
+      save:
+        targetMemberId: data.memberId
+      covers: []
+    - name: 룸을 자동 완료해 작성자인 qa-guest 를 출석 참여자로 만든다
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 출석하지 않은 대상자에게 후기를 제출하면 E2003 으로 거절된다
+      covers:
+      - G.review.write#target-attended
+      - op.submitReview:E2003
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{targetMemberId}}'
+          tags:
+          - 시간을 잘 지켜요
+          - 준비가 성실해요
+          - 질문이 날카로워요
+          - 피드백이 구체적이에요
+          - 소통이 원활해요
+          content: '[QA] 출석하지 않은 대상자에게 쓰는 후기 거절 확인'
+          anonymous: false
+      expect:
+        status: 400
+        result: ERROR
+        error_code: E2003
+        json:
+          error.code: E2003
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      actor: qa-host
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
+    - name: 정리(QA 회원 삭제)
+      always: true
+      actor: qa-host
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{targetMemberId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
