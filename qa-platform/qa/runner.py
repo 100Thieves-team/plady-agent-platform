@@ -19,7 +19,7 @@ from . import inbox as inboxmod
 from . import multipart as multipartmod
 from urllib.parse import quote
 
-from .cases import Case, withdraws_shared_account
+from .cases import Case, harms_shared, withdraws_shared_account
 from .config import Config
 from .store import Store, now_iso
 from .templating import Context, TemplateError, get_path
@@ -432,6 +432,16 @@ class Runner:
             self.store.add_step(rcid, i, name, record, None, [], "error", 0, msg, op_id=op_id)
             return "error", 0, msg
         op_id = self._op_of(req["method"], req.get("path")) or op_id   # 치환된 경로가 더 정확하다
+        try:
+            shared_ids = set(self.actors.mapping().values())
+        except Exception:
+            shared_ids = set(self.cfg.actors.values())
+        harm = harms_shared({"request": req}, None, shared_ids=shared_ids,
+                            fixture_values=[str(v) for v in (self.cfg.fixtures or {}).values() if len(str(v)) >= 8])
+        if harm:
+            msg = harm + " 단계라 보내지 않았다"
+            self.store.add_step(rcid, i, name, record, None, [], "error", 0, msg, op_id=op_id)
+            return "error", 0, msg
 
         r = _send(req["method"], url, headers=headers, body=send_body, timeout=self.cfg.request_timeout)
         response = {"status": r.status, "elapsed_ms": r.elapsed_ms, "json": _mask_secrets(r.json) if r.json is not None else None,

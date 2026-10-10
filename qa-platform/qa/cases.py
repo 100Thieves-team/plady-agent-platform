@@ -493,17 +493,56 @@ def withdraws_shared_account(step: dict, case_actor: str | None) -> bool:
     return bool(actor)          # 테스트 계정 토큰이 헤더의 토큰보다 우선해 붙는다 — 테스트 계정이 있으면 그 계정이 탈퇴한다
 
 
+_DEV_MEMBER = re.compile(r"^/v1/dev/members/([^/?]+)")
+
+
+def harms_shared(step: dict, case_actor: str | None, shared_ids=(), fixture_values=()) -> str | None:
+    """공용 테스트 계정이나 공용 픽스처를 망가뜨리는 단계면 그 이유. 스크립트 검사는 치환 전 경로로, 실행기는 치환한 경로와
+    실제 회원 id·픽스처 값으로 한 번 더 본다 (2026-10-10: Hermes 스크립트가 qa-guest 의 공용 이력서를 지우고, 공용 계정을 dev 도구로 초기화했다)."""
+    req = step.get("request") or {}
+    method = str(req.get("method") or "").upper()
+    path = str(req.get("path") or "").split("?")[0]
+    if withdraws_shared_account(step, case_actor):
+        return "공용 테스트 계정으로 회원 탈퇴를 부른다. 새 QA 회원(setup.member-withdrawn)의 토큰으로만 부른다"
+    m = _DEV_MEMBER.match(path)
+    if m and (m.group(1).startswith("{{actor.") or m.group(1) in shared_ids):
+        return "공용 테스트 계정에 dev 회원 도구(초기화·상태 변경·로그인·삭제)를 부른다. 새 QA 회원(POST /v1/dev/members, setup.member-restricted)에게만 쓴다"
+    if method == "DELETE" and ("{{fixture." in path or any(v in path for v in fixture_values if v)):
+        return "공용 픽스처(QA_FIXTURES 의 이력서 등)를 지운다. 지울 데이터는 스크립트가 직접 만든다"
+    return None
+
+
+_VAR = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+_BUILTIN_VAR = re.compile(r"^(uuid|rand|time:rand|date:[+-]?\d+|actor\..+|fixture\..+|webpush\..+|input\..+)$")       # input.X 는 카드를 쓸 때 채운다
+
+
+def unsaved_vars(c: "Case") -> list[tuple[int, str]]:
+    """앞 단계가 save 하지 않은 변수를 쓰는 곳 [(단계 번호, 변수)]. 실행하면 '치환할 값이 없다' 로 반드시 멈춘다."""
+    saved: set[str] = set()
+    out = []
+    for i, s in enumerate(c.steps, 1):
+        used = _VAR.findall(json.dumps({k: s.get(k) for k in ("request", "expect", "notify")}, ensure_ascii=False))
+        for v in dict.fromkeys(used):
+            if not _BUILTIN_VAR.match(v) and v not in saved:
+                out.append((i, v))
+        saved |= set(s.get("save") or {})
+    return out
+
+
 def safety_errors(c: "Case") -> list[str]:
     """돌리면 안 되거나 반드시 틀리는 스크립트. 오류면 스위트에서 빠진다."""
     out = []
+    for i, v in unsaved_vars(c):
+        out.append(f"step {i}: 앞 단계가 save 하지 않은 변수 {{{{{v}}}}} 를 쓴다 — 실행하면 치환할 값이 없어 멈춘다")
     if not any("TODO" in str(s.get("request") or "") for s in c.steps) and re.search(r"(?m)^\s*-?\s*TODO\s*:", c.to_yaml()):
         out.append("스크립트에 TODO 가 남아 있다 — 근거가 없어 Hermes 가 비워 둔 곳이다")
     for i, s in enumerate(c.steps, 1):
         req = s.get("request")
         if not req:
             continue
-        if withdraws_shared_account(s, c.actor):
-            out.append(f"step {i}: 공용 테스트 계정으로 회원 탈퇴를 부른다 — 새 QA 회원(setup.member-withdrawn)의 토큰으로만 부른다")
+        harm = harms_shared(s, c.actor)
+        if harm:
+            out.append(f"step {i}: {harm}")
         path = str(req.get("path") or "")
         if "TODO" in path or not path.isascii():
             out.append(f"step {i}: 경로가 완성되지 않았다 ({path[:40]})")

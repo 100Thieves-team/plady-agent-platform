@@ -31,8 +31,30 @@ class SafetyTest(unittest.TestCase):
     def test_withdraw_shared_account_blocked(self):
         bad = case("  - request: {method: DELETE, path: /v1/members/me}\n    covers: ['op.memberWithdraw:200']\n")
         self.assertTrue(any("공용 테스트 계정" in e for e in safety_errors(bad)))
-        ok = case("  - actor: null\n    request: {method: DELETE, path: /v1/members/me, headers: {Authorization: 'Bearer {{memberToken}}'}}\n"
+        ok = case("  - request: {method: POST, path: /v1/dev/members}\n    save: {memberToken: data.accessToken}\n"
+                  "  - actor: null\n    request: {method: DELETE, path: /v1/members/me, headers: {Authorization: 'Bearer {{memberToken}}'}}\n"
                   "    covers: ['op.memberWithdraw:200']\n")
+        self.assertEqual(safety_errors(ok), [])
+
+    def test_shared_data_and_dev_tools_blocked(self):
+        bad = case("  - request: {method: DELETE, path: '/v1/members/me/resumes/{{fixture.qa-guest.resumeId}}'}\n"
+                   "  - request: {method: POST, path: '/v1/dev/members/{{actor.qa-guest.memberId}}/reset'}\n"
+                   "  - request: {method: POST, path: '/v1/dev/members/{{actor.qa-guest.memberId}}/status', body: {status: RESTRICTED}}\n")
+        errs = safety_errors(bad)
+        self.assertEqual(len(errs), 3, errs)
+        self.assertIn("공용 픽스처", errs[0])
+        self.assertIn("dev 회원 도구", errs[1])
+        ok = case("  - request: {method: POST, path: /v1/dev/members}\n    save: {memberId: data.memberId}\n"
+                  "  - request: {method: POST, path: '/v1/dev/members/{{memberId}}/status', body: {status: RESTRICTED}}\n"
+                  "  - request: {method: GET, path: '/v1/members/me/resumes/{{fixture.qa-guest.resumeId}}'}\n"
+                  "  - request: {method: POST, path: /v1/dev/members/social-signup}\n")
+        self.assertEqual(safety_errors(ok), [])
+
+    def test_unsaved_variable(self):
+        bad = case("  - request: {method: PUT, path: '/v1/reviews/{{reviewId}}'}\n")
+        self.assertTrue(any("save 하지 않은 변수 {{reviewId}}" in e for e in safety_errors(bad)))
+        ok = case("  - request: {method: POST, path: /v1/reviews}\n    save: {reviewId: data.reviewId}\n"
+                  "  - request: {method: PUT, path: '/v1/reviews/{{reviewId}}', body: {d: '{{date:+1}}', a: '{{actor.qa-host.memberId}}', r: '{{rand}}'}}\n")
         self.assertEqual(safety_errors(ok), [])
 
     def test_incomplete_and_volatile(self):
@@ -120,6 +142,35 @@ class RunnerSafetyTest(unittest.TestCase):
         self.assertEqual(len(sent), 1)                                   # 탈퇴 요청은 보내지 않았다
         self.assertEqual(sent[0][2].get("Authorization"), "Bearer tok")   # dev 도구는 기본 테스트 계정으로
         self.assertIs(sent[0][3], False)                                 # 리다이렉트를 따라가지 않는다
+
+
+    def test_runner_refuses_shared_fixture_delete_and_dev_reset(self):
+        os.environ["QA_FIXTURES"] = json.dumps({"qa-guest.resumeId": "res-shared-0001"})
+        self.cfg = Config()
+        os.environ.pop("QA_FIXTURES")
+        calls = []
+
+        def fake(method, url, headers=None, body=None, timeout=30, follow_redirects=True):
+            calls.append((method, url))
+            if url.endswith("/v1/auth/dev-sessions"):
+                return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"accessToken": "tok"}}), 1)
+            return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"resumes": [{"resumeId": "res-shared-0001"}]}}), 1)
+        httpx.request = fake
+        # 치환 전에는 공용 데이터인 줄 모르는 경로: 목록에서 꺼낸 id 로 지우기, 회원 id 를 글자로 쓴 dev 초기화
+        c = parse_one("id: x\ntitle: t\nsuite: sanity\ncovers: ['op.memberWithdraw:200']\nactor: qa-guest\nsteps:\n"
+                      "  - request: {method: GET, path: /v1/members/me/resumes}\n    save: {rid: 'data.resumes[0].resumeId'}\n"
+                      "  - request: {method: DELETE, path: '/v1/members/me/resumes/{{rid}}'}\n    covers: ['op.memberWithdraw:200']\n")
+        c2 = parse_one("id: y\ntitle: t\nsuite: sanity\ncovers: ['op.memberWithdraw:200']\nactor: qa-host\nsteps:\n"
+                       "  - request: {method: POST, path: /v1/dev/members/m2/reset}\n    covers: ['op.memberWithdraw:200']\n")
+        runner = Runner(self.cfg, self.store, {"x": c, "y": c2})
+        rid = self.store.create_run(trigger="manual", operator="bebe", suite=None, env="dev", base_url="https://api.test",
+                                    ref="dev", sha=None, pr_number=None, meta={}, cases=[c, c2])
+        runner.execute(rid)
+        rcs = self.store.list_run_cases(rid)
+        self.assertEqual([r["verdict"] for r in rcs], ["error", "error"])
+        self.assertIn("공용 픽스처", rcs[0]["error"])
+        self.assertIn("dev 회원 도구", rcs[1]["error"])
+        self.assertFalse([m for m, u in calls if m in ("DELETE",) or u.endswith("/reset")])       # 보내지 않았다
 
 
 if __name__ == "__main__":
