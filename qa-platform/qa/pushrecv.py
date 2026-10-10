@@ -30,9 +30,28 @@ class PushError(RuntimeError):
 def _lib():
     try:
         import firebase_messaging  # noqa: F401
+        _pad_decrypt(firebase_messaging)
         return firebase_messaging
     except Exception:
         return None
+
+
+def _b64pad(s: str) -> str:
+    return s + "=" * (-len(s) % 4)
+
+
+def _pad_decrypt(fm) -> None:
+    """firebase-messaging 0.4.5 는 웹 푸시의 crypto-key(dh)·salt 를 패딩 없이 base64 로 풀어서, 길이가 4의 배수가 아닌 메시지에서
+    'Incorrect padding' 으로 수신기 전체를 멈춘다. 그 뒤 알림이 하나도 들어오지 않았다 (2026-10-10, 계정마다 첫 푸시만 받음)."""
+    C = getattr(getattr(fm, "fcmpushclient", None), "FcmPushClient", None) or getattr(fm, "FcmPushClient", None)
+    orig = getattr(C, "_decrypt_raw_data", None)
+    if orig is None or getattr(orig, "_qa_padded", False):
+        return
+
+    def padded(credentials, crypto_key_str, salt_str, raw_data):
+        return orig(credentials, _b64pad(crypto_key_str), _b64pad(salt_str), raw_data)
+    padded._qa_padded = True
+    C._decrypt_raw_data = staticmethod(padded)
 
 
 class PushReceivers:
@@ -142,10 +161,21 @@ class PushReceivers:
         return r.json
 
     def refresh(self, actor: str) -> str | None:
-        """백엔드 기기 등록을 다시 보낸다(PUT, 멱등). 알림 기다리기 단계 앞에서 부른다. 실패하면 이유."""
+        """백엔드 기기 등록을 다시 보낸다(PUT, 멱등). 알림 기다리기 단계 앞에서 부른다. 실패하면 이유.
+        수신기가 멈춰 있으면(라이브러리가 오류로 스스로 끝냈다) 다시 접속한다 — 다시 접속하면서 등록도 갱신한다."""
         r = self.store.get_receiver(self.base, actor) or {}
         if not r.get("enabled") or not r.get("push_token"):
             return "수신기가 꺼져 있다"
+        client = self._clients.get(actor)
+        started = getattr(client, "is_started", None)
+        if client is None or (callable(started) and not started()):
+            print(f"[push] {actor} 수신기가 멈춰 있어 다시 접속한다", file=sys.stderr, flush=True)
+            try:
+                self._connect(actor, register=False)
+                return None
+            except Exception as ex:
+                self.store.save_receiver(self.base, actor, status="error", error=str(ex)[:300])
+                return str(ex)[:200]
         try:
             self._call("PUT", actor, SUB_PATH, {"registration": r["push_token"]})
             return None

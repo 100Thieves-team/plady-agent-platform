@@ -103,6 +103,9 @@ class FakeClient:
     async def stop(self):
         self.started = False
 
+    def is_started(self):
+        return self.started
+
     def push(self, msg, pid):
         self.callback(msg, pid, self.ctx)
 
@@ -318,6 +321,29 @@ steps:
         acts = [x["action"] for x in self.app.store.list_events(20)]
         for a in ("notify.receiver.on", "notify.receiver.off"):
             self.assertIn(a, acts)
+
+    def test_stopped_receiver_reconnects_before_notify(self):
+        self.app.receiver_on("qa-guest", operator="bebe")
+        first = self.app.push._clients["qa-guest"]
+        first.started = False                                                                       # 라이브러리가 오류로 스스로 끝냈다
+        self.assertIsNone(self.app.push.refresh("qa-guest"))
+        again = self.app.push._clients["qa-guest"]
+        self.assertIsNot(again, first)
+        self.assertTrue(again.started)
+
+    def test_decrypt_pads_base64(self):
+        seen = []
+
+        class C:
+            @staticmethod
+            def _decrypt_raw_data(credentials, crypto_key_str, salt_str, raw_data):
+                seen.append((crypto_key_str, salt_str))
+                return b"ok"
+        fm = types.SimpleNamespace(FcmPushClient=C)
+        pushrecv._pad_decrypt(fm)
+        pushrecv._pad_decrypt(fm)                                                                   # 두 번 감싸지 않는다
+        self.assertEqual(C._decrypt_raw_data({}, "abcde", "xy", b""), b"ok")
+        self.assertEqual(seen, [("abcde===", "xy==")])
 
     def test_old_backend_falls_back(self):
         self.net.old = True
