@@ -311,7 +311,7 @@ cases:
     - PRD/룸 진행 마무리 및 출석 §4.6
     actor: qa-host
     reviewed:
-      at: '2026-10-06'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
@@ -345,6 +345,26 @@ cases:
         - data.attendances[0].nickname
         - data.attendances[1].nickname
       save: {}
+    - name: 방장이 룸 완료 알림을 받는다
+      covers: []
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_COMPLETED
+        expect:
+          link: /interviews/{{roomId}}
+    - name: 참가자가 룸 완료 알림을 받는다
+      covers: []
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_COMPLETED
+        expect:
+          link: /interviews/{{roomId}}
     - name: 정리(QA 룸 삭제)
       always: true
       covers: []
