@@ -894,26 +894,64 @@ cases:
       covers: []
 
   - id: review.edit-submitted-review
-    title: 작성자가 제출한 후기를 수정하면 성공 응답을 받는다
+    title: 작성자가 제출한 후기를 수정하면 200으로 성공하고 조회한 태그와 본문이 바뀐다
     suite: sanity
     variant: 유저-후기-및-신뢰-관리/S1/edit-submitted-review
     domains:
     - review
     operations:
+    - completeRoomProgress
+    - submitReview
     - updateReview
+    - getReview
     covers:
     - C.review.edit
     - op.updateReview:200
     source:
     - PRD/유저 후기 및 신뢰 관리 §4.3
     - PRD/유저 후기 및 신뢰 관리 §6
-    - OpenAPI PUT /v1/reviews/{reviewId}
     actor: qa-guest
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
+    uses:
+      setup: setup.room-ready-to-start
+      with:
+        title: '[QA] 후기 수정 sanity {{rand}}'
     steps:
+    - name: 룸 완료 처리
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/complete
+        body:
+          attendances:
+          - memberId: '{{actor.qa-host.memberId}}'
+            status: ATTENDED
+          - memberId: '{{actor.qa-guest.memberId}}'
+            status: ATTENDED
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: COMPLETED
+      save: {}
+      covers: []
+    - name: 작성자가 방장에게 후기 제출
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+          tags:
+          - 소통이 원활해요
+          content: '[QA] 수정 전 후기 본문입니다.'
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        reviewId: data.reviewId
+      covers: []
     - name: 작성자가 제출한 후기 수정
       covers:
       - C.review.edit
@@ -923,12 +961,38 @@ cases:
         path: /v1/reviews/{{reviewId}}
         body:
           tags:
-          - 소통이 원활해요
-          content: 수정한 테스트 후기입니다.
+          - 긴장을 풀어줘요
+          content: '[QA] 수정한 후기 본문입니다.'
       expect:
         status: 200
         result: SUCCESS
       save: {}
+    - name: 수정된 후기 조회
+      covers:
+      - C.review.edit
+      request:
+        method: GET
+        path: /v1/reviews/{{reviewId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.reviewId: '{{reviewId}}'
+          data.roomId: '{{roomId}}'
+          data.targetMemberId: '{{actor.qa-host.memberId}}'
+          data.content: '[QA] 수정한 후기 본문입니다.'
+          data.tags[0]: 긴장을 풀어줘요
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+      covers: []
 
   - id: review.author-attended
     title: 룸에 출석하지 않은 참여자가 후기를 쓰면 E2002로 거절된다
