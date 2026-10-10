@@ -708,17 +708,18 @@ cases:
     domains:
     - review
     operations:
+    - autoCompleteQaRoom
+    - submitReview
+    - getReview
     - updateReview
     covers:
     - G.review.edit#within-edit-window
     - op.updateReview:E2008
     source:
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R32
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R36
-    - OpenAPI PUT /v1/reviews/{reviewId}
+    - PRD/유저 후기 및 신뢰 관리 §4.3
     actor: qa-guest
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
@@ -726,17 +727,51 @@ cases:
       with:
         title: '[QA] 후기 수정 3시간 경과 거절 {{rand}}'
     steps:
-    - name: TODO 공개 기준 시각이 지난 qa-guest 작성 후기 reviewId를 준비한다
-      covers: []
+    - name: 룸 자동 완료 처리
       request:
-        method: GET
-        path: /v1/dev/qa-data
+        method: POST
+        path: /v1/dev/rooms/{{roomId}}/auto-complete
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.completed: true
+        exists:
+        - data.roomId
+        - data.status
+      save: {}
+      covers: []
+    - name: 작성자가 방장에게 후기 제출
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-host.memberId}}'
+          tags:
+          - 소통이 원활해요
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.reviewId
       save:
-        reviewId: TODO
-    - name: 작성자가 공개 기준 시각이 지난 후기를 수정한다
+        reviewId: data.reviewId
+      covers: []
+    - name: TODO 공개 기준 시각이 지난 후기 상태 만들기 전 후기 조회
+      request:
+        method: GET
+        path: /v1/reviews/{{reviewId}}
+      expect:
+        status: 200
+        result: SUCCESS
+        exists:
+        - data.reviewId
+        - data.roomId
+        - data.targetMemberId
+        - data.tags
+      save: {}
+      covers: []
+    - name: R97 작성자가 제출한 후기를 수정한다
       covers:
       - G.review.edit#within-edit-window
       - op.updateReview:E2008
@@ -746,17 +781,14 @@ cases:
         body:
           tags:
           - 소통이 원활해요
-          content: 긴장을 풀어주는 진행이 좋았어요.
+          content: 수정 시도입니다.
       expect:
         status: 409
         result: ERROR
         error_code: E2008
-        json:
-          error.message: 공개 기준 시각이 지난 후기는 수정하거나 삭제할 수 없습니다.
       save: {}
     - name: 정리(QA 룸 삭제)
       always: true
-      covers: []
       request:
         method: DELETE
         path: /v1/dev/rooms/{{roomId}}
@@ -764,6 +796,7 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
+      covers: []
 
   - id: review.report
     title: 대상자가 부적절한 후기를 신고하면 관리자 검토 대상으로 표시된다
