@@ -146,34 +146,86 @@ cases:
     title: 참가자가 신청하면 PENDING 이고 철회할 수 있다
     suite: sanity
     variant: 룸-참여-및-참여자-관리/S1/withdraw
-    domains: [room, application]
-    operations: [submitRoomApplication, myRoomApplication, withdrawRoomApplication]
-    source: ["PRD/룸 참여 및 참여자 관리 §4.2"]
+    domains:
+    - room
+    - application
+    operations:
+    - submitRoomApplication
+    - myRoomApplication
+    - withdrawRoomApplication
+    covers:
+    - C.application.withdraw
+    - op.withdrawRoomApplication:200
+    source:
+    - PRD/룸 참여 및 참여자 관리 §4.2
     actor: qa-host
-    uses: { setup: setup.room-open, with: { title: "[QA] 참가 신청 sanity", daysFromNow: 8 } }
+    reviewed:
+      at: '2026-10-10'
+      by: bebe
+    written_by: hermes
+    uses:
+      setup: setup.room-open
+      with:
+        title: '[QA] 참가 신청 sanity'
+        daysFromNow: 8
     steps:
-      - name: 참가자가 신청
-        covers: [C.application.submit, op.submitRoomApplication:201]
-        actor: qa-guest
-        request:
-          method: POST
-          path: "/v1/rooms/{{roomId}}/applications"
-          body: { resumeId: "{{fixture.qa-guest.resumeId}}", note: "[QA] sanity 신청" }
-        expect: { status: 201, result: SUCCESS, json: { "data.status": PENDING } }
-      - name: 참가자가 내 신청 조회
-        covers: [op.myRoomApplication:200]
-        actor: qa-guest
-        request: { method: GET, path: "/v1/rooms/{{roomId}}/applications/me" }
-        expect: { status: 200, result: SUCCESS }
-      - name: 참가자가 철회
-        covers: [C.application.withdraw, op.withdrawRoomApplication:200]
-        actor: qa-guest
-        request: { method: DELETE, path: "/v1/rooms/{{roomId}}/applications/me" }
-        expect: { status: 200, result: SUCCESS }
-      - name: 정리(QA 룸 삭제)
-        always: true
-        request: { method: DELETE, path: "/v1/dev/rooms/{{roomId}}" }
-        expect: { status: 200 }
+    - name: 참가자가 신청
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] sanity 신청'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save: {}
+    - name: 방장에게 신청 접수 알림이 간다
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_APPLICATION_SUBMITTED
+        expect:
+          link: /interviews/{{roomId}}
+      covers: []
+    - name: 참가자가 내 신청 조회
+      covers: []
+      actor: qa-guest
+      request:
+        method: GET
+        path: /v1/rooms/{{roomId}}/applications/me
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 참가자가 철회
+      covers:
+      - C.application.withdraw
+      - op.withdrawRoomApplication:200
+      actor: qa-guest
+      request:
+        method: DELETE
+        path: /v1/rooms/{{roomId}}/applications/me
+      expect:
+        status: 200
+        result: SUCCESS
+      save: {}
+    - name: 정리(QA 룸 삭제)
+      always: true
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{roomId}}
+      expect:
+        status: 200
+      save: {}
+      covers: []
 
   - id: room.creation-limit
     title: 중복 생성 제한 조회는 없는 공고 id 에도 404 가 아니라 0개로 답한다
