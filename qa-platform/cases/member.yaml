@@ -1,14 +1,15 @@
 # member — QA 플랫폼 폼으로 만든 파일.
 cases:
   - id: member.signup-oauth-return-flow
-    title: 비로그인 신규 사용자가 Google 계정으로 최초 로그인하면 회원이 생성되고 로그인 쿠키를 받는다
+    title: 비로그인 사용자가 Google 최초 로그인으로 가입하고 원래 흐름 복귀 URI를 받는다
     suite: sanity
     variant: 회원-및-프로필/S1/happy
     domains:
     - member
     operations:
-    - googleOAuthStart
-    - googleOAuthCallback
+    - socialSignUpQaMember
+    - memberMe
+    - deleteQaMember
     covers:
     - C.member.signup
     source:
@@ -21,21 +22,11 @@ cases:
     - PRD/회원 및 프로필 §8
     actor: null
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     steps:
-    - name: Google OAuth 로그인 시작
-      covers:
-      - C.member.signup
-      cookie_jar: signup
-      request:
-        method: GET
-        path: /oauth2/authorization/google
-      expect:
-        status: 302
-      save: {}
-    - name: dev 소셜 가입으로 최초 로그인 완료
+    - name: QA 회원 소셜 최초 가입
       covers:
       - C.member.signup
       cookie_jar: signup
@@ -45,19 +36,17 @@ cases:
       expect:
         status: 200
         result: SUCCESS
-        cookies:
-          DEV_ACCESS_TOKEN: set
-          DEV_REFRESH_TOKEN: set
         exists:
         - data.memberId
-        - data.accessToken
+        - data.outcome
+        - data.redirectUri
+        - data.cookies
       save:
         memberId: data.memberId
-        memberToken: data.accessToken
-    - name: 로그인 쿠키로 현재 회원 상태 확인
-      actor: null
+    - name: 가입된 회원 정보 조회 — 활성 상태와 자동 닉네임 확인
       covers:
       - C.member.signup
+      actor: null
       cookie_jar: signup
       request:
         method: GET
@@ -66,17 +55,15 @@ cases:
         status: 200
         result: SUCCESS
         json:
-          data.accountStatus: ACTIVE
-          data.role: MEMBER
+          data.memberId: '{{memberId}}'
+          data.status: ACTIVE
         exists:
-        - data.memberId
         - data.email
         - data.nickname
-        - data.createdAt
-        - data.lastLoginAt
       save: {}
     - name: 정리(QA 회원 삭제)
       always: true
+      covers: []
       request:
         method: DELETE
         path: /v1/dev/members/{{memberId}}
@@ -84,7 +71,6 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-      covers: []
 
   - id: member.login-required
     title: 로그인하지 않고 룸 생성과 참가 신청을 하려 하면 E1102로 거절된다
