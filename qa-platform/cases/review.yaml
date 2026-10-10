@@ -534,45 +534,57 @@ cases:
     domains:
     - review
     operations:
+    - autoCompleteQaRoom
+    - submitReview
     - updateReview
+    - deleteQaRoom
     covers:
     - G.review.edit#author-only
     - op.updateReview:E2007
     source:
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R32
-    - PRD/유저 후기 및 신뢰 관리 §4.3 R36
+    - PRD/유저 후기 및 신뢰 관리 R32
+    - PRD/유저 후기 및 신뢰 관리 R36
     - OpenAPI PUT /v1/reviews/{reviewId}
     actor: qa-guest
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
       setup: setup.room-ready-to-start
       with:
-        title: '[QA] 후기 작성자 전용 수정 거절 {{rand}}'
+        title: '[QA] 후기 수정 author-only {{rand}}'
     steps:
-    - name: 룸 자동 완료 처리(dev 전용)
+    - name: 전제 — 룸을 완료 상태로 만든다
+      covers: []
       request:
         method: POST
         path: /v1/dev/rooms/{{roomId}}/auto-complete
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.completed: true
+          data.roomId: '{{roomId}}'
+          data.status: COMPLETED
       save: {}
-      covers: []
-    - name: TODO 후기 작성자가 qa-host인 비공개 유저 후기의 reviewId 확보
+    - name: 전제 — 방장이 참가자에게 후기를 작성한다
       actor: qa-host
+      covers: []
       request:
-        method: GET
-        path: /v1/dev/qa-data
+        method: POST
+        path: /v1/rooms/{{roomId}}/reviews
+        body:
+          targetMemberId: '{{actor.qa-guest.memberId}}'
+          tags:
+          - 소통이 원활해요
       expect:
         status: 200
         result: SUCCESS
       save:
-        reviewId: TODO
-      covers: []
-    - name: 다른 사람이 작성한 후기 수정 시도
+        reviewId: data.reviewId
+    - name: 다른 사람이 쓴 후기를 수정하면 거절된다
+      actor: qa-guest
       covers:
       - G.review.edit#author-only
       - op.updateReview:E2007
@@ -590,6 +602,7 @@ cases:
       save: {}
     - name: 정리(QA 룸 삭제)
       always: true
+      covers: []
       request:
         method: DELETE
         path: /v1/dev/rooms/{{roomId}}
@@ -597,7 +610,6 @@ cases:
         status: 200
         result: SUCCESS
       save: {}
-      covers: []
 
   - id: review.edit-deleted-or-hidden-review
     title: 지워졌거나 숨겨진 후기를 고치면 E2006으로 거절된다
