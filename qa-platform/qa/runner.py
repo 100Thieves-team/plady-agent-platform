@@ -383,8 +383,10 @@ class Runner:
         actor = step.get("actor", case.actor)
         path0 = str(step["request"].get("path") or "")
         has_auth = any(str(k).lower() == "authorization" for k in (step["request"].get("headers") or {}))
-        if not actor and path0.startswith("/v1/dev/") and not has_auth and not step.get("cookie_jar") and self.cfg.actors:
-            actor = next(iter(self.cfg.actors))     # dev 도구는 검증 대상이 아니다 — 인증이 없으면 기본 테스트 계정으로 (정리 단계 401 방지)
+        if not actor and path0.startswith("/v1/dev/") and not has_auth and self.cfg.actors:
+            # dev 도구는 검증 대상이 아니다 — 인증이 없으면 기본 테스트 계정으로 (정리 단계 401 방지).
+            # 쿠키 저장소를 쓰는 dev 소셜 로그인·가입도 같다. 백엔드가 인증을 요구한다(2026-10-10 social-signup 401)
+            actor = next(iter(self.cfg.actors))
         record = {"method": step["request"]["method"], "path": step["request"].get("path"), "actor": actor}
         if withdraws_shared_account(step, case.actor):
             msg = "공용 테스트 계정으로 회원 탈퇴를 부르는 단계라 보내지 않았다 — 새 QA 회원의 토큰으로만 부른다"

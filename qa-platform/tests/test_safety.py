@@ -173,5 +173,24 @@ class RunnerSafetyTest(unittest.TestCase):
         self.assertFalse([m for m, u in calls if m in ("DELETE",) or u.endswith("/reset")])       # 보내지 않았다
 
 
+    def test_dev_tool_with_cookie_jar_gets_default_actor(self):
+        calls = []
+
+        def fake(method, url, headers=None, body=None, timeout=30, follow_redirects=True):
+            calls.append((url, dict(headers or {})))
+            if url.endswith("/v1/auth/dev-sessions"):
+                return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {"accessToken": "tok"}}), 1)
+            return httpx.HttpResult(200, {}, json.dumps({"result": "SUCCESS", "data": {}}), 1)
+        httpx.request = fake
+        c = parse_one("id: x\ntitle: t\nsuite: sanity\ncovers: ['op.memberWithdraw:200']\nsteps:\n"
+                      "  - cookie_jar: signup\n    request: {method: POST, path: /v1/dev/members/social-signup}\n    covers: ['op.memberWithdraw:200']\n")
+        runner = Runner(self.cfg, self.store, {"x": c})
+        rid = self.store.create_run(trigger="manual", operator="bebe", suite=None, env="dev", base_url="https://api.test",
+                                    ref="dev", sha=None, pr_number=None, meta={}, cases=[c])
+        runner.execute(rid)
+        sent = [h for u, h in calls if u.endswith("/social-signup")]
+        self.assertEqual(sent[0].get("Authorization"), "Bearer tok")
+
+
 if __name__ == "__main__":
     unittest.main()
