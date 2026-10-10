@@ -37,6 +37,8 @@ cases:
       request:
         method: GET
         path: /v1/attendances/me
+        query:
+          roomId: '{{roomId}}'
       expect:
         status: 200
         result: SUCCESS

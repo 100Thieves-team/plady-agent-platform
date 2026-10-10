@@ -19,6 +19,8 @@ scenarios:
         title: 읽기 전용이 된 방명록에 글을 쓰면 E2101 로 거절된다
         checks: [G.guestbook.post_write#guestbook-not-readonly]
         then: E2101
+        mode: manual
+        manual_reason: needs_tool
       - key: joined-member-only
         kind: reject
         at: R3

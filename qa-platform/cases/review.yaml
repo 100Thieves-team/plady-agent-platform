@@ -325,7 +325,7 @@ cases:
       by: bebe
     written_by: hermes
     uses:
-      setup: setup.room-confirmed
+      setup: setup.room-ready-to-start
       with:
         title: '[QA] 유저 후기 중복 제출 거절 sanity {{rand}}'
     steps:
@@ -336,6 +336,8 @@ cases:
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.completed: true
       save: {}
       covers: []
     - name: 첫 번째 후기를 제출한다
@@ -416,7 +418,7 @@ cases:
       by: bebe
     written_by: hermes
     uses:
-      setup: setup.room-confirmed
+      setup: setup.room-ready-to-start
       with:
         title: '[QA] 자기 자신 후기 거절 sanity {{rand}}'
     steps:
@@ -427,6 +429,8 @@ cases:
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.completed: true
       save: {}
       covers: []
     - name: 자기 자신에게 후기 제출 시도
@@ -946,13 +950,13 @@ cases:
       covers: []
       request:
         method: POST
-        path: /v1/rooms/{{roomId}}/completion
+        path: /v1/rooms/{{roomId}}/complete
         body:
           attendances:
           - memberId: '{{actor.qa-host.memberId}}'
-            attended: true
+            status: ATTENDED
           - memberId: '{{actor.qa-guest.memberId}}'
-            attended: false
+            status: ABSENT
       expect:
         status: 2xx
         result: SUCCESS

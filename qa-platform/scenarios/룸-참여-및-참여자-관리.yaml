@@ -138,6 +138,8 @@ scenarios:
         title: 다른 사람의 신청을 철회하면 E1408 로 거절된다
         checks: [G.application.withdraw#own-application]
         then: E1408
+        mode: manual
+        manual_reason: structural
       - key: own-participation
         kind: reject
         at: R10

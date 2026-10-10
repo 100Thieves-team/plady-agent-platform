@@ -278,6 +278,7 @@ cases:
       request:
         method: POST
         path: /v1/auth/restoration
+        body: {}
       expect:
         status: 200
         result: SUCCESS

@@ -365,15 +365,10 @@ cases:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
-    uses:
-      setup: setup.room-with-application
-      with:
-        title: '[QA] 대기 신청 한도 준비 1 {{rand}}'
-        note: '[QA] 대기 신청 한도 준비 1'
     steps:
-    - name: 두 번째 준비 룸 생성
-      actor: qa-host
+    - name: 대기 신청 한도 준비 룸 1
       covers: []
+      actor: qa-host
       request:
         method: POST
         path: /v1/rooms
@@ -386,89 +381,150 @@ cases:
           minParticipants: 2
           maxParticipants: 4
           schedule:
-            date: '{{date:+7}}'
+            date: '{{date:+8}}'
             startTime: '{{time:rand}}'
             durationMinutes: 90
-          title: '[QA] 대기 신청 한도 준비 2 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 삭제된다.
+          title: '[QA] 대기 신청 한도 준비 룸 1 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
           resumeId: '{{fixture.qa-host.resumeId}}'
           resumePublic: true
       expect:
         status: 200
         result: SUCCESS
-        json:
-          data.status: RECRUITING
       save:
-        pendingRoomId2: data.roomId
-    - name: 두 번째 준비 룸에 참가 신청 제출
+        room1: data.roomId
+    - name: 대기 신청 한도 준비 룸 2
       covers: []
+      actor: qa-host
       request:
         method: POST
-        path: /v1/rooms/{{pendingRoomId2}}/applications
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+9}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 대기 신청 한도 준비 룸 2 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        room2: data.roomId
+    - name: 대기 신청 한도 준비 룸 3
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+10}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 대기 신청 한도 준비 룸 3 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        room3: data.roomId
+    - name: 대기 신청 1
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{room1}}/applications
         body:
           resumeId: '{{fixture.qa-guest.resumeId}}'
-          note: '[QA] 대기 신청 한도 준비 2'
+          note: '[QA] 대기 신청 1'
       expect:
         status: 201
         result: SUCCESS
         json:
           data.status: PENDING
-        exists:
-        - data.applicationId
-      save:
-        applicationId2: data.applicationId
-    - name: 세 번째 준비 룸 생성
-      actor: qa-host
+    - name: 대기 신청 2
       covers: []
+      actor: qa-guest
       request:
         method: POST
-        path: /v1/rooms
-        body:
-          postingId: '{{fixture.postingId}}'
-          jobRoleId: '{{fixture.jobRoleId}}'
-          round: FIRST
-          type: JOB
-          method: ONLINE
-          minParticipants: 2
-          maxParticipants: 4
-          schedule:
-            date: '{{date:+7}}'
-            startTime: '{{time:rand}}'
-            durationMinutes: 90
-          title: '[QA] 대기 신청 한도 준비 3 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 삭제된다.
-          resumeId: '{{fixture.qa-host.resumeId}}'
-          resumePublic: true
-      expect:
-        status: 200
-        result: SUCCESS
-        json:
-          data.status: RECRUITING
-      save:
-        pendingRoomId3: data.roomId
-    - name: 세 번째 준비 룸에 참가 신청 제출
-      covers: []
-      request:
-        method: POST
-        path: /v1/rooms/{{pendingRoomId3}}/applications
+        path: /v1/rooms/{{room2}}/applications
         body:
           resumeId: '{{fixture.qa-guest.resumeId}}'
-          note: '[QA] 대기 신청 한도 준비 3'
+          note: '[QA] 대기 신청 2'
       expect:
         status: 201
         result: SUCCESS
         json:
           data.status: PENDING
-        exists:
-        - data.applicationId
-      save:
-        applicationId3: data.applicationId
-    - name: 한도 초과 대상 룸 생성
-      actor: qa-host
+    - name: 대기 신청 3
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{room3}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 대기 신청 3'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+    - name: 새 QA 회원 만들기 (dev 전용 API, 다른 방장 또는 다른 신청자)
       covers: []
       request:
         method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 새 QA 회원의 이력서 올리기
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 한도 확인용 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        hostResumeId: data.resumeId
+    - name: 다른 방장의 대상 룸
+      covers: []
+      actor: null
+      request:
+        method: POST
         path: /v1/rooms
+        headers:
+          Authorization: Bearer {{memberToken}}
         body:
           postingId: '{{fixture.postingId}}'
           jobRoleId: '{{fixture.jobRoleId}}'
@@ -478,35 +534,60 @@ cases:
           minParticipants: 2
           maxParticipants: 4
           schedule:
-            date: '{{date:+7}}'
+            date: '{{date:+11}}'
             startTime: '{{time:rand}}'
             durationMinutes: 90
-          title: '[QA] 대기 신청 한도 초과 대상 룸 {{rand}}'
-          description: QA 플랫폼 sanity 케이스가 만든 룸. 곧 삭제된다.
-          resumeId: '{{fixture.qa-host.resumeId}}'
+          title: '[QA] 다른 방장의 대상 룸 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{hostResumeId}}'
           resumePublic: true
       expect:
         status: 200
         result: SUCCESS
-        json:
-          data.status: RECRUITING
       save:
         targetRoomId: data.roomId
-    - name: R5 신청·취소 정책 확인 후 한도 초과 참가 신청 제출
+    - name: 대기 신청이 3건인데 또 신청하면 거절된다
       covers:
       - G.application.submit#pending-limit-left
+      actor: qa-guest
       request:
         method: POST
         path: /v1/rooms/{{targetRoomId}}/applications
         body:
           resumeId: '{{fixture.qa-guest.resumeId}}'
-          note: '[QA] 처리 대기 중인 신청 한도 초과 거절 확인'
+          note: '[QA] 대기 신청이 3건인데 또 신청하면 거절된다'
       expect:
-        status: 400
+        status: 409
         result: ERROR
         error_code: E1416
-      save: {}
-    - name: 정리(QA 대상 룸 삭제)
+    - name: 정리(QA 룸 삭제 room1)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room1}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 room2)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room2}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 room3)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room3}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 targetRoomId)
       always: true
       covers: []
       request:
@@ -515,37 +596,15 @@ cases:
       expect:
         status: 200
         result: SUCCESS
-      save: {}
-    - name: 정리(QA 준비 룸 1 삭제)
+    - name: 정리(QA 회원 삭제)
       always: true
       covers: []
       request:
         method: DELETE
-        path: /v1/dev/rooms/{{roomId}}
+        path: /v1/dev/members/{{memberId}}
       expect:
         status: 200
         result: SUCCESS
-      save: {}
-    - name: 정리(QA 준비 룸 2 삭제)
-      always: true
-      covers: []
-      request:
-        method: DELETE
-        path: /v1/dev/rooms/{{pendingRoomId2}}
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
-    - name: 정리(QA 준비 룸 3 삭제)
-      always: true
-      covers: []
-      request:
-        method: DELETE
-        path: /v1/dev/rooms/{{pendingRoomId3}}
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
 
   - id: application.not-rejected-or-removed
     title: 반려된 이력이 있는 룸에 다시 신청하면 E1415로 거절된다
@@ -807,24 +866,119 @@ cases:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
-    uses:
-      setup: setup.room-with-application
-      with:
-        title: '[QA] 수락 거절 정원 초과 sanity {{rand}}'
-        note: '[QA] 정원 초과 수락 거절 확인 신청'
     steps:
-    - name: 정원이 찬 상태에서 방장이 대기 신청을 수락하면 거절된다
-      covers:
-      - G.application.accept#capacity-left
+    - name: 정원 2명 룸
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 2
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 정원 2명 룸 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        roomId: data.roomId
+    - name: 새 QA 회원 만들기 (dev 전용 API, 다른 방장 또는 다른 신청자)
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 새 QA 회원의 이력서 올리기
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 한도 확인용 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        memberResumeId: data.resumeId
+    - name: 다른 신청자의 신청
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        headers:
+          Authorization: Bearer {{memberToken}}
+        body:
+          resumeId: '{{memberResumeId}}'
+          note: '[QA] 다른 신청자의 신청'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save:
+        otherApplicationId: data.applicationId
+    - name: qa-guest 의 신청
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] qa-guest 의 신청'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save:
+        applicationId: data.applicationId
+    - name: qa-guest 를 수락해 정원을 채운다
+      covers: []
+      actor: qa-host
       request:
         method: POST
         path: /v1/rooms/{{roomId}}/applications/{{applicationId}}/accept
       expect:
-        status: 4xx
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: ACCEPTED
+    - name: 정원이 찬 상태에서 방장이 대기 신청을 수락하면 거절된다
+      covers:
+      - G.application.accept#capacity-left
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms/{{roomId}}/applications/{{otherApplicationId}}/accept
+      expect:
+        status: 409
         result: ERROR
         error_code: E1411
-      save: {}
-    - name: 정리(QA 룸 삭제)
+    - name: 정리(QA 룸 삭제 roomId)
       always: true
       covers: []
       request:
@@ -833,7 +987,15 @@ cases:
       expect:
         status: 200
         result: SUCCESS
-      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
 
   - id: application.accept-host-only
     title: 방장이 아닌 사람이 참가 신청을 수락하면 E1406으로 거절된다
@@ -1362,7 +1524,7 @@ cases:
         result: SUCCESS
         json:
           data.roomId: '{{roomId}}'
-          data.roomStatus: RECRUITING
+          data.status: RECRUITING
         exists:
         - data.startAt
       save:
@@ -1473,44 +1635,282 @@ cases:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
-    uses:
-      setup: setup.room-open
-      with:
-        title: '[QA] 참여 슬롯 거절 대상 룸 {{rand}}'
-        minParticipants: 2
-        maxParticipants: 4
-        daysFromNow: 7
     steps:
-    - name: 전제 확인 — qa-guest가 이미 활성 룸 3개에 참여 중이어야 한다
+    - name: 참여 슬롯 준비 룸 1
       covers: []
-      request:
-        method: GET
-        path: /v1/dev/qa-data
-      expect:
-        status: 200
-        result: SUCCESS
-      save: {}
-    - name: 참가 신청 제출 — 이미 3개 룸에 참여 중이면 거절된다
-      covers:
-      - G.application.submit#participation-slot-left
+      actor: qa-host
       request:
         method: POST
-        path: /v1/rooms/{{roomId}}/applications
+        path: /v1/rooms
         body:
-          resumeId: '{{fixture.qa-guest.resumeId}}'
-          note: '[QA] 참여 슬롯 초과 거절 확인 신청입니다.'
-      expect:
-        status: 4xx
-        result: ERROR
-        error_code: E1425
-      save: {}
-    - name: 정리(QA 룸 삭제)
-      always: true
-      request:
-        method: DELETE
-        path: /v1/dev/rooms/{{roomId}}
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+8}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 준비 룸 1 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
       expect:
         status: 200
         result: SUCCESS
-      save: {}
+      save:
+        room1: data.roomId
+    - name: 참여 슬롯 준비 룸 2
       covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+9}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 준비 룸 2 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        room2: data.roomId
+    - name: 참여 슬롯 준비 룸 3
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+10}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 참여 슬롯 준비 룸 3 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        room3: data.roomId
+    - name: 참여 신청 1
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{room1}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 참여 신청 1'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save:
+        app1: data.applicationId
+    - name: 참여 수락 1
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms/{{room1}}/applications/{{app1}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: ACCEPTED
+    - name: 참여 신청 2
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{room2}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 참여 신청 2'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save:
+        app2: data.applicationId
+    - name: 참여 수락 2
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms/{{room2}}/applications/{{app2}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: ACCEPTED
+    - name: 참여 신청 3
+      covers: []
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{room3}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 참여 신청 3'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.status: PENDING
+      save:
+        app3: data.applicationId
+    - name: 참여 수락 3
+      covers: []
+      actor: qa-host
+      request:
+        method: POST
+        path: /v1/rooms/{{room3}}/applications/{{app3}}/accept
+      expect:
+        status: 200
+        result: SUCCESS
+        json:
+          data.status: ACCEPTED
+    - name: 새 QA 회원 만들기 (dev 전용 API, 다른 방장 또는 다른 신청자)
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 새 QA 회원의 이력서 올리기
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 한도 확인용 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        hostResumeId: data.resumeId
+    - name: 다른 방장의 대상 룸
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/rooms
+        headers:
+          Authorization: Bearer {{memberToken}}
+        body:
+          postingId: '{{fixture.postingId}}'
+          jobRoleId: '{{fixture.jobRoleId}}'
+          round: FIRST
+          type: JOB
+          method: ONLINE
+          minParticipants: 2
+          maxParticipants: 4
+          schedule:
+            date: '{{date:+11}}'
+            startTime: '{{time:rand}}'
+            durationMinutes: 90
+          title: '[QA] 다른 방장의 대상 룸 {{rand}}'
+          description: QA 플랫폼이 한도 거절 전제 상태를 만들려고 만든 룸이다.
+          resumeId: '{{hostResumeId}}'
+          resumePublic: true
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        targetRoomId: data.roomId
+    - name: 이미 3개 룸에 참여 중인데 신청하면 거절된다
+      covers:
+      - G.application.submit#participation-slot-left
+      actor: qa-guest
+      request:
+        method: POST
+        path: /v1/rooms/{{targetRoomId}}/applications
+        body:
+          resumeId: '{{fixture.qa-guest.resumeId}}'
+          note: '[QA] 이미 3개 룸에 참여 중인데 신청하면 거절된다'
+      expect:
+        status: 409
+        result: ERROR
+        error_code: E1425
+    - name: 정리(QA 룸 삭제 room1)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room1}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 room2)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room2}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 room3)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{room3}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 룸 삭제 targetRoomId)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/rooms/{{targetRoomId}}
+      expect:
+        status: 200
+        result: SUCCESS
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS

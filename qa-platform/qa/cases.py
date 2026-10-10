@@ -548,6 +548,8 @@ def safety_errors(c: "Case") -> list[str]:
             out.append(f"step {i}: 경로가 완성되지 않았다 ({path[:40]})")
         elif "TODO" in json.dumps(req, ensure_ascii=False):
             out.append(f"step {i}: 요청에 TODO 가 남아 있다 — 근거가 없어 Hermes 가 비워 둔 값이다")
+        if "TODO" in json.dumps(s.get("save") or {}, ensure_ascii=False):
+            out.append(f"step {i}: save 에 TODO 가 남아 있다 — 저장할 값의 경로를 몰라 Hermes 가 비워 둔 곳이다")
         bad = [k for k in req if k not in REQUEST_KEYS]
         if bad:
             out.append(f"step {i}: 실행기가 보낼 수 없는 request 키 {bad} (보낼 수 있는 것: {', '.join(REQUEST_KEYS)})")
