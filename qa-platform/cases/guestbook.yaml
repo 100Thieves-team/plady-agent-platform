@@ -154,7 +154,7 @@ cases:
     - OpenAPI POST /v1/rooms/{roomId}/comments
     actor: qa-host
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
@@ -179,6 +179,16 @@ cases:
         - data.createdAt
       save:
         hostCommentId: data.commentId
+    - name: 방장을 뺀 참여자에게 방명록 글 작성 알림이 도착한다
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_COMMENT_POSTED
+        expect:
+          link: /interviews/{{roomId}}
+      covers: []
     - name: 참여자인 qa-guest 계정을 이용 제한 상태로 바꾼다
       actor: qa-host
       covers: []
