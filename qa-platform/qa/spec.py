@@ -38,6 +38,8 @@ class Op:
     body_fields: list = field(default_factory=list)  # [{name, type, description, required, nullable, enum?, fields?, items?}]
     # 파일 업로드(multipart/form-data) 요청의 필드 — 스크립트의 request.multipart 로 보낸다
     multipart: list = field(default_factory=list)    # [{name, type, format, required, description, content_type?}]
+    # 성공(2xx) 응답 스키마의 필드 경로 — 배열은 [] (data.rooms[].roomId). 스크립트가 기대한 응답 필드가 문서에 있는지 본다 (§16.14)
+    response_paths: set = field(default_factory=set)
 
     @property
     def is_write(self) -> bool:
@@ -132,6 +134,31 @@ def body_fields(doc: dict, sch, example=None, depth: int = 0) -> list[dict]:
     return out
 
 
+def schema_paths(doc: dict, sch, prefix: str = "", depth: int = 0, out: set | None = None) -> set:
+    """스키마 → 필드 경로 집합. 중간 경로도 넣는다(data · data.rooms · data.rooms[] · data.rooms[].roomId)."""
+    out = set() if out is None else out
+    if depth > 8:
+        return out
+    try:
+        sch = _resolve(doc, sch)
+    except (TypeError, AttributeError, RecursionError):
+        return out
+    if not isinstance(sch, dict):
+        return out
+    for alt in ("allOf", "oneOf", "anyOf"):
+        for sub in sch.get(alt) or []:
+            schema_paths(doc, sub, prefix, depth + 1, out)
+    if sch.get("type") == "array" or "items" in sch:
+        p = prefix + "[]"
+        out.add(p)
+        schema_paths(doc, sch.get("items") or {}, p, depth + 1, out)
+    for name, sub in (sch.get("properties") or {}).items():
+        p = f"{prefix}.{name}" if prefix else str(name)
+        out.add(p)
+        schema_paths(doc, sub, p, depth + 1, out)
+    return out
+
+
 def _example_value(ex) -> object:
     if isinstance(ex, dict) and "value" in ex:
         v = ex["value"]
@@ -183,6 +210,8 @@ def parse(doc: dict) -> dict[str, Op]:
                 content = _json_content((resp or {}).get("content") or {}) if isinstance(resp, dict) else {}
                 examples = content.get("examples") or {}
                 if status.startswith("2"):
+                    if content.get("schema"):
+                        schema_paths(doc, content["schema"], out=o.response_paths)
                     first = None
                     for ex in examples.values():
                         first = _example_value(ex)

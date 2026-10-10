@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from qa import httpx  # noqa: E402
-from qa.cases import parse_one, safety_errors  # noqa: E402
+from qa.cases import contract_errors, parse_one, safety_errors  # noqa: E402
+from qa.spec import SpecData, parse as parse_spec  # noqa: E402
 from qa.config import Config  # noqa: E402
 from qa.drafts import fit_status  # noqa: E402
 from qa.runner import Runner  # noqa: E402
@@ -65,6 +66,33 @@ class SafetyTest(unittest.TestCase):
         self.assertIn("경로가 완성되지 않았다", errs)
         self.assertIn("실행마다 바뀌는 값", errs)
         self.assertIn("form", errs)
+
+    def test_contract_against_api_doc(self):
+        doc = {"paths": {
+            "/v1/rooms/{roomId}/complete": {"post": {"operationId": "completeRoomProgress",
+                "requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["attendances"], "properties": {"attendances": {"type": "array"}}}}}},
+                "responses": {"200": {"content": {"application/json": {"schema": {"type": "object", "properties": {"result": {"type": "string"},
+                    "data": {"type": "object", "properties": {"status": {"type": "string"}, "attendances": {"type": "array", "items": {"type": "object", "properties": {"memberId": {"type": "string"}}}}}}}}}}}}}},
+            "/v1/attendances/me": {"get": {"operationId": "getMyAttendance", "parameters": [{"name": "roomId", "in": "query", "required": True}],
+                "responses": {"200": {"content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "object", "properties": {"status": {"type": "string"}}}}}}}}}}}}}
+        spec = SpecData("h", parse_spec(doc), 0, "t")
+        bad = case("  - request: {method: POST, path: '/v1/rooms/r/completion', body: {attendances: []}}\n"           # 지어낸 경로
+                   "  - request: {method: POST, path: '/v1/rooms/r/complete'}\n"                                          # 필수 본문 없음
+                   "  - request: {method: GET, path: /v1/attendances/me}\n"                                               # 필수 쿼리 없음
+                   "  - request: {method: POST, path: '/v1/rooms/r/complete', body: {attendances: []}}\n"
+                   "    expect: {json: {data.roomStatus: X, 'data.attendances[0].memberId': m}}\n    save: {rid: data.roomId}\n", None)
+        errs = contract_errors(bad, spec)
+        self.assertEqual(len(errs), 5, errs)
+        self.assertIn("API 문서에 없는 요청 POST /v1/rooms/r/completion", errs[0])
+        self.assertIn("필수 본문 필드 ['attendances']", errs[1])
+        self.assertIn("필수 쿼리 ['roomId']", errs[2])
+        self.assertIn("data.roomStatus", errs[3])
+        self.assertNotIn("attendances", errs[3])                                                                     # 배열 첨자는 [] 로 맞춘다
+        self.assertIn("data.roomId", errs[4])
+        ok = case("  - request: {method: GET, path: /v1/attendances/me, query: {roomId: r}}\n    expect: {json: {data.status: A, data: null}}\n"
+                  "  - request: {method: POST, path: '/v1/rooms/r/complete'}\n    expect: {status: 400, error_code: E400}\n"   # 거절 확인은 필수 본문을 일부러 뺀다
+                  "  - request: {method: GET, path: /oauth2/authorization/google}\n    expect: {status: 302}\n", None)
+        self.assertEqual(contract_errors(ok, spec), [])
 
     def test_fit_status(self):
         class Op:

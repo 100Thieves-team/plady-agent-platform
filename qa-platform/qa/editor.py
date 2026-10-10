@@ -253,7 +253,7 @@ def suggest_id(domain: str, title: str) -> str:
 # ---------------------------------------------------------------------------------------------
 # 사람이 쓴 스크립트 검증 — Hermes 초안 검증(drafts.validate)과 달리 id 를 바꾸지 않고, setup 은 covers 없이도 된다
 # ---------------------------------------------------------------------------------------------
-def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[str], library: dict | None = None):
+def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[str], library: dict | None = None, spec=None):
     """(Case|None, 오류, 경고). library(지금 스크립트)를 주면 uses 를 펼쳐 테스트 데이터 만들기 카드·입력칸까지 확인한다."""
     try:
         case = _validate(copy.deepcopy(raw), "<form>", library)
@@ -263,7 +263,7 @@ def validate_case(raw: dict, *, catalog, cfg, actors: dict, existing_ids: set[st
     if case.id in existing_ids:
         errors.append(f"id {case.id} 는 이미 있는 스크립트다 — 다른 id 를 쓰거나 그 스크립트를 폼으로 고친다")
     if catalog is not None:
-        audit({case.id: case}, catalog)
+        audit({case.id: case}, catalog, spec)
         errors += case.audit["errors"]
         warnings += case.audit["warnings"]
     text = case.to_yaml()

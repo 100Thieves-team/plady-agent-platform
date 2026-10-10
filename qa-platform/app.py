@@ -293,7 +293,7 @@ class App:
 
     def _audit(self, cat) -> None:
         """스크립트 정합성 검사 + 알림 확인이 빠진 정상 흐름 스크립트 표시(경고, 실행에서 빼지는 않는다)."""
-        audit_cases(self.cases, cat)
+        audit_cases(self.cases, cat, self.spec.get() if hasattr(self, "spec") else None)
         if cat is None:
             return
         for cid, gaps in self.notify_gaps().items():
@@ -1874,7 +1874,7 @@ class App:
             return raw, None, [f"id 는 바꿀 수 없다 ({original_id}) — 새 id 가 필요하면 새 스크립트로 만들고 이것은 지운다"], [], ""
         existing = set(self.cases) - ({original_id} if mode == "edit" else set()) - ({draft.get("case_id")} if draft and draft.get("case_id") else set())
         case, errors, warnings = editormod.validate_case(raw, catalog=self.current_catalog(), cfg=self.cfg, actors=self.all_actors(), existing_ids=existing,
-                                                         library=self.cases)
+                                                         library=self.cases, spec=self.spec.get())
         warnings = warnings + editormod.body_warnings(raw, self.spec.get())
         return raw, case, errors, warnings, draftsmod.yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
 
@@ -2422,7 +2422,8 @@ class App:
         if not isinstance(raw, dict):
             return None, ["스크립트는 맵이어야 한다"], []
         return draftsmod.validate(raw, actors=self.all_actors(), requested=list(raw.get("covers") or []) + [t for s in (raw.get("steps") or []) if isinstance(s, dict) for t in (s.get("covers") or [])],
-                                  catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")}, library=self.cases)
+                                  catalog=cat, cfg=self.cfg, existing_ids=set(self.cases) - {d.get("case_id")}, library=self.cases,
+                                  spec=self.spec.get())
 
     def _on_finish(self, run: dict):
         if run["trigger"] in HIDDEN_TRIGGERS:

@@ -558,7 +558,71 @@ def safety_errors(c: "Case") -> list[str]:
     return out
 
 
-def audit(cases: dict[str, Case], catalog) -> None:
+_IDX_SEG = re.compile(r"\[\d+\]")
+_ENVELOPE = ("result", "error")
+
+
+def _expects_success(expect: dict) -> bool:
+    st = str((expect or {}).get("status") or "")
+    if (expect or {}).get("error_code") or (expect or {}).get("result") == "ERROR":
+        return False
+    return st.startswith("2") or not st
+
+
+def contract_errors(c: "Case", spec) -> list[str]:
+    """API 문서(OpenAPI)를 근거로 스크립트 요청·기대를 대조한다. 문서에 없는 것을 지어낸 단계를 막는다 (docs/qa-platform-v2.md §16.14).
+    - 모든 /v1/ 요청은 문서에 있는 method · 경로여야 한다(준비 단계와 dev 도구 포함).
+    - 성공을 기대하는 단계는 필수 쿼리 · 필수 본문 필드 · 필수 파일 필드를 넣어야 한다. 거절을 확인하는 단계는 일부러 빼므로 보지 않는다.
+    - 성공을 기대하는 단계의 expect.json · exists 경로는 문서의 성공 응답 스키마에 있어야 한다(result · error 는 응답 규약)."""
+    if spec is None or not getattr(spec, "ops", None):
+        return []
+    out = []
+    for i, s in enumerate(c.steps, 1):
+        req = s.get("request")
+        if not req:
+            continue
+        method = str(req.get("method") or "").upper()
+        raw_path = str(req.get("path") or "")
+        path = raw_path.split("?")[0]
+        if not path.startswith("/v1/"):
+            continue                    # /oauth2/… 같은 인증 서버 경로는 문서에 없다
+        op = spec.op_for(method, path)
+        if op is None:
+            out.append(f"step {i}: API 문서에 없는 요청 {method} {path} — 문서의 경로·method 를 쓴다")
+            continue
+        exp = s.get("expect") or {}
+        if not _expects_success(exp):
+            continue
+        given_q = set((req.get("query") or {}).keys()) | {kv.split("=")[0] for kv in (raw_path.split("?", 1)[1].split("&") if "?" in raw_path else []) if kv}
+        miss_q = [p["name"] for p in op.params if p.get("in") == "query" and p.get("required") and p["name"] not in given_q]
+        if miss_q:
+            out.append(f"step {i}: {op.id} 의 필수 쿼리 {miss_q} 가 없다")
+        if req.get("multipart") is not None:
+            miss_m = [f["name"] for f in op.multipart if f.get("required") and f["name"] not in (req.get("multipart") or {})]
+            if miss_m:
+                out.append(f"step {i}: {op.id} 의 필수 파일 필드 {miss_m} 가 없다")
+        elif op.body_fields:
+            body = req.get("body")
+            if isinstance(body, dict) or body is None:
+                miss_b = [f["name"] for f in op.body_fields if f.get("required") and f["name"] not in (body or {})]
+                if miss_b:
+                    out.append(f"step {i}: {op.id} 의 필수 본문 필드 {miss_b} 가 없다")
+        if op.response_paths:
+            used = list((exp.get("json") or {}).keys()) + [str(x) for x in (exp.get("exists") or [])]
+            # data 자체(data: null 등)는 응답 규약이다. 그 아래 필드만 문서와 맞춘다
+            bad = [k for k in used if str(k) != "data" and str(k).split(".")[0].split("[")[0] not in _ENVELOPE
+                   and _IDX_SEG.sub("[]", str(k)) not in op.response_paths]
+            if bad:
+                out.append(f"step {i}: {op.id} 의 성공 응답에 없는 필드 {bad} 를 기대한다 — 문서의 응답 필드를 쓴다")
+            saves = [str(v) for v in (s.get("save") or {}).values()]
+            bad_s = [v for v in saves if v != "data" and v.split(".")[0].split("[")[0] not in _ENVELOPE
+                     and _IDX_SEG.sub("[]", v) not in op.response_paths]
+            if bad_s:
+                out.append(f"step {i}: {op.id} 의 성공 응답에 없는 필드 {bad_s} 를 저장한다 — 실행하면 빈 값이 저장된다")
+    return out
+
+
+def audit(cases: dict[str, Case], catalog, spec=None) -> None:
     """각 스크립트의 covers 를 카탈로그와 대조해 case.audit 를 채운다. catalog 가 None 이면 unchecked."""
     for c in cases.values():
         if catalog is None:
@@ -616,4 +680,5 @@ def audit(cases: dict[str, Case], catalog) -> None:
                     elif code and not any((s.get("expect") or {}).get("error_code") == code for s in own):
                         warnings.append(f"covers {tid}: 바인딩 코드 {code} 를 기대하는 단계가 없다")
         errors.extend(safety_errors(c))
+        errors.extend(contract_errors(c, spec))
         c.audit = {"status": "error" if errors else ("warn" if warnings else "ok"), "errors": errors, "warnings": warnings}

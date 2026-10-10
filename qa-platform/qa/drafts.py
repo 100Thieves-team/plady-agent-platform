@@ -52,7 +52,9 @@ DRAFT_SYSTEM = (
     "알림 단계는 정리 단계보다 앞에 둔다. 거절(4xx)을 확인하는 스크립트에는 알림 단계를 두지 않는다. "
     "알림 수신 설정(`PATCH /v1/members/me/notification-setting`)을 바꾸는 스크립트는 웹 푸시를 끄면 웹 푸시만 보내던 알림 중 메일 대체가 있는 것(신청 접수·반려·완료·방장 위임)은 메일로, 댓글은 오지 않음을 확인할 수 있다. "
     "바꾼 설정은 마지막에 `always: true` 정리 단계로 되돌린다. 웹 푸시를 다시 켤 때는 `{isWebPushAllowed: true, webPushRegistration: \"{{webpush.테스트 계정}}\"}`(플랫폼 수신기 토큰).\n"
-    "11. API 요청·응답의 필드·상태 코드·에러 코드는 OpenAPI 발췌가 정본이다. PRD·규칙표에 없는 API 세부라도 OpenAPI 에 있으면 그대로 쓰고, "
+    "11. API 요청·응답의 필드·상태 코드·에러 코드는 OpenAPI 발췌와 'API 목록' 이 정본이다. 문서에 없는 경로·method·쿼리·응답 필드를 지어내지 않는다. "
+    "준비 단계에 다른 API 가 필요하면 'API 목록' 에서 고르고, 필수 쿼리·필수 본문을 넣는다. expect.json · exists · save 의 경로는 그 API 의 응답 필드에서만 고른다. "
+    "응답 필드를 모르면 그 값을 확인하거나 저장하지 않는다. 플랫폼이 문서와 대조해 어긋난 스크립트를 버린다.  PRD·규칙표에 없는 API 세부라도 OpenAPI 에 있으면 그대로 쓰고, "
     "케이스가 확인하는 결과에 해당하는 응답 필드(새로 생긴 필드 포함)는 expect.json · expect.exists 로 확인한다.\n"
     "12. 'dev 도구' 목록이 주어지면 Google 로그인·회원 상태·시간이 걸리는 작업은 그 도구로 만든다. 도구 단계는 covers 가 없다. "
     "로그인 쿠키로 확인하는 흐름(로그인·로그아웃·토큰 갱신·탈퇴·복구)은 단계에 `cookie_jar: 이름` 을 달아 응답 쿠키를 같은 이름의 다음 단계로 넘기고, "
@@ -76,6 +78,32 @@ DRAFT_SYSTEM = (
 # ---------------------------------------------------------------------------------------------
 # 근거 조립
 # ---------------------------------------------------------------------------------------------
+def _leaf_paths(op, limit: int = 60) -> list[str]:
+    """성공 응답 필드 경로 중 끝 필드만 (data.rooms[].roomId). 중간 경로는 뺀다."""
+    paths = sorted(getattr(op, "response_paths", None) or [])
+    leaves = [p for p in paths if p not in ("result",) and not any(q.startswith(p + ".") or q.startswith(p + "[") for q in paths)]
+    return leaves[:limit]
+
+
+def _index_line(op, summary: bool = False) -> str:
+    """API 목록 한 줄: method 경로 · id · 필수 쿼리 · 필수 본문 · 응답 필드."""
+    bits = [f"- {op.method} {op.path} · {op.id}"]
+    if summary and op.summary:
+        bits.append(op.summary.strip()[:80])
+    q = [p["name"] for p in op.params if p.get("in") == "query" and p.get("required")]
+    if q:
+        bits.append("필수 쿼리 " + ", ".join(q))
+    b = [f["name"] for f in op.body_fields if f.get("required")]
+    if b:
+        bits.append("필수 본문 " + ", ".join(b))
+    if getattr(op, "multipart", None):
+        bits.append("파일 " + ", ".join(f["name"] for f in op.multipart))
+    r = _leaf_paths(op, 14)
+    if r:
+        bits.append("응답 " + ", ".join(r) + (" …" if len(_leaf_paths(op, 999)) > 14 else ""))
+    return " · ".join(bits)
+
+
 def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids: list[str], example: Case | None) -> tuple[str, str]:
     """(프롬프트 본문, 프롬프트 해시). 같은 근거로 다시 만들면 해시가 같다 — 초안끼리 비교하는 열쇠."""
     recs = [catalog.records[t] for t in tc_ids if t in catalog.records]
@@ -101,7 +129,11 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
                 continue
             block = {"operationId": op.id, "method": op.method, "path": op.path, "summary": op.summary,
                      "request_example": op.request_example,
+                     **({"query_params": [{"name": p["name"], "required": p["required"]} for p in op.params if p.get("in") == "query"]}
+                        if any(p.get("in") == "query" for p in op.params) else {}),
+                     **({"required_body_fields": [f["name"] for f in op.body_fields if f.get("required")]} if op.body_fields else {}),
                      **({"multipart_fields": op.multipart} if getattr(op, "multipart", None) else {}),
+                     **({"response_fields": _leaf_paths(op)} if getattr(op, "response_paths", None) else {}),
                      "success": {st: ex for st, ex in op.success.items()},
                      "errors": {code: {"status": i.get("status"), "message": i.get("message"), "example": i.get("example")} for code, i in op.errors.items()}}
             parts.append("```json\n" + json.dumps(block, ensure_ascii=False, indent=1)[:6000] + "\n```")
@@ -122,10 +154,14 @@ def assemble(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
     sends = inboxmod.sends_text(ops)
     if sends:
         parts.append("# 이 API 가 보내는 알림 (백엔드 발송 정책, 규칙 10)\n" + sends)
+    if spec:
+        parts.append("# API 목록 (문서에 있는 것 전부. 위 발췌에 없는 API 가 필요하면 여기서 고른다. 여기 없는 경로·필드는 없는 것이다)\n"
+                     + "\n".join(_index_line(o) for o in sorted(spec.ops.values(), key=lambda o: (o.path, o.method))
+                                     if o.path.startswith("/v1/") and "/v1/dev/" not in o.path))
     dev_ops = sorted((o for o in (spec.ops if spec else {}).values() if "/v1/dev/" in o.path), key=lambda o: o.path)
     if dev_ops:
         parts.append("# dev 도구 (QA 데이터만 받는 dev 전용 API, 검증 대상 아님)\n" +
-                     "\n".join(f"- {o.id} · {o.method} {o.path} · {(o.summary or '').strip()}" for o in dev_ops))
+                     "\n".join(_index_line(o, summary=True) for o in dev_ops))
     parts.append("# 사용할 수 있는 것\n"
                  f"- 테스트 계정(actor) 이름: {', '.join(sorted(cfg.actors)) or '(없음 — 로그인 스크립트는 actor 를 비워 두고 TODO 로 표시)'}\n"
                  f"- 픽스처 키: {', '.join(sorted(cfg.fixtures)) or '(없음)'}\n"
@@ -223,7 +259,7 @@ def confirmed_cancel_warning(case: Case) -> str | None:
 
 
 def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_ids: set[str], actors: dict | None = None,
-             library: dict | None = None) -> tuple[Case | None, list[str], list[str]]:
+             library: dict | None = None, spec: SpecData | None = None) -> tuple[Case | None, list[str], list[str]]:
     known = actors if actors is not None else cfg.actors     # SSM 고정 계정 + 플랫폼이 만든 QA 회원(App.all_actors)
     """docs/qa-platform-tc.md §7.2. 반환 (스크립트|None, 버린 사유, 경고)."""
     errors: list[str] = []
@@ -244,7 +280,7 @@ def validate(raw: dict, *, requested: list[str], catalog, cfg: Config, existing_
     extra = [t for t in case.covers if t not in requested]
     if extra:
         return None, [f"요청하지 않은 테스트 조건을 덮는다고 주장: {', '.join(extra)}"], []
-    audit({case.id: case}, catalog)
+    audit({case.id: case}, catalog, spec)
     errors.extend(case.audit["errors"])
     warnings.extend(case.audit["warnings"])
     text = case.to_yaml()
@@ -335,7 +371,7 @@ def generate(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, tc_ids:
             if force_id and not accepted:      # 막힌 스크립트를 같은 id 로 다시 쓴다 — 첫 스크립트만
                 d = {**d, "id": force_id}
                 ids = set(existing_ids) - {force_id}
-            case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=ids, library=library)
+            case, errors, warnings = validate(d, requested=tc_ids, catalog=catalog, cfg=cfg, existing_ids=ids, library=library, spec=spec)
             if case:
                 accepted.append((case, warnings))
             else:
@@ -457,7 +493,7 @@ def revise(*, cfg: Config, catalog, spec: SpecData | None, wiki: Wiki, case: Cas
         return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": None, "errors": ["출력에서 스크립트 YAML 을 찾지 못했다"], "model": cfg.hermes_model}
     d = dict(docs[0])
     d["id"] = case.id                      # 규칙 1 — 원본 id 유지 (사람이 파일을 바꿔치기한다)
-    c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id}, library=library)
+    c, errors, warnings = validate(d, requested=allowed, catalog=catalog, cfg=cfg, existing_ids=existing_ids - {case.id}, library=library, spec=spec)
     return {"prompt_hash": phash, "raw": raw_text, "allowed": allowed, "accepted": (c, warnings) if c else None, "errors": errors, "model": cfg.hermes_model}
 
 
