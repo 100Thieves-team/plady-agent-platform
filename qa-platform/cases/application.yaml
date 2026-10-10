@@ -21,7 +21,7 @@ cases:
     - PRD/룸 참여 및 참여자 관리 §4.4
     actor: qa-guest
     reviewed:
-      at: '2026-09-28'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
@@ -52,6 +52,16 @@ cases:
         - data.applicationId
       save:
         applicationId: data.applicationId
+    - name: 방장이 새 참가 신청 알림을 받는다
+      covers: []
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_APPLICATION_SUBMITTED
+        expect:
+          link: /interviews/{{roomId}}
     - name: 방장이 참가 신청을 수락한다
       actor: qa-host
       covers:
@@ -71,6 +81,17 @@ cases:
         - data.recruit.max
         - data.recruit.recruitStatus
       save: {}
+    - name: 신청자가 참가 신청 수락 알림을 받는다
+      covers: []
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        - email
+        within: 60
+        type: ROOM_APPLICATION_ACCEPTED
+        expect:
+          link: /interviews/{{roomId}}
     - name: 정리(QA 룸 삭제)
       actor: qa-host
       always: true
