@@ -60,12 +60,13 @@ cases:
           exists: [data.nickname, data.profile]
 
   - id: auth.logout-current-device
-    title: 사용자가 현재 기기에서 로그아웃하면 성공 응답을 받는다
+    title: 사용자가 현재 기기에서 로그아웃하면 성공 응답과 함께 로그인 쿠키가 제거된다
     suite: sanity
     variant: 회원-및-프로필/S2/logout
     domains:
     - auth
     operations:
+    - memberMe
     - authLogout
     covers:
     - op.authLogout:200
@@ -73,23 +74,24 @@ cases:
     - OpenAPI POST /v1/auth/logout
     actor: qa-guest
     reviewed:
-      at: '2026-10-08'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     steps:
-    - name: dev 소셜 로그인으로 현재 기기 세션 준비
-      cookie_jar: logoutCurrentDevice
+    - name: 전제 확인 — 로그인된 사용자가 내 프로필을 조회한다
+      cookie_jar: guestDevice
       request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/social-login
+        method: GET
+        path: /v1/members/me
       expect:
         status: 200
         result: SUCCESS
+        json:
+          data.memberId: '{{actor.qa-guest.memberId}}'
       save: {}
       covers: []
-    - name: 현재 기기에서 로그아웃
-      cookie_jar: logoutCurrentDevice
-      actor: null
+    - name: 현재 기기에서 로그아웃한다
+      cookie_jar: guestDevice
       covers:
       - op.authLogout:200
       request:
@@ -98,7 +100,8 @@ cases:
       expect:
         status: 200
         result: SUCCESS
-        json:
-          data: null
-          error: null
+        cookies:
+          DEV_ACCESS_TOKEN: cleared
+          DEV_REFRESH_TOKEN: cleared
+          DEV_RESTORE_TOKEN: absent
       save: {}
