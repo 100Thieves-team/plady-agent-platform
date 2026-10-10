@@ -18,7 +18,7 @@ cases:
     - PRD/룸 방명록 §6
     actor: qa-host
     reviewed:
-      at: '2026-09-25'
+      at: '2026-10-10'
       by: bebe
     written_by: hermes
     uses:
@@ -44,6 +44,16 @@ cases:
       save:
         hostCommentId: data.commentId
         hostCommentCreatedAt: data.createdAt
+    - name: 참여자가 방명록 댓글 알림을 받는다
+      notify:
+        to: qa-guest
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_COMMENT_POSTED
+        expect:
+          link: /interviews/{{roomId}}
+      covers: []
     - name: 참여자가 방명록에 질문을 남긴다
       actor: qa-guest
       covers:
@@ -63,6 +73,16 @@ cases:
       save:
         guestCommentId: data.commentId
         guestCommentCreatedAt: data.createdAt
+    - name: 방장이 방명록 댓글 알림을 받는다
+      notify:
+        to: qa-host
+        channels:
+        - web_push
+        within: 60
+        type: ROOM_COMMENT_POSTED
+        expect:
+          link: /interviews/{{roomId}}
+      covers: []
     - name: 정리(QA 룸 삭제)
       always: true
       covers: []
