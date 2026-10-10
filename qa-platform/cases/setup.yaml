@@ -166,7 +166,7 @@ cases:
   - id: setup.member-withdrawn
     title: 탈퇴한 QA 회원 만들기
     suite: setup
-    description: 새 QA 회원을 만들고 그 회원으로 탈퇴한다. 탈퇴 계정 복구를 확인할 때 쓴다. 그 다음 dev 소셜 로그인(POST /v1/dev/members/{memberId}/social-login)을 쿠키 저장소와 함께 부르면 복구 확인 쿠키(RESTORE_TOKEN)를 받고, 같은 저장소로 POST /v1/auth/restoration 을 부른다. memberToken 은 탈퇴 전 그 회원의 토큰이다.
+    description: 새 QA 회원을 만들고 그 회원으로 탈퇴한다. 탈퇴 계정 복구를 확인할 때 쓴다. 그 다음 dev 소셜 로그인(POST /v1/dev/members/{memberId}/social-login)을 쿠키 저장소와 함께 부르면 복구 확인 쿠키(DEV_RESTORE_TOKEN)를 받고, 같은 저장소로 POST /v1/auth/restoration 을 부른다. memberToken 은 탈퇴 전 그 회원의 토큰이다.
     domains: [member]
     operations: [createQaMember, memberWithdraw]
     actor: qa-host
@@ -184,16 +184,25 @@ cases:
   - id: setup.member-restricted
     title: 이용 제한 QA 회원 만들기
     suite: setup
-    description: 새 QA 회원을 만들고 dev 전용 API 로 이용 제한(RESTRICTED) 상태로 바꾼다. 이용 제한 계정의 거절을 확인할 때 쓴다. 그 회원으로 부르는 단계는 테스트 계정을 비우고(actor null) 헤더에 Authorization "Bearer {{memberToken}}" 를 넣는다.
+    description: 새 QA 회원을 만들어 기본 이력서를 하나 올린 뒤 dev 전용 API 로 이용 제한(RESTRICTED) 상태로 바꾼다. 이용 제한 계정의 거절을 확인할 때 쓴다. 이력서를 먼저 올려 두는 것은 룸 생성·참가 신청이 이력서 확인(E1010)에서 먼저 막히지 않게 하려는 것이다. 그 회원으로 부르는 단계는 테스트 계정을 비우고(actor null) 헤더에 Authorization "Bearer {{memberToken}}" 를 넣는다. 이 회원의 이력서는 resumeId 로 쓴다.
     domains: [member]
-    operations: [createQaMember, changeQaMemberStatus]
+    operations: [createQaMember, createResume, changeQaMemberStatus]
     actor: qa-host
-    outputs: [memberId]
+    outputs: [memberId, resumeId]
     steps:
       - name: QA 회원 만들기 (dev 전용 API)
         request: { method: POST, path: /v1/dev/members }
         expect: { status: 200, result: SUCCESS }
         save: { memberId: data.memberId, memberToken: data.accessToken }
+      - name: 그 회원으로 기본 이력서 올리기
+        actor: null
+        request:
+          method: POST
+          path: /v1/members/me/resumes
+          headers: { Authorization: "Bearer {{memberToken}}" }
+          multipart: { file: { sample: pdf, filename: "[QA] 이용 제한 회원 이력서 {{rand}}.pdf" } }
+        expect: { status: 2xx, result: SUCCESS }
+        save: { resumeId: data.resumeId }
       - name: 이용 제한으로 바꾸기 (dev 전용 API)
         request: { method: POST, path: "/v1/dev/members/{{memberId}}/status", body: { status: RESTRICTED } }
         expect: { status: 200, result: SUCCESS, json: { "data.status": RESTRICTED } }

@@ -20,33 +20,214 @@ cases:
       at: '2026-10-08'
       by: bebe
     written_by: hermes
-    uses:
-      setup: setup.resume-list
-      with:
-        actor: qa-guest
     steps:
-    - name: 전제 확인 — qa-guest가 이미 이력서 10개를 보관 중이어야 한다
+    - name: 새 QA 회원 만들기 (dev 전용 API)
+      covers: []
       request:
-        method: GET
-        path: /v1/members/me/resumes
+        method: POST
+        path: /v1/dev/members
       expect:
         status: 200
         result: SUCCESS
-        json:
-          data.count: 10
-      save: {}
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 보관 이력서 1
       covers: []
-    - name: 이력서 11번째 등록 시도
-      covers:
-      - G.resume.create#resume-slot-left
+      actor: null
       request:
         method: POST
         path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 1 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume1: data.resumeId
+    - name: 보관 이력서 2
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 2 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume2: data.resumeId
+    - name: 보관 이력서 3
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 3 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume3: data.resumeId
+    - name: 보관 이력서 4
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 4 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume4: data.resumeId
+    - name: 보관 이력서 5
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 5 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume5: data.resumeId
+    - name: 보관 이력서 6
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 6 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume6: data.resumeId
+    - name: 보관 이력서 7
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 7 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume7: data.resumeId
+    - name: 보관 이력서 8
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 8 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume8: data.resumeId
+    - name: 보관 이력서 9
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 9 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume9: data.resumeId
+    - name: 보관 이력서 10
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 보관 이력서 10 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resume10: data.resumeId
+    - name: 이력서 11번째 등록 시도
+      covers:
+      - G.resume.create#resume-slot-left
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 열한 번째 이력서 {{rand}}.pdf'
       expect:
         status: 4xx
         result: ERROR
         error_code: E1011
-      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
 
   - id: resume.account-active
     title: 이용이 제한된 계정이 이력서를 올리면 거절된다
@@ -80,9 +261,14 @@ cases:
         path: /v1/members/me/resumes
         headers:
           Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 이용 제한 계정 이력서 {{rand}}.pdf'
       expect:
         status: 4xx
         result: ERROR
+        error_code: E1002
       save: {}
     - name: 정리(QA 회원 삭제)
       always: true
@@ -116,18 +302,68 @@ cases:
       by: bebe
     written_by: hermes
     steps:
+    - name: 새 QA 회원 만들기 (dev 전용 API)
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 기본 지정용 이력서
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 기본 지정용 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        deletedResumeId: data.resumeId
+    - name: 전제 만들기 — 올린 이력서를 지운다
+      covers: []
+      actor: null
+      request:
+        method: DELETE
+        path: /v1/members/me/resumes/{{deletedResumeId}}
+        headers:
+          Authorization: Bearer {{memberToken}}
+      expect:
+        status: 200
+        result: SUCCESS
     - name: 삭제된 이력서를 기본 이력서로 지정하면 E1010 으로 거절된다
       covers:
       - G.resume.set_default#resume-not-deleted
       - op.makeResumeDefault:E1010
+      actor: null
       request:
         method: POST
         path: /v1/members/me/resumes/{{deletedResumeId}}/make-default
+        headers:
+          Authorization: Bearer {{memberToken}}
       expect:
         status: 404
         result: ERROR
         error_code: E1010
-      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
 
   - id: resume.set-default-owner-only
     title: 다른 사람의 이력서를 기본으로 지정하면 E1010 으로 거절된다
@@ -223,27 +459,68 @@ cases:
       by: bebe
     written_by: hermes
     steps:
-    - name: 전제 만들기 — 소유한 보관 이력서를 먼저 삭제한다
+    - name: 새 QA 회원 만들기 (dev 전용 API)
       covers: []
       request:
-        method: DELETE
-        path: /v1/members/me/resumes/{{fixture.qa-guest.resumeId}}
+        method: POST
+        path: /v1/dev/members
       expect:
         status: 200
         result: SUCCESS
-      save: {}
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 지울 이력서
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 지울 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        resumeId: data.resumeId
+    - name: 전제 만들기 — 올린 이력서를 지운다
+      covers: []
+      actor: null
+      request:
+        method: DELETE
+        path: /v1/members/me/resumes/{{resumeId}}
+        headers:
+          Authorization: Bearer {{memberToken}}
+      expect:
+        status: 200
+        result: SUCCESS
     - name: 이미 삭제된 이력서를 다시 삭제하면 E1010 으로 거절된다
       covers:
       - G.resume.delete#resume-not-deleted
       - op.deleteResume:E1010
+      actor: null
       request:
         method: DELETE
-        path: /v1/members/me/resumes/{{fixture.qa-guest.resumeId}}
+        path: /v1/members/me/resumes/{{resumeId}}
+        headers:
+          Authorization: Bearer {{memberToken}}
       expect:
         status: 404
         result: ERROR
         error_code: E1010
-      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS
 
   - id: resume.delete-owner-only
     title: 다른 사람의 이력서를 지우면 E1010으로 거절된다
@@ -266,15 +543,51 @@ cases:
       by: bebe
     written_by: hermes
     steps:
+    - name: 새 QA 회원 만들기 (dev 전용 API)
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
+    - name: 다른 회원 이력서
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 다른 회원 이력서 {{rand}}.pdf'
+      expect:
+        status: 2xx
+        result: SUCCESS
+      save:
+        otherResumeId: data.resumeId
     - name: 다른 회원의 보관 이력서 삭제 시도
       covers:
       - G.resume.delete#resume-owner-only
       - op.deleteResume:E1010
       request:
         method: DELETE
-        path: /v1/members/me/resumes/{{fixture.qa-host.resumeId}}
+        path: /v1/members/me/resumes/{{otherResumeId}}
       expect:
         status: 404
         result: ERROR
         error_code: E1010
-      save: {}
+    - name: 정리(QA 회원 삭제)
+      always: true
+      covers: []
+      request:
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
+      expect:
+        status: 200
+        result: SUCCESS

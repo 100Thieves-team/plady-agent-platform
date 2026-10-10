@@ -33,7 +33,7 @@ cases:
         method: GET
         path: /oauth2/authorization/google
       expect:
-        status: 2xx
+        status: 302
       save: {}
     - name: dev 소셜 가입으로 최초 로그인 완료
       covers:
@@ -215,7 +215,7 @@ cases:
             durationMinutes: 90
           title: '[QA] 이용 제한 계정 룸 생성 거절 {{rand}}'
           description: QA 플랫폼 sanity 케이스가 이용 제한 계정의 상태 변경 행동 거절을 확인한다.
-          resumeId: '{{fixture.qa-host.resumeId}}'
+          resumeId: '{{resumeId}}'
           resumePublic: true
       expect:
         status: 4xx
@@ -266,7 +266,7 @@ cases:
         status: 200
         result: SUCCESS
         cookies:
-          RESTORE_TOKEN: set
+          DEV_RESTORE_TOKEN: set
       save: {}
       covers: []
     - name: 탈퇴 계정 복구 확인
@@ -330,37 +330,71 @@ cases:
       by: bebe
     written_by: hermes
     steps:
+    - name: 새 QA 회원 만들기 (dev 전용 API, 공용 계정 프로필을 바꾸지 않는다)
+      covers: []
+      request:
+        method: POST
+        path: /v1/dev/members
+      expect:
+        status: 200
+        result: SUCCESS
+      save:
+        memberId: data.memberId
+        memberToken: data.accessToken
     - name: 프로필 수정
       covers:
       - C.member.update_profile
       - op.updateProfile:200
+      actor: null
       request:
         method: PUT
         path: /v1/members/me/profile
+        headers:
+          Authorization: Bearer {{memberToken}}
         body:
-          nickname: '[QA] 명랑한 해달 {{rand}}'
+          nickname: QA 명랑한 해달 {{rand}}
           interestJobRoleIds:
           - '{{fixture.jobRoleId}}'
           bio: '[QA] 실전처럼 압박 질문을 주고받는 것을 좋아합니다.'
-          interestCompanyIds:
-          - 1
+          interestCompanyIds: []
       expect:
         status: 200
         result: SUCCESS
         json:
-          data.memberId: '{{actor.qa-guest.memberId}}'
+          data.memberId: '{{memberId}}'
           data.interestJobRoleIds[0]: '{{fixture.jobRoleId}}'
           data.bio: '[QA] 실전처럼 압박 질문을 주고받는 것을 좋아합니다.'
         exists:
         - data.interestCompanies
-      save: {}
+    - name: 첫 이력서 등록 (기본이 된다)
+      covers: []
+      actor: null
+      request:
+        method: POST
+        path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
+        multipart:
+          file:
+            sample: pdf
+            filename: '[QA] 첫 이력서 {{rand}}.pdf'
+      expect:
+        status: 201
+        result: SUCCESS
+        json:
+          data.isDefault: true
+      save:
+        firstResumeId: data.resumeId
     - name: 이력서 등록
       covers:
       - C.resume.create
       - op.createResume:201
+      actor: null
       request:
         method: POST
         path: /v1/members/me/resumes
+        headers:
+          Authorization: Bearer {{memberToken}}
         multipart:
           file:
             sample: pdf
@@ -386,35 +420,37 @@ cases:
       covers:
       - C.resume.set_default
       - op.makeResumeDefault:200
+      actor: null
       request:
         method: POST
         path: /v1/members/me/resumes/{{resumeId}}/make-default
+        headers:
+          Authorization: Bearer {{memberToken}}
       expect:
         status: 200
         result: SUCCESS
-      save: {}
-    - name: 정리 겸 이력서 삭제
-      always: true
+    - name: 이력서 삭제
       covers:
       - C.resume.delete
       - op.deleteResume:200
+      actor: null
       request:
         method: DELETE
         path: /v1/members/me/resumes/{{resumeId}}
+        headers:
+          Authorization: Bearer {{memberToken}}
       expect:
         status: 200
         result: SUCCESS
-      save: {}
-    - name: 정리(QA 회원 초기화)
+    - name: 정리(QA 회원 삭제)
       always: true
       covers: []
       request:
-        method: POST
-        path: /v1/dev/members/{{actor.qa-guest.memberId}}/reset
+        method: DELETE
+        path: /v1/dev/members/{{memberId}}
       expect:
         status: 200
         result: SUCCESS
-      save: {}
 
   - id: member.withdraw
     title: 사용자가 회원 탈퇴를 요청하면 탈퇴 처리가 성공한다
@@ -552,8 +588,7 @@ cases:
           interestJobRoleIds:
           - '{{fixture.jobRoleId}}'
           bio: QA 닉네임 중복 거절 확인
-          interestCompanyIds:
-          - 1
+          interestCompanyIds: []
       expect:
         status: 409
         result: ERROR

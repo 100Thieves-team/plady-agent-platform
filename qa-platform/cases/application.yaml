@@ -690,8 +690,7 @@ cases:
         method: POST
         path: /v1/dev/rooms/{{roomId}}/schedule
         body:
-          daysFromNow: -1
-          time: 09:00:00
+          startAt: '{{date:-1}}T09:00:00'
       expect:
         status: 200
         result: SUCCESS
@@ -1357,8 +1356,7 @@ cases:
         method: POST
         path: /v1/dev/rooms/{{roomId}}/schedule
         body:
-          daysFromNow: -1
-          time: 09:00:00
+          startAt: '{{date:-1}}T09:00:00'
       expect:
         status: 200
         result: SUCCESS
