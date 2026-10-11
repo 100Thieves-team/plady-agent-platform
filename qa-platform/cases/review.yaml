@@ -579,7 +579,7 @@ cases:
           tags:
           - 소통이 원활해요
       expect:
-        status: 200
+        status: 201
         result: SUCCESS
       save:
         reviewId: data.reviewId
@@ -659,7 +659,7 @@ cases:
           - 소통이 원활해요
           content: '[QA] 삭제 후 수정 거절 확인용 후기입니다.'
       expect:
-        status: 200
+        status: 201
         result: SUCCESS
       save:
         reviewId: data.reviewId
@@ -750,7 +750,7 @@ cases:
           tags:
           - 소통이 원활해요
       expect:
-        status: 200
+        status: 201
         result: SUCCESS
         exists:
         - data.reviewId
@@ -1005,6 +1005,7 @@ cases:
         title: '[QA] 후기 수정 sanity {{rand}}'
     steps:
     - name: 룸 완료 처리
+      actor: qa-host
       request:
         method: POST
         path: /v1/rooms/{{roomId}}/complete
@@ -1031,7 +1032,7 @@ cases:
           - 소통이 원활해요
           content: '[QA] 수정 전 후기 본문입니다.'
       expect:
-        status: 200
+        status: 201
         result: SUCCESS
       save:
         reviewId: data.reviewId

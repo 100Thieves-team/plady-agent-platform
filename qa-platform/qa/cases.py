@@ -593,6 +593,10 @@ def contract_errors(c: "Case", spec) -> list[str]:
         exp = s.get("expect") or {}
         if not _expects_success(exp):
             continue
+        succ = [k for k in op.success if str(k).isdigit()]
+        st = str(exp.get("status") or "")
+        if st.isdigit() and succ and st not in succ:
+            out.append(f"step {i}: {op.id} 의 성공 status 는 문서에 {'/'.join(succ)} 인데 {st} 를 기대한다")
         given_q = set((req.get("query") or {}).keys()) | {kv.split("=")[0] for kv in (raw_path.split("?", 1)[1].split("&") if "?" in raw_path else []) if kv}
         miss_q = [p["name"] for p in op.params if p.get("in") == "query" and p.get("required") and p["name"] not in given_q]
         if miss_q:

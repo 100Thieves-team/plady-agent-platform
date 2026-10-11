@@ -208,7 +208,7 @@ cases:
             sample: pdf
             filename: '[QA] 방명록 참여자 이력서 {{rand}}.pdf'
       expect:
-        status: 200
+        status: 201
         result: SUCCESS
         exists:
         - data.resumeId

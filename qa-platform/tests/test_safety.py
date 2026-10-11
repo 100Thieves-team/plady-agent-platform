@@ -108,6 +108,10 @@ class SafetyTest(unittest.TestCase):
                          {"request": {"method": "POST", "path": "/v1/rooms"}, "expect": {"status": 400, "error_code": "E1425"}}]}
         out = fit_status(raw, Spec())
         self.assertEqual([s["expect"]["status"] for s in out["steps"]], [400, "4xx"])
+        Spec.ops["createRoom"].success = {"201": None}                                 # 성공 status 도 문서 값으로
+        ok = {"steps": [{"request": {"method": "POST", "path": "/v1/rooms"}, "expect": {"status": 200}},
+                        {"request": {"method": "POST", "path": "/v1/rooms"}, "expect": {"status": "2xx"}}]}
+        self.assertEqual([s["expect"]["status"] for s in fit_status(ok, Spec())["steps"]], [201, "2xx"])
 
 
 class _Redirect(BaseHTTPRequestHandler):

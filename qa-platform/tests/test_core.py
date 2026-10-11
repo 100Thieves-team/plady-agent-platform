@@ -120,7 +120,8 @@ class CasesTest(unittest.TestCase):
         self.assertIn("room.apply-and-withdraw", {c.id for c in picked})
         self.assertTrue(all(c.suite == "sanity" and "application" in c.domains for c in picked))
         self.assertEqual(select(cases, suite="sanity", domains=["nothing"]), [])
-        ids = {c.id for c in select(cases, operations=["memberMe"])}
+        from repo_data import hermes_case_ids
+        ids = {c.id for c in select(cases, operations=["memberMe"])} - hermes_case_ids()     # Hermes 가 쓴 것은 계속 바뀐다
         self.assertEqual(ids, {"auth.me-without-token", "member.me"})
 
 

@@ -47,6 +47,8 @@ scenarios:
         title: 같은 회사·공고·직무의 활성 룸이 이미 3개인데 또 만들면 E1427 로 거절된다
         checks: [G.room.create#duplicate-slot-left]
         then: E1427
+        mode: manual
+        manual_reason: structural
       - key: login-required
         kind: reject
         at: R6

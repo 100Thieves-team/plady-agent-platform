@@ -223,6 +223,7 @@ def _repair(raw: dict) -> dict:
 
 def fit_status(raw: dict, spec: SpecData | None) -> dict:
     """expect.error_code 가 있는 단계의 status 를 API 문서에 맞춘다. 문서에 그 코드가 있으면 그 status, 없으면 4xx.
+    성공을 기대하는 단계의 구체 status(200 등)도 문서의 성공 응답이 하나면 그 값으로 맞춘다.
     (2026-10-08: E1425 를 400 으로 짐작해 409 와 어긋났다 — 코드가 맞으면 status 는 짐작할 일이 아니다)"""
     steps = raw.get("steps")
     if not isinstance(steps, list):
@@ -240,6 +241,12 @@ def fit_status(raw: dict, spec: SpecData | None) -> dict:
             want = int(known) if str(known or "").isdigit() else "4xx"
             if exp.get("status") != want:
                 s = {**s, "expect": {**exp, "status": want}}
+        elif isinstance(req, dict) and req.get("method") and req.get("path") and spec and str(exp.get("status") or "")[:1] == "2" and str(exp.get("status")) != "2xx":
+            # 성공 status 도 짐작하지 않는다. 문서의 성공 응답이 하나면 그 값 (2026-10-11: 201 을 200 으로 짐작한 후기·이력서 4건)
+            op = spec.op_for(str(req["method"]).upper(), str(req["path"]))
+            succ = [k for k in (op.success if op else {}) if str(k).isdigit()]
+            if len(succ) == 1 and str(exp.get("status")) != succ[0]:
+                s = {**s, "expect": {**exp, "status": int(succ[0])}}
         out.append(s)
     return {**raw, "steps": out}
 
