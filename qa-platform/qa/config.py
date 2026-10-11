@@ -66,6 +66,9 @@ class Config:
         self.backend_deploy_workflow = g("QA_BACKEND_DEPLOY_WORKFLOW", "deploy-aws.yml")
         self.backend_branch = g("QA_BACKEND_BRANCH", "dev")
         self.github_token = g("QA_GITHUB_TOKEN", "")
+        # 백엔드 이슈를 Linear 에 만든다 (docs/qa-platform-v2.md §17). SSM qa-linear-token(개인 API 키). 비어 있으면 초안까지만
+        self.linear_token = g("QA_LINEAR_TOKEN", "")
+        self.linear_team = g("QA_LINEAR_TEAM", "MOI")
         self.release_checklist_url = g(
             "QA_RELEASE_CHECKLIST_URL",
             "https://raw.githubusercontent.com/100Thieves-team/moimyeon-backend/dev/docs/knowledge/release-checklist.md")
@@ -144,5 +147,5 @@ class Config:
             "actors": sorted(self.actors.keys()), "fixtures": sorted(self.fixtures.keys()), "operators": self.operators,
             "hermes": bool(self.hermes_key), "slack": bool(self.slack_webhook_url), "github_token": bool(self.github_token),
             "wiki_dir": self.wiki_dir, "catalog_dir": str(self.catalog_dir), "wiki_publish": bool(self.wiki_mcp_url and self.wiki_mcp_token),
-            "qa_mcp": bool(self.qa_mcp_token), "repo_write": bool(self.repo_token), "repo": self.repo,
+            "qa_mcp": bool(self.qa_mcp_token), "repo_write": bool(self.repo_token), "linear": bool(self.linear_token), "repo": self.repo,
         }

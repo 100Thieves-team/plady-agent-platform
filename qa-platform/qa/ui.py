@@ -154,6 +154,11 @@ def badge(v: str | None, extra: str = "") -> str:
     return f'<span class="b {e(v)} {extra}" title="{e(v)}">{e(VERDICT_KO.get(v, v))}</span>'
 
 
+def badge_html(label: str, cls: str) -> str:
+    """정해진 글자와 색 클래스로 배지 (badge 는 판정 값을 글자로 바꾼다)."""
+    return f'<span class="b {e(cls)}">{e(label)}</span>'
+
+
 def run_badge(r: dict) -> str:
     if r["status"] == "finished":
         return badge(r.get("verdict"))
@@ -162,7 +167,8 @@ def run_badge(r: dict) -> str:
 
 TRIGGER_KO = {"deploy-sanity": "Sanity", "sprint-smoke": "스프린트 smoke", "release": "릴리스 QA", "manual": "수동 실행",
               "draft-check": "저장 전 실행", "explorer": "API 호출", "setup": "테스트 데이터 만들기"}
-ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 실행 취소", "run.triage": "Hermes 실패 분석", "release.decide": "릴리스 판단",
+ACTION_KO = {"run.create": "테스트 실행 시작", "run.cancel": "테스트 실행 취소", "run.triage": "Hermes 실패 분석",
+             "issue.draft": "백엔드 이슈 초안", "issue.create": "Linear 이슈 만들기", "issue.discard": "이슈 초안 버리기", "issue.comment": "Linear 이슈에 실행 댓글", "release.decide": "릴리스 판단",
              "chat.create": "대화 시작", "chat.send": "대화 메시지", "chat.close": "대화 닫기", "mcp.call": "Hermes 도구 호출", "mcp.denied": "MCP 인증 거부",
              "cases.reload": "스크립트 다시 읽기", "draft.generate": "스크립트 초안 생성 (예전)", "draft.rejected_by_validation": "스크립트 초안 검증 탈락 (예전)",
              "draft.save": "스크립트 초안 편집 (예전)", "draft.check": "스크립트 초안 시험 실행 (예전)", "draft.approve": "남은 초안 저장", "draft.reject": "남은 초안 버림",
@@ -528,7 +534,7 @@ def run_summary(run: dict, cases: list[dict], domains_by_rc: dict[int, list[str]
 
 def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]], *, operators: list[str], operator: str,
                checklist: list[str], public_url: str, can_publish: bool = False, domains_by_rc: dict | None = None, f_verdict: str = "",
-               groups: tuple | None = None) -> str:
+               groups: tuple | None = None, issues: dict | None = None, n_drafts: int = 0) -> str:
     """groups: scenarios.group_run_cases 결과. 있으면 스크립트 결과를 기능 · 시나리오 · 케이스 순서로 묶어 보인다 (docs/qa-platform-scenarios.md §11)."""
     live = run["status"] in ("queued", "running")
     refresh = '<meta http-equiv="refresh" content="4">' if live else ""
@@ -594,8 +600,17 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
                   f'<a href="/cases/{e(gs[0]["request"]["given"])}" class="mono">{e(gs[0]["request"]["given"])}</a> <span class="small mut">단계 {len(gs)}개{h("editor.uses")}</span></summary>'
                   f'<div style="padding-left:14px">{given}</div></details>') + st
         tri = ""
+        iss = (issues or {}).get(rc["case_id"])
+        if iss:          # 이 스크립트로 만든·이어 붙인 Linear 이슈 (docs/qa-platform-v2.md §17.4)
+            closed = iss.get("type") in ("completed", "canceled", "duplicate")
+            tri += (f'<a class="b {"pass" if closed else "warn"}" href="{e(iss.get("linear_url") or iss.get("url") or "#")}" target="_blank" '
+                    f'title="Linear 이슈">{e(iss.get("linear_id") or iss.get("identifier"))} · {e(iss.get("state") or "상태 모름")}</a> ')
+            if closed and rc["verdict"] == "fail":
+                tri += '<span class="small" style="color:var(--bad)">이슈는 닫혔는데 아직 실패</span> '
+        if rc["verdict"] == "fail":
+            tri += (f'<label class="small" title="골라서 위의 [백엔드 이슈 초안 만들기] 를 누른다"><input type="checkbox" form="issue-form" name="rc" value="{rc["id"]}"> 이슈 초안</label> ')
         if rc["verdict"] in ("fail", "error"):
-            tri = (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/triage" data-job-form><input type="hidden" name="run_case_id" value="{rc["id"]}">'
+            tri += (f'<form class="inline" method="post" action="/runs/{e(run["id"])}/triage" data-job-form><input type="hidden" name="run_case_id" value="{rc["id"]}">'
                    f'<input type="hidden" name="operator" value="{e(operator)}"><button {"" if operator else "disabled title=\"담당자를 먼저 고르세요\""}>Hermes 실패 분석</button>{h("run.triage")}</form>')
             if rc.get("triage"):
                 tri += f'<div class="card" style="margin-top:8px;background:#f8fafc"><div class="small mut">Hermes 실패 분석 · {kst(rc.get("triaged_at"))}</div><pre style="background:#fff;color:var(--ink);border:1px solid var(--line)">{e(rc["triage"])}</pre></div>'
@@ -646,7 +661,76 @@ def run_detail(run: dict, cases: list[dict], steps_by_case: dict[int, list[dict]
     return (f'{refresh}<h1>{e(headline)} {run_badge(run)}</h1><p class="lead">{e(TRIGGER_KO.get(run["trigger"], run["trigger"]))}{(" · PR #" + str(run["pr_number"])) if run.get("pr_number") else ""}'
             f' · {e(run["operator"])} · {kst(run["created_at"])} · <span class="mono">{e(run["id"])}</span> <a class="btn" href="/chat/new?run={e(run["id"])}">Hermes 와 이야기</a></p>'
             f'<div class="card"><div class="kv">{kvh}</div><div class="actions">{cancel}{publish}<a class="btn" href="/api/runs/{e(run["id"])}">JSON</a>{h("run.json")}</div></div>'
-            f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{body_cases}')
+            f'{release}{run_summary(run, cases, domains_by_rc or {}, f_verdict=f_verdict)}{_issue_bar(run, cases, operator, n_drafts)}{body_cases}')
+
+
+def _issue_bar(run: dict, cases: list[dict], operator: str, n_drafts: int) -> str:
+    """실패 스크립트를 골라 백엔드 이슈 초안을 만드는 막대 (docs/qa-platform-v2.md §17.2)."""
+    n_fail = sum(1 for c in cases if c["verdict"] == "fail")
+    if not n_fail and not n_drafts:
+        return ""
+    dis = "" if operator else 'disabled title="담당자를 먼저 고르세요"'
+    link = f' <a class="btn" href="/runs/{e(run["id"])}/issues">이슈 초안 {n_drafts}</a>' if n_drafts else ""
+    form = (f'<form id="issue-form" class="inline" method="post" action="/runs/{e(run["id"])}/issue-drafts" data-job-form>'
+            f'<input type="hidden" name="operator" value="{e(operator)}"><button {dis}>고른 실패로 백엔드 이슈 초안 만들기</button></form>') if n_fail else ""
+    return (f'<div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:300px"><b>백엔드 이슈</b>{h("run.issues")}'
+            f'<div class="small mut">실패 스크립트 카드의 [이슈 초안] 을 골라 누르면, 백엔드 잘못으로 볼 수 있는 것만 Hermes 가 근거와 함께 초안을 써요. '
+            f'Linear 에는 초안 화면에서 사람이 고르고 눌러야 만들어져요.</div></div>{form}{link}</div>')
+
+
+ISSUE_STATUS_KO = {"draft": ("초안", "warn"), "blocked": ("올리지 않음", "none"), "linked": ("열린 이슈 있음", "manual"), "created": ("만듦", "pass"),
+                   "discarded": ("버림", "skipped")}
+KIND_KO = {"bug": "버그", "decision": "결정 필요", "not_backend": "백엔드 아님"}
+
+
+def issue_drafts(run: dict, drafts: list[dict], *, operator: str, linear_ok: bool, linear_note: str | None, projects: list[str],
+                 states: dict | None = None) -> str:
+    """이슈 초안 화면: 고치고 골라서 Linear 에 만든다 (docs/qa-platform-v2.md §17.2)."""
+    states = states or {}
+    rid = e(run["id"])
+    rows = ""
+    for d in drafts:
+        if d["status"] == "discarded":
+            continue
+        lab, cls = ISSUE_STATUS_KO.get(d["status"], (d["status"], "none"))
+        ev = d.get("evidence") or {}
+        resp = ev.get("response") or {}
+        head = (f'{badge_html(lab, cls)} {("<span class=\"b none\">" + e(KIND_KO.get(d.get("kind"), d.get("kind"))) + "</span>") if d.get("kind") else ""} '
+                f'<a href="/cases/{e(d["case_id"])}" class="mono">{e(d["case_id"])}</a>'
+                f'{(" <span class=\"small mut\">응답 " + e(resp.get("status")) + " " + e(resp.get("error_code") or "") + "</span>") if resp else ""}')
+        pick = f'<input type="checkbox" name="pick" value="{d["id"]}" {"checked" if d["status"] == "draft" else ""}>' if d["status"] in ("draft", "blocked", "linked") else ""
+        if d["status"] == "draft":
+            body = (f'<div class="small mut" style="margin:4px 0">{e(d.get("reason") or "")}</div>'
+                    f'<label class="small">제목 <input name="title_{d["id"]}" value="{e(d.get("title") or "")}" style="width:100%"></label>'
+                    f'<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap"><label class="small">라벨(쉼표) <input name="labels_{d["id"]}" value="{e(", ".join(d.get("labels") or []))}"></label>'
+                    f'<label class="small">프로젝트 <input name="project_{d["id"]}" value="{e(d.get("project") or "")}" list="linear-projects" style="width:320px"></label></div>'
+                    f'<label class="small">본문 (끝에 플랫폼이 실행 기록 · API 문서 · 규칙표 근거를 붙여요)<textarea name="body_{d["id"]}" rows="16" style="width:100%;font-family:inherit">{e(d.get("body") or "")}</textarea></label>')
+        elif d["status"] == "linked":
+            st = states.get(d.get("linear_uuid")) or {}
+            body = (f'<div class="small" style="margin:4px 0">{e(d.get("reason") or "")} · <a href="{e(d.get("linear_url") or "#")}" target="_blank">{e(d.get("linear_id"))}</a> {e(st.get("state") or "")}</div>'
+                    f'<button name="comment" value="{d["id"]}" {"" if (operator and linear_ok) else "disabled"}>이 실행도 실패했다고 그 이슈에 댓글 남기기</button>')
+        elif d["status"] == "created":
+            st = states.get(d.get("linear_uuid")) or {}
+            body = f'<div class="small" style="margin:4px 0"><a href="{e(d.get("linear_url") or "#")}" target="_blank">{e(d.get("linear_id"))}</a> {e(st.get("state") or "")} · {e(d.get("title") or "")}</div>'
+        else:
+            body = f'<div class="small" style="margin:4px 0;color:var(--warn)">{e(d.get("reason") or "")}</div>'
+        ev_html = ""
+        if ev:
+            ev_html = (f'<details><summary class="small mut">근거 (실행 기록 · API 문서 · 규칙표)</summary><pre>'
+                       f'{e(json.dumps({k: ev.get(k) for k in ("request", "response", "expected", "doc", "rules")}, ensure_ascii=False, indent=1)[:6000])}</pre></details>')
+        rows += f'<div class="card"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{pick}{head}</div>{body}{ev_html}</div>'
+    if not rows:
+        rows = '<div class="card"><p class="mut" style="margin:0">아직 초안이 없어요. 실행 결과에서 실패 스크립트를 골라 [고른 실패로 백엔드 이슈 초안 만들기] 를 눌러요.</p></div>'
+    dis = "" if (operator and linear_ok) else ('disabled title="담당자를 먼저 고르세요"' if linear_ok else 'disabled title="Linear API 키(SSM qa-linear-token)가 없다"')
+    note = f'<div class="flash">{e(linear_note)}</div>' if linear_note else ""
+    if not linear_ok:
+        note += '<div class="flash err">Linear API 키(SSM qa-linear-token)가 없어 초안까지만 만들 수 있어요.</div>'
+    dl = "".join(f'<option value="{e(p)}">' for p in projects)
+    return (f'<h1>백엔드 이슈 초안{h("run.issues")} <span class="small mut"><a href="/runs/{rid}">실행 {rid}</a></span></h1>'
+            f'<p class="lead">고친 뒤 고른 초안만 Linear 에 만들어요. 작성자는 Linear 키 주인, 담당자는 비워요. 같은 테스트 조건으로 열린 이슈가 있으면 새로 만들지 않아요.</p>{note}'
+            f'<form method="post" action="/runs/{rid}/issues"><input type="hidden" name="operator" value="{e(operator)}"><datalist id="linear-projects">{dl}</datalist>{rows}'
+            f'<div class="card actions"><button class="primary" name="action" value="create" {dis}>고른 초안을 Linear 에 만들기</button>'
+            f'<button name="action" value="discard" {"" if operator else "disabled"}>고른 것 버리기</button></div></form>')
 
 
 # ---- 통계 배지 (docs/qa-platform-api.md §5.5): 최근 N회 통과율 · 평균 소요 · 불안정(flaky) --------------------

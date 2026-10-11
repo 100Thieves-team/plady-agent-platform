@@ -87,6 +87,8 @@ QA_REPO_TOKEN_PARAM="${QA_REPO_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV
 # QA MCP bearer (docs/qa-platform-hermes.md §6): optional. Absent -> qa-platform /mcp answers 503 and
 # hermes-config-init leaves mcp_servers.qa-platform out, so Hermes has no QA tools until it is filled.
 QA_MCP_TOKEN_PARAM="${QA_MCP_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mcp-token}"
+# Linear 개인 API 키 (docs/qa-platform-v2.md §17): optional. Absent -> 백엔드 이슈는 초안까지만, Linear 에 만들기 버튼이 꺼진다.
+QA_LINEAR_TOKEN_PARAM="${QA_LINEAR_TOKEN_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-linear-token}"
 QA_FCM_WEB_CONFIG_PARAM="${QA_FCM_WEB_CONFIG_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-fcm-web-config}"
 QA_MAIL_USER_PARAM="${QA_MAIL_USER_PARAM:-/plady/agent-platform/${PLATFORM_ENV}/qa-mail-user}"
 QA_MAIL_APP_PASSWORD_PARAM="${QA_MAIL_APP_PASSWORD_PARAM:-/moimyeon/${PLATFORM_ENV}/core-worker/NOTIFICATION_EMAIL_GMAIL_APP_PASSWORD}"
@@ -159,6 +161,9 @@ QA_REPO_TOKEN="$(ssm_get "$QA_REPO_TOKEN_PARAM")"
 [ "$QA_REPO_TOKEN" = "None" ] && QA_REPO_TOKEN=""
 QA_MCP_TOKEN="$(ssm_get "$QA_MCP_TOKEN_PARAM")"
 [ "$QA_MCP_TOKEN" = "None" ] && QA_MCP_TOKEN=""
+QA_LINEAR_TOKEN="$(ssm_get "$QA_LINEAR_TOKEN_PARAM")"
+[ "$QA_LINEAR_TOKEN" = "None" ] && QA_LINEAR_TOKEN=""
+echo "  qa-platform linear: $([ -n "$QA_LINEAR_TOKEN" ] && echo "present — backend issues can be created" || echo "absent (${QA_LINEAR_TOKEN_PARAM}) — drafts only")"
 QA_FCM_WEB_CONFIG="$(ssm_get "$QA_FCM_WEB_CONFIG_PARAM")"
 [ "$QA_FCM_WEB_CONFIG" = "None" ] && QA_FCM_WEB_CONFIG=""
 QA_MAIL_USER="$(ssm_get "$QA_MAIL_USER_PARAM")"
@@ -264,6 +269,7 @@ QA_MCP_TOKEN=${QA_MCP_TOKEN}
 QA_FCM_WEB_CONFIG=${QA_FCM_WEB_CONFIG}
 QA_MAIL_USER=${QA_MAIL_USER}
 QA_MAIL_APP_PASSWORD=${QA_MAIL_APP_PASSWORD}
+QA_LINEAR_TOKEN=${QA_LINEAR_TOKEN}
 ENV
 chmod 600 "$ENV_FILE"
 

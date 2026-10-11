@@ -16,7 +16,7 @@ from . import hermes
 from .config import Config
 
 KINDS = {"draft": "Hermes 가 스크립트 쓰기", "scenario": "Hermes 가 케이스 채우기", "realign": "Hermes 로 다시 맞추기", "propose": "수동 작성 테스트 조건 제안", "revise": "바뀐 테스트 조건에 맞게 고치기", "triage": "Hermes 실패 분석", "sanity": "Sanity 테스트", "specfix": "PRD·규칙표 수정안 만들기", "rejudge": "수동 케이스 다시 판정", "batch_draft": "스크립트 한꺼번에 만들기"}
-BATCH_KINDS = ("batch_draft",)      # 여러 건을 차례로 묻는 작업 — 시간 한도는 Hermes 호출마다 새로 센다, 그만둬도 저장한 것은 남는다
+BATCH_KINDS = ("batch_draft", "issue_draft")    # 여러 건을 차례로 묻는 작업 — 시간 한도는 Hermes 호출마다 새로 센다, 그만둬도 저장한 것은 남는다
 STAGES_FULL = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "검증하고 저장", "끝"]
 STAGES_SHORT = ["대기", "근거 모으기", "Hermes 에게 보냄", "Hermes 가 쓰는 중", "끝"]
 TERMINAL = ("done", "failed", "canceled", "interrupted")

@@ -865,6 +865,8 @@ services:
       QA_FCM_WEB_CONFIG: ${QA_FCM_WEB_CONFIG:-}
       QA_MAIL_USER: ${QA_MAIL_USER:-}
       QA_MAIL_APP_PASSWORD: ${QA_MAIL_APP_PASSWORD:-}
+      # 백엔드 이슈를 Linear 에 만든다 (docs/qa-platform-v2.md §17). SSM qa-linear-token(개인 API 키). 비어 있으면 초안까지만
+      QA_LINEAR_TOKEN: ${QA_LINEAR_TOKEN:-}
       TZ: Asia/Seoul
     volumes:
       - qa-data:/data

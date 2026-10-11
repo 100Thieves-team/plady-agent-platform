@@ -11,6 +11,7 @@ import json
 import yaml
 import re
 import sys
+import time
 import traceback
 from datetime import datetime
 from http import HTTPStatus
@@ -37,6 +38,8 @@ from qa import scenarios as scenariosmod  # noqa: E402
 from qa.repo import Repo, RepoError  # noqa: E402
 from qa.github import GitHub, domains_from_files  # noqa: E402
 from qa.hermes import triage as hermes_triage  # noqa: E402
+from qa import issues as issuesmod  # noqa: E402
+from qa.linear import Linear, LinearError  # noqa: E402
 from qa.mcp import McpClient, McpError, wiki_apply  # noqa: E402
 from qa.mcp_server import McpServer  # noqa: E402
 from qa import report as reportmod  # noqa: E402
@@ -88,6 +91,8 @@ class App:
         self.cfg = cfg
         self.store = Store(cfg.db_path)
         self.github = GitHub(cfg)
+        self.linear = Linear(cfg.linear_token, cfg.linear_team)       # 백엔드 이슈 (docs/qa-platform-v2.md §17)
+        self._issue_states: dict = {}                                  # Linear uuid → (읽은 시각, 상태). 화면을 열 때 읽는다
         # 기준 문서 (docs/qa-platform-tc.md): 위키 볼륨 + OpenAPI → TC 카탈로그. 읽기이므로 요청 시 갱신.
         self.wiki = Wiki(cfg.wiki_dir, cfg.wiki_branch, cfg.wiki_public_url)
         self.spec = Spec(cfg.spec_url, cfg.data_dir / "catalog", file=cfg.spec_file, ttl=cfg.spec_ttl)
@@ -1291,6 +1296,182 @@ class App:
             return {"summary": f"실패 분석을 {rc['case_id']} 에 기록했다", "links": [{"href": f"/runs/{rid}", "label": f"실행 {rid}"}]}
         return self.start_job("triage", operator=operator, label=f"{rid} · {rc['case_id']}", fn=fn, back={"href": f"/runs/{rid}", "label": f"실행 {rid}"},
                               session_hash=session_hash, ip=ip, sync=sync)
+
+    # ---- 백엔드 이슈 (docs/qa-platform-v2.md §17) ------------------------------------------
+    def linear_settings(self) -> dict:
+        """catalog/linear.yaml: 기능 → Linear 프로젝트, 분류 → 라벨."""
+        try:
+            d = yaml.safe_load((Path(self.cfg.catalog_dir) / "linear.yaml").read_text(encoding="utf-8")) or {}
+        except Exception:
+            d = {}
+        return {"projects": dict(d.get("projects") or {}),
+                "labels": dict(d.get("labels") or {"bug": ["Bug", "Backend"], "decision": ["Backend", "기획"]})}
+
+    def issue_states(self, uuids: list[str]) -> dict[str, dict]:
+        """Linear 이슈 상태. 1분 동안은 다시 묻지 않는다. 못 읽으면 빈 값."""
+        now = time.time()
+        want = [u for u in dict.fromkeys(uuids) if u and (u not in self._issue_states or now - self._issue_states[u][0] > 60)]
+        if want and self.linear.configured:
+            try:
+                for u, st in self.linear.states_of(want).items():
+                    self._issue_states[u] = (now, st)
+            except Exception:
+                pass
+        return {u: self._issue_states[u][1] for u in uuids if u in self._issue_states}
+
+    def open_issue_for(self, tc_ids: list[str]) -> dict | None:
+        """같은 테스트 조건으로 만든 이슈 중 아직 열린 것(닫힘 · 취소 · 중복이 아닌 것). 상태를 못 읽으면 열린 것으로 본다."""
+        made = [r for r in self.store.made_issues() if set(r["tc_ids"]) & set(tc_ids or [])]
+        if not made:
+            return None
+        states = self.issue_states([r["linear_uuid"] for r in made])
+        for r in reversed(made):
+            st = states.get(r["linear_uuid"])
+            if st is None or st.get("type") not in ("completed", "canceled", "duplicate"):
+                return {**r, "state": (st or {}).get("state")}
+        return None
+
+    def issues_by_case(self, case_ids: list[str]) -> dict[str, dict]:
+        """스크립트 id → 가장 최근에 만든·이어 붙인 이슈 {linear_id, linear_url, state, type}. 실행 결과 화면의 표시."""
+        out: dict = {}
+        for r in self.store.made_issues() + [x for x in self.store.list_issue_drafts() if x["status"] == "linked"]:
+            if r["case_id"] in case_ids and r.get("linear_uuid"):
+                out[r["case_id"]] = r
+        states = self.issue_states([r["linear_uuid"] for r in out.values()])
+        return {cid: {"linear_id": r["linear_id"], "linear_url": r["linear_url"], **(states.get(r["linear_uuid"]) or {})} for cid, r in out.items()}
+
+    def job_issue_drafts(self, run: dict, rc_ids: list[int], operator: str, session_hash=None, ip=None, sync=False):
+        """[백엔드 이슈 초안] — 고른 실패 스크립트마다 근거를 모으고, 백엔드 잘못으로 볼 수 있으면 Hermes 가 초안을 쓴다. 이슈는 만들지 않는다."""
+        from qa import hermes
+        rcs = [rc for rc in (self.store.get_run_case(int(i)) for i in rc_ids if str(i).isdigit()) if rc and rc["run_id"] == run["id"]]
+        if not rcs:
+            raise BadRequest("고른 실패 스크립트가 없다")
+        if len(rcs) > 20:
+            raise BadRequest("한 번에 20건까지 고른다")
+
+        def fn(job):
+            steps_by = {x["id"]: self.store.list_steps(x["id"]) for x in self.store.list_run_cases(run["id"]) if x["verdict"] == "fail"}
+            failing = {k: issuesmod.failing_step(v) for k, v in steps_by.items()}
+            settings, cat, spec = self.linear_settings(), self.current_catalog(), self.spec.get()
+            n_made = {"draft": 0, "blocked": 0, "linked": 0}
+            for n, rc in enumerate(rcs, 1):
+                if job.cancel.is_set():
+                    break
+                job.note(f"\n\n===== {n}/{len(rcs)} {rc['case_id']} =====\n")
+                steps = steps_by.get(rc["id"]) or self.store.list_steps(rc["id"])
+                step = issuesmod.failing_step(steps)
+                case = self.cases.get(rc["case_id"])
+                base = {"run_id": run["id"], "run_case_id": rc["id"], "case_id": rc["case_id"], "operator": operator, "job_id": job.id}
+                why = issuesmod.eligibility(rc, step, case, issuesmod.spread(rc["id"], failing))
+                if why:
+                    self.store.add_issue_draft(**base, status="blocked", reason="; ".join(why))
+                    n_made["blocked"] += 1
+                    job.note("(백엔드 잘못으로 보지 않음: " + "; ".join(why)[:300] + ")\n")
+                    continue
+                ev = issuesmod.evidence(run=run, rc=rc, step=step, case=case, spec=spec, catalog=cat, public_url=self.cfg.public_url)
+                dup = self.open_issue_for(ev["tc_ids"])
+                if dup:
+                    self.store.add_issue_draft(**base, tc_ids=ev["tc_ids"], status="linked", evidence=ev, title=dup["title"],
+                                               reason=f"같은 테스트 조건으로 열린 이슈 {dup['linear_id']} 가 있다",
+                                               linear_uuid=dup["linear_uuid"], linear_id=dup["linear_id"], linear_url=dup["linear_url"])
+                    n_made["linked"] += 1
+                    job.note(f"(열린 이슈 {dup['linear_id']} 가 있어 새로 쓰지 않음)\n")
+                    continue
+                try:
+                    out = issuesmod.parse(job.ask(issuesmod.ISSUE_SYSTEM, issuesmod.prompt(ev), "qa-issue"))
+                except hermes.Canceled:
+                    break
+                except Exception as ex:          # 한 건이 실패해도 다음 건으로
+                    self.store.add_issue_draft(**base, tc_ids=ev["tc_ids"], status="blocked", evidence=ev, reason=f"초안을 만들지 못했다: {str(ex)[:200]}")
+                    n_made["blocked"] += 1
+                    continue
+                if out["kind"] == "not_backend":
+                    self.store.add_issue_draft(**base, tc_ids=ev["tc_ids"], status="blocked", kind="not_backend", evidence=ev,
+                                               reason="Hermes 판단: 백엔드 잘못이 아니다. " + out["reason"])
+                    n_made["blocked"] += 1
+                    continue
+                slug = (case.variant or "").split("/")[0] if case is not None and case.variant else ""
+                self.store.add_issue_draft(**base, tc_ids=ev["tc_ids"], status="draft", kind=out["kind"], reason=out["reason"], title=out["title"],
+                                           body=out["body"], labels=list(settings["labels"].get(out["kind"]) or []),
+                                           project=settings["projects"].get(slug), evidence=ev)
+                n_made["draft"] += 1
+            self.store.add_event(operator=operator, action="issue.draft", target=run["id"], session_hash=session_hash, ip=ip,
+                                 detail={"cases": [rc["case_id"] for rc in rcs], **n_made, "job": job.id})
+            return {"summary": f"고른 {len(rcs)}건 중 초안 {n_made['draft']} · 열린 이슈에 이어 붙일 것 {n_made['linked']} · 백엔드 잘못으로 보지 않음 {n_made['blocked']}. "
+                               "초안을 고쳐 Linear 에 만든다",
+                    "links": [{"href": f"/runs/{run['id']}/issues", "label": "이슈 초안"}, {"href": f"/runs/{run['id']}", "label": f"실행 {run['id']}"}]}
+        return self.start_job("issue_draft", operator=operator, label=f"{run['id']} · 백엔드 이슈 초안 {len(rcs)}건", fn=fn,
+                              back={"href": f"/runs/{run['id']}/issues", "label": "이슈 초안"}, session_hash=session_hash, ip=ip, sync=sync)
+
+    def create_linear_issues(self, run_id: str, items: list[dict], operator: str, session_hash=None, ip=None) -> dict:
+        """[선택한 것 Linear 에 만들기] — 사람이 고친 제목 · 본문 · 라벨 · 프로젝트로 만든다. 만들기 직전에 열린 이슈를 다시 본다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        if not self.linear.configured:
+            raise BadRequest("Linear API 키(SSM qa-linear-token)가 없어 만들 수 없다")
+        try:
+            state = self.linear.start_state()
+        except LinearError as ex:
+            raise BadRequest(str(ex))
+        created, failed = [], []
+        for it in items:
+            d = self.store.get_issue_draft(int(it["id"]))
+            if not d or d["run_id"] != run_id or d["status"] != "draft":
+                continue
+            title = str(it.get("title") or d["title"] or "").strip()
+            title = title if title.startswith("[QA]") else "[QA] " + title
+            body = str(it.get("body") or d["body"] or "").strip()
+            labels = [x.strip() for x in (it.get("labels") if it.get("labels") is not None else d["labels"]) if str(x).strip()]
+            project = (str(it.get("project") if it.get("project") is not None else (d["project"] or "")).strip()) or None
+            self.store.update_issue_draft(d["id"], title=title, body=body, labels=labels, project=project)
+            dup = self.open_issue_for(d["tc_ids"])
+            if dup:
+                self.store.update_issue_draft(d["id"], status="linked", reason=f"같은 테스트 조건으로 열린 이슈 {dup['linear_id']} 가 있다",
+                                              linear_uuid=dup["linear_uuid"], linear_id=dup["linear_id"], linear_url=dup["linear_url"])
+                failed.append((d["case_id"], f"열린 이슈 {dup['linear_id']} 가 있어 만들지 않았다"))
+                continue
+            try:
+                iss = self.linear.create_issue(title=title, description=issuesmod.full_body(body, d["evidence"], operator), labels=labels, project=project)
+            except LinearError as ex:
+                failed.append((d["case_id"], str(ex)[:200]))
+                continue
+            self.store.update_issue_draft(d["id"], status="created", linear_uuid=iss["id"], linear_id=iss["identifier"], linear_url=iss["url"])
+            self.store.add_event(operator=operator, action="issue.create", target=iss["identifier"], session_hash=session_hash, ip=ip,
+                                 detail={"run_id": run_id, "case_id": d["case_id"], "draft": d["id"], "url": iss["url"], "kind": d["kind"],
+                                         "state": (iss.get("state") or {}).get("name")})
+            created.append({"case_id": d["case_id"], "id": iss["identifier"], "url": iss["url"]})
+        return {"created": created, "failed": failed, "state": state.get("name"), "state_note": state.get("note")}
+
+    def discard_issue_drafts(self, run_id: str, ids: list[int], operator: str, session_hash=None, ip=None) -> int:
+        n = 0
+        for i in ids:
+            d = self.store.get_issue_draft(int(i))
+            if d and d["run_id"] == run_id and d["status"] in ("draft", "blocked", "linked"):
+                self.store.update_issue_draft(d["id"], status="discarded")
+                n += 1
+        if n:
+            self.store.add_event(operator=operator, action="issue.discard", target=run_id, session_hash=session_hash, ip=ip, detail={"drafts": [int(i) for i in ids]})
+        return n
+
+    def comment_linked_issue(self, run_id: str, did: int, operator: str, session_hash=None, ip=None) -> str:
+        """열린 이슈에 '이 실행에서도 실패했다' 댓글을 단다."""
+        if not operator or operator not in self.cfg.operators:
+            raise BadRequest("담당자를 목록에서 골라야 한다")
+        d = self.store.get_issue_draft(did)
+        if not d or d["run_id"] != run_id or d["status"] != "linked" or not d.get("linear_uuid"):
+            raise BadRequest("이어 붙일 이슈가 있는 초안이 아니다")
+        ev = d["evidence"] or {}
+        body = (f"QA 실행 [{run_id}]({ev.get('run_url') or '/runs/' + run_id}) 에서도 같은 테스트 조건이 실패했다. "
+                f"스크립트 `{d['case_id']}` · 응답 {(ev.get('response') or {}).get('status')} {(ev.get('response') or {}).get('error_code') or ''}".rstrip()
+                + f"\n\n_QA 플랫폼에서 {operator} 가 남겼다._")
+        try:
+            self.linear.comment(d["linear_uuid"], body)
+        except LinearError as ex:
+            raise BadRequest(str(ex))
+        self.store.update_issue_draft(d["id"], reason=(d["reason"] or "") + " · 이 실행을 댓글로 남겼다")
+        self.store.add_event(operator=operator, action="issue.comment", target=d["linear_id"], session_hash=session_hash, ip=ip,
+                             detail={"run_id": run_id, "case_id": d["case_id"]})
+        return d["linear_id"]
 
     # ---- Sanity (docs/qa-platform-v2.md §4) -------------------------------------------------
     SANITY_MAX_SCRIPTS = 12          # 한 번에 Hermes 가 새로 쓰는 스크립트 수 상한 — 나머지는 다음 Sanity 나 케이스 화면에서
@@ -2982,6 +3163,55 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(202, {"id": rid, "url": f"{app.cfg.public_url}/runs/{rid}"})
             return self._redirect(f"/runs/{rid}", set_operator=operator)
 
+        # 백엔드 이슈 초안 (docs/qa-platform-v2.md §17): 고른 실패로 초안 만들기 · 초안 화면 · Linear 에 만들기
+        m = re.match(r"^/runs/(r-[0-9a-f\-]+)/(issue-drafts|issues)$", path)
+        if m:
+            rid, what = m.group(1), m.group(2)
+            run = app.store.get_run(rid)
+            if not run:
+                return self._error(404, "실행 기록이 없다")
+            if what == "issues" and method == "GET":
+                drafts = app.store.list_issue_drafts(run_id=rid)
+                note = None
+                if app.linear.configured:
+                    try:
+                        note = app.linear.start_state().get("note")
+                    except LinearError as ex:
+                        note = f"Linear 를 읽지 못했다: {ex}"
+                states = app.issue_states([d["linear_uuid"] for d in drafts if d.get("linear_uuid")])
+                return self._page(f"이슈 초안 {rid}", ui.issue_drafts(run, drafts, operator=self._operator(), linear_ok=app.linear.configured, linear_note=note,
+                                                                     projects=sorted(set(app.linear_settings()["projects"].values())), states=states), "runs")
+            if method == "POST":
+                f = self._form()
+                fv = lambda k, d="": str((f.get(k) or [d])[0])  # noqa: E731
+                operator = fv("operator").strip() or self._operator()
+                if not operator or operator not in app.cfg.operators:
+                    raise BadRequest("담당자를 목록에서 골라야 한다")
+                sh, ip = self._session_hash(), self._ip()
+                if what == "issue-drafts":
+                    job = app.job_issue_drafts(run, [x for x in f.get("rc") or []], operator, sh, ip)
+                    if self.headers.get("X-QA-Job"):
+                        return self._json(200, {"job": job.id})
+                    return self._redirect(f"/jobs/{job.id}", set_operator=operator)
+                picks = [int(x) for x in (f.get("pick") or []) if str(x).isdigit()]
+                if fv("comment").isdigit():
+                    lid = app.comment_linked_issue(rid, int(fv("comment")), operator, sh, ip)
+                    return self._redirect(f"/runs/{rid}/issues?done=" + _urlq(f"{lid} 에 이 실행을 댓글로 남겼어요"), set_operator=operator)
+                if fv("action") == "discard":
+                    n = app.discard_issue_drafts(rid, picks, operator, sh, ip)
+                    return self._redirect(f"/runs/{rid}/issues?done=" + _urlq(f"{n}개를 버렸어요"), set_operator=operator)
+                if fv("action") == "create":
+                    if not picks:
+                        raise BadRequest("만들 초안을 하나 이상 고른다")
+                    items = [{"id": i, "title": fv(f"title_{i}"), "body": fv(f"body_{i}"),
+                              "labels": [x.strip() for x in fv(f"labels_{i}").split(",") if x.strip()], "project": fv(f"project_{i}")} for i in picks]
+                    res = app.create_linear_issues(rid, items, operator, sh, ip)
+                    msg = (f"Linear 에 {len(res['created'])}개 만들었어요" + (f" ({res['state']})" if res.get("state") else "")
+                           + (": " + ", ".join(c["id"] for c in res["created"]) if res["created"] else "")
+                           + (". 못 만든 것: " + "; ".join(f"{c} {w}" for c, w in res["failed"]) if res["failed"] else ""))
+                    return self._redirect(f"/runs/{rid}/issues?done=" + _urlq(msg), set_operator=operator)
+                raise BadRequest("모르는 동작")
+
         m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)$", path)
         if m and method == "GET":
             rid = m.group(2)
@@ -3011,7 +3241,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._page(f"실행 {rid}", ui.run_detail(run, rcs, steps, operators=app.cfg.operators, operator=self._operator(),
                                                         checklist=checklist, public_url=app.cfg.public_url,
                                                         can_publish=bool(app.cfg.wiki_mcp_url and app.cfg.wiki_mcp_token), domains_by_rc=domains_by_rc, f_verdict=g("verdict"),
-                                                        groups=app.run_groups(rcs)),
+                                                        groups=app.run_groups(rcs),
+                                                        issues=app.issues_by_case([rc["case_id"] for rc in rcs if rc["verdict"] in ("fail", "error", "pass")]),
+                                                        n_drafts=sum(1 for d in app.store.list_issue_drafts(run_id=rid) if d["status"] != "discarded")),
                               "runs", flash=flash, context={"run": rid})
 
         m = re.match(r"^/(api/)?runs/(r-[0-9a-f\-]+)/(cancel|triage|decide|publish)$", path)

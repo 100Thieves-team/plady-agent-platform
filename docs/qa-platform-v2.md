@@ -739,7 +739,7 @@ PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticip
 - 같은 대조를 Hermes 저장 · 폼 편집기 · QA MCP 저장 · 레포 스크립트 검사에 모두 쓴다. 응답 스키마 경로는 `spec.Op.response_paths`(배열은 `[]`).
 - 지금 레포에서 걸리는 것: 없어진 룸 수정 · 취소 API 를 부르는 스크립트(백엔드 미구현 케이스라 이미 실행에서 빠짐), dev 소셜 가입 응답에 없는 accessToken 저장, 회원 조회 응답에 없는 필드 기대, save 값이 TODO 인 후기 스크립트 2개.
 
-## 17. 백엔드 구현 실수를 Linear 이슈로 만들기 (설계 2026-10-11, 검토 대기)
+## 17. 백엔드 구현 실수를 Linear 이슈로 만들기 (설계 2026-10-11, 결정·구현 2026-10-11)
 
 사람이 실행 결과에서 "백엔드 잘못" 인 실패를 골라 Linear 이슈로 만든다. 지금은 대화에서 손으로 근거를 모아 만들었다(MOI-597 · 598 · 599). 근거 모으기와 초안은 플랫폼이 하고, 만들기는 사람이 누른다.
 
@@ -784,3 +784,19 @@ PR #153(MOI-571)은 응답 DTO `RoomParticipantsResponse` 에 `confirmedParticip
 2. 기본 상태를 Backlog 로 둘지 Triage 로 둘지.
 3. 프로젝트 표의 첫 내용(지금 Linear 프로젝트 이름이 "세션 …", PRD 는 "룸 …").
 4. 실행 결과 화면에서 여러 실패를 한 번에 고르는 묶음 만들기가 필요한지(1단계는 한 건씩).
+
+### 17.7 결정 (2026-10-11)
+
+1. Linear 키는 bebe 개인 API 키. 작성자는 bebe 로 남고 담당자는 비운다. 플랫폼에서 누른 사람은 본문 끝 한 줄과 감사 로그에 남는다.
+2. 기본 상태는 Triage. MOI 팀에 Triage 가 꺼져 있으면 Backlog 에 만들고 초안 화면에 알린다(2026-10-11 지금 꺼져 있다).
+3. 프로젝트 표는 `catalog/linear.yaml`(기능 → Linear 프로젝트, 분류 → 라벨).
+4. 실패 스크립트를 여러 개 골라 한 번에 초안을 만들고, 초안 화면에서 여러 개를 골라 한 번에 Linear 에 만든다.
+
+### 17.8 구현 (2026-10-11)
+
+- 실행 결과: 실패(fail) 스크립트 카드에 [이슈 초안] 체크, 위에 [고른 실패로 백엔드 이슈 초안 만들기]. 이슈를 만든 스크립트는 카드에 `MOI-… · 상태` 가 보이고, 이슈가 닫혔는데 아직 실패하면 그렇게 적는다.
+- 초안 작업(job `issue_draft`, 건마다 시간 한도): 고른 것마다 17.3 으로 거르고(`qa/issues.py eligibility · spread`), 근거를 모으고(`evidence`), 같은 테스트 조건으로 열린 이슈가 있으면 잇고(`linked`), 아니면 Hermes 가 분류 · 제목 · 본문을 쓴다(`ISSUE_SYSTEM`, 출력 JSON). Hermes 가 not_backend 로 보면 올리지 않는다.
+- 초안 화면 `/runs/{id}/issues`: 제목 · 본문 · 라벨 · 프로젝트를 고치고 골라서 [고른 초안을 Linear 에 만들기] · [고른 것 버리기]. 이어 붙일 이슈는 [이 실행도 실패했다고 그 이슈에 댓글 남기기].
+- Linear 에 만들 때 본문 끝에 플랫폼이 근거를 붙인다: 실행 링크 · 요청 · 실제 응답 · 테스트 조건, 접힌 원문(요청 · 응답 · 기대)과 규칙표 검사. Hermes 는 이 칸을 바꾸지 못한다.
+- 저장: 표 `issue_drafts`(draft · blocked · linked · created · discarded). 상태는 화면을 열 때 Linear 에서 읽는다(1분 캐시). 감사 로그 `issue.draft` · `issue.create` · `issue.discard` · `issue.comment`.
+- 설정: SSM `/plady/agent-platform/dev/qa-linear-token` → `QA_LINEAR_TOKEN`(ec2-deploy.sh · compose.ec2.yaml). 없으면 초안까지만.

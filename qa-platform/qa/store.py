@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS receivers (
   PRIMARY KEY (base_url, actor)
 );
 """
+# 백엔드 이슈 초안과 만든 이슈 (docs/qa-platform-v2.md §17). status: draft · blocked(백엔드 잘못으로 보지 않음) · linked(열린 이슈가 이미 있음)
+# · created(Linear 에 만듦) · discarded
+ISSUES_SQL = """CREATE TABLE IF NOT EXISTS issue_drafts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, run_case_id INTEGER NOT NULL, case_id TEXT NOT NULL,
+  tc_ids TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL, kind TEXT, reason TEXT, title TEXT, body TEXT,
+  labels TEXT NOT NULL DEFAULT '[]', project TEXT, evidence TEXT NOT NULL DEFAULT '{}', operator TEXT NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, linear_uuid TEXT, linear_id TEXT, linear_url TEXT, job_id TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_issue_drafts_run ON issue_drafts(run_id, id);
+CREATE INDEX IF NOT EXISTS ix_issue_drafts_case ON issue_drafts(case_id, id);
+"""
 QA_MEMBERS_SQL = """CREATE TABLE IF NOT EXISTS qa_members (
   member_id TEXT PRIMARY KEY, label TEXT NOT NULL UNIQUE, nickname TEXT, email TEXT, created_at TEXT NOT NULL, operator TEXT NOT NULL
 );"""
@@ -137,6 +148,7 @@ class Store:
             self._db.executescript(SANITY_SQL)
             self._db.executescript(TARGETS_SQL)
             self._db.executescript(INBOX_SQL)
+            self._db.executescript(ISSUES_SQL)
             # 2026-10-05: + 주소가 아닌 팀 메일 주소로 온 메일을 담던 버그로 들어온 행을 지운다(공용 메일함의 팀 메일)
             self._db.execute("DELETE FROM inbox WHERE channel='email' AND (address IS NULL OR instr(address, '+') = 0)")
 
@@ -153,6 +165,46 @@ class Store:
         with self._lock:
             cur = self._db.execute(sql, args)
             return cur.lastrowid or 0
+
+    # ---- 백엔드 이슈 초안 (docs/qa-platform-v2.md §17) -----------------------------------------------
+    _ISSUE_JSON = ("tc_ids", "labels", "evidence")
+
+    def _issue_row(self, r: dict | None) -> dict | None:
+        if r:
+            for k in self._ISSUE_JSON:
+                r[k] = json.loads(r[k] or ("{}" if k == "evidence" else "[]"))
+        return r
+
+    def add_issue_draft(self, **f) -> int:
+        f = {**f, "created_at": now_iso(), "updated_at": now_iso()}
+        for k in self._ISSUE_JSON:
+            if k in f:
+                f[k] = json.dumps(f[k], ensure_ascii=False)
+        cols = ",".join(f)
+        return self._x(f"INSERT INTO issue_drafts({cols}) VALUES({','.join('?' * len(f))})", tuple(f.values()))
+
+    def update_issue_draft(self, did: int, **f) -> None:
+        f = {**f, "updated_at": now_iso()}
+        for k in self._ISSUE_JSON:
+            if k in f:
+                f[k] = json.dumps(f[k], ensure_ascii=False)
+        self._x(f"UPDATE issue_drafts SET {','.join(k + '=?' for k in f)} WHERE id=?", (*f.values(), did))
+
+    def get_issue_draft(self, did: int) -> dict | None:
+        return self._issue_row(self._one("SELECT * FROM issue_drafts WHERE id=?", (did,)))
+
+    def list_issue_drafts(self, run_id: str | None = None, case_id: str | None = None) -> list[dict]:
+        where, args = [], []
+        if run_id:
+            where.append("run_id=?"); args.append(run_id)
+        if case_id:
+            where.append("case_id=?"); args.append(case_id)
+        sql = "SELECT * FROM issue_drafts" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id"
+        return [self._issue_row(r) for r in self._q(sql, tuple(args))]
+
+    def made_issues(self) -> list[dict]:
+        """Linear 에 만든 이슈(같은 테스트 조건 중복 확인용)."""
+        return [self._issue_row(r) for r in self._q("SELECT * FROM issue_drafts WHERE status='created' AND linear_uuid IS NOT NULL ORDER BY id")]
 
     # ---- runs ----------------------------------------------------------------
     def create_run(self, *, trigger: str, operator: str, suite: str | None, env: str, base_url: str,
