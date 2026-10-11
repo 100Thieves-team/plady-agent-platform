@@ -42,23 +42,23 @@ class Linear:
     def team(self) -> dict:
         if self._team and time.time() - self._team_at < 600:
             return self._team
-        d = self._gql("""query($key: String!) {
-  teams(filter: {key: {eq: $key}}) { nodes { id key name
-    states { nodes { id name type } }
-    labels(first: 250) { nodes { id name } }
-    projects(first: 100) { nodes { id name } } } }
-  issueLabels(first: 250, filter: {team: {null: true}}) { nodes { id name } }
-}""", {"key": self.team_key})
+        # 한 번에 묻으면 Linear 가 "Query too complex" 로 거절한다(2026-10-11) — 셋으로 나눠 묻는다
+        d = self._gql("""query($key: String!) { teams(filter: {key: {eq: $key}}) { nodes { id key name states { nodes { id name type } } } } }""",
+                      {"key": self.team_key})
         nodes = (d.get("teams") or {}).get("nodes") or []
         if not nodes:
             raise LinearError(f"Linear 팀 {self.team_key} 를 찾지 못했다")
         t = nodes[0]
-        labels = {x["name"]: x["id"] for x in ((d.get("issueLabels") or {}).get("nodes") or [])}
-        labels.update({x["name"]: x["id"] for x in ((t.get("labels") or {}).get("nodes") or [])})
+        d2 = self._gql("""query($id: String!) { team(id: $id) { labels(first: 100) { nodes { id name } } projects(first: 50) { nodes { id name } } } }""",
+                       {"id": t["id"]})
+        d3 = self._gql("""query { issueLabels(first: 100, filter: {team: {null: true}}) { nodes { id name } } }""")
+        tm = d2.get("team") or {}
+        labels = {x["name"]: x["id"] for x in ((d3.get("issueLabels") or {}).get("nodes") or [])}
+        labels.update({x["name"]: x["id"] for x in ((tm.get("labels") or {}).get("nodes") or [])})
         self._team = {"id": t["id"], "key": t["key"], "name": t.get("name"),
                       "states": (t.get("states") or {}).get("nodes") or [],
                       "labels": labels,
-                      "projects": {x["name"]: x["id"] for x in ((t.get("projects") or {}).get("nodes") or [])}}
+                      "projects": {x["name"]: x["id"] for x in ((tm.get("projects") or {}).get("nodes") or [])}}
         self._team_at = time.time()
         return self._team
 

@@ -30,13 +30,16 @@ class FakeLinear:
             return httpx.HttpResult(404, {}, "", 1)
         q, v = body["query"], body.get("variables") or {}
         if "teams(" in q:
+            assert "labels" not in q and "projects" not in q                       # 한 번에 묻으면 Linear 가 너무 복잡하다고 거절한다
             states = [{"id": "s-back", "name": "Backlog", "type": "backlog"}, {"id": "s-done", "name": "Done", "type": "completed"}]
             if self.triage:
                 states.append({"id": "s-tri", "name": "Triage", "type": "triage"})
-            data = {"teams": {"nodes": [{"id": "team-1", "key": "MOI", "name": "100", "states": {"nodes": states},
-                                         "labels": {"nodes": [{"id": "l-bug", "name": "Bug"}, {"id": "l-be", "name": "Backend"}, {"id": "l-plan", "name": "기획"}]},
-                                         "projects": {"nodes": [{"id": "p-1", "name": "회원 및 프로필"}]}}]},
-                    "issueLabels": {"nodes": []}}
+            data = {"teams": {"nodes": [{"id": "team-1", "key": "MOI", "name": "100", "states": {"nodes": states}}]}}
+        elif "team(id" in q:
+            data = {"team": {"labels": {"nodes": [{"id": "l-bug", "name": "Bug"}, {"id": "l-be", "name": "Backend"}]},
+                             "projects": {"nodes": [{"id": "p-1", "name": "회원 및 프로필"}]}}}
+        elif "issueLabels(" in q:
+            data = {"issueLabels": {"nodes": [{"id": "l-plan", "name": "기획"}]}}
         elif "issueCreate" in q:
             n = len(self.created) + 600
             self.created.append(v["input"])
